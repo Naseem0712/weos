@@ -1,0 +1,8 @@
+{
+  "manualRatePerOpening": 8500,
+  "currency": "INR",
+  "labourPerOpening": 600,
+  "markupPercent": 15,
+  "gstPercent": 18,
+  "stub": true
+}

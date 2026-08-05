@@ -1,0 +1,44 @@
+[
+  {
+    "profile": "Outer frame — vertical",
+    "lengthFormula": "height",
+    "quantityFormula": "2",
+    "cutAngle": "45",
+    "machineNotes": "Miter both ends"
+  },
+  {
+    "profile": "Outer frame — horizontal",
+    "lengthFormula": "width",
+    "quantityFormula": "2",
+    "cutAngle": "45",
+    "machineNotes": "Miter both ends"
+  },
+  {
+    "profile": "Shutter stile — handle side",
+    "lengthFormula": "height - 2 * shutterInset",
+    "quantityFormula": "shutterCount",
+    "cutAngle": "45",
+    "machineNotes": "Jamb stile"
+  },
+  {
+    "profile": "Shutter stile — meeting / interlock",
+    "lengthFormula": "height - 2 * shutterInset",
+    "quantityFormula": "shutterCount",
+    "cutAngle": "90",
+    "machineNotes": "Meeting stile / interlock"
+  },
+  {
+    "profile": "Shutter rail — top/bottom",
+    "lengthFormula": "leftShutterWidth",
+    "quantityFormula": "2 * shutterCount",
+    "cutAngle": "45",
+    "machineNotes": "Rails; right shutter rail uses rightShutterWidth in fab — use larger for stock"
+  },
+  {
+    "profile": "Interlock bar",
+    "lengthFormula": "height - 2 * shutterInset",
+    "quantityFormula": "1",
+    "cutAngle": "90",
+    "machineNotes": "Center interlock"
+  }
+]

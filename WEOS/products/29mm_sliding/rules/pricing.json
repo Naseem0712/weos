@@ -1,0 +1,32 @@
+{
+  "colours": [
+    { "id": "white", "label": "White", "hex": "#F5F5F2" },
+    { "id": "black_texture", "label": "Black Texture", "hex": "#2A2A2A" },
+    { "id": "wood_oak", "label": "Wood Oak", "hex": "#8B5A2B" }
+  ],
+  "handles": [
+    { "id": "standard", "label": "Standard" },
+    { "id": "premium", "label": "Premium" }
+  ],
+  "hardwareOptions": [
+    { "id": "standard_hw", "label": "Standard rollers + lock" },
+    { "id": "premium_hw", "label": "Premium soft-close capable" }
+  ],
+  "defaultOptions": {
+    "glass": "5mm_clear",
+    "colour": "white",
+    "handle": "standard",
+    "includeQuote": true,
+    "includePdf": true,
+    "includeSvg": true,
+    "includePng": true,
+    "includeJson": true,
+    "includeBom": true,
+    "includeDxf": false
+  },
+  "colourSurchargePercent": {
+    "white": 0,
+    "black_texture": 8,
+    "wood_oak": 12
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "quantityFormula": "trackCount",
+  "lengthFormula": "width",
+  "unit": "mm",
+  "remarks": "One rail per track; length = overall width unless overridden"
+}

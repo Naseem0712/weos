@@ -1,0 +1,27 @@
+﻿{
+  "id": "perforated_stub",
+  "displayName": "Perforated Panels",
+  "productType": "perforated_stub",
+  "category": "Facades",
+  "units": "mm",
+  "version": 0,
+  "status": "stub",
+  "description": "Catalogue entry — manufacturing engines coming soon. Manual rate for quotations.",
+  "tagline": "Perforated Panels catalogue",
+  "warranty": "1 year (demo)",
+  "heroImage": "/static/products/placeholder.svg",
+  "gallery": ["/static/products/placeholder.svg"],
+  "specifications": {
+    "profileSeries": "Perforated Panels",
+    "sectionSizeMm": "TBD",
+    "wallThicknessMm": null,
+    "alloy": "6063",
+    "temper": "T5",
+    "powderCoatingBrand": "TBD",
+    "powderCoatingGrade": "TBD",
+    "hardwareBrand": "TBD",
+    "hardwareFinish": "TBD",
+    "defaultGlass": "As specified",
+    "openingDirection": "TBD"
+  }
+}

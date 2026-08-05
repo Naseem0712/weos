@@ -1,0 +1,10 @@
+{
+  "id": "casement_stub",
+  "displayName": "Casement Window (coming soon)",
+  "productType": "casement",
+  "category": "Windows",
+  "units": "mm",
+  "version": 0,
+  "status": "stub",
+  "description": "Placeholder series — appears on project quotes with manual rate until engines are wired."
+}

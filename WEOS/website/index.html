@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>WEOS — Manufacturing OS</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#e8e3d8; --ink:#141410; --muted:#5c584f; --panel:rgba(255,252,247,.94);
+  --line:rgba(20,20,16,.12); --green:#0a5a48; --green2:#147a62; --copper:#b45324;
+  --card:#fffdf9; --shadow:0 10px 40px rgba(20,20,16,.06); --radius:14px;
+  --nav:72px; --side:240px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;font-family:"DM Sans",system-ui,sans-serif;color:var(--ink);
+  background:radial-gradient(ellipse 80% 50% at 0% -10%,#c9e5db,transparent 55%),
+             radial-gradient(ellipse 60% 40% at 100% 0%,#efd6c2,transparent 50%),var(--bg)}
+button,input,select{font:inherit}
+a{color:inherit}
+.app{display:grid;grid-template-columns:var(--side) 1fr;min-height:100vh}
+@media(max-width:900px){.app{grid-template-columns:1fr}.side{position:fixed;inset:0 auto 0 0;transform:translateX(-105%);z-index:40;transition:.25s}
+.side.open{transform:none}.burger{display:inline-flex!important}}
+.side{background:#12140f;color:#e8efe9;padding:1.1rem .9rem;display:flex;flex-direction:column;gap:.35rem}
+.brand{font-family:Fraunces,serif;font-size:1.55rem;margin:.2rem .4rem .1rem}
+.tag{font-size:.72rem;color:#9bb0a4;margin:0 .4rem 1rem}
+.navbtn{border:0;background:transparent;color:#d7e4dc;text-align:left;padding:.65rem .75rem;border-radius:10px;cursor:pointer;width:100%}
+.navbtn:hover,.navbtn.active{background:rgba(255,255,255,.08);color:#fff}
+.main{min-width:0;padding:1rem 1.1rem 2.5rem}
+.top{display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap}
+.burger{display:none;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:.45rem .65rem;cursor:pointer}
+h1{font-family:Fraunces,serif;font-size:clamp(1.5rem,2.5vw,2rem);margin:0;letter-spacing:-.02em}
+.sub{color:var(--muted);margin:.15rem 0 0;font-size:.92rem}
+.grid{display:grid;gap:1rem}
+.cards{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:1rem 1.05rem;box-shadow:var(--shadow);
+  animation:rise .35s ease both}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.card .k{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.card .v{font-family:Fraunces,serif;font-size:1.7rem;margin-top:.35rem}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:1rem;box-shadow:var(--shadow)}
+.row{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
+.grow{flex:1;min-width:140px}
+label.l{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 .25rem}
+input,select{width:100%;padding:.55rem .65rem;border:1px solid var(--line);border-radius:10px;background:#fff}
+.btn{border:0;border-radius:10px;padding:.55rem .85rem;background:var(--green);color:#f4faf7;font-weight:600;cursor:pointer}
+.btn:hover{background:var(--green2)}
+.btn.sec{background:transparent;border:1px solid var(--copper);color:var(--copper)}
+.btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink);font-weight:500}
+.btn.sm{padding:.35rem .55rem;font-size:.82rem}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th,td{text-align:left;padding:.55rem .4rem;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.muted{color:var(--muted)}
+.pill{display:inline-block;padding:.15rem .45rem;border-radius:999px;background:#e7f3ee;color:var(--green);font-size:.72rem;font-weight:600}
+.pill.stub{background:#f3ebe2;color:var(--copper)}
+.preview{background:#f4f1ea;border:1px solid var(--line);border-radius:12px;min-height:220px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.preview svg,.preview img{max-width:100%;max-height:320px}
+.two{display:grid;grid-template-columns:1.1fr .9fr;gap:1rem}
+@media(max-width:1000px){.two{grid-template-columns:1fr}}
+.prodgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.85rem}
+.prod{cursor:pointer;overflow:hidden;transition:transform .2s,box-shadow .2s}
+.prod:hover{transform:translateY(-3px);box-shadow:0 14px 36px rgba(20,20,16,.1)}
+.prod img,.prod .ph{width:100%;height:130px;object-fit:cover;background:#ddd;display:block}
+.err{color:#a11;font-size:.88rem}
+.toast{position:fixed;right:1rem;bottom:1rem;background:#12140f;color:#fff;padding:.7rem 1rem;border-radius:10px;z-index:50;opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none}
+.toast.show{opacity:1;transform:none}
+.hidden{display:none!important}
+.total{font-family:Fraunces,serif;font-size:clamp(1.6rem,3vw,2.2rem)}
+.actions-inline{display:flex;gap:.3rem;flex-wrap:wrap}
+.specs{display:grid;grid-template-columns:1fr 1fr;gap:.45rem .75rem;font-size:.88rem}
+@media(max-width:600px){.specs{grid-template-columns:1fr}th:nth-child(n+5),td:nth-child(n+5){display:none}}
+.optbox{background:#12140f;color:#cfe9dc;padding:.75rem;border-radius:10px;font-size:.75rem;overflow:auto;max-height:200px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side" id="side">
+    <div class="brand">WEOS</div>
+    <p class="tag">Design • Calculate • Manufacture • Quote</p>
+    <button class="navbtn active" data-view="dashboard">Dashboard</button>
+    <button class="navbtn" data-view="projects">Saved Projects</button>
+    <button class="navbtn" data-view="cart">Window Cart</button>
+    <button class="navbtn" data-view="library">Product Library</button>
+    <button class="navbtn" data-view="product">Product Details</button>
+  </aside>
+  <div class="main">
+    <div class="top">
+      <button class="burger" id="burger" type="button">☰</button>
+      <div class="grow">
+        <h1 id="title">Dashboard</h1>
+        <p class="sub" id="subtitle">Manufacturing Operating System</p>
+      </div>
+      <span class="pill" id="projPill">No project</span>
+    </div>
+
+    <!-- DASHBOARD -->
+    <section id="view-dashboard" class="grid">
+      <div class="grid cards" id="dashCards"></div>
+      <div class="panel">
+        <div class="row" style="justify-content:space-between;margin-bottom:.6rem">
+          <strong>Recent Projects</strong>
+          <button class="btn sm" id="btnNewFromDash">New Project</button>
+        </div>
+        <div style="overflow:auto"><table><thead><tr><th>ID</th><th>Name</th><th>Customer</th><th>Lines</th><th>Total</th><th>Status</th></tr></thead><tbody id="recentBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- PROJECTS -->
+    <section id="view-projects" class="grid hidden">
+      <div class="panel">
+        <div class="row">
+          <div class="grow"><label class="l">Search</label><input id="projSearch" placeholder="PRJ / name / customer"/></div>
+          <div><label class="l">Status</label><select id="projStatus"><option value="">All</option><option>draft</option><option>active</option><option>archived</option></select></div>
+          <div><label class="l">Sort</label><select id="projSort"><option value="updatedAt">Updated</option><option value="name">Name</option><option value="projectId">ID</option></select></div>
+          <button class="btn" id="btnRefreshProj" style="margin-top:1rem">Refresh</button>
+          <button class="btn sec" id="btnNewProj" style="margin-top:1rem">New</button>
+        </div>
+        <div style="overflow:auto;margin-top:.8rem"><table><thead><tr><th>ID</th><th>Name</th><th>Customer</th><th>Lines</th><th>Version</th><th>Total</th><th>Actions</th></tr></thead><tbody id="projBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- CART -->
+    <section id="view-cart" class="grid hidden">
+      <div class="two">
+        <div class="panel">
+          <div class="row" style="margin-bottom:.6rem">
+            <div class="grow"><label class="l">Project name</label><input id="cartName" value="WEOS Project"/></div>
+            <div class="grow"><label class="l">Customer</label><input id="cartCustomer" value=""/></div>
+          </div>
+          <div class="row">
+            <div class="grow"><label class="l">Product</label><select id="lineProduct"></select></div>
+            <div><label class="l">W</label><input id="lineW" type="number" value="2050" style="width:90px"/></div>
+            <div><label class="l">H</label><input id="lineH" type="number" value="1970" style="width:90px"/></div>
+            <div><label class="l">Qty</label><input id="lineQty" type="number" value="1" min="1" style="width:70px"/></div>
+          </div>
+          <div class="row" style="margin-top:.5rem">
+            <div class="grow"><label class="l">Glass</label><select id="lineGlass"><option value="5mm_clear">5mm Clear</option><option value="8mm_toughened" selected>8mm Toughened</option><option value="10mm_toughened">10mm Toughened</option></select></div>
+            <div class="grow"><label class="l">Colour</label><select id="lineColour"><option value="white">White</option><option value="black_texture" selected>Black Texture</option><option value="wood_oak">Wood Oak</option></select></div>
+            <div class="grow"><label class="l">Handle</label><select id="lineHandle"><option value="standard">Standard</option><option value="premium" selected>Premium</option></select></div>
+            <button class="btn" id="btnAddLine" style="margin-top:1rem">Add</button>
+          </div>
+          <div class="row" style="margin-top:.75rem">
+            <button class="btn ghost sm" id="btnUndo">Undo</button>
+            <button class="btn ghost sm" id="btnRedo">Redo</button>
+            <button class="btn ghost sm" id="btnAutosave">Save</button>
+            <button class="btn sm" id="btnCalc">Calculate</button>
+            <label class="btn ghost sm" style="margin:0">Import<input id="importFile" type="file" accept=".csv,.xlsx" hidden/></label>
+          </div>
+          <div style="overflow:auto;margin-top:.8rem">
+            <table>
+              <thead><tr><th>#</th><th>Product</th><th>Size</th><th>Qty</th><th>Options</th><th></th></tr></thead>
+              <tbody id="cartBody"></tbody>
+            </table>
+          </div>
+          <div class="row" style="margin-top:.8rem;justify-content:space-between;align-items:flex-end">
+            <div>
+              <div class="muted" id="cartMeta">0 lines</div>
+              <div class="total" id="cartTotal">₹ —</div>
+            </div>
+            <div class="actions-inline">
+              <a class="btn ghost sm" id="linkQuote" href="#" target="_blank">Quotation JSON</a>
+              <a class="btn ghost sm" id="linkCust" href="#" target="_blank">Customer PDF</a>
+              <a class="btn sec sm" id="linkFact" href="#" target="_blank">Factory PDF</a>
+            </div>
+          </div>
+          <pre class="optbox" id="optBox">Optimization after Calculate</pre>
+          <div class="err" id="cartErr"></div>
+        </div>
+        <div class="panel">
+          <strong>Live Preview</strong>
+          <p class="muted" id="previewLabel" style="margin:.25rem 0 .6rem">Select or add a line</p>
+          <div class="preview" id="livePreview"><span class="muted">SVG / hero</span></div>
+          <div class="specs" id="lineSpecs" style="margin-top:.8rem"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LIBRARY -->
+    <section id="view-library" class="grid hidden">
+      <div class="panel">
+        <div class="row" style="margin-bottom:.8rem">
+          <div class="grow"><label class="l">Filter category</label>
+            <select id="libCat"><option value="">All</option><option>Windows</option><option>Doors</option><option>Pergola</option><option>Facades</option><option>Railings</option></select>
+          </div>
+        </div>
+        <div class="prodgrid" id="libGrid"></div>
+      </div>
+    </section>
+
+    <!-- PRODUCT DETAIL -->
+    <section id="view-product" class="grid hidden">
+      <div class="two">
+        <div class="panel">
+          <h2 style="font-family:Fraunces,serif;margin:0 0 .5rem" id="pdName">Product</h2>
+          <p class="muted" id="pdTag"></p>
+          <div class="specs" id="pdSpecs"></div>
+          <div class="row" style="margin-top:1rem">
+            <button class="btn" id="pdAdd">Add to Cart</button>
+            <button class="btn ghost" id="pdBack">Back to Library</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="preview" id="pdPreview"></div>
+          <p class="muted" id="pdStatus" style="margin-top:.6rem"></p>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const state = {
+  view: 'dashboard',
+  projectId: null,
+  lines: [],
+  products: [],
+  selectedProduct: '29mm_sliding',
+  selectedLine: 0,
+  lastResult: null,
+  saveTimer: null,
+};
+const $ = (id) => document.getElementById(id);
+const toast = (m) => { const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); };
+
+async function api(path, opts={}) {
+  const res = await fetch(path, {
+    headers: opts.body && !(opts.body instanceof FormData) ? {'Content-Type':'application/json'} : undefined,
+    ...opts,
+    body: opts.body && !(opts.body instanceof FormData) ? JSON.stringify(opts.body) : opts.body,
+  });
+  const ct = res.headers.get('content-type')||'';
+  const data = ct.includes('application/json') ? await res.json() : await res.blob();
+  if (!res.ok) throw new Error((data && data.detail) ? (typeof data.detail==='string'?data.detail:JSON.stringify(data.detail)) : res.statusText);
+  return data;
+}
+
+function setView(v) {
+  state.view = v;
+  document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view===v));
+  ['dashboard','projects','cart','library','product'].forEach(id => {
+    $('view-'+id).classList.toggle('hidden', id!==v);
+  });
+  const titles = {dashboard:['Dashboard','Active work across factory & quotations'],projects:['Saved Projects','Search, filter, duplicate, archive — versions kept'],cart:['Window Cart','Unlimited lines · live preview · instant totals'],library:['Product Library','Digital catalogue + manufacturing source of truth'],product:['Product Details','Specs from Product JSON only']};
+  $('title').textContent = titles[v][0];
+  $('subtitle').textContent = titles[v][1];
+  $('side').classList.remove('open');
+  if (v==='dashboard') loadDashboard();
+  if (v==='projects') loadProjects();
+  if (v==='library') renderLibrary();
+  if (v==='cart') { renderCart(); refreshPreview(); }
+}
+
+document.querySelectorAll('.navbtn').forEach(b => b.onclick = () => setView(b.dataset.view));
+$('burger').onclick = () => $('side').classList.toggle('open');
+
+function money(n){ return n==null ? '—' : '₹ '+Number(n).toLocaleString('en-IN'); }
+
+async function loadDashboard() {
+  const d = await api('/api/dashboard');
+  $('dashCards').innerHTML = [
+    ['Active Projects', d.activeProjects],
+    ['Draft Quotations', d.draftQuotations],
+    ["Today's Orders", d.todaysOrders],
+    ['Material Required', (d.materialRequiredKg||0)+' kg'],
+    ['Production Queued', d.productionStatus?.queued||0],
+    ['Archived', d.productionStatus?.archived||0],
+  ].map(([k,v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+  $('recentBody').innerHTML = (d.recentProjects||[]).map(p => `
+    <tr>
+      <td><a href="#" data-open="${p.projectId}">${p.projectId}</a></td>
+      <td>${p.name||''}</td><td>${p.customer||''}</td><td>${p.lineCount||0}</td>
+      <td>${money(p.grandTotal)}</td><td><span class="pill">${p.status||''}</span></td>
+    </tr>`).join('') || '<tr><td colspan="6" class="muted">No projects yet</td></tr>';
+  $('recentBody').querySelectorAll('[data-open]').forEach(a => a.onclick = async (e) => { e.preventDefault(); await openProject(a.dataset.open); setView('cart'); });
+}
+
+async function loadProjects() {
+  const q = $('projSearch').value.trim();
+  const status = $('projStatus').value;
+  const sort = $('projSort').value;
+  const qs = new URLSearchParams({sort, order:'desc'});
+  if (q) qs.set('q', q);
+  if (status) qs.set('status', status);
+  const data = await api('/api/projects?'+qs.toString());
+  $('projBody').innerHTML = (data.projects||[]).map(p => `
+    <tr>
+      <td>${p.projectId}</td><td>${p.name||''}</td><td>${p.customer||''}</td>
+      <td>${p.lineCount||0}</td><td>v${p.version||0}</td><td>${money(p.grandTotal)}</td>
+      <td class="actions-inline">
+        <button class="btn ghost sm" data-o="${p.projectId}">Open</button>
+        <button class="btn ghost sm" data-d="${p.projectId}">Dup</button>
+        <button class="btn ghost sm" data-a="${p.projectId}">${p.status==='archived'?'Restore':'Archive'}</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="7" class="muted">None</td></tr>';
+  $('projBody').querySelectorAll('[data-o]').forEach(b => b.onclick = async () => { await openProject(b.dataset.o); setView('cart'); });
+  $('projBody').querySelectorAll('[data-d]').forEach(b => b.onclick = async () => { await api('/api/projects/'+b.dataset.d+'/duplicate',{method:'POST'}); toast('Duplicated'); loadProjects(); });
+  $('projBody').querySelectorAll('[data-a]').forEach(b => b.onclick = async () => {
+    const p = (data.projects||[]).find(x=>x.projectId===b.dataset.a);
+    if (p?.status==='archived') await api('/api/projects/'+b.dataset.a+'/restore',{method:'POST'});
+    else await api('/api/projects/'+b.dataset.a+'/archive',{method:'POST'});
+    toast('Updated'); loadProjects();
+  });
+}
+
+async function loadProducts() {
+  const data = await api('/api/products');
+  state.products = data.products || [];
+  $('lineProduct').innerHTML = state.products.map(p => `<option value="${p.id}">${p.displayName}${p.manufacturingReady?'':' (catalogue)'}</option>`).join('');
+}
+
+function renderLibrary() {
+  const cat = $('libCat').value;
+  const list = state.products.filter(p => !cat || p.category===cat);
+  $('libGrid').innerHTML = list.map(p => `
+    <div class="card prod" data-id="${p.id}">
+      <img class="ph" src="${p.heroImage||'/static/products/placeholder.svg'}" alt=""/>
+      <div style="padding-top:.55rem"><strong>${p.displayName}</strong>
+      <div class="muted" style="font-size:.8rem">${p.category||''}</div>
+      <span class="pill ${p.manufacturingReady?'':'stub'}">${p.manufacturingReady?'Manufacturing ready':'Catalogue'}</span></div>
+    </div>`).join('');
+  $('libGrid').querySelectorAll('.prod').forEach(el => el.onclick = () => openProduct(el.dataset.id));
+}
+
+async function openProduct(id) {
+  const p = await api('/api/products/'+id);
+  state.selectedProduct = id;
+  $('pdName').textContent = p.displayName;
+  $('pdTag').textContent = p.tagline || p.description || '';
+  const specs = p.specifications || {};
+  $('pdSpecs').innerHTML = Object.entries(specs).map(([k,v]) => `<div><span class="muted">${k}</span><div>${v??'—'}</div></div>`).join('');
+  const img = p.heroImage || '/static/products/placeholder.svg';
+  $('pdPreview').innerHTML = `<img src="${img}" alt="" style="max-width:100%;max-height:320px"/>`;
+  $('pdStatus').textContent = p.manufacturingReady ? 'Full manufacturing rules available' : 'Catalogue stub — manual rate on quotation';
+  setView('product');
+}
+
+function renderCart() {
+  $('cartBody').innerHTML = state.lines.map((ln,i) => `
+    <tr class="${i===state.selectedLine?'':' '}" style="${i===state.selectedLine?'background:#f3faf6':''}">
+      <td>${i+1}</td>
+      <td>${ln.product}</td>
+      <td><input data-f="width" data-i="${i}" type="number" value="${ln.width}" style="width:70px"/>×<input data-f="height" data-i="${i}" type="number" value="${ln.height}" style="width:70px"/></td>
+      <td><input data-f="qty" data-i="${i}" type="number" min="1" value="${ln.qty}" style="width:56px"/></td>
+      <td style="font-size:.8rem">${ln.glass||''}<br>${ln.colour||''}</td>
+      <td class="actions-inline">
+        <button class="btn ghost sm" data-sel="${i}">👁</button>
+        <button class="btn ghost sm" data-dup="${i}">Dup</button>
+        <button class="btn ghost sm" data-del="${i}">Del</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="6" class="muted">Cart empty — add products</td></tr>';
+  $('cartBody').querySelectorAll('input[data-f]').forEach(inp => {
+    inp.onchange = () => {
+      const i = +inp.dataset.i; const f = inp.dataset.f;
+      state.lines[i][f] = f==='qty' ? +inp.value : +inp.value;
+      state.selectedLine = i;
+      scheduleSave();
+      refreshPreview();
+      updateLocalTotalHint();
+    };
+  });
+  $('cartBody').querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { state.selectedLine=+b.dataset.sel; renderCart(); refreshPreview(); });
+  $('cartBody').querySelectorAll('[data-dup]').forEach(b => b.onclick = () => { const i=+b.dataset.dup; state.lines.splice(i+1,0,{...state.lines[i]}); renderCart(); scheduleSave(); });
+  $('cartBody').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { state.lines.splice(+b.dataset.del,1); renderCart(); scheduleSave(); });
+  const items = state.lines.reduce((s,l)=>s+(+l.qty||0),0);
+  $('cartMeta').textContent = `${state.lines.length} lines · ${items} items` + (state.projectId?` · ${state.projectId}`:'');
+  updatePdfLinks();
+}
+
+function updateLocalTotalHint(){
+  if (state.lastResult?.price?.total!=null) $('cartTotal').textContent = money(state.lastResult.price.total)+' (recalc to refresh)';
+}
+
+async function refreshPreview() {
+  const ln = state.lines[state.selectedLine] || {
+    product: $('lineProduct').value, width:+$('lineW').value, height:+$('lineH').value,
+    colour:$('lineColour').value, glass:$('lineGlass').value, handle:$('lineHandle').value
+  };
+  $('previewLabel').textContent = `${ln.product} · ${ln.width}×${ln.height} · ${ln.colour||''}`;
+  try {
+    const prev = await api('/api/preview', {method:'POST', body:{
+      product: ln.product, width:+ln.width, height:+ln.height,
+      colour: ln.colour||'white', glass: ln.glass||'5mm_clear', handle: ln.handle||'standard'
+    }});
+    if (prev.svg) $('livePreview').innerHTML = prev.svg;
+    else if (prev.heroImage) $('livePreview').innerHTML = `<img src="${prev.heroImage}" alt=""/>`;
+    else $('livePreview').innerHTML = '<span class="muted">No preview</span>';
+    const specs = prev.specifications || {};
+    $('lineSpecs').innerHTML = Object.entries(specs).slice(0,8).map(([k,v])=>`<div><span class="muted">${k}</span><div>${v??'—'}</div></div>`).join('');
+  } catch(e) {
+    $('livePreview').innerHTML = `<span class="muted">${e.message}</span>`;
+  }
+}
+
+function updatePdfLinks(){
+  const id = state.projectId;
+  $('projPill').textContent = id || 'No project';
+  if (!id) return;
+  $('linkQuote').href = `/api/projects/${id}/quotation`;
+  $('linkCust').href = `/api/projects/${id}/customer-pdf`;
+  $('linkFact').href = `/api/projects/${id}/factory-pdf`;
+}
+
+async function ensureProject() {
+  if (state.projectId) return state.projectId;
+  const doc = await api('/api/projects', {method:'POST', body:{
+    name: $('cartName').value || 'WEOS Project',
+    customer: $('cartCustomer').value || '',
+    lines: state.lines,
+    status: 'draft'
+  }});
+  state.projectId = doc.projectId;
+  updatePdfLinks();
+  toast('Created '+doc.projectId);
+  return doc.projectId;
+}
+
+async function saveProject(silent) {
+  await ensureProject();
+  const doc = await api('/api/projects/'+state.projectId, {method:'PUT', body:{
+    name: $('cartName').value, customer: $('cartCustomer').value, lines: state.lines
+  }});
+  if (!silent) toast('Saved v'+doc.version);
+  updatePdfLinks();
+  return doc;
+}
+
+function scheduleSave() {
+  clearTimeout(state.saveTimer);
+  state.saveTimer = setTimeout(() => saveProject(true).catch(e => $('cartErr').textContent=e.message), 450);
+}
+
+async function openProject(id) {
+  const doc = await api('/api/projects/'+id);
+  state.projectId = doc.projectId;
+  state.lines = doc.lines || [];
+  $('cartName').value = doc.name || '';
+  $('cartCustomer').value = doc.customer || '';
+  if (doc.lastCalculation?.price) {
+    state.lastResult = doc.lastCalculation;
+    $('cartTotal').textContent = money(doc.lastCalculation.price.total);
+    $('optBox').textContent = JSON.stringify(doc.lastCalculation.optimization || {}, null, 2);
+  }
+  renderCart(); refreshPreview(); updatePdfLinks();
+  toast('Loaded '+id);
+}
+
+async function calculate() {
+  $('cartErr').textContent='';
+  try {
+    await saveProject(true);
+    const t0 = performance.now();
+    const result = await api('/api/projects/'+state.projectId+'/calculate', {method:'POST', body:{optimize:true}});
+    const ms = Math.round(performance.now()-t0);
+    state.lastResult = result;
+    $('cartTotal').textContent = money(result.price?.total);
+    const c = result.combined || {};
+    $('cartMeta').textContent = `${c.lineCount} lines · ${c.totalItems} items · Alu ${c.weight?.aluminiumKg} kg · ${ms} ms`;
+    const opt = result.optimization || {};
+    $('optBox').textContent = JSON.stringify({
+      quotationId: result.quotationId,
+      aluminium: {newBars: opt.aluminium?.newBars, wastePercent: opt.aluminium?.wastePercent, leftovers: opt.aluminium?.leftoversUsed?.length},
+      glass: {sheets: opt.glass?.sheetsNeeded, wastePercent: opt.glass?.wastePercent},
+      purchaseList: opt.purchaseList,
+      ms
+    }, null, 2);
+    updatePdfLinks();
+    toast('Calculated in '+ms+' ms');
+  } catch(e) { $('cartErr').textContent = e.message; }
+}
+
+$('btnAddLine').onclick = () => {
+  state.lines.push({
+    product: $('lineProduct').value, width:+$('lineW').value, height:+$('lineH').value,
+    qty:+$('lineQty').value, glass:$('lineGlass').value, colour:$('lineColour').value, handle:$('lineHandle').value
+  });
+  state.selectedLine = state.lines.length-1;
+  renderCart(); scheduleSave(); refreshPreview();
+};
+$('btnCalc').onclick = calculate;
+$('btnAutosave').onclick = () => saveProject(false);
+$('btnUndo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/undo',{method:'POST'}); state.lines=d.lines||[]; renderCart(); toast('Undo'); };
+$('btnRedo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/redo',{method:'POST'}); state.lines=d.lines||[]; renderCart(); toast('Redo'); };
+$('importFile').onchange = async (ev) => {
+  const f = ev.target.files[0]; if(!f) return;
+  await ensureProject();
+  const fd = new FormData(); fd.append('file', f);
+  await api('/api/projects/import?projectId='+encodeURIComponent(state.projectId), {method:'POST', body:fd});
+  await openProject(state.projectId); toast('Imported');
+};
+['lineW','lineH','lineColour','lineGlass','lineProduct'].forEach(id => $(id).onchange = refreshPreview);
+$('btnNewFromDash').onclick = $('btnNewProj').onclick = async () => {
+  state.projectId=null; state.lines=[]; state.lastResult=null;
+  $('cartName').value='New WEOS Project'; $('cartCustomer').value='';
+  $('cartTotal').textContent='₹ —'; renderCart(); setView('cart'); await ensureProject();
+};
+$('btnRefreshProj').onclick = loadProjects;
+$('projSearch').oninput = () => { clearTimeout(state._ps); state._ps=setTimeout(loadProjects,250); };
+$('projStatus').onchange = $('projSort').onchange = loadProjects;
+$('libCat').onchange = renderLibrary;
+$('pdAdd').onclick = () => {
+  state.lines.push({product: state.selectedProduct, width:1440, height:1800, qty:1, glass:'5mm_clear', colour:'white', handle:'standard'});
+  setView('cart'); renderCart(); scheduleSave();
+};
+$('pdBack').onclick = () => setView('library');
+
+(async function init(){
+  await loadProducts();
+  // seed demo cart lines if empty
+  state.lines = [
+    {product:'29mm_sliding', width:2050, height:1970, qty:4, glass:'8mm_toughened', colour:'black_texture', handle:'premium'},
+    {product:'29mm_sliding', width:1500, height:1500, qty:6, glass:'5mm_clear', colour:'white', handle:'standard'},
+    {product:'casement_stub', width:900, height:1500, qty:2, glass:'5mm_clear', colour:'white', handle:'standard'},
+    {product:'fixed_stub', width:1200, height:600, qty:8, glass:'5mm_clear', colour:'white', handle:'standard'},
+  ];
+  setView('dashboard');
+})();
+</script>
+</body>
+</html>

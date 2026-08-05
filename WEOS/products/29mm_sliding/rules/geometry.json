@@ -1,0 +1,10 @@
+{
+  "trackWidth": 30,
+  "frameWidth": 65,
+  "interlockWidth": 22,
+  "overlap": 8,
+  "glassClip": 10,
+  "trackCount": 2,
+  "shutterCount": 2,
+  "meetingGap": 0
+}

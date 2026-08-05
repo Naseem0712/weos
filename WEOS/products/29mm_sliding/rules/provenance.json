@@ -1,0 +1,8 @@
+{
+  "geometry.trackWidth": { "source": "Two Track.dxf", "confidence": 0.95 },
+  "geometry.frameWidth": { "source": "Two Track.dxf", "confidence": 0.9 },
+  "geometry.interlockWidth": { "source": "Two Track.dxf", "confidence": 0.92 },
+  "geometry.overlap": { "source": "Two Track.dxf", "confidence": 0.88 },
+  "geometry.glassClip": { "source": "Two Track.dxf", "confidence": 0.85 },
+  "quotation": { "source": "user_confirmation", "confidence": 1.0 }
+}

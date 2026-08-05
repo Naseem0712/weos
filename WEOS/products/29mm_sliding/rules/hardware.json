@@ -1,0 +1,76 @@
+[
+  {
+    "part": "Corner cleat (outer frame)",
+    "quantityFormula": "8",
+    "lengthFormula": "0",
+    "unit": "pcs",
+    "unitRate": 12,
+    "remarks": "Outer frame corners"
+  },
+  {
+    "part": "Corner cleat (shutter)",
+    "quantityFormula": "8 * shutterCount",
+    "lengthFormula": "0",
+    "unit": "pcs",
+    "unitRate": 10,
+    "remarks": "Shutter frame corners"
+  },
+  {
+    "part": "Interlock connector",
+    "quantityFormula": "2",
+    "lengthFormula": "0",
+    "unit": "pcs",
+    "unitRate": 45,
+    "category": "connectors"
+  },
+  {
+    "part": "Handle",
+    "quantityFormula": "shutterCount",
+    "lengthFormula": "0",
+    "unit": "pcs",
+    "unitRate": 180,
+    "optionKey": "handle",
+    "variants": {
+      "standard": { "unitRate": 180, "label": "Standard" },
+      "premium": { "unitRate": 320, "label": "Premium" }
+    }
+  },
+  {
+    "part": "Lock / keeper set",
+    "quantityFormula": "1",
+    "lengthFormula": "0",
+    "unit": "set",
+    "unitRate": 220,
+    "category": "locks"
+  },
+  {
+    "part": "Wheel / roller",
+    "quantityFormula": "2 * shutterCount",
+    "lengthFormula": "0",
+    "unit": "pcs",
+    "unitRate": 55,
+    "category": "rollers"
+  },
+  {
+    "part": "Setting block",
+    "quantityFormula": "4 * shutterCount",
+    "lengthFormula": "0",
+    "unit": "pcs",
+    "unitRate": 4
+  },
+  {
+    "part": "EPDM gasket",
+    "quantityFormula": "1",
+    "lengthFormula": "2 * (width + height) / 1000",
+    "unit": "m",
+    "unitRate": 35,
+    "remarks": "Approx perimeter"
+  },
+  {
+    "part": "Assembly screw pack",
+    "quantityFormula": "1",
+    "lengthFormula": "0",
+    "unit": "pack",
+    "unitRate": 40
+  }
+]

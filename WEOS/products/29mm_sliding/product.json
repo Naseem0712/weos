@@ -1,0 +1,35 @@
+{
+  "id": "29mm_sliding",
+  "displayName": "29mm Sliding Window",
+  "productType": "two_track_sliding",
+  "category": "Windows",
+  "units": "mm",
+  "version": 1,
+  "status": "active",
+  "description": "29mm-style two-track sliding — complete digital product + manufacturing rules.",
+  "tagline": "Two-track residential & commercial sliding",
+  "warranty": "1 year manufacturing defects",
+  "heroImage": "/static/products/29mm_sliding/hero.svg",
+  "gallery": [
+    "/static/products/29mm_sliding/hero.svg",
+    "/static/products/29mm_sliding/section.svg"
+  ],
+  "sectionDrawings": [
+    "/static/products/29mm_sliding/section.svg"
+  ],
+  "specifications": {
+    "profileSeries": "29mm Sliding",
+    "sectionSizeMm": "29 × track system",
+    "wallThicknessMm": 1.2,
+    "alloy": "6063",
+    "temper": "T5 / T6",
+    "powderCoatingBrand": "AkzoNobel / equivalent",
+    "powderCoatingGrade": "Qualicoat Class 1",
+    "hardwareBrand": "System compatible",
+    "hardwareFinish": "SS / Powder matched",
+    "defaultGlass": "5mm Clear / 8mm Toughened",
+    "openingDirection": "Horizontal sliding — L / R",
+    "trackCount": 2,
+    "shutterCount": 2
+  }
+}

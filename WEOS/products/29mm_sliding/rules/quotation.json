@@ -1,0 +1,18 @@
+{
+  "currency": "INR",
+  "labourPerOpening": 800,
+  "markupPercent": 15,
+  "gstPercent": 18,
+  "rates": {
+    "aluminiumPerKg": 280,
+    "glassPerM2": 450,
+    "brushPerMeter": 45,
+    "trackRailPerMeter": 120,
+    "packagingPerOpening": 150
+  },
+  "colourSurchargePercent": {
+    "white": 0,
+    "black_texture": 8,
+    "wood_oak": 12
+  }
+}

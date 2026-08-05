@@ -1,0 +1,22 @@
+{
+  "aluminiumDensityKgPerM3": 2700,
+  "hardwareAllowanceKg": 1.2,
+  "profileSections": [
+    {
+      "name": "outer_frame",
+      "crossSectionAreaMm2": 280,
+      "lengthFormula": "2 * (width + height)"
+    },
+    {
+      "name": "shutter_frames",
+      "crossSectionAreaMm2": 320,
+      "lengthFormula": "2 * shutterCount * ((height - 2 * shutterInset) + leftShutterWidth)"
+    },
+    {
+      "name": "interlock",
+      "crossSectionAreaMm2": 180,
+      "lengthFormula": "height - 2 * shutterInset"
+    }
+  ],
+  "wasteFactor": 1.05
+}

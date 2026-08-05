@@ -1,0 +1,4 @@
+product,width,height,qty,glass,colour,handle
+29mm_sliding,1800,1500,2,5mm_clear,white,standard
+29mm_sliding,1200,1200,3,8mm_toughened,black_texture,premium
+fixed_stub,1000,500,4,5mm_clear,white,standard

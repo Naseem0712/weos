@@ -1,0 +1,14 @@
+{
+  "handleSideOverlap": 8,
+  "interlockSideOverlap": 6,
+  "topOverlap": 8,
+  "bottomOverlap": 6,
+  "thicknessMm": 5,
+  "densityKgPerM3": 2500,
+  "quantityFormula": "shutterCount",
+  "options": [
+    { "id": "5mm_clear", "label": "5mm Clear", "thicknessMm": 5, "rateMultiplier": 1.0 },
+    { "id": "8mm_toughened", "label": "8mm Toughened", "thicknessMm": 8, "rateMultiplier": 1.45, "densityKgPerM3": 2500 },
+    { "id": "10mm_toughened", "label": "10mm Toughened", "thicknessMm": 10, "rateMultiplier": 1.75, "densityKgPerM3": 2500 }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "glassSheets": [
+    { "id": "GS-3660x2440", "widthMm": 3660, "heightMm": 2440, "thicknessMm": 8, "label": "Standard float/tough sheet" }
+  ],
+  "aluminiumBars": [
+    { "id": "BAR-6500", "lengthMm": 6500, "profileFamily": "default", "label": "Standard extrude bar 6.5m" }
+  ],
+  "leftoverStock": [
+    { "id": "LO-001", "lengthMm": 2350, "material": "aluminium", "profileFamily": "default" },
+    { "id": "LO-002", "lengthMm": 1800, "material": "aluminium", "profileFamily": "default" },
+    { "id": "LO-003", "lengthMm": 3200, "material": "aluminium", "profileFamily": "default" },
+    { "id": "LO-004", "lengthMm": 950, "material": "aluminium", "profileFamily": "default" }
+  ],
+  "notes": "Demo factory stock for WEOS material optimization. Edit for real inventory."
+}

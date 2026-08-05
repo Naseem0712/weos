@@ -1,0 +1,10 @@
+{
+  "id": "29mm_sliding",
+  "source": "catalogue_stub_demo.json",
+  "confidence": 0.82,
+  "geometry": {
+    "trackWidth": 32,
+    "overlap": 9
+  },
+  "notes": "Demo catalogue stub for Learning Engine propose/approve tests"
+}

@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Packaging / tools
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local runtime / generated (keep defaults; Railway uses WEOS_DATA_DIR volume)
+WEOS/output/
+WEOS/projects/
+!WEOS/projects/.gitkeep
+output/
+dxf_analysis.json
+analyze_out.txt
+*.log
+
+# Local secrets / scratch
+*.pem
+.local/

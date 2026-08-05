@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320" viewBox="0 0 640 320">
+  <rect width="640" height="320" fill="#f7f5f0"/>
+  <rect x="40" y="80" width="560" height="40" fill="#cfc8bb" stroke="#333"/>
+  <rect x="40" y="140" width="30" height="100" fill="#8a8378" stroke="#333"/>
+  <rect x="570" y="140" width="30" height="100" fill="#8a8378" stroke="#333"/>
+  <text x="320" y="50" text-anchor="middle" font-family="Segoe UI" font-size="16" fill="#333">Section  Track / Frame (schematic)</text>
+  <text x="60" y="250" font-family="Segoe UI" font-size="12" fill="#555">trackWidth · frameWidth · interlock  from rules/geometry.json</text>
+</svg>

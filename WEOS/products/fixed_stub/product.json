@@ -1,0 +1,10 @@
+{
+  "id": "fixed_stub",
+  "displayName": "Fixed Light (coming soon)",
+  "productType": "fixed",
+  "category": "Windows",
+  "units": "mm",
+  "version": 0,
+  "status": "stub",
+  "description": "Placeholder fixed light — manual rate until geometry engine is wired."
+}

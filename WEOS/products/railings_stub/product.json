@@ -1,0 +1,27 @@
+﻿{
+  "id": "railings_stub",
+  "displayName": "Glass Railings",
+  "productType": "railings_stub",
+  "category": "Railings",
+  "units": "mm",
+  "version": 0,
+  "status": "stub",
+  "description": "Catalogue entry — manufacturing engines coming soon. Manual rate for quotations.",
+  "tagline": "Glass Railings catalogue",
+  "warranty": "1 year (demo)",
+  "heroImage": "/static/products/placeholder.svg",
+  "gallery": ["/static/products/placeholder.svg"],
+  "specifications": {
+    "profileSeries": "Glass Railings",
+    "sectionSizeMm": "TBD",
+    "wallThicknessMm": null,
+    "alloy": "6063",
+    "temper": "T5",
+    "powderCoatingBrand": "TBD",
+    "powderCoatingGrade": "TBD",
+    "hardwareBrand": "TBD",
+    "hardwareFinish": "TBD",
+    "defaultGlass": "As specified",
+    "openingDirection": "TBD"
+  }
+}

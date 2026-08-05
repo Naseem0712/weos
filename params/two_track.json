@@ -1,0 +1,5 @@
+{
+  "deprecated": true,
+  "message": "Superseded by profiles/29mm_sliding.json — all engineering rules moved there.",
+  "redirect": "profiles/29mm_sliding.json"
+}

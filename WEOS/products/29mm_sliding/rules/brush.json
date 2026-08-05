@@ -1,0 +1,18 @@
+{
+  "handleSide": {
+    "piecesFormula": "2",
+    "lengthFormula": "height - 2 * frameWidth"
+  },
+  "meetingSide": {
+    "piecesFormula": "2",
+    "lengthFormula": "height - 2 * frameWidth"
+  },
+  "top": {
+    "piecesFormula": "shutterCount",
+    "lengthFormula": "leftShutterWidth"
+  },
+  "bottom": {
+    "piecesFormula": "shutterCount",
+    "lengthFormula": "leftShutterWidth"
+  }
+}
