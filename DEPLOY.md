@@ -4,13 +4,15 @@
 
 1. Push this repo to GitHub (`https://github.com/Naseem0712/weos.git`).
 2. In [Railway](https://railway.app): **New Project → Deploy from GitHub** → select the repo.
-3. Railway builds the `Dockerfile` (see `railway.toml`) and starts:
+3. Railway builds the `Dockerfile` (see `railway.toml`) and starts via `start.sh`:
    ```bash
-   uvicorn WEOS.api.main:app --host 0.0.0.0 --port $PORT
+   /bin/sh /app/start.sh
+   # → uvicorn WEOS.api.main:app --host 0.0.0.0 --port "$PORT"
    ```
+   (`start.sh` expands `PORT` in a real shell — do not pass literal `$PORT` to uvicorn.)
 4. Open the public URL; check `/health` and `/api/version`.
 
-No manual start command or Nixpacks tweaks are required. The image installs Cairo system libs so `svglib` / `rlpycairo` can install cleanly.
+No manual Nixpacks tweaks are required. The image installs Cairo system libs so `svglib` / `rlpycairo` can install cleanly.
 
 ## Environment variables
 

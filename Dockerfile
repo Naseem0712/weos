@@ -26,7 +26,10 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . .
 
+# Ensure start script is executable (Windows checkouts may drop +x).
+RUN chmod +x /app/start.sh
+
 EXPOSE 8000
 
-# Railway injects PORT; shell form expands it at runtime.
-CMD uvicorn WEOS.api.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Use start.sh so PORT is expanded by /bin/sh (never pass literal "$PORT" to uvicorn).
+CMD ["/bin/sh", "/app/start.sh"]

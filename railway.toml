@@ -4,8 +4,9 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "uvicorn WEOS.api.main:app --host 0.0.0.0 --port $PORT"
+# Must go through a shell so $PORT expands (Railway does not expand $PORT in bare startCommand).
+startCommand = "/bin/sh /app/start.sh"
 healthcheckPath = "/health"
-healthcheckTimeout = 100
+healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
