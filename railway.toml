@@ -1,6 +1,7 @@
-# Railway — auto-deploy from GitHub (Nixpacks detects Python + requirements.txt)
+# Railway — deploy from GitHub via Dockerfile (more reliable than Nixpacks for Cairo/svglib)
 [build]
-builder = "NIXPACKS"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "uvicorn WEOS.api.main:app --host 0.0.0.0 --port $PORT"

@@ -1,2 +1,1 @@
-# WEOS API package
-from WEOS.api.main import app  # noqa: F401
+"""WEOS API package — import app via ``WEOS.api.main:app`` (uvicorn entry)."""
