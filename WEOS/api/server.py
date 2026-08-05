@@ -19,8 +19,10 @@ from pydantic import BaseModel, Field
 
 from WEOS import TAGLINE, __version__
 from WEOS.api.calculate import build_api_response, get_product_detail, products_catalog
+from WEOS.factory.formula import FORMULA_VARIABLES, MATERIAL_UNITS, preview_formula, validate_formula
 from WEOS.factory.import_engine import import_bytes
 from WEOS.factory.pdf_engine import build_customer_pdf_bytes, build_factory_pdf_bytes
+from WEOS.factory.product_admin import create_product, delete_product, get_admin_product, update_product
 from WEOS.factory.project_engine import calculate_project
 from WEOS.factory.project_store import (
     archive_project,
@@ -38,6 +40,14 @@ from WEOS.factory.project_store import (
 )
 from WEOS.factory.svg_export import render_svg_string
 from WEOS.factory.pipeline import generate_job
+from WEOS.factory.template_store import (
+    BRANDS,
+    create_template,
+    delete_template,
+    list_templates,
+    load_template,
+    save_template,
+)
 from WEOS.paths import PACKAGE_ROOT, WORKSPACE_ROOT, data_dir, website_dir
 
 WEBSITE_DIR = website_dir()
@@ -114,14 +124,73 @@ class PreviewRequest(BaseModel):
     handle: str = "standard"
 
 
-def _pdf_response(project_id: str, kind: str) -> Response:
+class FormulaPreviewRequest(BaseModel):
+    expr: str
+    width: float = 1440
+    height: float = 1800
+    qty: float = 1
+    extras: dict[str, float] = Field(default_factory=dict)
+
+
+class ProductAdminBody(BaseModel):
+    id: str | None = None
+    displayName: str | None = None
+    productType: str | None = None
+    category: str | None = None
+    units: str | None = None
+    version: int | None = None
+    status: str | None = None
+    description: str | None = None
+    tagline: str | None = None
+    warranty: str | None = None
+    heroImage: str | None = None
+    gallery: list[str] | None = None
+    sectionDrawings: list[str] | None = None
+    specifications: dict[str, Any] | None = None
+    materials: list[dict[str, Any]] | None = None
+    formulas: dict[str, Any] | None = None
+    pdfLayout: dict[str, Any] | None = None
+    brand: str | None = None
+    rules: dict[str, Any] | None = None
+    syncHardware: bool = True
+    bumpVersion: bool = True
+    manualRatePerOpening: float | None = None
+
+
+class TemplateBody(BaseModel):
+    id: str | None = None
+    brand: str | None = None
+    kind: str | None = None
+    name: str | None = None
+    pageSize: str = "A4"
+    branding: dict[str, Any] | None = None
+    blocks: list[dict[str, Any]] | None = None
+
+
+class TemplatePreviewRequest(BaseModel):
+    templateId: str | None = None
+    brand: str = "woodenmax"
+    kind: str = "customer"
+    projectId: str | None = None
+    template: dict[str, Any] | None = None
+
+
+def _pdf_response(project_id: str, kind: str, brand: str | None = None, template_id: str | None = None) -> Response:
     doc = load_project(project_id)
     result = calculate_project(doc, optimize=True)
+    payload = {
+        **result,
+        "projectId": project_id,
+        "customer": doc.get("customer"),
+        "name": doc.get("name"),
+        "brand": brand or doc.get("brand") or "woodenmax",
+        "templateId": template_id,
+    }
     if kind == "factory":
-        pdf = build_factory_pdf_bytes(result)
+        pdf = build_factory_pdf_bytes(payload)
         name = f"{project_id}_factory.pdf"
     else:
-        pdf = build_customer_pdf_bytes(result)
+        pdf = build_customer_pdf_bytes(payload)
         name = f"{project_id}_quotation.pdf"
     return Response(
         content=pdf,
@@ -408,30 +477,38 @@ def api_quotation(project_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/projects/{project_id}/customer-pdf")
-def api_customer_pdf(project_id: str) -> Response:
+def api_customer_pdf(
+    project_id: str,
+    brand: str | None = Query(None),
+    templateId: str | None = Query(None),
+) -> Response:
     try:
-        return _pdf_response(project_id, "customer")
+        return _pdf_response(project_id, "customer", brand=brand, template_id=templateId)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/api/projects/{project_id}/factory-pdf")
-def api_factory_pdf(project_id: str) -> Response:
+def api_factory_pdf(
+    project_id: str,
+    brand: str | None = Query(None),
+    templateId: str | None = Query(None),
+) -> Response:
     try:
-        return _pdf_response(project_id, "factory")
+        return _pdf_response(project_id, "factory", brand=brand, template_id=templateId)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 # Back-compat aliases
 @app.get("/api/projects/{project_id}/pdf/customer")
-def api_pdf_customer_alias(project_id: str) -> Response:
-    return api_customer_pdf(project_id)
+def api_pdf_customer_alias(project_id: str, brand: str | None = Query(None)) -> Response:
+    return api_customer_pdf(project_id, brand=brand)
 
 
 @app.get("/api/projects/{project_id}/pdf/factory")
-def api_pdf_factory_alias(project_id: str) -> Response:
-    return api_factory_pdf(project_id)
+def api_pdf_factory_alias(project_id: str, brand: str | None = Query(None)) -> Response:
+    return api_factory_pdf(project_id, brand=brand)
 
 
 @app.post("/api/projects/import")
@@ -469,6 +546,159 @@ async def api_projects_import(
 @app.post("/api/projects/{project_id}/import")
 async def api_project_import(project_id: str, file: UploadFile = File(...)) -> dict[str, Any]:
     return await api_projects_import(file=file, projectId=project_id)
+
+
+# ── Product Library admin + Formula Builder ──────────────────────────────────
+
+@app.get("/api/admin/meta")
+def api_admin_meta() -> dict[str, Any]:
+    return {
+        "materialUnits": list(MATERIAL_UNITS),
+        "formulaVariables": list(FORMULA_VARIABLES),
+        "brands": list(BRANDS),
+        "templateKinds": ["customer", "factory"],
+        "blockTypes": [
+            "logo", "title", "customer_details", "product_image", "price_table",
+            "totals", "terms", "footer", "qr", "glass_table", "hardware_table",
+            "cutlist_table", "materials_table",
+        ],
+    }
+
+
+@app.get("/api/admin/products/{product_id}")
+def api_admin_get_product(product_id: str) -> dict[str, Any]:
+    try:
+        return get_admin_product(product_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/admin/products")
+def api_admin_create_product(body: ProductAdminBody) -> dict[str, Any]:
+    try:
+        return create_product(body.model_dump(exclude_none=True))
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.put("/api/admin/products/{product_id}")
+def api_admin_update_product(product_id: str, body: ProductAdminBody) -> dict[str, Any]:
+    try:
+        return update_product(product_id, body.model_dump(exclude_none=True))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/admin/products/{product_id}")
+def api_admin_delete_product(product_id: str, hard: bool = Query(False)) -> dict[str, Any]:
+    try:
+        return delete_product(product_id, hard=hard)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/formulas/validate")
+def api_formula_validate(body: FormulaPreviewRequest) -> dict[str, Any]:
+    return validate_formula(body.expr, variables=body.extras or None)
+
+
+@app.post("/api/formulas/preview")
+def api_formula_preview(body: FormulaPreviewRequest) -> dict[str, Any]:
+    return preview_formula(body.expr, width=body.width, height=body.height, qty=body.qty, extras=body.extras)
+
+
+# ── PDF Template Designer ────────────────────────────────────────────────────
+
+@app.get("/api/templates")
+def api_list_templates(brand: str | None = None, kind: str | None = None) -> dict[str, Any]:
+    return {"templates": list_templates(brand=brand, kind=kind), "brands": list(BRANDS)}
+
+
+@app.get("/api/templates/{template_id}")
+def api_get_template(template_id: str) -> dict[str, Any]:
+    try:
+        return load_template(template_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/templates")
+def api_create_template(body: TemplateBody) -> dict[str, Any]:
+    return create_template(body.model_dump(exclude_none=True))
+
+
+@app.put("/api/templates/{template_id}")
+def api_save_template(template_id: str, body: TemplateBody) -> dict[str, Any]:
+    data = body.model_dump(exclude_none=True)
+    data["id"] = template_id
+    return save_template(template_id, data)
+
+
+@app.delete("/api/templates/{template_id}")
+def api_delete_template(template_id: str) -> dict[str, Any]:
+    return delete_template(template_id)
+
+
+@app.post("/api/templates/preview-pdf")
+def api_template_preview_pdf(body: TemplatePreviewRequest) -> Response:
+    """Render a preview PDF from a template id or inline template JSON."""
+    from WEOS.factory.template_pdf import render_template_pdf
+    from WEOS.factory.template_store import save_template as _save
+
+    sample = {
+        "projectId": body.projectId or "PRJ-PREVIEW",
+        "quotationId": "Q-PREVIEW",
+        "customer": "Sample Customer",
+        "name": "Template Preview",
+        "brand": body.brand,
+        "lines": [
+            {
+                "displayName": "29mm Sliding Window",
+                "width": 1440,
+                "height": 1800,
+                "qty": 2,
+                "options": {"glass": "8mm_toughened", "colour": "white", "handle": "premium"},
+                "price": {"total": 28500},
+                "glass": [{"qty": 2, "width": 650, "height": 1700, "thicknessMm": 8}],
+                "cutList": [{"profile": "outer_frame", "length_mm": 1440, "quantity": 2}],
+            }
+        ],
+        "price": {"total": 57000, "categoryTotals": {"Windows": 57000}},
+        "combined": {
+            "grandTotal": 57000,
+            "hardwareRolled": [{"name": "Handle", "qty": 4}, {"name": "Wheel", "qty": 8}],
+            "categoryTotals": {"Windows": 57000},
+        },
+    }
+    if body.projectId:
+        try:
+            doc = load_project(body.projectId)
+            sample = {**calculate_project(doc, optimize=True), "customer": doc.get("customer"), "name": doc.get("name"), "brand": body.brand}
+        except FileNotFoundError:
+            pass
+
+    tid = body.templateId
+    if body.template:
+        tid = body.template.get("id") or tid or f"{body.brand}_{body.kind}_preview"
+        _save(tid, body.template)
+        sample["templateId"] = tid
+    elif tid:
+        sample["templateId"] = tid
+    else:
+        sample["templateId"] = f"{body.brand}_{body.kind}"
+
+    pdf = render_template_pdf(sample, kind=body.kind, brand=body.brand, template_id=sample.get("templateId"))
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="template_preview.pdf"'},
+    )
 
 
 @app.get("/", response_class=HTMLResponse)

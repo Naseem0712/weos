@@ -123,6 +123,13 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
             }
             for h in job.hardware
         ],
+        "materials": [
+            {
+                **m.as_dict(),
+                "quantity": m.quantity * qty,
+            }
+            for m in (job.materials or [])
+        ],
         "brush": {"totalMeters": round(brush_m * qty, 3)},
         "trackRail": [
             {

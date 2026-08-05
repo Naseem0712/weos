@@ -16,6 +16,7 @@ from WEOS.factory.geometry_engine import build_drawing, compute_two_track_layout
 from WEOS.factory.glass_engine import compute_glass
 from WEOS.factory.hardware_engine import compute_hardware
 from WEOS.factory.job_types import JobResult
+from WEOS.factory.materials_engine import compute_materials
 from WEOS.factory.product_loader import (
     apply_customer_options,
     apply_geometry_overrides,
@@ -72,6 +73,8 @@ def generate_job(
     brush = compute_brush(product.get("brush") or {}, ctx)
     track_rail = compute_track_rail(product.get("trackRail") or {}, ctx)
     cut_list = compute_cut_list(product.get("cutList") or [], ctx, waste_factor=1.0)
+    # Product Library materials[] — formula-driven; keeps 29mm hardware engines intact
+    materials = compute_materials(product.get("materials") or [], ctx, line_qty=1.0)
     bom = compute_bom(
         cut_list=cut_list,
         glass=glass_items,
@@ -81,6 +84,9 @@ def generate_job(
         extras=product.get("bomExtras"),
         ctx=ctx,
     )
+    # Append library materials into BOM when present
+    if materials:
+        bom = list(bom) + list(materials)
     weight = compute_weight(product.get("weight") or {}, glass_items, ctx)
     quotation = compute_quotation(
         product.get("quotation") or {},
@@ -106,6 +112,7 @@ def generate_job(
         track_rail=track_rail,
         cut_list=cut_list,
         bom=bom,
+        materials=materials,
         weight=weight,
         quotation=quotation,
         profile_path=str(product.get("_path", "")),

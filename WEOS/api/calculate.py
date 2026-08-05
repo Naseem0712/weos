@@ -261,4 +261,8 @@ def get_product_detail(product_id: str) -> dict[str, Any]:
         "rulesPath": p.get("_path"),
         "geometry": geom,
         "provenance": p.get("_provenance") or {},
+        "materials": p.get("materials") or [],
+        "formulas": p.get("formulas") or {},
+        "pdfLayout": p.get("pdfLayout") or {},
+        "brand": p.get("brand") or "woodenmax",
     }

@@ -26,17 +26,29 @@ def build_quote_pdf_bytes(payload: Mapping[str, Any]) -> bytes:
 
 
 def build_customer_pdf_bytes(payload: Mapping[str, Any]) -> bytes:
+    """Customer PDF — prefer Template Designer JSON, fallback to hardcoded layout."""
     try:
-        return _customer_reportlab(payload)
+        from WEOS.factory.template_pdf import render_template_pdf
+
+        return render_template_pdf(payload, kind="customer")
     except Exception:
-        return _minimal_text_pdf("WEOS Customer Quotation", payload)
+        try:
+            return _customer_reportlab(payload)
+        except Exception:
+            return _minimal_text_pdf("WEOS Customer Quotation", payload)
 
 
 def build_factory_pdf_bytes(payload: Mapping[str, Any]) -> bytes:
+    """Factory PDF — prefer Template Designer JSON, fallback to hardcoded layout."""
     try:
-        return _factory_reportlab(payload)
+        from WEOS.factory.template_pdf import render_template_pdf
+
+        return render_template_pdf(payload, kind="factory")
     except Exception:
-        return _minimal_text_pdf("WEOS Factory Package", payload)
+        try:
+            return _factory_reportlab(payload)
+        except Exception:
+            return _minimal_text_pdf("WEOS Factory Package", payload)
 
 
 def _qr_png(data: str, box_size: int = 4) -> bytes | None:

@@ -4,7 +4,7 @@
   "productType": "two_track_sliding",
   "category": "Windows",
   "units": "mm",
-  "version": 1,
+  "version": 2,
   "status": "active",
   "description": "29mm-style two-track sliding — complete digital product + manufacturing rules.",
   "tagline": "Two-track residential & commercial sliding",
@@ -16,6 +16,85 @@
   ],
   "sectionDrawings": [
     "/static/products/29mm_sliding/section.svg"
+  ],
+  "brand": "woodenmax",
+  "pdfLayout": {
+    "customer": "woodenmax_customer",
+    "factory": "woodenmax_factory"
+  },
+  "formulas": {
+    "shutterCount": "shutterCount",
+    "glassArea": "glassArea",
+    "runningFoot": "runningFeet",
+    "profileWeight": "runningMeters * weightPerMeter"
+  },
+  "materials": [
+    {
+      "id": "handle",
+      "name": "Handle",
+      "category": "hardware",
+      "unit": "PC",
+      "quantityFormula": "shutterCount",
+      "lengthFormula": "0",
+      "unitRate": 180,
+      "remarks": "One handle per shutter",
+      "optionKey": "handle",
+      "mapToHardware": true,
+      "variants": {
+        "standard": { "unitRate": 180, "label": "Standard" },
+        "premium": { "unitRate": 320, "label": "Premium" }
+      }
+    },
+    {
+      "id": "glass",
+      "name": "Glass",
+      "category": "glass",
+      "unit": "SQM",
+      "quantityFormula": "glassArea",
+      "lengthFormula": "0",
+      "unitRate": 450,
+      "remarks": "Glass area from opening"
+    },
+    {
+      "id": "outer_frame_profile",
+      "name": "Outer Frame Profile",
+      "category": "profile",
+      "unit": "RFT",
+      "quantityFormula": "runningFeet",
+      "lengthFormula": "runningMeters",
+      "weightFormula": "runningMeters * weightPerMeter",
+      "weightPerMeter": 0.756,
+      "unitRate": 85,
+      "remarks": "Perimeter running foot"
+    },
+    {
+      "id": "wheel_roller",
+      "name": "Wheel / roller",
+      "category": "hardware",
+      "unit": "PC",
+      "quantityFormula": "2 * shutterCount",
+      "unitRate": 55,
+      "mapToHardware": true
+    },
+    {
+      "id": "lock_set",
+      "name": "Lock / keeper set",
+      "category": "hardware",
+      "unit": "SET",
+      "quantityFormula": "1",
+      "unitRate": 220,
+      "mapToHardware": true
+    },
+    {
+      "id": "epdm_gasket",
+      "name": "EPDM gasket",
+      "category": "hardware",
+      "unit": "RM",
+      "quantityFormula": "1",
+      "lengthFormula": "2 * (width + height) / 1000",
+      "unitRate": 35,
+      "mapToHardware": true
+    }
   ],
   "specifications": {
     "profileSeries": "29mm Sliding",

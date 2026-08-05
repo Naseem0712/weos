@@ -1,0 +1,24 @@
+{
+  "id": "woodenmax_factory",
+  "brand": "woodenmax",
+  "kind": "factory",
+  "name": "WoodenMax Factory PDF",
+  "pageSize": "A4",
+  "branding": {
+    "companyName": "WoodenMax",
+    "tagline": "Design • Calculate • Manufacture • Quote",
+    "primaryColor": [0.04, 0.35, 0.28],
+    "accentColor": [0.71, 0.33, 0.14],
+    "logoText": "WoodenMax"
+  },
+  "blocks": [
+    {"id": "logo", "type": "logo", "x": 40, "y": 40, "w": 160, "h": 36, "label": "WoodenMax"},
+    {"id": "title", "type": "title", "x": 40, "y": 90, "w": 400, "h": 28, "text": "Factory Production Package"},
+    {"id": "qr", "type": "qr", "x": 480, "y": 40, "w": 70, "h": 70},
+    {"id": "meta", "type": "customer_details", "x": 40, "y": 130, "w": 400, "h": 60},
+    {"id": "glass", "type": "glass_table", "x": 40, "y": 210, "w": 515, "h": 160},
+    {"id": "hardware", "type": "hardware_table", "x": 40, "y": 390, "w": 515, "h": 140},
+    {"id": "cutlist", "type": "cutlist_table", "x": 40, "y": 550, "w": 515, "h": 160},
+    {"id": "footer", "type": "footer", "x": 40, "y": 780, "w": 515, "h": 24, "text": "WoodenMax Factory — machine-ready data"}
+  ]
+}

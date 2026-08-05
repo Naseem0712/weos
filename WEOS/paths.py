@@ -58,6 +58,11 @@ def products_dir() -> Path:
     return PACKAGE_ROOT / "products"
 
 
+def templates_dir() -> Path:
+    """Package-seeded PDF templates (writable copies live under data_dir/templates)."""
+    return PACKAGE_ROOT / "templates"
+
+
 def host_from_env(default: str = "127.0.0.1") -> str:
     return (os.environ.get("WEOS_HOST") or os.environ.get("HOST") or default).strip() or default
 

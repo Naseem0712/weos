@@ -1,0 +1,24 @@
+{
+  "id": "woodenmax_customer",
+  "brand": "woodenmax",
+  "kind": "customer",
+  "name": "WoodenMax Customer PDF",
+  "pageSize": "A4",
+  "branding": {
+    "companyName": "WoodenMax",
+    "tagline": "Design • Calculate • Manufacture • Quote",
+    "primaryColor": [0.04, 0.35, 0.28],
+    "accentColor": [0.71, 0.33, 0.14],
+    "logoText": "WoodenMax"
+  },
+  "blocks": [
+    {"id": "logo", "type": "logo", "x": 40, "y": 40, "w": 180, "h": 40, "label": "WoodenMax"},
+    {"id": "title", "type": "title", "x": 40, "y": 95, "w": 400, "h": 28, "text": "Customer Quotation"},
+    {"id": "customer", "type": "customer_details", "x": 40, "y": 140, "w": 320, "h": 70},
+    {"id": "product_image", "type": "product_image", "x": 400, "y": 140, "w": 155, "h": 100},
+    {"id": "prices", "type": "price_table", "x": 40, "y": 260, "w": 515, "h": 280},
+    {"id": "totals", "type": "totals", "x": 300, "y": 560, "w": 255, "h": 80},
+    {"id": "terms", "type": "terms", "x": 40, "y": 660, "w": 515, "h": 80, "text": "Terms: 50% advance, balance before dispatch. Rates excl. site installation unless noted. Warranty: 1 year manufacturing defects."},
+    {"id": "footer", "type": "footer", "x": 40, "y": 780, "w": 515, "h": 24, "text": "WoodenMax · Powered by WEOS"}
+  ]
+}

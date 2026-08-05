@@ -71,6 +71,17 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 .specs{display:grid;grid-template-columns:1fr 1fr;gap:.45rem .75rem;font-size:.88rem}
 @media(max-width:600px){.specs{grid-template-columns:1fr}th:nth-child(n+5),td:nth-child(n+5){display:none}}
 .optbox{background:#12140f;color:#cfe9dc;padding:.75rem;border-radius:10px;font-size:.75rem;overflow:auto;max-height:200px;white-space:pre-wrap}
+.tabs{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.75rem}
+.tab{border:1px solid var(--line);background:#fff;border-radius:8px;padding:.35rem .7rem;cursor:pointer;font-size:.82rem}
+.tab.active{background:var(--green);color:#fff;border-color:var(--green)}
+.canvas-wrap{position:relative;background:#d8d4c8;border:1px solid var(--line);border-radius:12px;height:520px;overflow:auto}
+.canvas-page{position:relative;width:595px;height:842px;margin:12px auto;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.12)}
+.block{position:absolute;border:1px dashed rgba(10,90,72,.45);background:rgba(10,90,72,.06);padding:4px 6px;font-size:.7rem;cursor:move;user-select:none;overflow:hidden}
+.block.selected{border-color:var(--copper);background:rgba(180,83,36,.1);z-index:2}
+.mat-table input,.mat-table select{padding:.35rem;font-size:.8rem}
+.admin-split{display:grid;grid-template-columns:1fr 280px;gap:1rem}
+@media(max-width:1000px){.admin-split{grid-template-columns:1fr}}
+.chip{display:inline-block;background:#e7f3ee;color:var(--green);border-radius:6px;padding:.1rem .4rem;font-size:.7rem;margin:.1rem;cursor:pointer}
 </style>
 </head>
 <body>
@@ -83,6 +94,9 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
     <button class="navbtn" data-view="cart">Window Cart</button>
     <button class="navbtn" data-view="library">Product Library</button>
     <button class="navbtn" data-view="product">Product Details</button>
+    <button class="navbtn" data-view="admin">Admin · Products</button>
+    <button class="navbtn" data-view="formulas">Formula Builder</button>
+    <button class="navbtn" data-view="templates">Template Designer</button>
   </aside>
   <div class="main">
     <div class="top">
@@ -127,6 +141,9 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           <div class="row" style="margin-bottom:.6rem">
             <div class="grow"><label class="l">Project name</label><input id="cartName" value="WEOS Project"/></div>
             <div class="grow"><label class="l">Customer</label><input id="cartCustomer" value=""/></div>
+            <div><label class="l">PDF Brand</label>
+              <select id="pdfBrand"><option value="woodenmax">WoodenMax</option><option value="allkraft">AllKraft</option></select>
+            </div>
           </div>
           <div class="row">
             <div class="grow"><label class="l">Product</label><select id="lineProduct"></select></div>
@@ -183,6 +200,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           <div class="grow"><label class="l">Filter category</label>
             <select id="libCat"><option value="">All</option><option>Windows</option><option>Doors</option><option>Pergola</option><option>Facades</option><option>Railings</option></select>
           </div>
+          <button class="btn sm" id="btnLibAdmin" style="margin-top:1rem">Open Admin Editor</button>
         </div>
         <div class="prodgrid" id="libGrid"></div>
       </div>
@@ -197,12 +215,147 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           <div class="specs" id="pdSpecs"></div>
           <div class="row" style="margin-top:1rem">
             <button class="btn" id="pdAdd">Add to Cart</button>
+            <button class="btn ghost" id="pdEdit">Edit in Admin</button>
             <button class="btn ghost" id="pdBack">Back to Library</button>
           </div>
         </div>
         <div class="panel">
           <div class="preview" id="pdPreview"></div>
           <p class="muted" id="pdStatus" style="margin-top:.6rem"></p>
+          <div style="margin-top:.8rem;overflow:auto">
+            <strong style="font-size:.85rem">Materials</strong>
+            <table><thead><tr><th>Name</th><th>Unit</th><th>Formula</th></tr></thead><tbody id="pdMats"></tbody></table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ADMIN PRODUCT LIBRARY -->
+    <section id="view-admin" class="grid hidden">
+      <div class="panel">
+        <div class="row" style="margin-bottom:.75rem">
+          <div class="grow"><label class="l">Product</label><select id="adminProdSelect"></select></div>
+          <button class="btn sm" id="btnAdminLoad" style="margin-top:1rem">Load</button>
+          <button class="btn sec sm" id="btnAdminNew" style="margin-top:1rem">New Product</button>
+          <button class="btn sm" id="btnAdminSave" style="margin-top:1rem">Save</button>
+        </div>
+        <div class="tabs" id="adminTabs">
+          <button class="tab active" data-tab="meta">Catalogue</button>
+          <button class="tab" data-tab="materials">Materials + Formulas</button>
+          <button class="tab" data-tab="rules">Rules</button>
+        </div>
+        <div id="admin-meta">
+          <div class="row">
+            <div class="grow"><label class="l">Display name</label><input id="adName"/></div>
+            <div><label class="l">Category</label><input id="adCat" style="width:140px"/></div>
+            <div><label class="l">Status</label><select id="adStatus"><option>active</option><option>stub</option><option>archived</option></select></div>
+            <div><label class="l">Brand</label><select id="adBrand"><option value="woodenmax">WoodenMax</option><option value="allkraft">AllKraft</option></select></div>
+          </div>
+          <div class="row" style="margin-top:.5rem">
+            <div class="grow"><label class="l">Tagline</label><input id="adTag"/></div>
+            <div class="grow"><label class="l">Hero image URL</label><input id="adHero"/></div>
+          </div>
+          <div class="row" style="margin-top:.5rem">
+            <div class="grow"><label class="l">Description</label><input id="adDesc"/></div>
+            <div class="grow"><label class="l">Gallery (comma URLs)</label><input id="adGallery"/></div>
+          </div>
+          <div class="row" style="margin-top:.5rem">
+            <div class="grow"><label class="l">Customer PDF template</label><input id="adPdfCust" placeholder="woodenmax_customer"/></div>
+            <div class="grow"><label class="l">Factory PDF template</label><input id="adPdfFact" placeholder="woodenmax_factory"/></div>
+          </div>
+        </div>
+        <div id="admin-materials" class="hidden">
+          <div class="row" style="margin-bottom:.5rem">
+            <button class="btn sm" id="btnAddMat">Add material</button>
+            <span class="muted" style="font-size:.8rem">Units: PC · KG · RFT · RM · SQFT · SQM · BOX · PAIR · SET</span>
+          </div>
+          <div style="overflow:auto">
+            <table class="mat-table"><thead><tr><th>Name</th><th>Category</th><th>Unit</th><th>Qty formula</th><th>Rate</th><th></th></tr></thead>
+            <tbody id="matBody"></tbody></table>
+          </div>
+        </div>
+        <div id="admin-rules" class="hidden">
+          <p class="muted" style="margin:0 0 .5rem">Engineering rules JSON (advanced). Prefer Formula Builder for materials.</p>
+          <textarea id="adRulesJson" style="width:100%;min-height:280px;font-family:ui-monospace,monospace;font-size:.78rem;border:1px solid var(--line);border-radius:10px;padding:.6rem"></textarea>
+        </div>
+        <div class="err" id="adminErr" style="margin-top:.5rem"></div>
+      </div>
+    </section>
+
+    <!-- FORMULA BUILDER -->
+    <section id="view-formulas" class="grid hidden">
+      <div class="two">
+        <div class="panel">
+          <strong>Safe Formula Builder</strong>
+          <p class="muted" style="margin:.25rem 0 .6rem">No Python — expressions only. Click a variable to insert.</p>
+          <div id="varChips" style="margin-bottom:.6rem"></div>
+          <label class="l">Expression</label>
+          <input id="fxExpr" value="shutterCount" style="font-family:ui-monospace,monospace"/>
+          <div class="row" style="margin-top:.5rem">
+            <div><label class="l">Width</label><input id="fxW" type="number" value="1440" style="width:90px"/></div>
+            <div><label class="l">Height</label><input id="fxH" type="number" value="1800" style="width:90px"/></div>
+            <div><label class="l">Qty</label><input id="fxQty" type="number" value="1" style="width:70px"/></div>
+            <button class="btn" id="btnFxPreview" style="margin-top:1rem">Preview</button>
+            <button class="btn ghost" id="btnFxValidate" style="margin-top:1rem">Validate</button>
+          </div>
+          <div class="row" style="margin-top:.75rem;gap:.5rem;flex-wrap:wrap">
+            <button class="btn ghost sm" data-ex="shutterCount">Handle → Shutter Count</button>
+            <button class="btn ghost sm" data-ex="glassArea">Glass → Glass Area</button>
+            <button class="btn ghost sm" data-ex="runningFeet">Profile → Running Foot</button>
+            <button class="btn ghost sm" data-ex="runningMeters * weightPerMeter">Weight → L × kg/m</button>
+          </div>
+        </div>
+        <div class="panel">
+          <strong>Result</strong>
+          <div class="total" id="fxValue" style="margin:.4rem 0">—</div>
+          <pre class="optbox" id="fxOut">Preview a formula</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- TEMPLATE DESIGNER -->
+    <section id="view-templates" class="grid hidden">
+      <div class="panel">
+        <div class="row" style="margin-bottom:.6rem">
+          <div><label class="l">Brand</label>
+            <select id="tplBrand"><option value="woodenmax">WoodenMax</option><option value="allkraft">AllKraft</option></select>
+          </div>
+          <div><label class="l">Kind</label>
+            <select id="tplKind"><option value="customer">Customer PDF</option><option value="factory">Factory PDF</option></select>
+          </div>
+          <div class="grow"><label class="l">Template</label><select id="tplSelect"></select></div>
+          <button class="btn sm" id="btnTplLoad" style="margin-top:1rem">Load</button>
+          <button class="btn sm" id="btnTplSave" style="margin-top:1rem">Save JSON</button>
+          <button class="btn sec sm" id="btnTplPreview" style="margin-top:1rem">Preview PDF</button>
+        </div>
+        <div class="admin-split">
+          <div>
+            <div class="row" style="margin-bottom:.4rem">
+              <button class="btn ghost sm" data-addblock="logo">+ Logo</button>
+              <button class="btn ghost sm" data-addblock="title">+ Title</button>
+              <button class="btn ghost sm" data-addblock="customer_details">+ Customer</button>
+              <button class="btn ghost sm" data-addblock="price_table">+ Price table</button>
+              <button class="btn ghost sm" data-addblock="totals">+ Totals</button>
+              <button class="btn ghost sm" data-addblock="terms">+ T&amp;C</button>
+              <button class="btn ghost sm" data-addblock="footer">+ Footer</button>
+              <button class="btn ghost sm" data-addblock="qr">+ QR</button>
+            </div>
+            <div class="canvas-wrap"><div class="canvas-page" id="tplCanvas"></div></div>
+          </div>
+          <div>
+            <strong>Selected block</strong>
+            <div id="tplProps" class="muted" style="margin:.4rem 0 .6rem;font-size:.85rem">Click a block</div>
+            <label class="l">Company name</label><input id="tplCompany"/>
+            <label class="l" style="margin-top:.4rem">Block text</label><input id="tplBlockText"/>
+            <div class="row" style="margin-top:.4rem">
+              <div><label class="l">X</label><input id="tplX" type="number" style="width:70px"/></div>
+              <div><label class="l">Y</label><input id="tplY" type="number" style="width:70px"/></div>
+              <div><label class="l">W</label><input id="tplW" type="number" style="width:70px"/></div>
+              <div><label class="l">H</label><input id="tplH" type="number" style="width:70px"/></div>
+            </div>
+            <button class="btn ghost sm" id="btnTplDelBlock" style="margin-top:.6rem">Delete block</button>
+            <pre class="optbox" id="tplJson" style="margin-top:.8rem;max-height:180px"></pre>
+          </div>
         </div>
       </div>
     </section>
@@ -219,6 +372,12 @@ const state = {
   selectedLine: 0,
   lastResult: null,
   saveTimer: null,
+  adminProduct: null,
+  materials: [],
+  adminMeta: null,
+  template: null,
+  selectedBlock: null,
+  drag: null,
 };
 const $ = (id) => document.getElementById(id);
 const toast = (m) => { const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); };
@@ -238,10 +397,19 @@ async function api(path, opts={}) {
 function setView(v) {
   state.view = v;
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view===v));
-  ['dashboard','projects','cart','library','product'].forEach(id => {
-    $('view-'+id).classList.toggle('hidden', id!==v);
+  ['dashboard','projects','cart','library','product','admin','formulas','templates'].forEach(id => {
+    const el = $('view-'+id); if (el) el.classList.toggle('hidden', id!==v);
   });
-  const titles = {dashboard:['Dashboard','Active work across factory & quotations'],projects:['Saved Projects','Search, filter, duplicate, archive — versions kept'],cart:['Window Cart','Unlimited lines · live preview · instant totals'],library:['Product Library','Digital catalogue + manufacturing source of truth'],product:['Product Details','Specs from Product JSON only']};
+  const titles = {
+    dashboard:['Dashboard','Active work across factory & quotations'],
+    projects:['Saved Projects','Search, filter, duplicate, archive — versions kept'],
+    cart:['Window Cart','Unlimited lines · live preview · instant totals'],
+    library:['Product Library','Digital catalogue + manufacturing source of truth'],
+    product:['Product Details','Specs from Product JSON only'],
+    admin:['Admin · Product Library','Create products without Python — materials, formulas, PDF layout'],
+    formulas:['Formula Builder','Safe expressions over width, height, shutterCount, glassArea…'],
+    templates:['Template Designer','Drag blocks → JSON → Customer & Factory PDFs per brand'],
+  };
   $('title').textContent = titles[v][0];
   $('subtitle').textContent = titles[v][1];
   $('side').classList.remove('open');
@@ -249,6 +417,9 @@ function setView(v) {
   if (v==='projects') loadProjects();
   if (v==='library') renderLibrary();
   if (v==='cart') { renderCart(); refreshPreview(); }
+  if (v==='admin') initAdmin();
+  if (v==='formulas') initFormulas();
+  if (v==='templates') initTemplates();
 }
 
 document.querySelectorAll('.navbtn').forEach(b => b.onclick = () => setView(b.dataset.view));
@@ -332,6 +503,7 @@ async function openProduct(id) {
   const img = p.heroImage || '/static/products/placeholder.svg';
   $('pdPreview').innerHTML = `<img src="${img}" alt="" style="max-width:100%;max-height:320px"/>`;
   $('pdStatus').textContent = p.manufacturingReady ? 'Full manufacturing rules available' : 'Catalogue stub — manual rate on quotation';
+  $('pdMats').innerHTML = (p.materials||[]).map(m => `<tr><td>${m.name||m.id}</td><td>${m.unit||''}</td><td style="font-family:ui-monospace,monospace;font-size:.75rem">${m.quantityFormula||''}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">No materials yet — edit in Admin</td></tr>';
   setView('product');
 }
 
@@ -396,9 +568,11 @@ function updatePdfLinks(){
   const id = state.projectId;
   $('projPill').textContent = id || 'No project';
   if (!id) return;
+  const brand = ($('pdfBrand') && $('pdfBrand').value) || 'woodenmax';
+  const q = '?brand='+encodeURIComponent(brand);
   $('linkQuote').href = `/api/projects/${id}/quotation`;
-  $('linkCust').href = `/api/projects/${id}/customer-pdf`;
-  $('linkFact').href = `/api/projects/${id}/factory-pdf`;
+  $('linkCust').href = `/api/projects/${id}/customer-pdf`+q;
+  $('linkFact').href = `/api/projects/${id}/factory-pdf`+q;
 }
 
 async function ensureProject() {
@@ -503,9 +677,229 @@ $('pdAdd').onclick = () => {
   setView('cart'); renderCart(); scheduleSave();
 };
 $('pdBack').onclick = () => setView('library');
+$('pdEdit').onclick = () => { state.selectedProduct = state.selectedProduct; setView('admin'); };
+$('btnLibAdmin').onclick = () => setView('admin');
+if ($('pdfBrand')) $('pdfBrand').onchange = updatePdfLinks;
+
+/* ── Admin Product Library ── */
+async function initAdmin() {
+  if (!state.adminMeta) state.adminMeta = await api('/api/admin/meta');
+  await loadProducts();
+  $('adminProdSelect').innerHTML = state.products.map(p => `<option value="${p.id}">${p.displayName}</option>`).join('');
+  if (state.selectedProduct) $('adminProdSelect').value = state.selectedProduct;
+  await loadAdminProduct($('adminProdSelect').value || '29mm_sliding');
+}
+async function loadAdminProduct(id) {
+  $('adminErr').textContent = '';
+  const p = await api('/api/admin/products/'+id);
+  state.adminProduct = p;
+  state.selectedProduct = id;
+  state.materials = JSON.parse(JSON.stringify(p.materials || []));
+  $('adName').value = p.displayName || '';
+  $('adCat').value = p.category || '';
+  $('adStatus').value = p.status || 'active';
+  $('adBrand').value = p.brand || 'woodenmax';
+  $('adTag').value = p.tagline || '';
+  $('adHero').value = p.heroImage || '';
+  $('adDesc').value = p.description || '';
+  $('adGallery').value = (p.gallery || []).join(', ');
+  $('adPdfCust').value = (p.pdfLayout || {}).customer || '';
+  $('adPdfFact').value = (p.pdfLayout || {}).factory || '';
+  $('adRulesJson').value = JSON.stringify(p.rules || {}, null, 2);
+  renderMaterials();
+}
+function renderMaterials() {
+  const units = (state.adminMeta && state.adminMeta.materialUnits) || ['PC','KG','RFT','RM','SQFT','SQM','BOX','PAIR','SET'];
+  $('matBody').innerHTML = state.materials.map((m,i) => `
+    <tr>
+      <td><input data-m="${i}" data-k="name" value="${m.name||''}"/></td>
+      <td><input data-m="${i}" data-k="category" value="${m.category||'hardware'}" style="width:90px"/></td>
+      <td><select data-m="${i}" data-k="unit">${units.map(u=>`<option ${u===(m.unit||'PC')?'selected':''}>${u}</option>`).join('')}</select></td>
+      <td><input data-m="${i}" data-k="quantityFormula" value="${m.quantityFormula||'1'}" style="min-width:140px;font-family:ui-monospace,monospace"/></td>
+      <td><input data-m="${i}" data-k="unitRate" type="number" value="${m.unitRate??0}" style="width:80px"/></td>
+      <td><button class="btn ghost sm" data-mdel="${i}">Del</button></td>
+    </tr>`).join('') || '<tr><td colspan="6" class="muted">No materials — click Add material</td></tr>';
+  $('matBody').querySelectorAll('input[data-m],select[data-m]').forEach(el => {
+    el.onchange = () => {
+      const i = +el.dataset.m, k = el.dataset.k;
+      state.materials[i][k] = k === 'unitRate' ? +el.value : el.value;
+    };
+  });
+  $('matBody').querySelectorAll('[data-mdel]').forEach(b => b.onclick = () => { state.materials.splice(+b.dataset.mdel,1); renderMaterials(); });
+}
+document.querySelectorAll('#adminTabs .tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('#adminTabs .tab').forEach(x => x.classList.toggle('active', x===t));
+  ['meta','materials','rules'].forEach(id => $('admin-'+id).classList.toggle('hidden', id!==t.dataset.tab));
+});
+$('btnAdminLoad').onclick = () => loadAdminProduct($('adminProdSelect').value);
+$('btnAddMat').onclick = () => {
+  state.materials.push({id:'mat_'+Date.now(), name:'New material', category:'hardware', unit:'PC', quantityFormula:'1', unitRate:0});
+  renderMaterials();
+};
+$('btnAdminNew').onclick = async () => {
+  const name = prompt('New product display name', 'New Product');
+  if (!name) return;
+  try {
+    const p = await api('/api/admin/products', {method:'POST', body:{displayName:name, status:'stub', category:'Windows'}});
+    await loadProducts();
+    $('adminProdSelect').innerHTML = state.products.map(x => `<option value="${x.id}">${x.displayName}</option>`).join('');
+    $('adminProdSelect').value = p.id;
+    await loadAdminProduct(p.id);
+    toast('Created '+p.id);
+  } catch(e) { $('adminErr').textContent = e.message; }
+};
+$('btnAdminSave').onclick = async () => {
+  $('adminErr').textContent = '';
+  try {
+    let rules = undefined;
+    try { rules = JSON.parse($('adRulesJson').value || '{}'); } catch(e) { throw new Error('Rules JSON invalid: '+e.message); }
+    const body = {
+      displayName: $('adName').value,
+      category: $('adCat').value,
+      status: $('adStatus').value,
+      brand: $('adBrand').value,
+      tagline: $('adTag').value,
+      heroImage: $('adHero').value,
+      description: $('adDesc').value,
+      gallery: $('adGallery').value.split(',').map(s=>s.trim()).filter(Boolean),
+      pdfLayout: { customer: $('adPdfCust').value || undefined, factory: $('adPdfFact').value || undefined },
+      materials: state.materials,
+      rules,
+      syncHardware: true,
+    };
+    const p = await api('/api/admin/products/'+state.selectedProduct, {method:'PUT', body});
+    toast('Saved '+p.id+' v'+p.version);
+    await loadProducts();
+  } catch(e) { $('adminErr').textContent = e.message; }
+};
+
+/* ── Formula Builder ── */
+async function initFormulas() {
+  if (!state.adminMeta) state.adminMeta = await api('/api/admin/meta');
+  $('varChips').innerHTML = (state.adminMeta.formulaVariables||[]).map(v => `<span class="chip" data-v="${v}">${v}</span>`).join('');
+  $('varChips').querySelectorAll('.chip').forEach(c => c.onclick = () => {
+    const inp = $('fxExpr'); const start = inp.selectionStart||inp.value.length;
+    inp.value = inp.value.slice(0,start) + c.dataset.v + inp.value.slice(inp.selectionEnd||start);
+    inp.focus();
+  });
+}
+async function runFx(mode) {
+  const body = {expr:$('fxExpr').value, width:+$('fxW').value, height:+$('fxH').value, qty:+$('fxQty').value, extras:{weightPerMeter:0.75}};
+  const r = await api('/api/formulas/'+(mode==='validate'?'validate':'preview'), {method:'POST', body});
+  $('fxValue').textContent = r.ok ? r.value : 'Error';
+  $('fxOut').textContent = JSON.stringify(r, null, 2);
+}
+$('btnFxPreview').onclick = () => runFx('preview').catch(e => { $('fxOut').textContent = e.message; });
+$('btnFxValidate').onclick = () => runFx('validate').catch(e => { $('fxOut').textContent = e.message; });
+document.querySelectorAll('[data-ex]').forEach(b => b.onclick = () => { $('fxExpr').value = b.dataset.ex; runFx('preview'); });
+
+/* ── Template Designer ── */
+async function initTemplates() {
+  await refreshTplList();
+  const brand = $('tplBrand').value, kind = $('tplKind').value;
+  $('tplSelect').value = brand+'_'+kind;
+  await loadTemplate();
+}
+async function refreshTplList() {
+  const data = await api('/api/templates?brand='+$('tplBrand').value);
+  $('tplSelect').innerHTML = (data.templates||[]).map(t => `<option value="${t.id}">${t.name} (${t.kind})</option>`).join('');
+}
+async function loadTemplate() {
+  const id = $('tplSelect').value || ($('tplBrand').value+'_'+$('tplKind').value);
+  state.template = await api('/api/templates/'+id);
+  state.selectedBlock = null;
+  $('tplCompany').value = (state.template.branding||{}).companyName || '';
+  renderCanvas();
+  $('tplJson').textContent = JSON.stringify(state.template, null, 2);
+}
+function renderCanvas() {
+  const canvas = $('tplCanvas');
+  canvas.innerHTML = '';
+  (state.template.blocks||[]).forEach((b,i) => {
+    const el = document.createElement('div');
+    el.className = 'block'+(state.selectedBlock===i?' selected':'');
+    el.style.left = b.x+'px'; el.style.top = b.y+'px';
+    el.style.width = b.w+'px'; el.style.height = Math.max(b.h||24, 24)+'px';
+    el.textContent = (b.type||'') + (b.text||b.label ? ': '+(b.text||b.label) : '');
+    el.onmousedown = (ev) => startDrag(ev, i);
+    el.onclick = (ev) => { ev.stopPropagation(); selectBlock(i); };
+    canvas.appendChild(el);
+  });
+}
+function selectBlock(i) {
+  state.selectedBlock = i;
+  const b = state.template.blocks[i];
+  $('tplProps').textContent = b.type + ' · id=' + (b.id||i);
+  $('tplBlockText').value = b.text || b.label || '';
+  $('tplX').value = b.x; $('tplY').value = b.y; $('tplW').value = b.w; $('tplH').value = b.h;
+  renderCanvas();
+}
+function applyBlockProps() {
+  if (state.selectedBlock==null) return;
+  const b = state.template.blocks[state.selectedBlock];
+  b.x = +$('tplX').value; b.y = +$('tplY').value; b.w = +$('tplW').value; b.h = +$('tplH').value;
+  const t = $('tplBlockText').value;
+  if (b.type==='logo') b.label = t; else b.text = t;
+  $('tplJson').textContent = JSON.stringify(state.template, null, 2);
+  renderCanvas();
+}
+function startDrag(ev, i) {
+  selectBlock(i);
+  const b = state.template.blocks[i];
+  state.drag = {i, ox: ev.clientX, oy: ev.clientY, bx: b.x, by: b.y};
+  ev.preventDefault();
+}
+document.addEventListener('mousemove', (ev) => {
+  if (!state.drag) return;
+  const d = state.drag, b = state.template.blocks[d.i];
+  b.x = Math.max(0, d.bx + (ev.clientX - d.ox));
+  b.y = Math.max(0, d.by + (ev.clientY - d.oy));
+  $('tplX').value = b.x; $('tplY').value = b.y;
+  renderCanvas();
+});
+document.addEventListener('mouseup', () => {
+  if (state.drag) { state.drag = null; $('tplJson').textContent = JSON.stringify(state.template, null, 2); }
+});
+$('btnTplLoad').onclick = loadTemplate;
+$('tplBrand').onchange = async () => { await refreshTplList(); $('tplSelect').value = $('tplBrand').value+'_'+$('tplKind').value; await loadTemplate(); };
+$('tplKind').onchange = async () => { $('tplSelect').value = $('tplBrand').value+'_'+$('tplKind').value; await loadTemplate(); };
+['tplX','tplY','tplW','tplH','tplBlockText'].forEach(id => $(id).onchange = applyBlockProps);
+$('tplCompany').onchange = () => {
+  state.template.branding = state.template.branding || {};
+  state.template.branding.companyName = $('tplCompany').value;
+  state.template.branding.logoText = $('tplCompany').value;
+  $('tplJson').textContent = JSON.stringify(state.template, null, 2);
+};
+document.querySelectorAll('[data-addblock]').forEach(btn => btn.onclick = () => {
+  const type = btn.dataset.addblock;
+  state.template.blocks.push({id:type+'_'+Date.now(), type, x:60, y:60, w:160, h:40, text:type});
+  selectBlock(state.template.blocks.length-1);
+});
+$('btnTplDelBlock').onclick = () => {
+  if (state.selectedBlock==null) return;
+  state.template.blocks.splice(state.selectedBlock,1);
+  state.selectedBlock = null;
+  renderCanvas();
+  $('tplJson').textContent = JSON.stringify(state.template, null, 2);
+};
+$('btnTplSave').onclick = async () => {
+  const id = state.template.id;
+  await api('/api/templates/'+id, {method:'PUT', body: state.template});
+  toast('Template saved');
+};
+$('btnTplPreview').onclick = async () => {
+  const res = await fetch('/api/templates/preview-pdf', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({brand:$('tplBrand').value, kind:$('tplKind').value, templateId:state.template.id, template:state.template})
+  });
+  if (!res.ok) { toast('Preview failed'); return; }
+  const blob = await res.blob();
+  window.open(URL.createObjectURL(blob), '_blank');
+};
 
 (async function init(){
   await loadProducts();
+  try { state.adminMeta = await api('/api/admin/meta'); } catch(_){}
   // seed demo cart lines if empty
   state.lines = [
     {product:'29mm_sliding', width:2050, height:1970, qty:4, glass:'8mm_toughened', colour:'black_texture', handle:'premium'},

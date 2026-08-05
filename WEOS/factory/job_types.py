@@ -96,6 +96,7 @@ class JobResult:
     track_rail: list[LineItem] = field(default_factory=list)
     cut_list: list[CutListItem] = field(default_factory=list)
     bom: list[LineItem] = field(default_factory=list)
+    materials: list[LineItem] = field(default_factory=list)
     weight: WeightBreakdown | None = None
     quotation: QuotationResult | None = None
     profile_path: str = ""
@@ -115,6 +116,7 @@ class JobResult:
             "track_rail": [t.as_dict() for t in self.track_rail],
             "cut_list": [c.as_dict() for c in self.cut_list],
             "bom": [b.as_dict() for b in self.bom],
+            "materials": [m.as_dict() for m in self.materials],
             "weight": self.weight.as_dict() if self.weight else None,
             "quotation": self.quotation.as_dict() if self.quotation else None,
         }
