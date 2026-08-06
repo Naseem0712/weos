@@ -126,6 +126,9 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
             "colour": line.get("colour") or "white",
             "handle": line.get("handle") or "standard",
             "sectionSeries": line.get("sectionSeries"),
+            "partitions": line.get("partitions"),
+            "mesh": line.get("mesh"),
+            "trackCount": line.get("trackCount"),
             "lineId": line.get("lineId"),
         }
     )

@@ -14,10 +14,15 @@ def _rgb(color: Sequence[float] | None, fallback=(0.12, 0.22, 0.38)):
 
 
 def _money(v: Any) -> str:
-    try:
-        return f"₹ {float(v):,.2f}"
-    except (TypeError, ValueError):
-        return "₹ —"
+    from WEOS.factory.pdf_fonts import money_text
+
+    return money_text(v)
+
+
+def _set_font(c, size: float, *, bold: bool = False) -> None:
+    from WEOS.factory.pdf_fonts import set_font
+
+    set_font(c, size, bold=bold)
 
 
 def _area_sqft(w: float, h: float) -> float:
@@ -107,7 +112,6 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
 
 def _spec_lines(line: Mapping[str, Any]) -> list[str]:
     opts = line.get("options") or {}
-    selling = line.get("selling") or {}
     w = float(line.get("width") or 0)
     h = float(line.get("height") or 0)
     weight = (line.get("weight") or {}).get("totalKg")
@@ -151,8 +155,14 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
         lines.append(f"Profile Color = {str(colour).replace('_', ' ').title()}")
     if section.get("seriesTitle"):
         lines.append(f"Series = {section['seriesTitle']}")
-    if section.get("track"):
+    # Prefer resolved track from layout (mesh may have shifted 2→3)
+    tc = layout.get("trackCount") if layout else None
+    if tc and section.get("track"):
+        lines.append(f"Track / Outer = {section['track']} (using {float(tc):g}-track)")
+    elif section.get("track"):
         lines.append(f"Track / Outer = {section['track']}")
+    elif tc:
+        lines.append(f"Track = {float(tc):g}-track")
     if section.get("sash"):
         lines.append(f"Sash = {section['sash']}")
     if section.get("interlock"):
@@ -160,16 +170,19 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
     handle = opts.get("handle")
     if handle:
         lines.append(f"Handle = {str(handle).replace('_', ' ').title()}")
-    if selling.get("sellingRate") is not None:
-        lines.append(
-            f"Sell rate = ₹{selling.get('sellingRate')} / {selling.get('saleUnit', 'sqft')}"
-        )
+    # Sell rate prints in the RATE column only — never duplicate here
+    if layout.get("mesh") or (opts or {}).get("mesh"):
+        lines.append(f"Mesh = Yes (track {float(tc or 3):g})")
     return lines
 
 
 def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas
+
+    from WEOS.factory.pdf_fonts import ensure_rupee_font, money_text, rupee_prefix, set_font
+
+    ensure_rupee_font()  # register before any drawString with ₹
 
     buf = io.BytesIO()
     page = A4
@@ -187,17 +200,18 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     customer = payload.get("customer") or "—"
     project_name = payload.get("name") or ""
     lines = list(payload.get("lines") or [])
+    _rs = rupee_prefix()
 
     # —— Cover letter page ——
     c.setFillColorRGB(*primary)
-    c.setFont("Helvetica-Bold", 16)
+    set_font(c, 16, bold=True)
     c.drawString(40, H - 50, company)
     c.setFillColorRGB(0.3, 0.3, 0.3)
-    c.setFont("Helvetica", 9)
+    set_font(c, 9)
     c.drawString(40, H - 66, branding.get("tagline") or "Windows and Doors Quotation")
     y = H - 100
     c.setFillColorRGB(0, 0, 0)
-    c.setFont("Helvetica", 10)
+    set_font(c, 10)
     c.drawString(40, y, f"To: {customer}")
     y -= 16
     if project_name:
@@ -215,14 +229,14 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             "We thank you for your enquiry and are pleased to offer our windows and doors "
             "as per the enclosed design, specifications and value."
         )
-    c.setFont("Helvetica", 10)
+    set_font(c, 10)
     for para in cover.split("\n"):
         # wrap
         words = para.split()
         line = ""
         for word in words:
             trial = (line + " " + word).strip()
-            if c.stringWidth(trial, "Helvetica", 10) > 515:
+            if c.stringWidth(trial, c._fontname, 10) > 515:
                 c.drawString(40, y, line)
                 y -= 14
                 line = word
@@ -233,7 +247,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             y -= 14
         y -= 6
     y -= 20
-    c.setFont("Helvetica", 9)
+    set_font(c, 9)
     c.drawString(40, y, "Enclosures:")
     y -= 14
     c.drawString(50, y, "a) Design / Specifications / Value")
@@ -241,7 +255,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     c.drawString(50, y, "b) Terms & Conditions")
     y -= 30
     if phone or email or address:
-        c.setFont("Helvetica", 8)
+        set_font(c, 8)
         c.setFillColorRGB(0.35, 0.35, 0.35)
         if address:
             c.drawString(40, y, address)
@@ -249,7 +263,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         contact = " · ".join(x for x in (phone, email) if x)
         if contact:
             c.drawString(40, y, contact)
-    c.setFont("Helvetica", 7)
+    set_font(c, 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
     c.drawCentredString(W / 2, 28, f"powered by WEOS — page 1")
     c.showPage()
@@ -257,9 +271,9 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     # —— Line items pages ——
     def header(page_no: int):
         c.setFillColorRGB(*primary)
-        c.setFont("Helvetica-Bold", 12)
+        set_font(c, 12, bold=True)
         c.drawString(36, H - 36, company)
-        c.setFont("Helvetica", 8)
+        set_font(c, 8)
         c.setFillColorRGB(0.25, 0.25, 0.25)
         c.drawRightString(W - 36, H - 32, f"Quote No. {qid}")
         c.drawRightString(W - 36, H - 44, f"Quote Date {qdate}")
@@ -269,12 +283,12 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         # column headers
         yy = H - 68
         c.setFillColorRGB(*primary)
-        c.setFont("Helvetica-Bold", 8)
+        set_font(c, 8, bold=True)
         c.drawString(40, yy, "DESIGN")
         c.drawString(185, yy, "SPECIFICATIONS")
         c.drawRightString(430, yy, "QTY")
-        c.drawRightString(490, yy, "RATE")
-        c.drawRightString(W - 40, yy, "AMOUNT")
+        c.drawRightString(490, yy, f"RATE ({_rs})")
+        c.drawRightString(W - 40, yy, f"AMOUNT ({_rs})")
         c.setStrokeColorRGB(0.75, 0.75, 0.75)
         c.line(36, yy - 6, W - 36, yy - 6)
         return yy - 18
@@ -290,7 +304,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         draw_w, draw_h = 138, 175
         need = max(draw_h + 28, 150)
         if y < 80 + need:
-            c.setFont("Helvetica", 7)
+            set_font(c, 7)
             c.setFillColorRGB(0.5, 0.5, 0.5)
             c.drawCentredString(W / 2, 28, f"powered by WEOS — page {page_no}")
             c.showPage()
@@ -327,24 +341,25 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         code = f"W{idx + 1}"
         # Design column — same geometry SVG as live canvas (not schematic stub)
         c.setFillColorRGB(*accent)
-        c.setFont("Helvetica-Bold", 9)
+        set_font(c, 9, bold=True)
         c.drawString(42, y + 4, code)
         draw_line_elevation(c, line, 38, y - draw_h, draw_w, draw_h)
 
-        # Specs
+        # Specs (no sell-rate line — rate is in RATE column only)
         specs = _spec_lines(line)
         c.setFillColorRGB(0, 0, 0)
-        c.setFont("Helvetica", 7)
+        set_font(c, 7)
         sy = y
         for s in specs[:14]:
             c.drawString(180, sy, s[:66])
             sy -= 9
 
-        # Qty / Rate / Amount
-        c.setFont("Helvetica", 8)
+        # Qty / Rate / Amount — currency symbol via Unicode font
+        set_font(c, 8)
         c.drawRightString(430, y, str(qty))
-        c.drawRightString(490, y, f"{float(rate):,.2f}" if rate is not None else "—")
-        c.setFont("Helvetica-Bold", 8)
+        rate_str = f"{float(rate):,.2f}" if rate is not None else "—"
+        c.drawRightString(490, y, rate_str)
+        set_font(c, 8, bold=True)
         c.drawRightString(W - 40, y, f"{float(amount):,.2f}")
 
         # row separator
@@ -356,7 +371,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
 
     # Totals block
     if y < 140:
-        c.setFont("Helvetica", 7)
+        set_font(c, 7)
         c.setFillColorRGB(0.5, 0.5, 0.5)
         c.drawCentredString(W / 2, 28, f"powered by WEOS — page {page_no}")
         c.showPage()
@@ -381,24 +396,24 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
 
     y -= 8
     c.setFillColorRGB(*primary)
-    c.setFont("Helvetica-Bold", 9)
+    set_font(c, 9, bold=True)
     c.drawString(40, y, "TOTALS")
     y -= 14
     c.setFillColorRGB(0, 0, 0)
-    c.setFont("Helvetica", 8)
+    set_font(c, 8)
     c.drawString(40, y, f"Total Area: {round(total_area, 3)} Sq.Ft.    Windows: {total_qty} Nos")
     y -= 12
-    c.drawString(40, y, f"Basic / Project Value: {_money(basic_ex)}")
+    c.drawString(40, y, f"Basic / Project Value: {money_text(basic_ex)}")
     y -= 12
-    c.drawString(40, y, f"GST @ {gst_pct:g}%: {_money(gst_amt)}")
+    c.drawString(40, y, f"GST @ {gst_pct:g}%: {money_text(gst_amt)}")
     y -= 16
-    c.setFont("Helvetica-Bold", 12)
+    set_font(c, 12, bold=True)
     c.setFillColorRGB(*accent)
     c.drawString(40, y, "Grand Total")
-    c.drawRightString(W - 40, y, _money(project))
+    c.drawRightString(W - 40, y, money_text(project))
     c.setFillColorRGB(0, 0, 0)
 
-    c.setFont("Helvetica", 7)
+    set_font(c, 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
     c.drawCentredString(W / 2, 28, f"powered by WEOS — page {page_no}")
     c.showPage()
@@ -406,7 +421,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
 
     # —— Terms page ——
     c.setFillColorRGB(*primary)
-    c.setFont("Helvetica-Bold", 14)
+    set_font(c, 14, bold=True)
     c.drawString(40, H - 50, "Terms & Conditions")
     terms_text = ""
     for b in template.get("blocks") or []:
@@ -424,13 +439,13 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         )
     y = H - 80
     c.setFillColorRGB(0, 0, 0)
-    c.setFont("Helvetica", 9)
+    set_font(c, 9)
     for para in terms_text.split("\n"):
         words = para.split()
         line = ""
         for word in words:
             trial = (line + " " + word).strip()
-            if c.stringWidth(trial, "Helvetica", 9) > 515:
+            if c.stringWidth(trial, c._fontname, 9) > 515:
                 c.drawString(40, y, line)
                 y -= 13
                 line = word
@@ -446,13 +461,13 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             y = H - 50
 
     y -= 30
-    c.setFont("Helvetica", 9)
+    set_font(c, 9)
     c.drawString(40, y, "For " + company)
     y -= 50
     c.drawString(40, y, "Authorized Signatory")
     c.drawRightString(W - 40, y, "Customer Acceptance")
 
-    c.setFont("Helvetica", 7)
+    set_font(c, 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
     c.drawCentredString(W / 2, 28, f"powered by WEOS — page {page_no}")
     c.showPage()

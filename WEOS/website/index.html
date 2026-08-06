@@ -54,8 +54,10 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 .muted{color:var(--muted)}
 .pill{display:inline-block;padding:.15rem .45rem;border-radius:999px;background:#e7f3ee;color:var(--green);font-size:.72rem;font-weight:600}
 .pill.stub{background:#f3ebe2;color:var(--copper)}
-.preview{background:#f4f1ea;border:1px solid var(--line);border-radius:12px;min-height:220px;display:flex;align-items:center;justify-content:center;overflow:hidden}
-.preview svg,.preview img{max-width:100%;max-height:320px}
+.preview{background:#f4f1ea;border:1px solid var(--line);border-radius:12px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:auto;padding:.5rem}
+.preview svg,.preview img{max-width:100%;max-height:420px;width:auto;height:auto;display:block}
+.chip{display:inline-flex;align-items:center;gap:.3rem;background:#eef3ef;border:1px solid var(--line);border-radius:999px;padding:.15rem .55rem;font-size:.75rem}
+.chip button{border:0;background:transparent;cursor:pointer;font-size:.85rem;line-height:1;padding:0;color:#666}
 .two{display:grid;grid-template-columns:1.1fr .9fr;gap:1rem}
 @media(max-width:1000px){.two{grid-template-columns:1fr}}
 .prodgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.85rem}
@@ -224,6 +226,33 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <div><label class="l">H (mm)</label><input id="lineH" type="number" value="1970" style="width:90px"/></div>
             <div><label class="l">Qty</label><input id="lineQty" type="number" value="1" min="1" style="width:70px"/></div>
             <div class="grow"><label class="l">Glass</label><select id="lineGlass"><option value="5mm_clear">5mm Clear</option><option value="8mm_toughened" selected>8mm Toughened</option><option value="10mm_toughened">10mm Toughened</option></select></div>
+          </div>
+          <div class="row" style="margin-top:.5rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
+            <div><label class="l">Fix / partition</label>
+              <select id="partSide" style="width:100px">
+                <option value="">— none —</option>
+                <option value="top">Top</option>
+                <option value="bottom">Bottom</option>
+                <option value="left">Left</option>
+                <option value="right">Right</option>
+              </select>
+            </div>
+            <div><label class="l">Fix size (mm)</label><input id="partSize" type="number" min="0" step="1" placeholder="e.g. 290" style="width:90px"/></div>
+            <button class="btn ghost sm" id="btnAddPart" type="button" style="margin-top:1rem">Add fix</button>
+            <div class="grow" id="partChips" style="display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;min-height:1.8rem"></div>
+          </div>
+          <div class="row" style="margin-top:.45rem;align-items:flex-end;gap:.7rem">
+            <label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;cursor:pointer">
+              <input id="lineMesh" type="checkbox"/> Apply mesh
+            </label>
+            <div><label class="l">Track</label>
+              <select id="lineTrack" style="width:110px">
+                <option value="2" selected>2 track</option>
+                <option value="2.5">2.5 track</option>
+                <option value="3">3 track</option>
+              </select>
+            </div>
+            <div class="muted" id="meshHint" style="font-size:.78rem;flex:1"></div>
           </div>
           <div class="row" style="margin-top:.5rem">
             <div class="grow"><label class="l">Colour</label><select id="lineColour"><option value="white">White</option><option value="black_texture" selected>Black Texture</option><option value="wood_oak">Wood Oak</option></select></div>
@@ -737,6 +766,7 @@ const state = {
   series: [],
   selectedProduct: '29mm_sliding',
   selectedLine: 0,
+  draftPartitions: [],
   lastResult: null,
   livePrice: null,
   liveTimer: null,
@@ -895,8 +925,57 @@ async function loadProducts() {
   } catch(_) { state.series = []; }
 }
 
+function renderPartChips() {
+  const box = $('partChips');
+  if (!box) return;
+  const parts = state.draftPartitions || [];
+  if (!parts.length) {
+    box.innerHTML = '<span class="muted" style="font-size:.75rem">No fix panels</span>';
+    return;
+  }
+  box.innerHTML = parts.map((p, i) =>
+    `<span class="chip">${p.side.toUpperCase()} fix ${p.sizeMm} mm <button type="button" data-rm-part="${i}" title="Remove">×</button></span>`
+  ).join('');
+  box.querySelectorAll('[data-rm-part]').forEach(btn => {
+    btn.onclick = () => {
+      state.draftPartitions.splice(+btn.dataset.rmPart, 1);
+      renderPartChips();
+      refreshPreview();
+      scheduleLivePrice();
+    };
+  });
+}
+
+function applyMeshTrackRules() {
+  const mesh = $('lineMesh') && $('lineMesh').checked;
+  const trackEl = $('lineTrack');
+  const hint = $('meshHint');
+  if (!trackEl) return;
+  let tc = parseFloat(trackEl.value) || 2;
+  if (mesh && tc < 2.5) {
+    // Prefer 3-track when mesh forces a shift
+    trackEl.value = '3';
+    tc = 3;
+    if (hint) hint.textContent = 'Mesh needs 2.5/3-track — shifted to 3-track';
+  } else if (mesh) {
+    if (hint) hint.textContent = `Mesh on ${tc}-track`;
+  } else if (hint) {
+    hint.textContent = '';
+  }
+}
+
+function syncDraftFromLine(ln) {
+  if (!ln) return;
+  state.draftPartitions = Array.isArray(ln.partitions) ? ln.partitions.map(p => ({...p})) : [];
+  if ($('lineMesh')) $('lineMesh').checked = !!ln.mesh;
+  if ($('lineTrack') && ln.trackCount != null) $('lineTrack').value = String(ln.trackCount);
+  renderPartChips();
+  applyMeshTrackRules();
+}
+
 function currentLineDraft() {
   const rateRaw = $('lineSellRate') ? $('lineSellRate').value : '';
+  applyMeshTrackRules();
   return {
     product: $('lineProduct').value,
     sectionSeries: ($('lineSeries') && $('lineSeries').value) || null,
@@ -909,6 +988,9 @@ function currentLineDraft() {
     saleUnit: ($('lineSaleUnit') && $('lineSaleUnit').value) || 'sqft',
     sellingRate: rateRaw === '' ? null : +rateRaw,
     description: ($('lineDesc') && $('lineDesc').value.trim()) || null,
+    partitions: (state.draftPartitions || []).slice(),
+    mesh: !!( $('lineMesh') && $('lineMesh').checked ),
+    trackCount: $('lineTrack') ? parseFloat($('lineTrack').value) || 2 : 2,
   };
 }
 
@@ -1020,6 +1102,7 @@ function renderCart() {
       $('lineSellRate').value = ln.sellingRate != null ? ln.sellingRate : '';
       if ($('lineDesc')) $('lineDesc').value = ln.description || '';
       if ($('lineSeries')) $('lineSeries').value = ln.sectionSeries || '';
+      syncDraftFromLine(ln);
     }
     renderCart(); refreshPreview(); scheduleLivePrice();
   });
@@ -1035,21 +1118,39 @@ function updateLocalTotalHint(){
 }
 
 async function refreshPreview() {
-  const ln = state.lines[state.selectedLine] || {
-    product: $('lineProduct').value, width:+$('lineW').value, height:+$('lineH').value,
-    colour:$('lineColour').value, glass:$('lineGlass').value, handle:$('lineHandle').value
-  };
-  $('previewLabel').textContent = `${ln.product} · ${ln.width}×${ln.height} · ${ln.colour||''}`;
+  const draft = currentLineDraft();
+  const ln = state.lines[state.selectedLine] ? { ...state.lines[state.selectedLine], ...draft } : draft;
+  const bits = [`${ln.product}`, `${ln.width}×${ln.height}`];
+  if (ln.mesh) bits.push('mesh');
+  if ((ln.partitions||[]).length) bits.push(`${ln.partitions.length} fix`);
+  bits.push(ln.colour||'');
+  $('previewLabel').textContent = bits.filter(Boolean).join(' · ');
   try {
     const prev = await api('/api/preview', {method:'POST', body:{
       product: ln.product, width:+ln.width, height:+ln.height,
-      colour: ln.colour||'white', glass: ln.glass||'5mm_clear', handle: ln.handle||'standard'
+      colour: ln.colour||'white', glass: ln.glass||'5mm_clear', handle: ln.handle||'standard',
+      partitions: ln.partitions || [],
+      mesh: !!ln.mesh,
+      trackCount: ln.trackCount != null ? ln.trackCount : 2,
+      sectionSeries: ln.sectionSeries || null,
     }});
+    if (prev.meshTrack && prev.meshTrack.shifted && $('lineTrack')) {
+      $('lineTrack').value = String(prev.trackCount || 3);
+      if ($('meshHint')) $('meshHint').textContent = prev.meshTrack.reason || 'Track shifted for mesh';
+    }
     if (prev.svg) $('livePreview').innerHTML = prev.svg;
     else if (prev.heroImage) $('livePreview').innerHTML = `<img src="${prev.heroImage}" alt=""/>`;
     else $('livePreview').innerHTML = '<span class="muted">No preview</span>';
     const specs = prev.specifications || {};
-    $('lineSpecs').innerHTML = Object.entries(specs).slice(0,8).map(([k,v])=>`<div><span class="muted">${k}</span><div>${v??'—'}</div></div>`).join('');
+    const layout = prev.layout || {};
+    const extra = [];
+    if (layout.panels) {
+      extra.push(['Panels', (layout.panels||[]).map(p => `${p.id} ${p.label||p.role} ${p.widthMm||'?'}×${p.heightMm||'?'}`).join('; ')]);
+    }
+    if (prev.mesh) extra.push(['Mesh', `Yes · ${prev.trackCount}-track`]);
+    else if (prev.trackCount) extra.push(['Track', `${prev.trackCount}-track`]);
+    const rows = [...Object.entries(specs).slice(0,6), ...extra];
+    $('lineSpecs').innerHTML = rows.map(([k,v])=>`<div><span class="muted">${k}</span><div>${v??'—'}</div></div>`).join('');
   } catch(e) {
     $('livePreview').innerHTML = `<span class="muted">${e.message}</span>`;
   }
@@ -1179,15 +1280,38 @@ $('sectionsFile').onchange = async (ev) => {
   toast(`Sections: ${data.seriesCount} series, ${data.sectionCount} profiles`);
   await loadProducts();
 };
-['lineW','lineH','lineQty','lineColour','lineGlass','lineProduct','lineSeries','lineSaleUnit','lineSellRate','lineHandle','lineDesc','cartCustomer'].forEach(id => {
+['lineW','lineH','lineQty','lineColour','lineGlass','lineProduct','lineSeries','lineSaleUnit','lineSellRate','lineHandle','lineDesc','cartCustomer','lineTrack','partSize'].forEach(id => {
   const el = $(id); if (!el) return;
-  el.addEventListener('input', () => { scheduleLivePrice(); if (['lineW','lineH','lineColour','lineGlass','lineProduct'].includes(id)) refreshPreview(); });
+  el.addEventListener('input', () => { scheduleLivePrice(); if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','partSize'].includes(id)) refreshPreview(); });
   el.addEventListener('change', () => {
     scheduleLivePrice();
-    if (['lineW','lineH','lineColour','lineGlass','lineProduct'].includes(id)) refreshPreview();
+    if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','lineSeries'].includes(id)) refreshPreview();
     if (id === 'cartCustomer') maybeAskCustomerMemory();
+    if (id === 'lineTrack') applyMeshTrackRules();
   });
 });
+if ($('lineMesh')) {
+  $('lineMesh').addEventListener('change', () => {
+    applyMeshTrackRules();
+    refreshPreview();
+    scheduleLivePrice();
+  });
+}
+if ($('btnAddPart')) {
+  $('btnAddPart').onclick = () => {
+    const side = ($('partSide') && $('partSide').value) || '';
+    const size = +(($('partSize') && $('partSize').value) || 0);
+    if (!side) { toast('Pick a side (top/bottom/left/right)'); return; }
+    if (!(size > 0)) { toast('Enter fix size in mm'); return; }
+    // Replace existing partition on same side
+    state.draftPartitions = (state.draftPartitions || []).filter(p => p.side !== side);
+    state.draftPartitions.push({ side, sizeMm: size, role: 'fix' });
+    renderPartChips();
+    refreshPreview();
+    scheduleLivePrice();
+  };
+}
+renderPartChips();
 if ($('cartCustomer')) {
   $('cartCustomer').addEventListener('blur', () => maybeAskCustomerMemory());
 }

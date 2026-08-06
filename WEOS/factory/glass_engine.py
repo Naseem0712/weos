@@ -32,14 +32,17 @@ def compute_glass(
     qty = int(round(eval_formula(glass_rules.get("quantityFormula", "shutterCount"), ctx)))
 
     panes: list[GlassPane] = []
-    specs = (
+    specs = [
         ("left_glass", layout.left_glass.width, layout.left_glass.height),
         ("right_glass", layout.right_glass.width, layout.right_glass.height),
-    )
-    # quantityFormula is total panes; for 2-track emit one pane per shutter opening
-    n = min(qty, len(specs)) if qty > 0 else 0
-    for i in range(n):
-        name, ow, oh = specs[i]
+    ]
+    # Fixed partition lites (clear opening ≈ glass rect; still apply overlaps)
+    for fp in getattr(layout, "fix_panels", ()) or ():
+        specs.append((f"fix_{fp.side}_glass", fp.glass.width, fp.glass.height))
+    # quantityFormula is total panes; emit sliding first, then fix panels
+    n = min(qty, 2) if qty > 0 else 0
+    emit = list(specs[:n]) + list(specs[2:])  # always include fix panes when present
+    for name, ow, oh in emit:
         gw = ow + hs + ils
         gh = oh + top + bot
         area = (gw / 1000.0) * (gh / 1000.0)

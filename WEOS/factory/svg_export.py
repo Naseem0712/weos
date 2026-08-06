@@ -55,7 +55,7 @@ def _glass_panels(model: DrawingModel) -> list[tuple[str, float, float, float, f
         if not bb:
             continue
         out.append((pl.name or f"glass_{len(out)+1}", *bb))
-    out.sort(key=lambda g: g[1])  # left → right
+    out.sort(key=lambda g: (-(g[4] + g[2]) / 2.0, g[1]))  # top→bottom, then left→right
     return out
 
 
@@ -217,6 +217,7 @@ def _draw_plan(
     model: DrawingModel,
     plan_y0: float,
     plan_h: float,
+    stroke_scale: float = 1.0,
 ) -> None:
     """Top-down track/sash sketch — thin hollow outlines, not filled bars."""
     W = model.width
@@ -224,19 +225,28 @@ def _draw_plan(
     inset = float(meta.get("shutter_inset") or 0)
     il = float(meta.get("interlock_left") or W / 2)
     ir = float(meta.get("interlock_right") or W / 2)
+    track_count = float(meta.get("track_count") or 2)
+    mesh = bool(meta.get("mesh"))
     y_mid = plan_y0 + plan_h / 2.0
-    band = plan_h * 0.16  # thinner than old filled “mole” bars
-    sw = 0.95
+    band = plan_h * 0.14
+    sw = 0.95 * stroke_scale
     # Outer frame / track box
     parts.append(
         f'<rect x="{tx(0):.2f}" y="{ty(plan_y0 + plan_h):.2f}" width="{tx(W) - tx(0):.2f}" '
-        f'height="{ty(plan_y0) - ty(plan_y0 + plan_h):.2f}" fill="none" stroke="#222" stroke-width="1.15"/>'
+        f'height="{ty(plan_y0) - ty(plan_y0 + plan_h):.2f}" fill="none" stroke="#222" '
+        f'stroke-width="{1.15 * stroke_scale:.2f}"/>'
     )
-    # Track guide lines (front/back)
-    for dy in (-band * 1.55, band * 1.55):
+    # Track guide lines — 2 / 2.5 / 3 according to track_count (+ mesh)
+    n_guides = 3 if (mesh or track_count >= 2.5) else 2
+    if track_count >= 3:
+        n_guides = max(n_guides, 3)
+    span = band * 1.7
+    for i in range(n_guides):
+        t = i / max(n_guides - 1, 1)
+        dy = -span + 2 * span * t
         parts.append(
             f'<line x1="{tx(inset):.2f}" y1="{ty(y_mid + dy):.2f}" x2="{tx(W - inset):.2f}" '
-            f'y2="{ty(y_mid + dy):.2f}" stroke="#888" stroke-width="0.55"/>'
+            f'y2="{ty(y_mid + dy):.2f}" stroke="#888" stroke-width="{0.55 * stroke_scale:.2f}"/>'
         )
     # Left sash (hollow)
     _hollow_plan_band(
@@ -248,14 +258,28 @@ def _draw_plan(
         parts, tx=tx, ty=ty, x0=il, x1=W - inset,
         y_bot=y_mid - band * 1.15, y_top=y_mid + band * 0.45, stroke="#222", stroke_width=sw,
     )
+    # Mesh sash on third track (dashed hollow)
+    if mesh or track_count >= 2.5:
+        mesh_y0 = y_mid - band * 1.55
+        mesh_y1 = y_mid - band * 0.85
+        parts.append(
+            f'<rect x="{tx(inset):.2f}" y="{ty(mesh_y1):.2f}" width="{tx(W - inset) - tx(inset):.2f}" '
+            f'height="{abs(ty(mesh_y0) - ty(mesh_y1)):.2f}" fill="none" stroke="#2a6a4a" '
+            f'stroke-width="{0.85 * stroke_scale:.2f}" stroke-dasharray="{4 * stroke_scale:.1f},{3 * stroke_scale:.1f}"/>'
+        )
+        parts.append(
+            f'<text x="{tx(W / 2):.2f}" y="{ty(mesh_y0) - 2:.2f}" text-anchor="middle" '
+            f'font-family="Segoe UI, Arial, sans-serif" font-size="{18 * stroke_scale:.0f}" fill="#2a6a4a">MESH</text>'
+        )
     # Interlock
     parts.append(
-        f'<line x1="{tx(il):.2f}" y1="{ty(plan_y0 + 6):.2f}" x2="{tx(ir):.2f}" y2="{ty(plan_y0 + plan_h - 6):.2f}" '
-        f'stroke="#555" stroke-width="0.85"/>'
+        f'<line x1="{tx(il):.2f}" y1="{ty(plan_y0 + 6 * stroke_scale):.2f}" x2="{tx(ir):.2f}" '
+        f'y2="{ty(plan_y0 + plan_h - 6 * stroke_scale):.2f}" '
+        f'stroke="#555" stroke-width="{0.85 * stroke_scale:.2f}"/>'
     )
     parts.append(
-        f'<text x="{tx(W / 2):.2f}" y="{ty(plan_y0 - 14):.2f}" text-anchor="middle" '
-        f'font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#666">PLAN</text>'
+        f'<text x="{tx(W / 2):.2f}" y="{ty(plan_y0 - 14 * stroke_scale):.2f}" text-anchor="middle" '
+        f'font-family="Segoe UI, Arial, sans-serif" font-size="{24 * stroke_scale:.0f}" fill="#666">PLAN</text>'
     )
 
 
@@ -277,12 +301,20 @@ def render_svg_string(
     """
     pdf = str(style or "preview").lower() == "pdf"
     grid_div = _parse_grid(grid)
-    plan_gap = 90.0 if (annotations and include_plan) else 0.0
-    plan_h = 70.0 if plan_gap else 0.0
-    dim_pad = 110.0 if annotations else 0.0
+
+    # Size-independent drafting: stroke/font scale with model so small & large
+    # openings look the same when the SVG is fit into a preview/PDF box.
+    ref = max(float(model.width), float(model.height), 1.0)
+    k = ref / 1000.0  # 1.0 at ~1000 mm reference
+    k = max(0.55, min(k, 4.0))
+
+    plan_gap = (90.0 * k) if (annotations and include_plan) else 0.0
+    plan_h = (70.0 * k) if plan_gap else 0.0
+    dim_pad = (110.0 * k) if annotations else 0.0
+    margin = float(margin) * k
     # Tighter margin for PDF so geometry fills the design column
     if pdf:
-        margin = min(float(margin), 100.0)
+        margin = min(margin, 100.0 * k)
 
     xs: list[float] = [0.0, model.width]
     ys: list[float] = [0.0, model.height]
@@ -295,7 +327,7 @@ def render_svg_string(
         ys.extend([seg.start.y, seg.end.y])
 
     min_x = min(xs) - margin - (dim_pad if annotations else 0.0)
-    max_x = max(xs) + margin + (40.0 if annotations else 0.0)
+    max_x = max(xs) + margin + (40.0 * k if annotations else 0.0)
     min_y = min(ys) - margin - (dim_pad if annotations else 0.0) - plan_gap - plan_h
     max_y = max(ys) + margin + (dim_pad * 0.35 if annotations else 0.0)
     w = max_x - min_x
@@ -307,17 +339,19 @@ def render_svg_string(
     def ty(y: float) -> float:
         return max_y - y
 
-    # Drafting style: profile outlines only (never solid colour fills — even for black_texture)
+    # Drafting style: profile outlines only (never solid dark fills)
     _ = colour  # kept for API / quote colour label; frames stay stroke-only
     frame_stroke = "#1a1a1a"
-    glass_fill = "rgba(150, 195, 230, 0.42)" if pdf else "rgba(120, 180, 230, 0.36)"
+    # Very light glass tint — clear 2D, not solid dark
+    glass_fill = "rgba(170, 205, 230, 0.22)" if pdf else "rgba(160, 200, 230, 0.18)"
     glass_stroke = "#2a6fad"
     dim_stroke = "#8b1e1a"
-    sw_profile = 1.35 if pdf else 1.15
-    sw_seg = 1.0 if pdf else 0.85
-    sw_grid = 1.15 if pdf else 0.95
-    dim_font = 44.0 if pdf else 36.0
-    label_font = 32.0 if pdf else 26.0
+    sw_profile = (1.45 if pdf else 1.25) * k
+    sw_seg = (1.1 if pdf else 0.95) * k
+    sw_grid = (1.15 if pdf else 0.95) * k
+    sw_interlock = (1.55 if pdf else 1.35) * k
+    dim_font = (44.0 if pdf else 36.0) * k
+    label_font = (32.0 if pdf else 26.0) * k
 
     bg = "#ffffff" if pdf else "#f7f6f2"
     parts: list[str] = [
@@ -353,11 +387,14 @@ def render_svg_string(
             )
 
     for seg in model.segments:
-        stroke = frame_stroke if seg.layer == "PROFILES" else "#777"
+        lname = (seg.name or "").lower()
+        is_il = "interlock" in lname or "meeting" in lname
+        stroke = "#0d3a6e" if is_il else (frame_stroke if seg.layer == "PROFILES" else "#777")
+        lw = sw_interlock if is_il else sw_seg
         parts.append(
             f'<line x1="{tx(seg.start.x):.2f}" y1="{ty(seg.start.y):.2f}" '
             f'x2="{tx(seg.end.x):.2f}" y2="{ty(seg.end.y):.2f}" '
-            f'stroke="{stroke}" stroke-width="{sw_seg:.2f}"/>'
+            f'stroke="{stroke}" stroke-width="{lw:.2f}"/>'
         )
 
     glasses = _glass_panels(model)
@@ -373,38 +410,48 @@ def render_svg_string(
             )
 
     if annotations:
-        for idx, (name, x0, y0, x1, y1) in enumerate(glasses):
+        slide_idx = 0
+        fix_idx = 0
+        for name, x0, y0, x1, y1 in glasses:
             cx = (x0 + x1) / 2.0
             cy = (y0 + y1) / 2.0
-            panel_id = "S1" if idx == 0 else ("S2" if idx == 1 else f"S{idx + 1}")
-            role = "SLIDING"
             lname = (name or "").lower()
             if "fix" in lname:
-                panel_id = f"F{idx + 1}"
+                fix_idx += 1
+                panel_id = f"F{fix_idx}"
                 role = "FIX"
+                role_color = "#5a3a10"
             elif "door" in lname:
-                panel_id = f"D{idx + 1}"
+                panel_id = "D1"
                 role = "DOOR"
+                role_color = "#0b3d7a"
+            else:
+                slide_idx += 1
+                panel_id = f"S{slide_idx}"
+                role = "SLIDING"
+                role_color = "#0b3d7a"
 
+            chip_w, chip_h = 80 * k, 36 * k
             chip_y = cy + (y1 - y0) * 0.32
             parts.append(
-                f'<rect x="{tx(cx) - 40:.2f}" y="{ty(chip_y) - 18:.2f}" '
-                f'width="80" height="36" rx="3" fill="#fff" fill-opacity="0.95" stroke="#333" stroke-width="1.15"/>'
+                f'<rect x="{tx(cx) - chip_w / 2:.2f}" y="{ty(chip_y) - chip_h / 2:.2f}" '
+                f'width="{chip_w:.2f}" height="{chip_h:.2f}" rx="{3 * k:.1f}" fill="#fff" fill-opacity="0.95" '
+                f'stroke="#333" stroke-width="{1.15 * k:.2f}"/>'
             )
             parts.append(
-                f'<text x="{tx(cx):.2f}" y="{ty(chip_y) + 8:.2f}" text-anchor="middle" '
+                f'<text x="{tx(cx):.2f}" y="{ty(chip_y) + label_font * 0.32:.2f}" text-anchor="middle" '
                 f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font:.0f}" font-weight="700" fill="#111">'
                 f"{escape(panel_id)}</text>"
             )
             parts.append(
-                f'<text x="{tx(cx):.2f}" y="{ty(cy - (y1 - y0) * 0.28) + 10:.2f}" text-anchor="middle" '
-                f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font * 0.85:.0f}" font-weight="600" fill="#0b3d7a">'
+                f'<text x="{tx(cx):.2f}" y="{ty(cy - (y1 - y0) * 0.28) + label_font * 0.35:.2f}" text-anchor="middle" '
+                f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font * 0.85:.0f}" font-weight="600" fill="{role_color}">'
                 f"{escape(role)}</text>"
             )
 
             if role == "SLIDING" and (x1 - x0) > 40:
                 ay = cy + (y1 - y0) * 0.05
-                if idx == 0:
+                if slide_idx == 1:
                     _arrow(parts, tx=tx, ty=ty, x0=cx - (x1 - x0) * 0.28, y0=ay, x1=cx + (x1 - x0) * 0.22, y1=ay)
                 else:
                     _arrow(parts, tx=tx, ty=ty, x0=cx + (x1 - x0) * 0.28, y0=ay, x1=cx - (x1 - x0) * 0.22, y1=ay)
@@ -413,31 +460,52 @@ def render_svg_string(
         H = float(model.height)
         left_w = float(meta.get("left_shutter_width") or (W / 2.0))
         right_w = float(meta.get("right_shutter_width") or (W / 2.0))
-        inset = float(meta.get("shutter_inset") or 0.0)
-        il = float(meta.get("interlock_left") or left_w)
+        slide_x0 = float(meta.get("sliding_x0") or meta.get("shutter_inset") or 0.0)
+        slide_x1 = float(meta.get("sliding_x1") or (W - float(meta.get("shutter_inset") or 0.0)))
+        il = float(meta.get("interlock_left") or (slide_x0 + left_w))
         _dim_line_v(
-            parts, tx=tx, ty=ty, y0=0.0, y1=H, x=-55.0, text=f"{H:g}",
-            text_x=-82.0, stroke=dim_stroke, font=dim_font,
+            parts, tx=tx, ty=ty, y0=0.0, y1=H, x=-55.0 * k, text=f"{H:g}",
+            text_x=-82.0 * k, stroke=dim_stroke, font=dim_font,
         )
         _dim_line_h(
-            parts, tx=tx, ty=ty, x0=0.0, x1=W, y=-95.0, text=f"{W:g}",
-            text_y=-122.0, stroke=dim_stroke, font=dim_font,
-        )
-        left_x0, left_x1 = inset, il
-        right_x0, right_x1 = il, W - inset
-        _dim_line_h(
-            parts, tx=tx, ty=ty, x0=left_x0, x1=left_x1, y=-42.0,
-            text=f"{left_w:g}", text_y=-64.0, stroke=dim_stroke, font=dim_font * 0.9,
+            parts, tx=tx, ty=ty, x0=0.0, x1=W, y=-95.0 * k, text=f"{W:g}",
+            text_y=-122.0 * k, stroke=dim_stroke, font=dim_font,
         )
         _dim_line_h(
-            parts, tx=tx, ty=ty, x0=right_x0, x1=right_x1, y=-42.0,
-            text=f"{right_w:g}", text_y=-64.0, stroke=dim_stroke, font=dim_font * 0.9,
+            parts, tx=tx, ty=ty, x0=slide_x0, x1=il, y=-42.0 * k,
+            text=f"{left_w:g}", text_y=-64.0 * k, stroke=dim_stroke, font=dim_font * 0.9,
         )
-        if glasses:
-            _n, _a, gy0, _b, gy1 = glasses[0]
+        _dim_line_h(
+            parts, tx=tx, ty=ty, x0=il, x1=slide_x1, y=-42.0 * k,
+            text=f"{right_w:g}", text_y=-64.0 * k, stroke=dim_stroke, font=dim_font * 0.9,
+        )
+        # Fix partition dims
+        for part in (meta.get("partitions") or []) if isinstance(meta.get("partitions"), list) else []:
+            side = str(part.get("side") or "")
+            if side == "top":
+                ph = float(part.get("heightMm") or part.get("sizeMm") or 0)
+                if ph > 0:
+                    _dim_line_v(
+                        parts, tx=tx, ty=ty, y0=H - float(meta.get("shutter_inset") or 0) - ph,
+                        y1=H - float(meta.get("shutter_inset") or 0),
+                        x=W + 48.0 * k, text=f"FIX {ph:g}", text_x=W + 90.0 * k,
+                        stroke=dim_stroke, font=dim_font * 0.75,
+                    )
+            elif side == "bottom":
+                ph = float(part.get("heightMm") or part.get("sizeMm") or 0)
+                if ph > 0:
+                    _dim_line_v(
+                        parts, tx=tx, ty=ty, y0=float(meta.get("shutter_inset") or 0),
+                        y1=float(meta.get("shutter_inset") or 0) + ph,
+                        x=W + 48.0 * k, text=f"FIX {ph:g}", text_x=W + 90.0 * k,
+                        stroke=dim_stroke, font=dim_font * 0.75,
+                    )
+        sliding_glasses = [g for g in glasses if "fix" not in (g[0] or "").lower()]
+        if sliding_glasses:
+            _n, _a, gy0, _b, gy1 = sliding_glasses[0]
             _dim_line_v(
-                parts, tx=tx, ty=ty, y0=gy0, y1=gy1, x=W + 48.0,
-                text=f"{(gy1 - gy0):g}", text_x=W + 78.0, stroke=dim_stroke, font=dim_font * 0.85,
+                parts, tx=tx, ty=ty, y0=gy0, y1=gy1, x=W + 48.0 * k,
+                text=f"{(gy1 - gy0):g}", text_x=W + 78.0 * k, stroke=dim_stroke, font=dim_font * 0.85,
             )
 
         if include_plan and plan_h > 0:
@@ -448,6 +516,7 @@ def render_svg_string(
                 model=model,
                 plan_y0=min_y + margin * 0.25,
                 plan_h=plan_h,
+                stroke_scale=k,
             )
 
     parts.append("</svg>")
@@ -476,6 +545,9 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
     handle = (opts or {}).get("handle") or line.get("handle")
     if not isinstance(handle, str):
         handle = None
+    from WEOS.factory.layout_options import line_layout_options
+
+    lo = line_layout_options(line)
     try:
         from WEOS.factory.pipeline import generate_job
         from WEOS.factory.product_loader import load_product
@@ -490,6 +562,10 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
             glass=glass,
             colour=str(colour) if colour else None,
             handle=handle,
+            partitions=lo.get("partitions"),
+            mesh=bool(lo.get("mesh")),
+            track_count=lo.get("trackCount"),
+            section_series=lo.get("sectionSeries") or line.get("sectionSeries"),
         )
         return render_svg_string(
             job.drawing,
@@ -508,36 +584,75 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
 def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[str, Any]) -> dict[str, Any]:
     """Serializable panel layout so PDF/quote can reproduce elevation without re-deriving."""
     meta = dict(layout_meta or {})
-    inset = float(meta.get("shutter_inset") or 0)
-    shutter_h = max(float(height) - 2.0 * inset, 0.0)
-    panels = [
-        {
-            "id": "S1",
-            "role": "sliding",
-            "side": "left",
-            "label": "Sliding",
-            "widthMm": round(float(meta.get("left_shutter_width") or 0), 1),
-            "heightMm": round(shutter_h, 1),
-            "glassWidthMm": round(float(meta.get("left_glass_width") or 0), 1),
-            "glassHeightMm": round(float(meta.get("glass_height") or 0), 1),
-        },
-        {
-            "id": "S2",
-            "role": "sliding",
-            "side": "right",
-            "label": "Sliding",
-            "widthMm": round(float(meta.get("right_shutter_width") or 0), 1),
-            "heightMm": round(shutter_h, 1),
-            "glassWidthMm": round(float(meta.get("right_glass_width") or 0), 1),
-            "glassHeightMm": round(float(meta.get("glass_height") or 0), 1),
-        },
-    ]
+    shutter_h = float(meta.get("sliding_height") or 0)
+    if shutter_h <= 0:
+        inset = float(meta.get("shutter_inset") or 0)
+        shutter_h = max(float(height) - 2.0 * inset, 0.0)
+    panels: list[dict[str, Any]] = []
+    # Fix panels first (top→bottom, left→right)
+    for i, part in enumerate(meta.get("partitions") or [] if isinstance(meta.get("partitions"), list) else []):
+        side = str(part.get("side") or "")
+        panels.append(
+            {
+                "id": f"F{i + 1}",
+                "role": "fix",
+                "side": side,
+                "label": "Fix",
+                "widthMm": round(float(part.get("widthMm") or 0), 1),
+                "heightMm": round(float(part.get("heightMm") or part.get("sizeMm") or 0), 1),
+                "glassWidthMm": round(float(part.get("glassWidthMm") or 0), 1),
+                "glassHeightMm": round(float(part.get("glassHeightMm") or 0), 1),
+            }
+        )
+    panels.extend(
+        [
+            {
+                "id": "S1",
+                "role": "sliding",
+                "side": "left",
+                "label": "Sliding",
+                "widthMm": round(float(meta.get("left_shutter_width") or 0), 1),
+                "heightMm": round(shutter_h, 1),
+                "glassWidthMm": round(float(meta.get("left_glass_width") or 0), 1),
+                "glassHeightMm": round(float(meta.get("glass_height") or 0), 1),
+            },
+            {
+                "id": "S2",
+                "role": "sliding",
+                "side": "right",
+                "label": "Sliding",
+                "widthMm": round(float(meta.get("right_shutter_width") or 0), 1),
+                "heightMm": round(shutter_h, 1),
+                "glassWidthMm": round(float(meta.get("right_glass_width") or 0), 1),
+                "glassHeightMm": round(float(meta.get("glass_height") or 0), 1),
+            },
+        ]
+    )
+    if meta.get("mesh"):
+        panels.append(
+            {
+                "id": "M1",
+                "role": "mesh",
+                "side": "mesh",
+                "label": "Mesh",
+                "widthMm": round(float(meta.get("sliding_width") or width), 1),
+                "heightMm": round(shutter_h, 1),
+            }
+        )
+    clean_meta: dict[str, Any] = {}
+    for k, v in meta.items():
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            clean_meta[k] = round(float(v), 3)
+        elif isinstance(v, (str, bool, list, dict)) or v is None:
+            clean_meta[k] = v
     return {
-        "kind": "two_track_sliding",
+        "kind": "sliding_with_partitions" if (meta.get("partitions")) else "two_track_sliding",
         "widthMm": float(width),
         "heightMm": float(height),
+        "trackCount": float(meta.get("track_count") or 2),
+        "mesh": bool(meta.get("mesh")),
         "panels": panels,
-        "meta": {k: (round(float(v), 3) if isinstance(v, (int, float)) else v) for k, v in meta.items()},
+        "meta": clean_meta,
     }
 
 

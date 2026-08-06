@@ -65,42 +65,44 @@ def _qr_png(data: str, box_size: int = 4) -> bytes | None:
 
 def _customer_reportlab(payload: Mapping[str, Any]) -> bytes:
     from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import mm
     from reportlab.pdfgen import canvas
 
+    from WEOS.factory.pdf_fonts import ensure_rupee_font, money_text, set_font
+
+    ensure_rupee_font()
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     W, H = A4
     y = H - 40
 
-    c.setFont("Helvetica-Bold", 18)
+    set_font(c, 18, bold=True)
     c.drawString(40, y, "WEOS — Quotation")
     y -= 16
-    c.setFont("Helvetica", 9)
+    set_font(c, 9)
     c.setFillColorRGB(0.35, 0.35, 0.35)
     c.drawString(40, y, "Design • Calculate • Manufacture • Quote")
     c.setFillColorRGB(0, 0, 0)
     y -= 22
 
-    c.setFont("Helvetica", 10)
+    set_font(c, 10)
     c.drawString(40, y, f"Project: {payload.get('projectId', '')}   Quotation: {payload.get('quotationId', '')}")
     y -= 14
     c.drawString(40, y, f"Customer: {payload.get('customer') or '—'}   Name: {payload.get('name') or '—'}")
     y -= 22
 
-    c.setFont("Helvetica-Bold", 11)
+    set_font(c, 11, bold=True)
     c.drawString(40, y, "Line items")
     y -= 16
-    c.setFont("Helvetica", 9)
+    set_font(c, 9)
     for line in payload.get("lines") or []:
         if y < 80:
             c.showPage()
             y = H - 50
-            c.setFont("Helvetica", 9)
+            set_font(c, 9)
         desc = f"{line.get('displayName')}  {line.get('width')}×{line.get('height')} mm  ×{line.get('qty')}"
         amt = (line.get("price") or {}).get("total", 0)
         c.drawString(40, y, desc[:70])
-        c.drawRightString(W - 40, y, f"₹ {amt}")
+        c.drawRightString(W - 40, y, money_text(amt))
         y -= 12
         opts = line.get("options") or {}
         c.setFillColorRGB(0.4, 0.4, 0.4)
@@ -110,20 +112,20 @@ def _customer_reportlab(payload: Mapping[str, Any]) -> bytes:
 
     y -= 8
     cats = (payload.get("price") or {}).get("categoryTotals") or (payload.get("combined") or {}).get("categoryTotals") or {}
-    c.setFont("Helvetica-Bold", 10)
+    set_font(c, 10, bold=True)
     for cat, total in cats.items():
         c.drawString(40, y, f"{cat}")
-        c.drawRightString(W - 40, y, f"₹ {total}")
+        c.drawRightString(W - 40, y, money_text(total))
         y -= 14
 
     grand = (payload.get("price") or {}).get("total") or (payload.get("combined") or {}).get("grandTotal")
     y -= 6
-    c.setFont("Helvetica-Bold", 14)
+    set_font(c, 14, bold=True)
     c.drawString(40, y, "Grand Total")
-    c.drawRightString(W - 40, y, f"₹ {grand}")
+    c.drawRightString(W - 40, y, money_text(grand))
     y -= 28
 
-    c.setFont("Helvetica", 8)
+    set_font(c, 8)
     c.drawString(40, y, "Warranty: 1 year manufacturing defects (demo terms).")
     y -= 12
     c.drawString(40, y, "Terms: 50% advance, balance before dispatch. Rates excl. site installation unless noted.")

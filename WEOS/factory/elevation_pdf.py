@@ -24,7 +24,7 @@ def _glasses(model: DrawingModel) -> list[tuple[str, float, float, float, float]
         bb = _bbox(pl)
         if bb:
             out.append((pl.name or f"glass_{len(out)+1}", *bb))
-    out.sort(key=lambda g: g[1])
+    out.sort(key=lambda g: (-(g[4] + g[2]) / 2.0, g[1]))  # top→bottom, then left→right
     return out
 
 
@@ -83,7 +83,6 @@ def draw_model_elevation(
 
     stroke = (0.08, 0.08, 0.10)
     dim = (0.55, 0.12, 0.10)
-    glass_fill = (0.75, 0.86, 0.94)
     glass_stroke = (0.18, 0.42, 0.68)
 
     # White plate behind drawing
@@ -92,7 +91,7 @@ def draw_model_elevation(
     c.setLineWidth(0.35)
     c.rect(x, y, box_w, box_h, fill=1, stroke=1)
 
-    # Glass fills first
+    # Glass fills first — light tint only (never solid dark)
     for pl in model.polylines:
         if pl.layer != "GLASS" or len(pl.points) < 2:
             continue
@@ -101,7 +100,7 @@ def draw_model_elevation(
         for p in pl.points[1:]:
             path.lineTo(px(p.x), py(p.y))
         path.close()
-        c.setFillColorRGB(*glass_fill)
+        c.setFillColorRGB(0.88, 0.93, 0.97)  # very light
         c.setStrokeColorRGB(*glass_stroke)
         c.setLineWidth(0.55)
         c.drawPath(path, fill=1, stroke=1)
@@ -116,20 +115,26 @@ def draw_model_elevation(
             path.lineTo(px(p.x), py(p.y))
         path.close()
         c.setStrokeColorRGB(*stroke)
-        c.setLineWidth(0.75)
+        c.setLineWidth(0.85)
         c.drawPath(path, fill=0, stroke=1)
 
     for pl in model.polylines:
         if pl.closed or pl.layer == "GLASS" or len(pl.points) < 2:
             continue
         c.setStrokeColorRGB(*stroke)
-        c.setLineWidth(0.65)
+        c.setLineWidth(0.7)
         for a, b in zip(pl.points, pl.points[1:]):
             c.line(px(a.x), py(a.y), px(b.x), py(b.y))
 
     for seg in model.segments:
-        c.setStrokeColorRGB(*stroke if seg.layer == "PROFILES" else (0.45, 0.45, 0.45))
-        c.setLineWidth(0.55)
+        lname = (seg.name or "").lower()
+        is_il = "interlock" in lname or "meeting" in lname
+        if is_il:
+            c.setStrokeColorRGB(0.05, 0.28, 0.55)
+            c.setLineWidth(1.05)
+        else:
+            c.setStrokeColorRGB(*stroke if seg.layer == "PROFILES" else (0.45, 0.45, 0.45))
+            c.setLineWidth(0.6)
         c.line(px(seg.start.x), py(seg.start.y), px(seg.end.x), py(seg.end.y))
 
     # Muntin grids
@@ -148,16 +153,23 @@ def draw_model_elevation(
 
     # Panel labels + sliding arrows
     c.setFont("Helvetica-Bold", 7)
-    for idx, (name, x0, y0, x1, y1) in enumerate(glasses):
+    slide_idx = 0
+    fix_idx = 0
+    for name, x0, y0, x1, y1 in glasses:
         cx = (x0 + x1) / 2.0
         cy = (y0 + y1) / 2.0
-        panel_id = "S1" if idx == 0 else ("S2" if idx == 1 else f"S{idx + 1}")
-        role = "SLIDING"
         lname = (name or "").lower()
         if "fix" in lname:
-            panel_id, role = f"F{idx + 1}", "FIX"
+            fix_idx += 1
+            panel_id, role = f"F{fix_idx}", "FIX"
+            role_rgb = (0.35, 0.22, 0.05)
         elif "door" in lname:
-            panel_id, role = f"D{idx + 1}", "DOOR"
+            panel_id, role = "D1", "DOOR"
+            role_rgb = (0.05, 0.30, 0.55)
+        else:
+            slide_idx += 1
+            panel_id, role = f"S{slide_idx}", "SLIDING"
+            role_rgb = (0.05, 0.30, 0.55)
 
         chip_w, chip_h = 18, 9
         c.setFillColorRGB(1, 1, 1)
@@ -167,7 +179,7 @@ def draw_model_elevation(
         c.setFillColorRGB(0.05, 0.05, 0.05)
         c.drawCentredString(px(cx), py(cy + (y1 - y0) * 0.28) - 2.2, panel_id)
 
-        c.setFillColorRGB(0.05, 0.30, 0.55)
+        c.setFillColorRGB(*role_rgb)
         c.setFont("Helvetica-Bold", 6)
         c.drawCentredString(px(cx), py(cy - (y1 - y0) * 0.30) - 2, role)
         c.setFont("Helvetica-Bold", 7)
@@ -177,7 +189,7 @@ def draw_model_elevation(
             c.setFillColorRGB(0.05, 0.30, 0.55)
             c.setLineWidth(0.75)
             ay = cy
-            if idx == 0:
+            if slide_idx == 1:
                 ax0, ax1 = cx - (x1 - x0) * 0.28, cx + (x1 - x0) * 0.20
             else:
                 ax0, ax1 = cx + (x1 - x0) * 0.28, cx - (x1 - x0) * 0.20
@@ -216,41 +228,57 @@ def draw_model_elevation(
 
     left_w = float(meta.get("left_shutter_width") or W / 2)
     right_w = float(meta.get("right_shutter_width") or W / 2)
-    inset = float(meta.get("shutter_inset") or 0)
-    il = float(meta.get("interlock_left") or left_w)
+    slide_x0 = float(meta.get("sliding_x0") or meta.get("shutter_inset") or 0)
+    slide_x1 = float(meta.get("sliding_x1") or (W - float(meta.get("shutter_inset") or 0)))
+    il = float(meta.get("interlock_left") or (slide_x0 + left_w))
+    mesh = bool(meta.get("mesh"))
+    track_count = float(meta.get("track_count") or 2)
 
     # Overall H left, overall W bottom, panel widths, glass H
     dim_v(0.0, H, -18.0 / max(scale, 1e-6), f"{H:g}", text_dx=-9)
     dim_h(0.0, W, -28.0 / max(scale, 1e-6), f"{W:g}", text_dy=-9)
-    dim_h(inset, il, -12.0 / max(scale, 1e-6), f"{left_w:g}", text_dy=-8)
-    dim_h(il, W - inset, -12.0 / max(scale, 1e-6), f"{right_w:g}", text_dy=-8)
-    if glasses:
-        _n, _a, gy0, _b, gy1 = glasses[0]
+    dim_h(slide_x0, il, -12.0 / max(scale, 1e-6), f"{left_w:g}", text_dy=-8)
+    dim_h(il, slide_x1, -12.0 / max(scale, 1e-6), f"{right_w:g}", text_dy=-8)
+    sliding_glasses = [g for g in glasses if "fix" not in (g[0] or "").lower()]
+    if sliding_glasses:
+        _n, _a, gy0, _b, gy1 = sliding_glasses[0]
         dim_v(gy0, gy1, W + 14.0 / max(scale, 1e-6), f"{(gy1 - gy0):g}", text_dx=8)
 
     if include_plan and plan_h > 0:
         py0 = y + 4
         box_ph = plan_h - 4
         c.setStrokeColorRGB(*stroke)
-        c.setLineWidth(0.65)
+        c.setLineWidth(0.7)
         c.rect(px(0), py0, W * scale, box_ph, fill=0, stroke=1)
-        # Track guides
+        # Track guides (2 / 3 for mesh)
         c.setStrokeColorRGB(0.55, 0.55, 0.55)
         c.setLineWidth(0.35)
-        guide = box_ph * 0.18
-        c.line(px(inset), py0 + box_ph / 2 - guide, px(W - inset), py0 + box_ph / 2 - guide)
-        c.line(px(inset), py0 + box_ph / 2 + guide, px(W - inset), py0 + box_ph / 2 + guide)
+        n_guides = 3 if (mesh or track_count >= 2.5) else 2
+        for i in range(n_guides):
+            t = i / max(n_guides - 1, 1)
+            gy = py0 + box_ph * (0.22 + 0.56 * t)
+            c.line(px(slide_x0), gy, px(slide_x1), gy)
         # Hollow sash bands
         c.setStrokeColorRGB(*stroke)
-        band = box_ph * 0.22
+        band = box_ph * 0.20
         _hollow_plan_band(
-            c, px(inset), py0 + box_ph / 2 - band / 2,
-            (il - inset) * scale, band, lw=0.55,
+            c, px(slide_x0), py0 + box_ph / 2 - band / 2,
+            (il - slide_x0) * scale, band, lw=0.55,
         )
         _hollow_plan_band(
             c, px(il), py0 + box_ph / 2 - band * 0.85,
-            (W - inset - il) * scale, band, lw=0.55,
+            (slide_x1 - il) * scale, band, lw=0.55,
         )
+        if mesh or track_count >= 2.5:
+            c.setStrokeColorRGB(0.15, 0.45, 0.30)
+            c.setDash(2, 1.5)
+            c.setLineWidth(0.55)
+            my = py0 + box_ph * 0.12
+            c.rect(px(slide_x0), my, (slide_x1 - slide_x0) * scale, band * 0.7, fill=0, stroke=1)
+            c.setDash()
+            c.setFont("Helvetica", 4.5)
+            c.setFillColorRGB(0.15, 0.45, 0.30)
+            c.drawCentredString(px(W / 2), my + band * 0.85, "MESH")
         c.setFont("Helvetica", 5)
         c.setFillColorRGB(0.4, 0.4, 0.4)
         c.drawCentredString(px(W / 2), py0 + box_ph + 1.5, "PLAN")
@@ -274,6 +302,9 @@ def draw_line_model_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
     handle = (opts or {}).get("handle") or line.get("handle")
     if not isinstance(handle, str):
         handle = None
+    from WEOS.factory.layout_options import line_layout_options
+
+    lo = line_layout_options(line)
     try:
         from WEOS.factory.pipeline import generate_job
         from WEOS.factory.product_loader import load_product
@@ -288,6 +319,10 @@ def draw_line_model_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
             glass=glass,
             colour=str(colour) if colour else None,
             handle=handle,
+            partitions=lo.get("partitions"),
+            mesh=bool(lo.get("mesh")),
+            track_count=lo.get("trackCount"),
+            section_series=lo.get("sectionSeries") or line.get("sectionSeries"),
         )
         draw_model_elevation(
             c,

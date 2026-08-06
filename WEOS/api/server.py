@@ -100,6 +100,9 @@ class CartLine(BaseModel):
     sellingRate: float | None = None
     description: str | None = None
     terms: str | None = None
+    partitions: list[dict[str, Any]] | None = None
+    mesh: bool | None = None
+    trackCount: float | None = None
 
 
 class LivePriceRequest(BaseModel):
@@ -116,6 +119,9 @@ class LivePriceRequest(BaseModel):
     customer: str | None = None
     description: str | None = None
     lookupSavedRate: bool = True
+    partitions: list[dict[str, Any]] | None = None
+    mesh: bool | None = None
+    trackCount: float | None = None
 
 
 class CustomerRateBody(BaseModel):
@@ -183,6 +189,11 @@ class PreviewRequest(BaseModel):
     colour: str = "white"
     glass: str = "5mm_clear"
     handle: str = "standard"
+    partitions: list[dict[str, Any]] | None = None
+    mesh: bool | None = None
+    trackCount: float | None = None
+    sectionSeries: str | None = None
+    grid: Any = None
 
 
 class FormulaPreviewRequest(BaseModel):
@@ -479,7 +490,9 @@ def api_product_detail(product_id: str) -> dict[str, Any]:
 def api_preview(body: PreviewRequest) -> dict[str, Any]:
     """Fast SVG preview for live cart — uses geometry engine only path via generate_job."""
     try:
+        from WEOS.factory.layout_options import resolve_mesh_track
         from WEOS.factory.product_loader import load_product
+        from WEOS.factory.svg_export import layout_summary_for_job
 
         meta = load_product(body.product, strict=False)
         if meta.get("_stub") or meta.get("status") == "stub":
@@ -490,6 +503,19 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
                 "heroImage": meta.get("heroImage"),
                 "message": "Stub product — catalogue image only",
             }
+        series_doc = None
+        if body.sectionSeries:
+            try:
+                from WEOS.factory.section_catalogue import get_series
+
+                series_doc = get_series(str(body.sectionSeries))
+            except Exception:
+                series_doc = None
+        mesh_res = resolve_mesh_track(
+            mesh=bool(body.mesh),
+            track_count=body.trackCount,
+            series=series_doc,
+        )
         job = generate_job(
             body.width,
             body.height,
@@ -497,12 +523,20 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             glass=body.glass,
             colour=body.colour,
             handle=body.handle,
+            partitions=body.partitions,
+            mesh=bool(body.mesh),
+            track_count=mesh_res["trackCount"],
+            section_series=body.sectionSeries,
         )
         svg = render_svg_string(
             job.drawing,
             colour=body.colour.lower().replace(" ", "_"),
             annotations=True,
             include_plan=True,
+            grid=body.grid,
+        )
+        layout = layout_summary_for_job(
+            width=body.width, height=body.height, layout_meta=job.layout_meta
         )
         return {
             "product": body.product,
@@ -510,10 +544,10 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             "svg": svg,
             "width": body.width,
             "height": body.height,
-            "layout": {
-                "kind": "two_track_sliding",
-                "meta": dict(job.layout_meta or {}),
-            },
+            "layout": layout,
+            "meshTrack": mesh_res,
+            "trackCount": mesh_res["trackCount"],
+            "mesh": bool(body.mesh),
             "heroImage": meta.get("heroImage"),
             "specifications": meta.get("specifications"),
         }

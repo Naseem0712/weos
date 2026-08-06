@@ -60,6 +60,9 @@ def _render_reportlab(template: Mapping[str, Any], payload: Mapping[str, Any]) -
     from reportlab.lib.utils import ImageReader
     from reportlab.pdfgen import canvas
 
+    from WEOS.factory.pdf_fonts import ensure_rupee_font, money_text
+
+    ensure_rupee_font()
     buf = io.BytesIO()
     page = A4
     c = canvas.Canvas(buf, pagesize=page)
@@ -126,7 +129,7 @@ def _render_reportlab(template: Mapping[str, Any], payload: Mapping[str, Any]) -
                 desc = f"{line.get('displayName')}  {line.get('width')}×{line.get('height')} mm  ×{line.get('qty')}"
                 amt = (line.get("price") or {}).get("total", 0)
                 c.drawString(x, yy, desc[:72])
-                c.drawRightString(x + w, yy, f"₹ {amt}")
+                c.drawRightString(x + w, yy, money_text(amt))
                 yy -= 12
                 opts = line.get("options") or {}
                 c.setFillColorRGB(0.45, 0.45, 0.45)
@@ -140,13 +143,13 @@ def _render_reportlab(template: Mapping[str, Any], payload: Mapping[str, Any]) -
             c.setFont("Helvetica", 9)
             for cat, total in cats.items():
                 c.drawString(x, yy, str(cat))
-                c.drawRightString(x + w, yy, f"₹ {total}")
+                c.drawRightString(x + w, yy, money_text(total))
                 yy -= 12
             grand = (payload.get("price") or {}).get("total") or (payload.get("combined") or {}).get("grandTotal")
             c.setFont("Helvetica-Bold", 12)
             c.setFillColorRGB(*accent)
             c.drawString(x, yy - 6, "Grand Total")
-            c.drawRightString(x + w, yy - 6, f"₹ {grand}")
+            c.drawRightString(x + w, yy - 6, money_text(grand))
             c.setFillColorRGB(0, 0, 0)
 
         elif btype == "terms":

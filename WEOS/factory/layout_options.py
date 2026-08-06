@@ -1,0 +1,184 @@
+"""Layout options — partitions (fix panels), mesh, track-count resolution."""
+
+from __future__ import annotations
+
+from typing import Any, Mapping, Sequence
+
+
+def normalize_partitions(raw: Any) -> list[dict[str, Any]]:
+    """Return cleaned partition list: [{side, sizeMm, role}]."""
+    if not raw:
+        return []
+    items = raw if isinstance(raw, (list, tuple)) else [raw]
+    out: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, Mapping):
+            continue
+        side = str(item.get("side") or "").strip().lower()
+        if side not in ("top", "bottom", "left", "right"):
+            continue
+        try:
+            size = float(item.get("sizeMm") or item.get("size_mm") or item.get("size") or 0)
+        except (TypeError, ValueError):
+            size = 0.0
+        if size <= 0:
+            continue
+        role = str(item.get("role") or "fix").strip().lower() or "fix"
+        out.append({"side": side, "sizeMm": round(size, 1), "role": role})
+    return out
+
+
+def partition_sizes(partitions: Sequence[Mapping[str, Any]] | None) -> dict[str, float]:
+    sizes = {"top": 0.0, "bottom": 0.0, "left": 0.0, "right": 0.0}
+    for p in normalize_partitions(partitions):
+        sizes[str(p["side"])] = float(sizes.get(str(p["side"]), 0.0)) + float(p["sizeMm"])
+    return sizes
+
+
+def parse_track_count(name: str | None) -> float | None:
+    """Infer track count from catalogue section name (2 / 2.5 / 3 / 4)."""
+    if not name:
+        return None
+    import re
+
+    text = str(name).lower().replace("½", ".5")
+    m = re.search(r"(\d+(?:\.\d)?)\s*[-\s]*track", text)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return None
+    if "2.5" in text or "2,5" in text:
+        return 2.5
+    return None
+
+
+def tracks_available_for_series(series: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """List unique track options from a catalogue series document."""
+    if not series:
+        return []
+    seen: set[float] = set()
+    out: list[dict[str, Any]] = []
+    for sec in series.get("sections") or []:
+        usage = str(sec.get("usage") or "")
+        if usage not in ("track", "track_horizontal", "track_vertical", "frame"):
+            continue
+        tc = parse_track_count(sec.get("name") or "")
+        if tc is None or tc in seen:
+            continue
+        seen.add(tc)
+        out.append(
+            {
+                "trackCount": tc,
+                "sectionId": sec.get("id"),
+                "name": sec.get("name"),
+                "depthMm": sec.get("sectionDepthMm"),
+                "widthMm": sec.get("widthMm"),
+            }
+        )
+    out.sort(key=lambda x: float(x["trackCount"]))
+    return out
+
+
+def resolve_mesh_track(
+    *,
+    mesh: bool,
+    track_count: float | None = None,
+    series: Mapping[str, Any] | None = None,
+    prefer: float = 3.0,
+) -> dict[str, Any]:
+    """
+    Mesh is only valid on 2.5-track or 3-track (or higher).
+    If mesh is requested on a 2-track selection, auto-shift to an available
+    2.5 / 3 track in the same series family (prefer 3 when both exist).
+    """
+    mesh = bool(mesh)
+    available = tracks_available_for_series(series)
+    avail_counts = [float(t["trackCount"]) for t in available]
+
+    current = float(track_count) if track_count is not None else (
+        avail_counts[0] if avail_counts else 2.0
+    )
+
+    mesh_ok = {c for c in (2.5, 3.0, 4.0) if True}  # 2.5+
+    shifted = False
+    reason = None
+    chosen = current
+    chosen_sec = None
+
+    def pick_from_available(want: Sequence[float]) -> float | None:
+        for w in want:
+            if w in avail_counts:
+                return w
+        # any mesh-capable in catalogue
+        mesh_caps = sorted(c for c in avail_counts if c >= 2.5)
+        return mesh_caps[0] if mesh_caps else None
+
+    if mesh:
+        if current < 2.5:
+            # Prefer 3, then 2.5, then whatever mesh-capable exists
+            order = [prefer, 3.0, 2.5, 4.0]
+            # unique preserve order
+            seen: list[float] = []
+            for x in order:
+                if x not in seen:
+                    seen.append(x)
+            picked = pick_from_available(seen)
+            if picked is None:
+                # No catalogue entry — still bump geometry to 3-track for mesh
+                picked = 3.0
+                reason = "mesh_requires_3_track_default"
+            else:
+                reason = f"mesh_auto_shift_{current:g}_to_{picked:g}"
+            chosen = picked
+            shifted = chosen != current
+        else:
+            chosen = current
+            reason = "mesh_ok"
+        for t in available:
+            if float(t["trackCount"]) == float(chosen):
+                chosen_sec = t
+                break
+    else:
+        chosen = current
+        for t in available:
+            if float(t["trackCount"]) == float(chosen):
+                chosen_sec = t
+                break
+
+    return {
+        "mesh": mesh,
+        "trackCount": float(chosen),
+        "shifted": shifted,
+        "reason": reason,
+        "previousTrackCount": float(current),
+        "availableTracks": available,
+        "trackSection": chosen_sec,
+        "meshAllowed": float(chosen) >= 2.5,
+    }
+
+
+def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Extract partitions / mesh / trackCount from a cart line or preview body."""
+    line = line or {}
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    partitions = (
+        line.get("partitions")
+        or (opts or {}).get("partitions")
+        or []
+    )
+    mesh = bool(line.get("mesh") if line.get("mesh") is not None else (opts or {}).get("mesh"))
+    track_raw = line.get("trackCount")
+    if track_raw is None:
+        track_raw = (opts or {}).get("trackCount")
+    try:
+        track_count = float(track_raw) if track_raw is not None and str(track_raw).strip() != "" else None
+    except (TypeError, ValueError):
+        track_count = None
+    return {
+        "partitions": normalize_partitions(partitions),
+        "mesh": mesh,
+        "trackCount": track_count,
+        "sectionSeries": line.get("sectionSeries") or (opts or {}).get("sectionSeries"),
+        "grid": line.get("grid") or (opts or {}).get("grid") or (opts or {}).get("grille"),
+    }

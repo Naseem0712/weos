@@ -37,7 +37,13 @@ def generate_job(
     glass: str | None = None,
     colour: str | None = None,
     handle: str | None = None,
+    partitions: Any = None,
+    mesh: bool = False,
+    track_count: float | None = None,
+    section_series: str | None = None,
 ) -> JobResult:
+    from WEOS.factory.layout_options import resolve_mesh_track
+
     product = load_product(product_id)
     product = apply_customer_options(product, glass=glass, colour=colour, handle=handle)
     product = apply_geometry_overrides(product, overrides)
@@ -45,9 +51,32 @@ def generate_job(
     # Strip non-engineering meta from glass before engine (options catalogue)
     glass_rules = {k: v for k, v in (product.get("glass") or {}).items() if not str(k).startswith("_") and k != "options"}
 
-    geom = product["geometry"]
-    layout = compute_two_track_layout(width, height, geom)
+    geom = dict(product["geometry"])
+    series_doc = None
+    if section_series:
+        try:
+            from WEOS.factory.section_catalogue import get_series
+
+            series_doc = get_series(str(section_series))
+        except Exception:
+            series_doc = None
+    mesh_res = resolve_mesh_track(
+        mesh=bool(mesh),
+        track_count=track_count if track_count is not None else float(geom.get("trackCount") or 2),
+        series=series_doc,
+    )
+    geom["trackCount"] = mesh_res["trackCount"]
+
+    layout = compute_two_track_layout(
+        width,
+        height,
+        geom,
+        partitions=partitions,
+        mesh=bool(mesh_res.get("mesh")),
+        track_count=float(mesh_res["trackCount"]),
+    )
     params = geometry_as_engine_dict(product)
+    params["track_count"] = float(mesh_res["trackCount"])
     style = dim_style_from_profile(product.get("dimensioning") or {})
     drawing = build_drawing(
         layout,
@@ -55,6 +84,12 @@ def generate_job(
         parameters=params,
         style=style,
     )
+    # Stash mesh/track resolution on drawing metadata for PDF/preview consumers
+    meta = dict(drawing.metadata or {})
+    meta["mesh"] = bool(mesh_res.get("mesh"))
+    meta["track_count"] = float(mesh_res["trackCount"])
+    meta["mesh_track"] = mesh_res
+    drawing.metadata = meta
 
     extras_ctx = {
         "leftShutterWidth": layout.left_shutter_width,
@@ -65,6 +100,7 @@ def generate_job(
         "shutterInset": layout.shutter_inset,
         "interlockLeft": layout.interlock_left,
         "interlockRight": layout.interlock_right,
+        "trackCount": float(mesh_res["trackCount"]),
     }
     ctx = build_context(width, height, geom, extras=extras_ctx)
 

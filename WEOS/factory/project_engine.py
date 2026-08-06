@@ -57,11 +57,14 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
     """Calculate one cart line (product × size × qty × options)."""
     from WEOS.factory.live_pricing import apply_selling_to_line_result
 
+    from WEOS.factory.layout_options import line_layout_options
+
     product_id = str(line.get("product") or line.get("productId") or "29mm_sliding")
     product = load_product(product_id, strict=False)
     qty = int(line.get("qty") or line.get("quantity") or 1)
     width = float(line.get("width", 0))
     height = float(line.get("height", 0))
+    lo = line_layout_options(line)
 
     if product.get("_stub") or product.get("status") == "stub":
         return apply_selling_to_line_result(_stub_line_result(line, product), line)
@@ -73,6 +76,10 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
         glass=line.get("glass"),
         colour=line.get("colour"),
         handle=line.get("handle"),
+        partitions=lo.get("partitions"),
+        mesh=bool(lo.get("mesh")),
+        track_count=lo.get("trackCount"),
+        section_series=lo.get("sectionSeries") or line.get("sectionSeries"),
     )
     quote = job.quotation.as_dict() if job.quotation else {}
     weight = job.weight.as_dict() if job.weight else {}
@@ -101,9 +108,14 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
         "glass": line.get("glass"),
         "colour": line.get("colour"),
         "handle": line.get("handle"),
+        "partitions": lo.get("partitions") or [],
+        "mesh": bool(lo.get("mesh")),
+        "trackCount": float((job.layout_meta or {}).get("track_count") or lo.get("trackCount") or 2),
     }
     if grid:
         options["grid"] = grid
+    if line.get("sectionSeries"):
+        options["sectionSeries"] = line.get("sectionSeries")
 
     result_base = {
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
@@ -114,6 +126,10 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
         "width": width,
         "height": height,
         "qty": qty,
+        "sectionSeries": line.get("sectionSeries"),
+        "partitions": lo.get("partitions") or [],
+        "mesh": bool(lo.get("mesh")),
+        "trackCount": options["trackCount"],
         "options": options,
         "layout": layout,
         "glass": [

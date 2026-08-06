@@ -98,7 +98,7 @@ class DrawingModel:
     polylines: list[Polyline] = field(default_factory=list)
     segments: list[Segment] = field(default_factory=list)
     dimensions: list[AlignedDim] = field(default_factory=list)
-    metadata: dict[str, float | str] = field(default_factory=dict)
+    metadata: dict = field(default_factory=dict)
 
     def add_polyline(self, pl: Polyline) -> None:
         self.polylines.append(pl)
