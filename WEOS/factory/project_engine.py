@@ -10,7 +10,7 @@ from WEOS.factory.optimize_engine import CutPiece, GlassPiece, optimize_project_
 from WEOS.factory.pipeline import generate_job
 from WEOS.factory.product_loader import load_product
 from WEOS.factory.project_store import new_quotation_id
-from WEOS.factory.svg_export import render_svg_string
+from WEOS.factory.svg_export import layout_summary_for_job, render_svg_string
 
 
 def _stub_line_result(line: Mapping[str, Any], product: Mapping[str, Any]) -> dict[str, Any]:
@@ -77,7 +77,15 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
     quote = job.quotation.as_dict() if job.quotation else {}
     weight = job.weight.as_dict() if job.weight else {}
     colour = (line.get("colour") or "white")
-    svg = render_svg_string(job.drawing, colour=str(colour).lower().replace(" ", "_"))
+    grid = line.get("grid") or (line.get("options") or {}).get("grid") or (line.get("options") or {}).get("grille")
+    svg = render_svg_string(
+        job.drawing,
+        colour=str(colour).lower().replace(" ", "_"),
+        annotations=True,
+        grid=grid,
+        include_plan=True,
+    )
+    layout = layout_summary_for_job(width=width, height=height, layout_meta=job.layout_meta)
 
     # Scale commercial totals by qty
     unit_total = float(quote.get("total", 0))
@@ -89,6 +97,14 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
             brush_m = b.length_mm / 1000.0
             break
 
+    options = {
+        "glass": line.get("glass"),
+        "colour": line.get("colour"),
+        "handle": line.get("handle"),
+    }
+    if grid:
+        options["grid"] = grid
+
     result_base = {
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
         "product": job.profile_id,
@@ -98,11 +114,8 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
         "width": width,
         "height": height,
         "qty": qty,
-        "options": {
-            "glass": line.get("glass"),
-            "colour": line.get("colour"),
-            "handle": line.get("handle"),
-        },
+        "options": options,
+        "layout": layout,
         "glass": [
             {
                 "name": g.name,
@@ -168,6 +181,7 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
         },
         "quotationDetail": quote,
         "preview": {"svg": svg},
+        "layoutMeta": dict(job.layout_meta or {}),
         "_rawCutList": [{"length_mm": c.length_mm, "quantity": c.quantity * qty, "profile": c.profile} for c in job.cut_list],
         "_rawGlass": [
             {"width_mm": g.width_mm, "height_mm": g.height_mm, "qty": g.quantity * qty, "thickness_mm": g.thickness_mm, "name": g.name}

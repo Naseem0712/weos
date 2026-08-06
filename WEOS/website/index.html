@@ -95,6 +95,39 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 .block.resize-e{cursor:ew-resize}
 .tpl-swatches{display:flex;gap:.35rem;flex-wrap:wrap;margin:.35rem 0}
 .tpl-swatches button{width:28px;height:28px;border-radius:6px;border:2px solid #fff;box-shadow:0 0 0 1px #ccc;cursor:pointer}
+/* Learning Engine V2 */
+.learn-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:1rem}
+@media(max-width:1100px){.learn-grid{grid-template-columns:1fr}}
+.pending-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.85rem 1rem;margin-bottom:.65rem;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.pending-card:hover,.pending-card.active{border-color:var(--green);box-shadow:0 6px 20px rgba(10,90,72,.08)}
+.pending-card .pc-title{font-weight:600;margin:0 0 .2rem}
+.pending-card .pc-meta{font-size:.78rem;color:var(--muted)}
+.pending-card .pc-kind{display:inline-block;background:#e7f3ee;color:var(--green);border-radius:6px;padding:.1rem .4rem;font-size:.68rem;font-weight:600;margin-right:.35rem}
+.conf-bar{height:6px;background:#ece8df;border-radius:99px;overflow:hidden;margin:.35rem 0 .15rem}
+.conf-bar>i{display:block;height:100%;background:var(--green);border-radius:99px}
+.tree ul{list-style:none;margin:.2rem 0 .2rem .9rem;padding:0}
+.tree>ul{margin-left:0}
+.tree li{font-size:.88rem;padding:.15rem 0}
+.tree .branch{font-weight:600;color:var(--ink)}
+.tree .leaf{color:var(--muted)}
+.tree .leaf b{color:var(--ink);font-weight:500}
+.review-field{margin-bottom:.55rem}
+.review-field label{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:.2rem}
+.review-field input,.review-field select,.review-field textarea{width:100%;padding:.45rem .55rem;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit}
+.review-field textarea{min-height:64px;resize:vertical}
+.prof-mini{border:1px dashed var(--line);border-radius:10px;padding:.55rem .65rem;margin-bottom:.45rem;background:#fff}
+.safe-banner{background:#0f2a22;color:#cfe9dc;border-radius:10px;padding:.65rem .85rem;font-size:.82rem;margin-bottom:.75rem}
+.safe-banner strong{color:#fff}
+.memory-banner{display:none;background:linear-gradient(120deg,#1a3d32,#0f2a22);color:#e8f2ed;border-radius:12px;padding:.85rem 1rem;margin-bottom:.75rem;border:1px solid #2a6b55}
+.memory-banner.show{display:block}
+.memory-banner .mb-title{font-family:Fraunces,serif;font-size:1.05rem;margin:0 0 .25rem}
+.memory-banner .mb-body{font-size:.88rem;color:#9bb0a4;margin:0 0 .55rem}
+.memory-banner .mb-actions{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+.stream-item{border-bottom:1px solid var(--line);padding:.45rem 0;font-size:.84rem}
+.stream-item .ts{font-size:.72rem;color:var(--muted)}
+.sug-card{border:1px solid var(--line);border-radius:10px;padding:.65rem .75rem;margin-bottom:.5rem;background:#fff}
+.sug-card .sug-act{font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;color:var(--green);font-weight:600}
+.fx-live{font-family:ui-monospace,monospace;font-size:.85rem;background:#f7f4ee;border-radius:8px;padding:.55rem .7rem;margin-top:.4rem}
 </style>
 </head>
 <body>
@@ -108,6 +141,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
     <button class="navbtn" data-view="library">Product Library</button>
     <button class="navbtn" data-view="product">Product Details</button>
     <button class="navbtn" data-view="admin">Admin · Products</button>
+    <button class="navbtn" data-view="learning">Learning Engine</button>
     <button class="navbtn" data-view="formulas">Formula Builder</button>
     <button class="navbtn" data-view="templates">Template Designer</button>
   </aside>
@@ -160,11 +194,19 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 
     <!-- CART -->
     <section id="view-cart" class="grid hidden">
+      <div id="memoryBanner" class="memory-banner" role="status">
+        <p class="mb-title" id="memoryTitle">Customer Memory</p>
+        <p class="mb-body" id="memoryBody"></p>
+        <div class="mb-actions">
+          <button class="btn sm" id="btnMemoryApply" type="button">Haan, apply karo</button>
+          <button class="btn ghost sm" id="btnMemoryDismiss" type="button" style="color:#cfe9dc;border-color:#2a6b55">Nahi, naya rakho</button>
+        </div>
+      </div>
       <div class="two">
         <div class="panel">
           <div class="row" style="margin-bottom:.6rem">
             <div class="grow"><label class="l">Project name</label><input id="cartName" value="WEOS Project"/></div>
-            <div class="grow"><label class="l">Customer</label><input id="cartCustomer" value="" placeholder="Customer name (rates saved per customer)"/></div>
+            <div class="grow"><label class="l">Customer</label><input id="cartCustomer" value="" placeholder="Customer name (rates + memory)"/></div>
             <div><label class="l">PDF Brand</label>
               <select id="pdfBrand">
                 <option value="marqt">MAR-QT Style</option>
@@ -336,6 +378,228 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
       </div>
     </section>
 
+    <!-- LEARNING ENGINE V2 -->
+    <section id="view-learning" class="grid hidden">
+      <div class="safe-banner">
+        <strong>Safety:</strong> AI only suggests. Every detection stays in Pending Review until you Approve.
+        Approve writes the Knowledge Base — production products are never changed automatically.
+      </div>
+      <div class="tabs" id="learnTabs">
+        <button class="tab active" data-ltab="upload">Upload &amp; Review</button>
+        <button class="tab" data-ltab="tree">Product Library Tree</button>
+        <button class="tab" data-ltab="builder">Product Builder</button>
+        <button class="tab" data-ltab="live">Engineering Live</button>
+        <button class="tab" data-ltab="commercial">Commercial Intel</button>
+        <button class="tab" data-ltab="suggestions">AI Suggestions</button>
+        <button class="tab" data-ltab="memory">Memory &amp; Brain</button>
+      </div>
+
+      <div id="learn-upload" class="learn-grid">
+        <div>
+          <div class="panel" style="margin-bottom:1rem">
+            <strong>Teach the Knowledge AI</strong>
+            <p class="muted" style="margin:.25rem 0 .6rem">Upload a product catalogue PDF, old quotation, image, or JSON. Nothing goes live until you approve.</p>
+            <div class="row">
+              <div><label class="l">What is this?</label>
+                <select id="learnMode">
+                  <option value="auto">Auto-detect</option>
+                  <option value="catalogue">Product catalogue (series + profiles)</option>
+                  <option value="profiles">Profile cross-sections</option>
+                  <option value="quotation">Old quotation</option>
+                  <option value="template">Quotation template suggestion</option>
+                  <option value="formula">Formulas</option>
+                  <option value="json">Structured JSON</option>
+                </select>
+              </div>
+              <div class="grow"><label class="l">File</label><input id="learnFile" type="file" accept=".pdf,.json,.png,.jpg,.jpeg,.webp,.docx,.dxf,.txt"/></div>
+              <button class="btn" id="btnLearnUpload" style="margin-top:1rem">Extract → Pending</button>
+            </div>
+            <div class="err" id="learnErr" style="margin-top:.5rem"></div>
+            <p class="muted" id="learnStatus" style="margin:.5rem 0 0;font-size:.82rem"></p>
+          </div>
+          <div class="panel">
+            <div class="row" style="justify-content:space-between;margin-bottom:.5rem">
+              <strong>Pending Review</strong>
+              <button class="btn ghost sm" id="btnLearnRefresh">Refresh</button>
+            </div>
+            <div id="pendingList"><p class="muted">No pending items</p></div>
+          </div>
+        </div>
+        <div class="panel" id="reviewPanel">
+          <strong>Review card</strong>
+          <p class="muted" style="margin:.25rem 0 .6rem">Fix anything the AI got wrong, then Approve or Reject.</p>
+          <div id="reviewBody"><p class="muted">Select a pending item</p></div>
+          <div class="row" id="reviewActions" style="margin-top:.75rem;display:none">
+            <button class="btn" id="btnLearnApprove">Approve → Knowledge Base</button>
+            <button class="btn sec" id="btnLearnReject">Reject</button>
+            <button class="btn ghost" id="btnLearnSaveEdits">Save corrections</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="learn-tree" class="hidden">
+        <div class="panel">
+          <div class="row" style="margin-bottom:.6rem">
+            <div class="grow"><label class="l">Series</label><select id="treeSeriesSelect"><option value="">All approved series</option></select></div>
+            <button class="btn sm" id="btnTreeRefresh" style="margin-top:1rem">Refresh tree</button>
+          </div>
+          <div class="tree" id="productTree"><p class="muted">Approve a catalogue first to build the tree.</p></div>
+        </div>
+      </div>
+
+      <div id="learn-builder" class="hidden">
+        <div class="two">
+          <div class="panel">
+            <strong>Product Builder</strong>
+            <p class="muted" style="margin:.25rem 0 .6rem">Pick an approved series — geometry, profiles, glass, hardware and rules load automatically.</p>
+            <div class="row">
+              <div class="grow"><label class="l">Approved series</label><select id="builderSeries"></select></div>
+              <button class="btn" id="btnBuilderLoad" style="margin-top:1rem">Load series</button>
+            </div>
+            <div id="builderSummary" style="margin-top:.75rem"></div>
+            <div class="row" style="margin-top:.75rem">
+              <button class="btn sec sm" id="btnBuilderPublish" disabled>Publish draft product…</button>
+              <span class="muted" style="font-size:.78rem">Optional — creates products/&lt;id&gt;/product.json stub only when you confirm.</span>
+            </div>
+          </div>
+          <div class="panel">
+            <strong>Loaded config</strong>
+            <pre class="optbox" id="builderOut" style="max-height:420px">Select a series</pre>
+          </div>
+        </div>
+      </div>
+
+      <div id="learn-live" class="hidden">
+        <div class="two">
+          <div class="panel">
+            <div class="row" style="justify-content:space-between;margin-bottom:.5rem">
+              <strong>Live engineering stream</strong>
+              <button class="btn ghost sm" id="btnEngStreamRefresh">Refresh</button>
+            </div>
+            <p class="muted" style="margin:0 0 .5rem;font-size:.82rem">Profiles, thickness, hardware situations &amp; weights from Calculate — observation only.</p>
+            <div id="engStream"><p class="muted">No observations yet</p></div>
+          </div>
+          <div class="panel">
+            <strong>Engineering insights</strong>
+            <ul id="engTips" style="margin:.4rem 0;padding-left:1.1rem;font-size:.88rem"></ul>
+            <pre class="optbox" id="engOut" style="max-height:280px;margin-top:.5rem"></pre>
+            <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
+            <strong>Material weight (live)</strong>
+            <div class="row" style="margin-top:.4rem">
+              <div class="grow"><label class="l">Formula</label>
+                <select id="fxMatKey">
+                  <option value="aluminium_section">Aluminium section</option>
+                  <option value="aluminium_sheet">Aluminium sheet</option>
+                  <option value="iron_steel">Iron / steel</option>
+                  <option value="glass">Glass</option>
+                  <option value="glass_with_waste">Glass + waste</option>
+                </select>
+              </div>
+              <button class="btn sm" id="btnFxWeight" style="margin-top:1rem">Compute</button>
+            </div>
+            <div class="row" style="margin-top:.4rem">
+              <div><label class="l">Length mm</label><input id="fxP_lengthMm" type="number" value="1500" style="width:90px"/></div>
+              <div><label class="l">kg/m</label><input id="fxP_weightPerMeterKg" type="number" step="0.001" value="1.2" style="width:80px"/></div>
+              <div><label class="l">Waste %</label><input id="fxP_wastePercent" type="number" step="0.1" value="8" style="width:70px"/></div>
+              <div><label class="l">Thk mm</label><input id="fxP_thicknessMm" type="number" step="0.1" value="5" style="width:70px"/></div>
+              <div><label class="l">W mm</label><input id="fxP_widthMm" type="number" value="1000" style="width:80px"/></div>
+              <div><label class="l">H mm</label><input id="fxP_heightMm" type="number" value="1000" style="width:80px"/></div>
+            </div>
+            <div class="fx-live" id="fxWeightOut">Pick formula → Compute</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="learn-commercial" class="hidden">
+        <div class="two">
+          <div class="panel">
+            <div class="row" style="justify-content:space-between;margin-bottom:.5rem">
+              <strong>Commercial Intelligence</strong>
+              <button class="btn ghost sm" id="btnComRefresh">Refresh</button>
+            </div>
+            <ul id="comTips" style="margin:.4rem 0;padding-left:1.1rem;font-size:.88rem"></ul>
+            <div class="row2" style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:.5rem" id="comKpis"></div>
+            <pre class="optbox" id="comOut" style="max-height:320px;margin-top:.75rem"></pre>
+          </div>
+          <div class="panel">
+            <strong>Customer Memory lookup</strong>
+            <p class="muted" style="margin:.25rem 0 .5rem;font-size:.82rem">Enter a customer to see preferred payment, colour, glass, discount &amp; last quotes.</p>
+            <div class="row">
+              <div class="grow"><label class="l">Customer</label><input id="memLookup" placeholder="e.g. ABC Builders"/></div>
+              <button class="btn sm" id="btnMemLookup" style="margin-top:1rem">Load memory</button>
+            </div>
+            <pre class="optbox" id="memOut" style="max-height:360px;margin-top:.75rem">—</pre>
+          </div>
+        </div>
+      </div>
+
+      <div id="learn-suggestions" class="hidden">
+        <div class="panel">
+          <div class="row" style="justify-content:space-between;margin-bottom:.5rem">
+            <strong>AI Suggestions</strong>
+            <button class="btn ghost sm" id="btnSugRefresh">Refresh</button>
+          </div>
+          <p class="muted" style="margin:0 0 .6rem">Hints + one-click queue to Pending Review (engineering). Commercial prefs return for quote confirm only — never silent production overwrite.</p>
+          <ul id="sugList"></ul>
+          <h4 style="font-family:Fraunces,serif;margin:1rem 0 .4rem;font-weight:500">One-click apply</h4>
+          <div id="sugActions"></div>
+          <pre class="optbox" id="sugOut" style="margin-top:.75rem;max-height:240px"></pre>
+        </div>
+      </div>
+
+      <div id="learn-memory" class="hidden">
+        <div class="safe-banner" style="margin-bottom:1rem">
+          <strong>Engineering Manufacturing Memory:</strong> AI observes &amp; suggests only.
+          Admin alone Approves / Rejects / Merges / Versions / Rollbacks. Production never auto-writes.
+        </div>
+        <div class="two">
+          <div class="panel">
+            <strong>Memory browser</strong>
+            <p class="muted" style="margin:.25rem 0 .6rem;font-size:.82rem">Eleven separate memories — never mixed.</p>
+            <div class="row">
+              <div class="grow"><label class="l">Memory type</label>
+                <select id="memTypeSelect"></select>
+              </div>
+              <button class="btn sm" id="btnMemBrowse" style="margin-top:1rem">Browse</button>
+            </div>
+            <div id="memBrowserList" style="margin-top:.6rem;max-height:280px;overflow:auto"></div>
+            <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
+            <strong>Search</strong>
+            <div class="row" style="margin-top:.4rem">
+              <div class="grow"><label class="l">Query</label>
+                <input id="memSearchQ" placeholder="sliding systems with 30mm track"/>
+              </div>
+              <button class="btn sm" id="btnMemSearch" style="margin-top:1rem">Search</button>
+            </div>
+            <div id="memSearchHits" style="margin-top:.5rem;font-size:.85rem"></div>
+          </div>
+          <div class="panel">
+            <strong>Engineering Brain</strong>
+            <p class="muted" style="margin:.25rem 0 .6rem;font-size:.82rem">Load approved KB for a series → BOM / weight / quotation plan.</p>
+            <div class="row">
+              <div class="grow"><label class="l">Series</label>
+                <input id="brainSeries" value="29mm_sliding_smoke" placeholder="S29 / 29mm_sliding_smoke"/>
+              </div>
+              <button class="btn sm" id="btnBrainLoad" style="margin-top:1rem">Brain load</button>
+              <button class="btn sec sm" id="btnBrainGen" style="margin-top:1rem">Generate</button>
+            </div>
+            <pre class="optbox" id="brainOut" style="max-height:260px;margin-top:.6rem">—</pre>
+            <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
+            <strong>KB versions &amp; rollback</strong>
+            <p class="muted" id="memKbStatus" style="margin:.25rem 0 .4rem;font-size:.82rem">—</p>
+            <div class="row">
+              <div class="grow"><label class="l">Rollback to version</label>
+                <select id="memRollbackVer"></select>
+              </div>
+              <button class="btn sec sm" id="btnMemRollback" style="margin-top:1rem">Rollback</button>
+              <button class="btn ghost sm" id="btnMemVerRefresh" style="margin-top:1rem">Refresh</button>
+            </div>
+            <pre class="optbox" id="memAdminOut" style="max-height:160px;margin-top:.6rem">—</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- FORMULA BUILDER -->
     <section id="view-formulas" class="grid hidden">
       <div class="two">
@@ -452,6 +716,12 @@ const state = {
   template: null,
   selectedBlock: null,
   drag: null,
+  learnPending: [],
+  learnSelected: null,
+  learnDetail: null,
+  builderBundle: null,
+  customerMemory: null,
+  memoryAskedFor: null,
 };
 const $ = (id) => document.getElementById(id);
 const toast = (m) => { const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); };
@@ -471,7 +741,7 @@ async function api(path, opts={}) {
 function setView(v) {
   state.view = v;
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view===v));
-  ['dashboard','projects','cart','library','product','admin','formulas','templates'].forEach(id => {
+  ['dashboard','projects','cart','library','product','admin','learning','formulas','templates'].forEach(id => {
     const el = $('view-'+id); if (el) el.classList.toggle('hidden', id!==v);
   });
   const titles = {
@@ -481,6 +751,7 @@ function setView(v) {
     library:['Product Library','Digital catalogue + manufacturing source of truth'],
     product:['Product Details','Specs from Product JSON only'],
     admin:['Admin · Product Library','Create products without Python — materials, formulas, PDF layout'],
+    learning:['Learning Engine','Upload → Review → Approve → Knowledge Base (never auto-production)'],
     formulas:['Formula Builder','Safe expressions over width, height, shutterCount, glassArea…'],
     templates:['Template Designer','Drag blocks → JSON → Customer & Factory PDFs per brand'],
   };
@@ -492,6 +763,7 @@ function setView(v) {
   if (v==='library') renderLibrary();
   if (v==='cart') { renderCart(); refreshPreview(); }
   if (v==='admin') initAdmin();
+  if (v==='learning') initLearning();
   if (v==='formulas') initFormulas();
   if (v==='templates') initTemplates();
 }
@@ -788,6 +1060,7 @@ async function openProject(id) {
   state.lines = doc.lines || [];
   $('cartName').value = doc.name || '';
   $('cartCustomer').value = doc.customer || '';
+  state.memoryAskedFor = null;
   if (doc.lastCalculation?.price) {
     state.lastResult = doc.lastCalculation;
     $('cartTotal').textContent = money(doc.lastCalculation.price.total);
@@ -795,6 +1068,7 @@ async function openProject(id) {
   }
   renderCart(); refreshPreview(); updatePdfLinks();
   toast('Loaded '+id);
+  maybeAskCustomerMemory();
 }
 
 async function calculate() {
@@ -864,11 +1138,22 @@ $('sectionsFile').onchange = async (ev) => {
 ['lineW','lineH','lineQty','lineColour','lineGlass','lineProduct','lineSeries','lineSaleUnit','lineSellRate','lineHandle','lineDesc','cartCustomer'].forEach(id => {
   const el = $(id); if (!el) return;
   el.addEventListener('input', () => { scheduleLivePrice(); if (['lineW','lineH','lineColour','lineGlass','lineProduct'].includes(id)) refreshPreview(); });
-  el.addEventListener('change', () => { scheduleLivePrice(); if (['lineW','lineH','lineColour','lineGlass','lineProduct'].includes(id)) refreshPreview(); });
+  el.addEventListener('change', () => {
+    scheduleLivePrice();
+    if (['lineW','lineH','lineColour','lineGlass','lineProduct'].includes(id)) refreshPreview();
+    if (id === 'cartCustomer') maybeAskCustomerMemory();
+  });
 });
+if ($('cartCustomer')) {
+  $('cartCustomer').addEventListener('blur', () => maybeAskCustomerMemory());
+}
 if ($('btnAgentRefresh')) $('btnAgentRefresh').onclick = refreshAgent;
+if ($('btnMemoryApply')) $('btnMemoryApply').onclick = () => applyCustomerMemoryFromBanner();
+if ($('btnMemoryDismiss')) $('btnMemoryDismiss').onclick = () => hideMemoryBanner(true);
 $('btnNewFromDash').onclick = $('btnNewProj').onclick = async () => {
   state.projectId=null; state.lines=[]; state.lastResult=null;
+  state.customerMemory=null; state.memoryAskedFor=null;
+  hideMemoryBanner(false);
   $('cartName').value='New WEOS Project'; $('cartCustomer').value='';
   $('cartTotal').textContent='₹ —'; renderCart(); setView('cart'); await ensureProject(); scheduleLivePrice();
 };
@@ -1132,6 +1417,607 @@ $('btnTplPreview').onclick = async () => {
   if (!res.ok) { toast('Preview failed'); return; }
   const blob = await res.blob();
   window.open(URL.createObjectURL(blob), '_blank');
+};
+
+/* ── Customer Memory (quote flow) ─────────────────────────────────────────── */
+function hideMemoryBanner(rememberDismiss) {
+  const b = $('memoryBanner');
+  if (b) b.classList.remove('show');
+  if (rememberDismiss) {
+    const c = ($('cartCustomer').value || '').trim().toLowerCase();
+    if (c) state.memoryAskedFor = c;
+  }
+}
+async function maybeAskCustomerMemory() {
+  const customer = ($('cartCustomer').value || '').trim();
+  if (!customer) { hideMemoryBanner(false); return; }
+  const key = customer.toLowerCase();
+  if (state.memoryAskedFor === key) return;
+  try {
+    const mem = await api('/api/customers/'+encodeURIComponent(customer)+'/memory');
+    state.customerMemory = mem;
+    if (!mem.hasMemory) { hideMemoryBanner(false); state.memoryAskedFor = key; return; }
+    state.memoryAskedFor = key;
+    $('memoryTitle').textContent = mem.askPrompt || 'Customer Memory';
+    const bits = [
+      mem.preferredColour && ('Colour: '+mem.preferredColour),
+      mem.preferredGlass && ('Glass: '+mem.preferredGlass),
+      mem.preferredHandle && ('Handle: '+mem.preferredHandle),
+      mem.preferredPayment && ('Payment: '+mem.preferredPayment),
+      mem.averageDiscountPercent!=null && ('Avg discount: '+mem.averageDiscountPercent+'%'),
+      mem.averageProjectValue!=null && ('Avg project: ₹'+Number(mem.averageProjectValue).toLocaleString('en-IN')),
+    ].filter(Boolean);
+    $('memoryBody').textContent = (mem.message || '') + (bits.length ? (' · '+bits.join(' · ')) : '');
+    $('memoryBanner').classList.add('show');
+  } catch(_) { hideMemoryBanner(false); }
+}
+async function applyCustomerMemoryFromBanner() {
+  const customer = ($('cartCustomer').value || '').trim();
+  if (!customer) return;
+  try {
+    const res = await api('/api/customers/memory/apply', {method:'POST', body:{customer, confirm:true}});
+    const s = res.settings || {};
+    if (s.colour) $('lineColour').value = s.colour;
+    if (s.glass) $('lineGlass').value = s.glass;
+    if (s.handle) $('lineHandle').value = s.handle;
+    if (s.saleUnit) $('lineSaleUnit').value = s.saleUnit;
+    const hints = s.sellingRateHints || [];
+    const prod = $('lineProduct').value;
+    const hit = hints.find(h => h.product === prod) || hints[0];
+    if (hit && hit.medianRate != null) $('lineSellRate').value = hit.medianRate;
+    // Stamp prefs onto existing cart lines that match product (light touch)
+    state.lines = (state.lines || []).map(ln => ({
+      ...ln,
+      colour: s.colour || ln.colour,
+      glass: s.glass || ln.glass,
+      handle: s.handle || ln.handle,
+      saleUnit: s.saleUnit || ln.saleUnit,
+    }));
+    renderCart();
+    scheduleLivePrice();
+    hideMemoryBanner(true);
+    toast('Commercial settings applied for '+customer);
+    refreshAgent();
+  } catch(e) { toast(e.message); }
+}
+
+/* ── Learning Engine V2 ──────────────────────────────────────────────────── */
+function initLearning() {
+  refreshLearnStatus();
+  refreshPending();
+  document.querySelectorAll('#learnTabs .tab').forEach(t => {
+    t.onclick = () => {
+      document.querySelectorAll('#learnTabs .tab').forEach(x => x.classList.toggle('active', x===t));
+      ['upload','tree','builder','live','commercial','suggestions','memory'].forEach(id => {
+        const el = $('learn-'+id); if (el) el.classList.toggle('hidden', id!==t.dataset.ltab);
+      });
+      if (t.dataset.ltab==='tree') refreshTree();
+      if (t.dataset.ltab==='builder') refreshBuilderList();
+      if (t.dataset.ltab==='live') refreshEngineeringLive();
+      if (t.dataset.ltab==='commercial') refreshCommercialIntel();
+      if (t.dataset.ltab==='suggestions') refreshSuggestions();
+      if (t.dataset.ltab==='memory') initMemoryBrain();
+    };
+  });
+}
+async function refreshLearnStatus() {
+  try {
+    const st = await api('/api/learning/status');
+    const live = st.liveLearning || {};
+    $('learnStatus').textContent =
+      `KB v${st.kbVersion||0} · Pending ${st.pendingCount||0} · Series ${st.libraries?.product_series||0} · Profiles ${st.libraries?.profiles||0} · Eng obs ${live.engineeringObservations||0} · Quote obs ${live.commercialObservations||0}`;
+  } catch(e) { $('learnStatus').textContent = 'Learning API unavailable: '+e.message; }
+}
+async function refreshPending() {
+  try {
+    const data = await api('/api/learning/pending');
+    state.learnPending = data.pending || [];
+    if (!state.learnPending.length) {
+      $('pendingList').innerHTML = '<p class="muted">No pending items — upload a catalogue or quotation.</p>';
+      return;
+    }
+    $('pendingList').innerHTML = state.learnPending.map(p => {
+      const conf = Math.round((p.confidence||0)*100);
+      return `<div class="pending-card ${state.learnSelected===p.proposal_id?'active':''}" data-pid="${p.proposal_id}">
+        <div class="pc-title"><span class="pc-kind">${p.kind||'item'}</span>${esc(p.title||p.proposal_id)}</div>
+        <div class="pc-meta">${esc(p.summary||'')} ${p.source_name?('· '+esc(p.source_name)):''}</div>
+        <div class="conf-bar"><i style="width:${conf}%"></i></div>
+        <div class="pc-meta">Confidence ~${conf}% ${p.legacy?'· legacy':''}</div>
+      </div>`;
+    }).join('');
+    $('pendingList').querySelectorAll('[data-pid]').forEach(el => {
+      el.onclick = () => openReview(el.dataset.pid);
+    });
+  } catch(e) {
+    $('pendingList').innerHTML = `<p class="err">${esc(e.message)}</p>`;
+  }
+}
+function esc(s){ return String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function openReview(pid) {
+  state.learnSelected = pid;
+  refreshPending();
+  try {
+    const doc = await api('/api/learning/pending/'+encodeURIComponent(pid));
+    state.learnDetail = doc;
+    $('reviewActions').style.display = 'flex';
+    if (doc.kind === 'engineering_rules' || doc.proposed_profile) {
+      renderLegacyReview(doc);
+      return;
+    }
+    renderV2Review(doc);
+  } catch(e) {
+    $('reviewBody').innerHTML = `<p class="err">${esc(e.message)}</p>`;
+  }
+}
+function renderLegacyReview(doc) {
+  const rows = (doc.review||[]).slice(0,40).map(r =>
+    `<tr><td>${esc(r.path)}</td><td>${esc(r.detected_value)}</td><td>${esc(r.existing_value)}</td><td>${r.confidence_percent||''}%</td></tr>`
+  ).join('');
+  $('reviewBody').innerHTML = `
+    <p><strong>${esc(doc.profile_id||doc.proposal_id)}</strong> · engineering rules</p>
+    <p class="muted" style="font-size:.82rem">${esc(doc.reason||'')}</p>
+    <div style="overflow:auto;max-height:360px"><table><thead><tr><th>Rule</th><th>Detected</th><th>Current</th><th>Conf</th></tr></thead><tbody>${rows||'<tr><td colspan="4">No rows</td></tr>'}</tbody></table></div>
+    <p class="muted" style="font-size:.78rem;margin-top:.5rem">Legacy path may write production profile JSON on approve — review carefully.</p>`;
+}
+function renderV2Review(doc) {
+  const payload = doc.payload || {};
+  const kind = doc.kind;
+  let html = `<p><span class="pc-kind">${esc(kind)}</span> <strong>${esc(doc.title||'')}</strong></p>
+    <p class="muted" style="font-size:.82rem">${esc(doc.summary||'')}</p>`;
+  if ((doc.notes||[]).length) html += `<ul style="font-size:.82rem;color:var(--muted)">${doc.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`;
+
+  if (kind === 'catalogue_bundle') {
+    const s = payload.series || {};
+    html += `<h4 style="margin:0.6rem 0 0.35rem;font-family:Fraunces,serif">Product Series</h4>
+      ${field('Series name','seriesName', s.seriesName)}
+      ${field('Brand','brand', s.brand)}
+      ${field('Category','productCategory', s.productCategory)}
+      ${field('Alloy','aluminiumAlloy', s.aluminiumAlloy)}
+      ${field('Temper','temper', s.temper)}
+      ${field('Wall thickness (mm)','wallThicknessMm', s.wallThicknessMm)}
+      ${field('Powder coating','powderCoatingType', s.powderCoatingType)}
+      ${field('Surface finish','surfaceFinish', s.surfaceFinish)}
+      ${field('Description','productDescription', s.productDescription, true)}
+      <h4 style="margin:0.8rem 0 0.35rem;font-family:Fraunces,serif">Profiles (${(payload.profiles||[]).length})</h4>
+      <div id="reviewProfiles">${(payload.profiles||[]).map((p,i)=>profileCard(p,i)).join('')||'<p class="muted">None detected — add manually after approve or re-upload.</p>'}</div>
+      <h4 style="margin:0.8rem 0 0.35rem;font-family:Fraunces,serif">Hardware (${(payload.hardware||[]).length})</h4>
+      <ul style="font-size:.85rem">${(payload.hardware||[]).map(h=>`<li><b>${esc(h.hardwareType||'')}</b> — ${esc(h.name||'')} ${h.partNumber?('· '+esc(h.partNumber)):''}</li>`).join('')||'<li class="muted">None</li>'}</ul>
+      <h4 style="margin:0.8rem 0 0.35rem;font-family:Fraunces,serif">Glass (${(payload.glass||[]).length})</h4>
+      <ul style="font-size:.85rem">${(payload.glass||[]).map(g=>`<li>${esc(g.name||'')}</li>`).join('')||'<li class="muted">None</li>'}</ul>
+      ${(payload.formulas||[]).length?`<h4 style="margin:0.8rem 0 0.35rem;font-family:Fraunces,serif">Formulas</h4><ul style="font-size:.82rem">${payload.formulas.map(f=>`<li>${esc(f.expression||f.name||'')}</li>`).join('')}</ul>`:''}`;
+  } else if (kind === 'quotation_pattern') {
+    const pat = payload.pattern || {};
+    const sug = payload.suggestions || [];
+    html += `<ul>${sug.map(s=>`<li>${esc(s)}</li>`).join('')}</ul>
+      ${field('Warranty','warranty', pat.warranty, true)}
+      ${field('Payment','paymentTerm', pat.paymentTerm, true)}
+      ${field('Installation','installationTerm', pat.installationTerm, true)}
+      ${field('Terms excerpt','termsExcerpt', pat.termsExcerpt, true)}`;
+  } else if (kind === 'template') {
+    html += `<p class="muted">Suggestion only — existing templates will not be overwritten.</p>
+      <pre class="optbox">${esc(JSON.stringify(payload,null,2))}</pre>`;
+  } else if (kind === 'formula') {
+    html += `<ul>${(payload.formulas||[]).map(f=>`<li><b>${esc(f.category||'')}</b> ${esc(f.expression||'')}</li>`).join('')}</ul>`;
+  } else {
+    html += `<pre class="optbox">${esc(JSON.stringify(payload,null,2))}</pre>`;
+  }
+  $('reviewBody').innerHTML = html;
+}
+function field(label, key, val, area) {
+  const v = val==null?'':val;
+  if (area) return `<div class="review-field"><label>${esc(label)}</label><textarea data-series="${key}">${esc(v)}</textarea></div>`;
+  return `<div class="review-field"><label>${esc(label)}</label><input data-series="${key}" value="${esc(v)}"/></div>`;
+}
+function profileCard(p, i) {
+  const dims = [p.crossSectionWidthMm, p.crossSectionHeightMm].filter(x=>x!=null).join(' × ');
+  const pos = (p.usePosition||[]).join(', ');
+  return `<div class="prof-mini" data-pi="${i}">
+    <div class="row" style="justify-content:space-between">
+      <strong style="font-size:.9rem">${esc(p.profileType||'Profile')}</strong>
+      <span class="muted" style="font-size:.75rem">p.${p.pdfPageNumber??'—'} · conf ${Math.round((p.confidence||0)*100)}%</span>
+    </div>
+    <div class="review-field" style="margin-top:.35rem"><label>Name</label><input data-prof="profileName" value="${esc(p.profileName||'')}"/></div>
+    <div class="row">
+      <div class="grow review-field"><label>Code</label><input data-prof="profileCode" value="${esc(p.profileCode||'')}"/></div>
+      <div class="grow review-field"><label>Type</label>
+        <select data-prof="profileType">
+          ${['Outer Track','Shutter Frame','Interlock','Mullion','Transom','Beading','Glass Beading','Sash','Handle Section','Adapter','Corner Profile','Extension Profile','Drain Cover','Meeting Rail','Other'].map(t=>`<option ${t===(p.profileType||'')?'selected':''}>${t}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="grow review-field"><label>W (mm)</label><input data-prof="crossSectionWidthMm" type="number" step="0.1" value="${p.crossSectionWidthMm??''}"/></div>
+      <div class="grow review-field"><label>H (mm)</label><input data-prof="crossSectionHeightMm" type="number" step="0.1" value="${p.crossSectionHeightMm??''}"/></div>
+      <div class="grow review-field"><label>Wall</label><input data-prof="wallThicknessMm" type="number" step="0.1" value="${p.wallThicknessMm??''}"/></div>
+      <div class="grow review-field"><label>kg/m</label><input data-prof="weightPerMeterKg" type="number" step="0.001" value="${p.weightPerMeterKg??''}"/></div>
+    </div>
+    <div class="muted" style="font-size:.75rem">Usage: ${esc(pos||'—')} · BOM role: ${esc(p.bomRole||'—')}${dims?(' · '+dims+' mm'):''}</div>
+  </div>`;
+}
+function collectReviewPayload() {
+  const doc = state.learnDetail;
+  if (!doc) return null;
+  const payload = JSON.parse(JSON.stringify(doc.payload || {}));
+  if (doc.kind === 'catalogue_bundle') {
+    payload.series = payload.series || {};
+    $('reviewBody').querySelectorAll('[data-series]').forEach(el => {
+      let v = el.value;
+      if (el.type==='number') v = v===''?null:Number(v);
+      payload.series[el.dataset.series] = v;
+    });
+    $('reviewBody').querySelectorAll('.prof-mini').forEach(card => {
+      const i = Number(card.dataset.pi);
+      if (!payload.profiles[i]) return;
+      card.querySelectorAll('[data-prof]').forEach(el => {
+        let v = el.value;
+        if (el.type==='number') v = v===''?null:Number(v);
+        payload.profiles[i][el.dataset.prof] = v;
+      });
+    });
+  } else if (doc.kind === 'quotation_pattern') {
+    payload.pattern = payload.pattern || {};
+    $('reviewBody').querySelectorAll('[data-series]').forEach(el => {
+      payload.pattern[el.dataset.series] = el.value;
+    });
+  }
+  return payload;
+}
+$('btnLearnUpload').onclick = async () => {
+  $('learnErr').textContent = '';
+  const f = $('learnFile').files && $('learnFile').files[0];
+  if (!f) { $('learnErr').textContent = 'Choose a file first'; return; }
+  const fd = new FormData();
+  fd.append('file', f);
+  try {
+    const mode = $('learnMode').value || 'auto';
+    const data = await api('/api/learning/upload?mode='+encodeURIComponent(mode), {method:'POST', body: fd});
+    toast(data.message || 'Queued for review');
+    await refreshLearnStatus();
+    await refreshPending();
+    if (data.proposals && data.proposals[0]) openReview(data.proposals[0].proposal_id);
+  } catch(e) { $('learnErr').textContent = e.message; }
+};
+$('btnLearnRefresh').onclick = () => { refreshLearnStatus(); refreshPending(); };
+$('btnLearnSaveEdits').onclick = async () => {
+  if (!state.learnSelected) return;
+  const payload = collectReviewPayload();
+  if (!payload) return;
+  try {
+    await api('/api/learning/pending/'+encodeURIComponent(state.learnSelected), {method:'PUT', body:{payload}});
+    toast('Corrections saved');
+    openReview(state.learnSelected);
+  } catch(e) { toast(e.message); }
+};
+$('btnLearnApprove').onclick = async () => {
+  if (!state.learnSelected) return;
+  if (state.learnDetail && state.learnDetail.kind !== 'engineering_rules' && !state.learnDetail.proposed_profile) {
+    const payload = collectReviewPayload();
+    if (payload) {
+      await api('/api/learning/pending/'+encodeURIComponent(state.learnSelected), {method:'PUT', body:{payload}});
+    }
+  }
+  try {
+    const res = await api('/api/learning/pending/'+encodeURIComponent(state.learnSelected)+'/approve', {method:'POST', body:{approvedBy:'admin', publishVersion:true}});
+    toast(res.message || 'Approved → Knowledge Base');
+    state.learnSelected = null;
+    state.learnDetail = null;
+    $('reviewBody').innerHTML = '<p class="muted">Select a pending item</p>';
+    $('reviewActions').style.display = 'none';
+    await refreshLearnStatus();
+    await refreshPending();
+  } catch(e) { toast(e.message); }
+};
+$('btnLearnReject').onclick = async () => {
+  if (!state.learnSelected) return;
+  const reason = prompt('Reject reason (optional)') || '';
+  try {
+    await api('/api/learning/pending/'+encodeURIComponent(state.learnSelected)+'/reject', {method:'POST', body:{reason}});
+    toast('Rejected');
+    state.learnSelected = null;
+    $('reviewBody').innerHTML = '<p class="muted">Select a pending item</p>';
+    $('reviewActions').style.display = 'none';
+    await refreshPending();
+  } catch(e) { toast(e.message); }
+};
+
+async function refreshTree() {
+  try {
+    const series = await api('/api/learning/libraries/product_series');
+    const sel = $('treeSeriesSelect');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">All approved series</option>' +
+      (series.items||[]).map(s => `<option value="${esc(s.id)}">${esc(s.seriesName||s.id)}</option>`).join('');
+    sel.value = cur;
+    const q = sel.value ? ('?seriesId='+encodeURIComponent(sel.value)) : '';
+    const data = await api('/api/learning/tree'+q);
+    const trees = data.tree || [];
+    if (!trees.length) { $('productTree').innerHTML = '<p class="muted">No approved series yet.</p>'; return; }
+    $('productTree').innerHTML = trees.map(renderTreeNode).join('');
+  } catch(e) { $('productTree').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+function renderTreeNode(node) {
+  const kids = node.children || [];
+  if (node.kind === 'product_series') {
+    return `<div style="margin-bottom:1rem">
+      <div class="branch" style="font-family:Fraunces,serif;font-size:1.15rem">${esc(node.label)}
+        <span class="muted" style="font-size:.78rem;font-weight:400"> · ${node.profileCount||0} profiles ${node.brand?('· '+esc(node.brand)):''}</span>
+      </div>
+      <ul>${kids.map(renderTreeNode).join('')}</ul>
+    </div>`;
+  }
+  if (kids.length) {
+    return `<li><span class="branch">${esc(node.label)}</span>
+      <ul>${kids.map(c => {
+        const meta = c.meta || {};
+        const bits = [meta.code, (meta.w&&meta.h)?(meta.w+'×'+meta.h+'mm'):null, meta.kg_m!=null?(meta.kg_m+' kg/m'):null].filter(Boolean).join(' · ');
+        return `<li class="leaf"><b>${esc(c.label)}</b>${bits?(' <span class="muted">'+esc(bits)+'</span>'):''}</li>`;
+      }).join('')}</ul></li>`;
+  }
+  return `<li class="leaf muted">${esc(node.label)} <span style="font-size:.75rem">(empty)</span></li>`;
+}
+$('btnTreeRefresh').onclick = refreshTree;
+$('treeSeriesSelect').onchange = refreshTree;
+
+async function refreshBuilderList() {
+  try {
+    const data = await api('/api/learning/builder/series');
+    $('builderSeries').innerHTML = (data.series||[]).map(s =>
+      `<option value="${esc(s.id)}">${esc(s.seriesName||s.id)} (${s.profileCount||0} profiles)</option>`
+    ).join('') || '<option value="">No approved series</option>';
+  } catch(e) { $('builderSeries').innerHTML = `<option value="">${esc(e.message)}</option>`; }
+}
+$('btnBuilderLoad').onclick = async () => {
+  const id = $('builderSeries').value;
+  if (!id) return;
+  try {
+    const bundle = await api('/api/learning/builder/'+encodeURIComponent(id));
+    state.builderBundle = bundle;
+    $('builderSummary').innerHTML = `<p>${esc(bundle.message||'')}</p>
+      <div class="row2" style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:.4rem">
+        <div class="kpi"><div class="l">Profiles</div><strong>${(bundle.profiles||[]).length}</strong></div>
+        <div class="kpi"><div class="l">Hardware</div><strong>${(bundle.hardware||[]).length}</strong></div>
+        <div class="kpi"><div class="l">Glass</div><strong>${(bundle.glass||[]).length}</strong></div>
+        <div class="kpi"><div class="l">BOM rules</div><strong>${(bundle.bomUsageRules||[]).length}</strong></div>
+      </div>`;
+    $('builderOut').textContent = JSON.stringify({
+      geometry: bundle.geometry,
+      pdfLayout: bundle.pdfLayout,
+      bomUsageRules: bundle.bomUsageRules,
+      materials: (bundle.materials||[]).slice(0,12),
+    }, null, 2);
+    $('btnBuilderPublish').disabled = !bundle.ready;
+  } catch(e) { toast(e.message); }
+};
+$('btnBuilderPublish').onclick = async () => {
+  const id = $('builderSeries').value;
+  if (!id) return;
+  if (!confirm('Create a draft product.json stub for '+id+'? Existing active products are not overwritten unless you confirm again.')) return;
+  try {
+    const res = await api('/api/learning/builder/'+encodeURIComponent(id)+'/publish', {method:'POST', body:{overwrite:false}});
+    toast('Draft product published: '+res.productId);
+  } catch(e) {
+    if (String(e.message||'').includes('already exists')) {
+      if (confirm('Product exists. Overwrite stub?')) {
+        try {
+          const res = await api('/api/learning/builder/'+encodeURIComponent(id)+'/publish', {method:'POST', body:{overwrite:true}});
+          toast('Overwrote draft: '+res.productId);
+        } catch(e2) { toast(e2.message); }
+      }
+    } else toast(e.message);
+  }
+};
+
+async function refreshSuggestions() {
+  try {
+    const data = await api('/api/learning/suggestions');
+    $('sugList').innerHTML = (data.tips||[]).map(t => `<li>${esc(t)}</li>`).join('') || '<li class="muted">Not enough data yet</li>';
+    const actions = data.actionable || [];
+    $('sugActions').innerHTML = actions.length
+      ? actions.map(s => `<div class="sug-card" data-sid="${esc(s.id)}" data-domain="${esc(s.domain||'engineering')}">
+          <div class="sug-act">${esc(s.domain||'')} · ${esc(s.action||'')}</div>
+          <div style="font-weight:600;margin:.15rem 0">${esc(s.title||s.id)}</div>
+          <div class="muted" style="font-size:.8rem;margin-bottom:.4rem">${esc(s.summary||'')}</div>
+          <button class="btn sm sug-apply" type="button">One-click → Pending / prefs</button>
+        </div>`).join('')
+      : '<p class="muted">No one-click suggestions yet — calculate quotes and upload catalogues.</p>';
+    $('sugActions').querySelectorAll('.sug-card').forEach(card => {
+      const btn = card.querySelector('.sug-apply');
+      if (!btn) return;
+      btn.onclick = async () => {
+        try {
+          const res = await api('/api/learning/suggestions/apply', {
+            method:'POST',
+            body:{ suggestionId: card.dataset.sid, domain: card.dataset.domain, appliedBy:'admin' }
+          });
+          if (res.queued) {
+            toast('Queued pending: '+(res.proposal_id||''));
+            refreshPending();
+            refreshLearnStatus();
+          } else if (res.settings) {
+            toast(res.message || 'Commercial prefs ready');
+            if (res.settings.colour) $('lineColour').value = res.settings.colour;
+            if (res.settings.discountPercent != null) toast('Suggested discount '+res.settings.discountPercent+'%');
+          } else toast(res.message || 'Done');
+        } catch(e) { toast(e.message); }
+      };
+    });
+    $('sugOut').textContent = JSON.stringify({counts: data.counts, mostUsed: data.mostUsed, actionable: actions.length}, null, 2);
+  } catch(e) { $('sugList').innerHTML = `<li class="err">${esc(e.message)}</li>`; }
+}
+$('btnSugRefresh').onclick = refreshSuggestions;
+
+/* ── Memory Architecture + Engineering Brain ─────────────────────────────── */
+async function initMemoryBrain() {
+  try {
+    const st = await api('/api/memory/status');
+    const sel = $('memTypeSelect');
+    if (sel && !(sel.options && sel.options.length)) {
+      (st.types || []).forEach(t => {
+        const o = document.createElement('option');
+        o.value = t.id; o.textContent = t.label || t.id;
+        sel.appendChild(o);
+      });
+      if (!sel.value && st.types && st.types[0]) sel.value = st.types[0].id;
+    }
+    await refreshMemVersions();
+    if (sel && sel.value) browseMemory();
+  } catch(e) {
+    $('memAdminOut').textContent = 'Memory API unavailable: '+e.message;
+  }
+}
+async function browseMemory() {
+  const mt = $('memTypeSelect').value;
+  if (!mt) return;
+  try {
+    const data = await api('/api/memory/'+encodeURIComponent(mt));
+    const items = data.items || [];
+    $('memBrowserList').innerHTML = items.length
+      ? items.slice(0,40).map(it => {
+          const title = it.title || it.seriesName || it.profileName || it.name || it.id;
+          return `<div class="pending-card" data-mid="${esc(it.id)}">
+            <div class="pc-title"><span class="pc-kind">${esc(it.status||'—')}</span>${esc(title)}</div>
+            <div class="pc-meta">${esc(it.id)}</div>
+          </div>`;
+        }).join('')
+      : '<p class="muted">No items in this memory yet.</p>';
+  } catch(e) { $('memBrowserList').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+$('btnMemBrowse').onclick = browseMemory;
+$('btnMemSearch').onclick = async () => {
+  const q = $('memSearchQ').value || '';
+  try {
+    const data = await api('/api/memory/search?q='+encodeURIComponent(q)+'&limit=20');
+    $('memSearchHits').innerHTML = (data.results||[]).length
+      ? (data.results||[]).map(r =>
+          `<div style="margin:.25rem 0"><span class="pc-kind">${esc(r.memoryType)}</span> <b>${esc(r.title)}</b> <span class="muted">· score ${r.score}</span></div>`
+        ).join('')
+      : '<p class="muted">No hits</p>';
+  } catch(e) { $('memSearchHits').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+};
+async function refreshMemVersions() {
+  try {
+    const data = await api('/api/memory/versions');
+    $('memKbStatus').textContent = `Current KB v${data.current||0} · ${ (data.versions||[]).length } snapshots`;
+    const sel = $('memRollbackVer');
+    sel.innerHTML = (data.versions||[]).slice().reverse().map(v =>
+      `<option value="${v.version}">v${v.version} · ${esc((v.reason||'').slice(0,48))}</option>`
+    ).join('') || '<option value="">No versions</option>';
+  } catch(e) { $('memKbStatus').textContent = e.message; }
+}
+$('btnMemVerRefresh').onclick = refreshMemVersions;
+$('btnMemRollback').onclick = async () => {
+  const ver = Number($('memRollbackVer').value);
+  if (!ver) { toast('Pick a version'); return; }
+  if (!confirm('Rollback libraries to v'+ver+'? Creates a new auditable KB version. Production products are NOT changed.')) return;
+  try {
+    const res = await api('/api/memory/versions/rollback', {
+      method:'POST', body:{ toVersion: ver, rolledBackBy:'admin', reason:'UI rollback to v'+ver }
+    });
+    $('memAdminOut').textContent = JSON.stringify(res, null, 2);
+    toast('Rolled back → new KB v'+(res.version||''));
+    refreshMemVersions();
+    refreshLearnStatus();
+  } catch(e) { toast(e.message); $('memAdminOut').textContent = e.message; }
+};
+$('btnBrainLoad').onclick = async () => {
+  const series = $('brainSeries').value.trim();
+  if (!series) return;
+  try {
+    const res = await api('/api/brain/load', {method:'POST', body:{ series, productType:'Sliding Door' }});
+    $('brainOut').textContent = JSON.stringify({
+      ok: res.ok, seriesId: res.seriesId, kbVersion: res.kbVersion, counts: res.counts,
+      cacheHit: res.cacheHit, rules: Object.keys(res.rules||{}),
+    }, null, 2);
+  } catch(e) { $('brainOut').textContent = e.message; }
+};
+$('btnBrainGen').onclick = async () => {
+  const series = $('brainSeries').value.trim();
+  if (!series) return;
+  try {
+    const res = await api('/api/brain/generate', {
+      method:'POST',
+      body:{ series, productType:'Sliding Door', widthMm:1200, heightMm:1500, quantity:1 }
+    });
+    $('brainOut').textContent = JSON.stringify({
+      ok: res.ok, seriesId: res.seriesId, kbVersion: res.kbVersion,
+      bomLines: res.generated?.bom?.lineCount,
+      weight: res.generated?.weight,
+      quotation: res.generated?.quotation,
+      machineCuts: (res.generated?.machine_cutting?.cuts||[]).length,
+    }, null, 2);
+  } catch(e) { $('brainOut').textContent = e.message; }
+};
+
+async function refreshEngineeringLive() {
+  try {
+    const [stream, insights] = await Promise.all([
+      api('/api/engineering/stream?limit=30'),
+      api('/api/engineering/insights'),
+    ]);
+    $('engStream').innerHTML = (stream.stream||[]).map(s =>
+      `<div class="stream-item"><div class="ts">${esc(s.ts||'')}</div>${esc(s.summary||s.kind||'')}</div>`
+    ).join('') || '<p class="muted">Calculate a project to start the stream.</p>';
+    $('engTips').innerHTML = (insights.tips||[]).map(t => `<li>${esc(t)}</li>`).join('') || '<li class="muted">Waiting for engineering observations</li>';
+    $('engOut').textContent = JSON.stringify({
+      profilesBySize: insights.profilesBySize,
+      avgWallThicknessBySizeMm: insights.avgWallThicknessBySizeMm,
+      hardwareBySituation: insights.hardwareBySituation,
+      designConfigurations: insights.designConfigurations,
+      avgWastePercent: insights.avgWastePercent,
+      recentWeights: insights.recentWeights,
+    }, null, 2);
+  } catch(e) {
+    $('engStream').innerHTML = `<p class="err">${esc(e.message)}</p>`;
+  }
+}
+if ($('btnEngStreamRefresh')) $('btnEngStreamRefresh').onclick = refreshEngineeringLive;
+if ($('btnFxWeight')) $('btnFxWeight').onclick = async () => {
+  const key = $('fxMatKey').value;
+  const params = {
+    lengthMm: Number($('fxP_lengthMm').value)||undefined,
+    weightPerMeterKg: Number($('fxP_weightPerMeterKg').value)||undefined,
+    wastePercent: Number($('fxP_wastePercent').value)||undefined,
+    thicknessMm: Number($('fxP_thicknessMm').value)||undefined,
+    widthMm: Number($('fxP_widthMm').value)||undefined,
+    heightMm: Number($('fxP_heightMm').value)||undefined,
+    qty: 1,
+  };
+  try {
+    const res = await api('/api/engineering/weight', {method:'POST', body:{material:key, formulaKey:key, params}});
+    $('fxWeightOut').textContent = res.ok
+      ? `${res.message}\n${res.formula?.expression||''}`
+      : (res.message || JSON.stringify(res));
+  } catch(e) { $('fxWeightOut').textContent = e.message; }
+};
+
+async function refreshCommercialIntel() {
+  try {
+    const data = await api('/api/commercial/intelligence');
+    $('comTips').innerHTML = (data.tips||[]).map(t => `<li>${esc(t)}</li>`).join('') || '<li class="muted">Save quotes to learn</li>';
+    $('comKpis').innerHTML = `
+      <div class="kpi"><div class="l">Observations</div><strong>${data.observationCount||0}</strong></div>
+      <div class="kpi"><div class="l">Customers</div><strong>${(data.customers||[]).length}</strong></div>
+      <div class="kpi"><div class="l">Margins</div><strong>${(data.marginsByProduct||[]).length}</strong></div>
+      <div class="kpi"><div class="l">Upsells</div><strong>${(data.productRecommendations||[]).length}</strong></div>`;
+    $('comOut').textContent = JSON.stringify({
+      marginsByProduct: data.marginsByProduct,
+      seasonal: data.seasonal,
+      dealers: data.dealers,
+      architects: data.architects,
+      vendors: data.vendors,
+      productRecommendations: data.productRecommendations,
+      customers: (data.customers||[]).slice(0,8),
+    }, null, 2);
+  } catch(e) { $('comOut').textContent = e.message; }
+}
+if ($('btnComRefresh')) $('btnComRefresh').onclick = refreshCommercialIntel;
+if ($('btnMemLookup')) $('btnMemLookup').onclick = async () => {
+  const c = ($('memLookup').value || '').trim();
+  if (!c) return;
+  try {
+    const mem = await api('/api/customers/'+encodeURIComponent(c)+'/memory');
+    $('memOut').textContent = JSON.stringify(mem, null, 2);
+  } catch(e) { $('memOut').textContent = e.message; }
 };
 
 (async function init(){

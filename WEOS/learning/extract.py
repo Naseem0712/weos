@@ -266,21 +266,67 @@ def extract_rules_from_json(path: str | Path, *, profile_id_hint: str | None = N
     }
 
 
-def extract_rules_from_pdf_stub(path: str | Path, **_kwargs: Any) -> dict[str, Any]:
-    """Stub for future PDF/OCR catalogue ingest — structured API, no fake OCR."""
+def extract_rules_from_pdf_stub(path: str | Path, **kwargs: Any) -> dict[str, Any]:
+    """Bridge to Learning Engine V2 PDF catalogue extractor (pending review, not production)."""
     path = Path(path)
-    return {
-        "extractor": "pdf_stub",
-        "source_path": str(path.resolve()),
-        "source_type": "pdf",
-        "series_guess": path.stem.lower().replace(" ", "_"),
-        "rules": [],
-        "status": "not_implemented",
-        "notes": [
-            "PDF/image OCR not implemented. Plug a real extractor here later.",
-            "Use DXF heuristic or JSON catalogue stubs for now.",
-        ],
-    }
+    try:
+        from WEOS.learning.pdf_catalogue import extract_catalogue_pdf
+
+        cat = extract_catalogue_pdf(path)
+        series = cat.get("series") or {}
+        rules: list[dict[str, Any]] = []
+        # Map a few series-level fields into legacy rule rows for V1 review UX
+        if series.get("wallThicknessMm") is not None:
+            rules.append(
+                rule_review_row(
+                    "geometry.wallThicknessHint",
+                    series["wallThicknessMm"],
+                    0.5,
+                    path.name,
+                    action="set",
+                )
+            )
+        for i, p in enumerate((cat.get("profiles") or [])[:12]):
+            if p.get("crossSectionWidthMm") is not None:
+                rules.append(
+                    rule_review_row(
+                        f"catalogue.profile[{i}].widthMm",
+                        p["crossSectionWidthMm"],
+                        float(p.get("confidence") or 0.45),
+                        f"{path.name}#p{p.get('pdfPageNumber')}",
+                        action="set",
+                    )
+                )
+        return {
+            "extractor": "pdf_catalogue_v2_bridge",
+            "source_path": str(path.resolve()),
+            "source_type": "pdf",
+            "series_guess": series.get("id") or path.stem.lower().replace(" ", "_"),
+            "rules": rules,
+            "notes": list(cat.get("notes") or [])
+            + [
+                "Prefer Learning Engine V2 (/api/learning/upload) for full catalogue review UI.",
+                "This legacy bridge only surfaces a subset of detected dims as rule rows.",
+            ],
+            "v2_preview": {
+                "profiles": len(cat.get("profiles") or []),
+                "hardware": len(cat.get("hardware") or []),
+                "glass": len(cat.get("glass") or []),
+                "confidence": cat.get("confidence"),
+            },
+        }
+    except Exception as exc:
+        return {
+            "extractor": "pdf_stub",
+            "source_path": str(path.resolve()),
+            "source_type": "pdf",
+            "series_guess": path.stem.lower().replace(" ", "_"),
+            "rules": [],
+            "status": "fallback",
+            "notes": [
+                f"V2 PDF extract unavailable ({exc}). Use DXF / JSON or Learning Engine V2 upload.",
+            ],
+        }
 
 
 def _guess_series_id(path: Path, geom_rows: list[dict[str, Any]]) -> str:

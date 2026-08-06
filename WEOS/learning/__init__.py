@@ -1,4 +1,4 @@
-"""Learning package — catalogue / DXF rule ingest with approval gate."""
+"""Learning package — catalogue / DXF / PDF ingest with approval gate (V1 + V2)."""
 
 from WEOS.learning.ingest import approve, compare_to_library, pending_proposals, propose, reject
 
@@ -9,4 +9,3 @@ __all__ = [
     "compare_to_library",
     "pending_proposals",
 ]
-

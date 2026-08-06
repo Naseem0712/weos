@@ -25,9 +25,7 @@ def _area_sqft(w: float, h: float) -> float:
 
 
 def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: float, *, track_count: int = 2):
-    """Schematic elevation with dimension callouts (MAR-QT style markings)."""
-    from reportlab.lib.colors import Color
-
+    """Fallback schematic only — prefer draw_line_elevation (canvas geometry SVG)."""
     # Outer frame
     c.setStrokeColorRGB(0.15, 0.15, 0.18)
     c.setFillColorRGB(0.93, 0.95, 0.97)
@@ -44,12 +42,10 @@ def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: flo
         c.setStrokeColorRGB(0.35, 0.45, 0.55)
         c.setLineWidth(0.8)
         c.rect(px, y + pad, pane_w, box_h - 2 * pad, fill=1, stroke=1)
-        # sash handle hint on first pane
         if i == 0 and pane_w > 18:
             c.setFillColorRGB(0.25, 0.25, 0.28)
             c.circle(px + pane_w - 6, y + box_h / 2, 2, fill=1, stroke=0)
 
-    # Width dimension below
     c.setStrokeColorRGB(0.55, 0.15, 0.12)
     c.setFillColorRGB(0.55, 0.15, 0.12)
     c.setLineWidth(0.7)
@@ -60,7 +56,6 @@ def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: flo
     c.setFont("Helvetica", 6)
     c.drawCentredString(x + box_w / 2, dim_y - 10, f"W = {width_mm:g} mm")
 
-    # Height dimension to the right
     dim_x = x + box_w + 10
     c.line(dim_x, y, dim_x, y + box_h)
     c.line(dim_x - 3, y, dim_x + 3, y)
@@ -70,6 +65,46 @@ def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: flo
     c.rotate(90)
     c.drawCentredString(0, 0, f"H = {height_mm:g} mm")
     c.restoreState()
+
+
+def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
+    """Draw the same geometry-engine elevation used by the live canvas into the design column.
+
+    Prefers crisp ReportLab vector drawing; falls back to SVG→PNG, then schematic stub.
+    Returns True when the real elevation was drawn.
+    """
+    from reportlab.lib.utils import ImageReader
+
+    from WEOS.factory.elevation_pdf import draw_line_model_elevation
+    from WEOS.factory.image_engine import svg_to_png_bytes
+    from WEOS.factory.svg_export import elevation_svg_for_line
+
+    w = float(line.get("width") or 0)
+    h = float(line.get("height") or 0)
+
+    if draw_line_model_elevation(c, line, x, y, box_w, box_h):
+        return True
+
+    svg = elevation_svg_for_line(line, style="pdf")
+    if not svg:
+        prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
+        svg = (prev or {}).get("svg")
+    if svg:
+        png = svg_to_png_bytes(str(svg), scale=1.0)
+        if png:
+            img = ImageReader(io.BytesIO(png))
+            iw, ih = img.getSize()
+            if iw > 0 and ih > 0:
+                scale = min(box_w / float(iw), box_h / float(ih))
+                dw, dh = iw * scale, ih * scale
+                c.drawImage(img, x, y + (box_h - dh), width=dw, height=dh, mask="auto")
+                return True
+
+    layout = line.get("layout") if isinstance(line.get("layout"), Mapping) else {}
+    panels = list((layout or {}).get("panels") or [])
+    track_count = max(len(panels), 2)
+    draw_window_elevation(c, x, y, box_w, box_h, w, h, track_count=track_count)
+    return False
 
 
 def _spec_lines(line: Mapping[str, Any]) -> list[str]:
@@ -92,6 +127,19 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
         f"W = {w:g} mm; H = {h:g} mm",
         f"Area = {_area_sqft(w, h)} Sq.Ft.",
     ]
+    layout = line.get("layout") if isinstance(line.get("layout"), Mapping) else {}
+    panels = list((layout or {}).get("panels") or [])
+    if panels:
+        panel_bits = []
+        for p in panels:
+            pid = p.get("id") or "?"
+            role = str(p.get("label") or p.get("role") or "").title()
+            pw = p.get("widthMm")
+            ph = p.get("heightMm")
+            if pw is not None and ph is not None:
+                panel_bits.append(f"{pid} {role} {pw:g}×{ph:g}")
+        if panel_bits:
+            lines.append("Panels: " + "; ".join(panel_bits))
     if weight is not None:
         lines.append(f"Weight = {weight} kg")
     glass = opts.get("glass") or line.get("glass")
@@ -225,7 +273,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         c.setFillColorRGB(*primary)
         c.setFont("Helvetica-Bold", 8)
         c.drawString(40, yy, "DESIGN")
-        c.drawString(160, yy, "SPECIFICATIONS")
+        c.drawString(185, yy, "SPECIFICATIONS")
         c.drawRightString(430, yy, "QTY")
         c.drawRightString(490, yy, "RATE")
         c.drawRightString(W - 40, yy, "AMOUNT")
@@ -240,7 +288,9 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     grand = 0.0
 
     for idx, line in enumerate(lines):
-        need = 118
+        # Design column needs room for annotated elevation + plan
+        draw_w, draw_h = 138, 175
+        need = max(draw_h + 28, 150)
         if y < 80 + need:
             c.setFont("Helvetica", 7)
             c.setFillColorRGB(0.5, 0.5, 0.5)
@@ -277,20 +327,19 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         grand += float(amount or 0)
 
         code = f"W{idx + 1}"
-        # Design column — elevation
-        draw_w, draw_h = 90, 70
-        draw_window_elevation(c, 42, y - draw_h, draw_w, draw_h, w, h, track_count=2)
+        # Design column — same geometry SVG as live canvas (not schematic stub)
         c.setFillColorRGB(*accent)
         c.setFont("Helvetica-Bold", 9)
         c.drawString(42, y + 4, code)
+        draw_line_elevation(c, line, 38, y - draw_h, draw_w, draw_h)
 
         # Specs
         specs = _spec_lines(line)
         c.setFillColorRGB(0, 0, 0)
         c.setFont("Helvetica", 7)
         sy = y
-        for s in specs[:12]:
-            c.drawString(160, sy, s[:70])
+        for s in specs[:14]:
+            c.drawString(180, sy, s[:66])
             sy -= 9
 
         # Qty / Rate / Amount
@@ -301,7 +350,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         c.drawRightString(W - 40, y, f"{float(amount):,.2f}")
 
         # row separator
-        row_bottom = min(sy, y - draw_h - 18)
+        row_bottom = min(sy, y - draw_h - 10)
         c.setStrokeColorRGB(0.85, 0.85, 0.85)
         c.setLineWidth(0.5)
         c.line(36, row_bottom, W - 36, row_bottom)

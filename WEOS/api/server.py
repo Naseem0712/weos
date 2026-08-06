@@ -133,6 +133,29 @@ class AgentObserveBody(BaseModel):
     quotationId: str | None = None
     terms: str | None = None
     lines: list[dict[str, Any]] = Field(default_factory=list)
+    architect: str | None = None
+    dealer: str | None = None
+    vendor: str | None = None
+    discountPercent: float | None = None
+    paymentTerm: str | None = None
+
+
+class MaterialWeightBody(BaseModel):
+    material: str = "aluminium_section"
+    formulaKey: str | None = None
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class SuggestionApplyBody(BaseModel):
+    suggestionId: str
+    domain: str | None = None
+    suggestion: dict[str, Any] | None = None
+    appliedBy: str = "admin"
+
+
+class CustomerMemoryApplyBody(BaseModel):
+    customer: str
+    confirm: bool = True
 
 
 class ProjectCreate(BaseModel):
@@ -196,6 +219,8 @@ class ProductAdminBody(BaseModel):
 
 
 class TemplateBody(BaseModel):
+    model_config = {"extra": "allow"}
+
     id: str | None = None
     brand: str | None = None
     kind: str | None = None
@@ -205,9 +230,6 @@ class TemplateBody(BaseModel):
     branding: dict[str, Any] | None = None
     blocks: list[dict[str, Any]] | None = None
 
-    class Config:
-        extra = "allow"
-
 
 class TemplatePreviewRequest(BaseModel):
     templateId: str | None = None
@@ -215,6 +237,95 @@ class TemplatePreviewRequest(BaseModel):
     kind: str = "customer"
     projectId: str | None = None
     template: dict[str, Any] | None = None
+
+
+class LearningApproveBody(BaseModel):
+    approvedBy: str = "admin"
+    publishVersion: bool = True
+
+
+class LearningRejectBody(BaseModel):
+    reason: str = ""
+    rejectedBy: str = "admin"
+
+
+class LearningEditBody(BaseModel):
+    edits: dict[str, Any] = Field(default_factory=dict)
+    payload: dict[str, Any] | None = None
+
+
+class ProductBuilderPublishBody(BaseModel):
+    overwrite: bool = False
+
+
+class MemorySaveBody(BaseModel):
+    item: dict[str, Any] = Field(default_factory=dict)
+    asApproved: bool = False
+    approvedBy: str = "admin"
+    publishToLibrary: bool = False
+
+
+class MemoryApproveBody(BaseModel):
+    approvedBy: str = "admin"
+    publishVersion: bool = True
+    publishToLibrary: bool = True
+    reason: str = ""
+
+
+class MemoryRejectBody(BaseModel):
+    rejectedBy: str = "admin"
+    reason: str = ""
+
+
+class MemoryMergeBody(BaseModel):
+    sourceId: str
+    targetId: str
+    mergedBy: str = "admin"
+
+
+class MemoryVersionBody(BaseModel):
+    reason: str = "Manual KB version publish"
+    approvedBy: str = "admin"
+
+
+class MemoryRollbackBody(BaseModel):
+    toVersion: int
+    rolledBackBy: str = "admin"
+    reason: str = ""
+
+
+class MemorySearchBody(BaseModel):
+    query: str = ""
+    memoryType: str | None = None
+    filters: dict[str, Any] = Field(default_factory=dict)
+    limit: int = 25
+
+
+class LearningObservationBody(BaseModel):
+    observationType: str = "generic"
+    summary: str
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    suggestion: str = ""
+    targetMemoryType: str = ""
+    targetPayload: dict[str, Any] = Field(default_factory=dict)
+    domain: str = "engineering"
+
+
+class BrainLoadBody(BaseModel):
+    series: str
+    productType: str | None = None
+    customer: str | None = None
+    useCache: bool = True
+
+
+class BrainGenerateBody(BaseModel):
+    series: str
+    productType: str | None = None
+    customer: str | None = None
+    widthMm: float | None = 1200
+    heightMm: float | None = 1500
+    quantity: int = 1
+    outputs: list[str] | None = None
 
 
 def _pdf_response(project_id: str, kind: str, brand: str | None = None, template_id: str | None = None) -> Response:
@@ -313,13 +424,22 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             colour=body.colour,
             handle=body.handle,
         )
-        svg = render_svg_string(job.drawing, colour=body.colour.lower().replace(" ", "_"))
+        svg = render_svg_string(
+            job.drawing,
+            colour=body.colour.lower().replace(" ", "_"),
+            annotations=True,
+            include_plan=True,
+        )
         return {
             "product": body.product,
             "stub": False,
             "svg": svg,
             "width": body.width,
             "height": body.height,
+            "layout": {
+                "kind": "two_track_sliding",
+                "meta": dict(job.layout_meta or {}),
+            },
             "heroImage": meta.get("heroImage"),
             "specifications": meta.get("specifications"),
         }
@@ -471,15 +591,31 @@ def api_project_calculate(project_id: str, body: ProjectCalculateOpts | None = N
     save_project(doc, action="calculate")
     try:
         from WEOS.learning.commercial_agent import observe_quote
+        from WEOS.learning.engineering_agent import observe_engineering
         from WEOS.factory.customer_rates import save_quote_line_rates
 
+        lines = result.get("lines") or []
         observe_quote(
             customer=doc.get("customer"),
             project_id=project_id,
             quotation_id=result.get("quotationId"),
-            lines=result.get("lines") or [],
+            lines=lines,
             terms=doc.get("terms"),
             source="calculate",
+            architect=doc.get("architect"),
+            dealer=doc.get("dealer"),
+            vendor=doc.get("vendor"),
+            discount_percent=doc.get("discountPercent"),
+            payment_term=doc.get("paymentTerm"),
+            meta=doc.get("commercialMeta") or {},
+        )
+        observe_engineering(
+            lines=lines,
+            project_id=project_id,
+            quotation_id=result.get("quotationId"),
+            customer=doc.get("customer"),
+            source="calculate",
+            optimization=result.get("optimization"),
         )
         if doc.get("customer"):
             save_quote_line_rates(str(doc["customer"]), doc.get("lines") or [])
@@ -794,14 +930,521 @@ def api_agent_insights(customer: str | None = None, product: str | None = None) 
 @app.post("/api/agent/observe")
 def api_agent_observe(body: AgentObserveBody) -> dict[str, Any]:
     from WEOS.learning.commercial_agent import observe_quote
+    from WEOS.learning.engineering_agent import observe_engineering
 
-    return observe_quote(
+    commercial = observe_quote(
         customer=body.customer,
         project_id=body.projectId,
         quotation_id=body.quotationId,
         lines=body.lines,
         terms=body.terms,
         source="manual",
+        architect=body.architect,
+        dealer=body.dealer,
+        vendor=body.vendor,
+        discount_percent=body.discountPercent,
+        payment_term=body.paymentTerm,
+    )
+    engineering = observe_engineering(
+        lines=body.lines,
+        project_id=body.projectId,
+        quotation_id=body.quotationId,
+        customer=body.customer,
+        source="manual",
+    )
+    return {"ok": True, "commercial": commercial, "engineering": engineering}
+
+
+# ── Customer Memory + Commercial Intelligence ────────────────────────────────
+
+@app.get("/api/customers/{customer}/memory")
+def api_customer_memory(customer: str) -> dict[str, Any]:
+    from WEOS.learning.commercial_agent import get_customer_memory
+
+    return get_customer_memory(customer)
+
+
+@app.post("/api/customers/memory/apply")
+def api_customer_memory_apply(body: CustomerMemoryApplyBody) -> dict[str, Any]:
+    """One-click commercial prefs — requires confirm=true (explicit user accept)."""
+    from WEOS.learning.commercial_agent import apply_customer_memory_settings
+
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="confirm=true required — commercial settings are never silent-applied")
+    return apply_customer_memory_settings(body.customer)
+
+
+@app.get("/api/commercial/intelligence")
+def api_commercial_intelligence() -> dict[str, Any]:
+    from WEOS.learning.commercial_agent import build_commercial_intelligence
+
+    return build_commercial_intelligence()
+
+
+@app.get("/api/commercial/recommendations")
+def api_commercial_recommendations(product: str | None = None) -> dict[str, Any]:
+    from WEOS.learning.commercial_agent import product_recommendations
+
+    return product_recommendations(product)
+
+
+# ── Engineering Live Learning ────────────────────────────────────────────────
+
+@app.get("/api/engineering/status")
+def api_engineering_status() -> dict[str, Any]:
+    from WEOS.learning.engineering_agent import agent_status
+
+    return agent_status()
+
+
+@app.get("/api/engineering/stream")
+def api_engineering_stream(limit: int = 40) -> dict[str, Any]:
+    from WEOS.learning.engineering_agent import live_stream
+
+    return live_stream(limit=limit)
+
+
+@app.get("/api/engineering/insights")
+def api_engineering_insights() -> dict[str, Any]:
+    from WEOS.learning.engineering_agent import engineering_insights
+
+    return engineering_insights()
+
+
+@app.get("/api/engineering/formulas")
+def api_engineering_formulas() -> dict[str, Any]:
+    from WEOS.learning.material_formulas import list_baseline_formulas
+
+    return {"formulas": list_baseline_formulas(), "count": len(list_baseline_formulas())}
+
+
+@app.post("/api/engineering/weight")
+def api_engineering_weight(body: MaterialWeightBody) -> dict[str, Any]:
+    from WEOS.learning.material_formulas import compute_weight
+
+    try:
+        return compute_weight(body.material, params=body.params, formula_key=body.formulaKey)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/engineering/suggestions")
+def api_engineering_suggestions() -> dict[str, Any]:
+    from WEOS.learning.engineering_agent import build_engineering_suggestions
+
+    return build_engineering_suggestions()
+
+
+# ── Learning Engine V2 (Manufacturing Knowledge AI) ──────────────────────────
+
+@app.get("/api/learning/status")
+def api_learning_status() -> dict[str, Any]:
+    from WEOS.learning.engine_v2 import pipeline_status
+
+    return pipeline_status()
+
+
+@app.post("/api/learning/upload")
+async def api_learning_upload(
+    file: UploadFile = File(...),
+    mode: str = Query("auto"),
+    seriesId: str | None = Query(None),
+) -> dict[str, Any]:
+    """Upload catalogue PDF / quote / image / JSON → pending review (never production)."""
+    from WEOS.learning.engine_v2 import ingest_upload_bytes
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty upload")
+    try:
+        return ingest_upload_bytes(
+            file.filename or "upload.bin",
+            raw,
+            mode=mode,
+            series_id_hint=seriesId,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/learning/pending")
+def api_learning_pending(kind: str | None = None) -> dict[str, Any]:
+    from WEOS.learning.engine_v2 import list_proposals
+
+    items = list_proposals(kind=kind)
+    return {"pending": items, "count": len(items)}
+
+
+@app.get("/api/learning/pending/{proposal_id}")
+def api_learning_get_pending(proposal_id: str) -> dict[str, Any]:
+    from WEOS.learning.engine_v2 import get_proposal
+
+    try:
+        return get_proposal(proposal_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.put("/api/learning/pending/{proposal_id}")
+def api_learning_edit_pending(proposal_id: str, body: LearningEditBody) -> dict[str, Any]:
+    from WEOS.learning.engine_v2 import update_proposal_edits
+
+    edits = dict(body.edits or {})
+    if body.payload is not None:
+        edits["payload"] = body.payload
+    try:
+        return update_proposal_edits(proposal_id, edits)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/learning/pending/{proposal_id}/approve")
+def api_learning_approve(proposal_id: str, body: LearningApproveBody | None = None) -> dict[str, Any]:
+    from WEOS.learning.engine_v2 import approve_proposal
+
+    body = body or LearningApproveBody()
+    try:
+        return approve_proposal(
+            proposal_id,
+            approved_by=body.approvedBy,
+            publish_version=body.publishVersion,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/learning/pending/{proposal_id}/reject")
+def api_learning_reject(proposal_id: str, body: LearningRejectBody | None = None) -> dict[str, Any]:
+    from WEOS.learning.engine_v2 import reject_proposal
+
+    body = body or LearningRejectBody()
+    try:
+        return reject_proposal(proposal_id, reason=body.reason, rejected_by=body.rejectedBy)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/learning/libraries/{folder}")
+def api_learning_library(folder: str) -> dict[str, Any]:
+    from WEOS.learning.v2_store import list_library
+
+    allowed = {
+        "product_series", "profiles", "hardware", "glass",
+        "accessories", "packaging", "formulas", "templates", "quotation_patterns",
+    }
+    if folder not in allowed:
+        raise HTTPException(status_code=404, detail=f"Unknown library: {folder}")
+    items = list_library(folder)
+    return {"folder": folder, "items": items, "count": len(items)}
+
+
+@app.get("/api/learning/tree")
+def api_learning_tree(seriesId: str | None = None) -> dict[str, Any]:
+    from WEOS.learning.v2_store import build_series_tree
+
+    return {"tree": build_series_tree(seriesId)}
+
+
+@app.get("/api/learning/versions")
+def api_learning_versions() -> dict[str, Any]:
+    from WEOS.learning.v2_store import current_kb_version, list_kb_versions
+
+    return {"current": current_kb_version(), "versions": list_kb_versions()}
+
+
+@app.post("/api/learning/versions/rollback")
+def api_learning_versions_rollback(body: MemoryRollbackBody) -> dict[str, Any]:
+    """Admin rollback of Knowledge Base libraries (alias of /api/memory/versions/rollback)."""
+    from WEOS.memory.admin import rollback_kb
+
+    try:
+        return rollback_kb(body.toVersion, rolled_back_by=body.rolledBackBy, reason=body.reason)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/learning/suggestions")
+def api_learning_suggestions(seriesId: str | None = None) -> dict[str, Any]:
+    from WEOS.learning.suggestions import build_suggestions
+
+    return build_suggestions(series_id=seriesId)
+
+
+@app.post("/api/learning/suggestions/apply")
+def api_learning_suggestions_apply(body: SuggestionApplyBody) -> dict[str, Any]:
+    """One-click gated apply: engineering → pending review; commercial → settings payload only."""
+    from WEOS.learning.suggestions import apply_suggestion
+
+    try:
+        return apply_suggestion(
+            suggestion_id=body.suggestionId,
+            domain=body.domain,
+            suggestion=body.suggestion,
+            applied_by=body.appliedBy,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/learning/builder/series")
+def api_builder_series_list() -> dict[str, Any]:
+    from WEOS.learning.product_builder import list_buildable_series
+
+    return {"series": list_buildable_series()}
+
+
+@app.get("/api/learning/builder/{series_id}")
+def api_builder_load(series_id: str) -> dict[str, Any]:
+    from WEOS.learning.product_builder import load_series_for_builder
+
+    try:
+        return load_series_for_builder(series_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/learning/builder/{series_id}/publish")
+def api_builder_publish(series_id: str, body: ProductBuilderPublishBody | None = None) -> dict[str, Any]:
+    """Explicit admin publish of a draft product.json — never automatic."""
+    from WEOS.learning.product_builder import publish_product_draft
+
+    body = body or ProductBuilderPublishBody()
+    result = publish_product_draft(series_id, overwrite=body.overwrite)
+    if not result.get("ok"):
+        raise HTTPException(status_code=409, detail=result.get("error") or "Publish failed")
+    return result
+
+
+# ── Manufacturing Memory Architecture + Engineering Brain ───────────────────
+
+@app.get("/api/memory/status")
+def api_memory_status() -> dict[str, Any]:
+    from WEOS.memory.admin import list_types
+    from WEOS.memory.store import get_store
+
+    return {**get_store().summary(), "types": list_types()}
+
+
+@app.get("/api/memory/types")
+def api_memory_types() -> dict[str, Any]:
+    from WEOS.memory.admin import list_types
+
+    return {"types": list_types()}
+
+
+@app.get("/api/memory/meta/relationships")
+def api_memory_relationships() -> dict[str, Any]:
+    from WEOS.memory.store import get_store
+
+    return get_store().relationships()
+
+
+@app.post("/api/memory/observe")
+def api_memory_observe(body: LearningObservationBody) -> dict[str, Any]:
+    """Write a Learning Memory observation (suggestion only)."""
+    from WEOS.memory.store import write_observation_as_learning
+
+    item = write_observation_as_learning(
+        observation_type=body.observationType,
+        summary=body.summary,
+        evidence=body.evidence,
+        suggestion=body.suggestion,
+        target_memory_type=body.targetMemoryType,
+        target_payload=body.targetPayload,
+        domain=body.domain,
+    )
+    return {"ok": True, "item": item, "production_modified": False}
+
+
+@app.post("/api/memory/search")
+def api_memory_search_post(body: MemorySearchBody) -> dict[str, Any]:
+    from WEOS.memory.search import search
+
+    return search(body.query, memory_type=body.memoryType, filters=body.filters, limit=body.limit)
+
+
+@app.get("/api/memory/search")
+def api_memory_search_get(
+    q: str = "",
+    memoryType: str | None = None,
+    limit: int = 25,
+) -> dict[str, Any]:
+    from WEOS.memory.search import search
+
+    return search(q, memory_type=memoryType, filters={}, limit=limit)
+
+
+@app.post("/api/memory/search/rebuild")
+def api_memory_search_rebuild() -> dict[str, Any]:
+    from WEOS.memory.search import rebuild_index
+
+    return rebuild_index()
+
+
+@app.get("/api/memory/versions")
+def api_memory_versions() -> dict[str, Any]:
+    from WEOS.learning.v2_store import current_kb_version, list_kb_versions
+
+    return {"current": current_kb_version(), "versions": list_kb_versions()}
+
+
+@app.post("/api/memory/versions/publish")
+def api_memory_versions_publish(body: MemoryVersionBody | None = None) -> dict[str, Any]:
+    from WEOS.memory.admin import publish_version
+
+    body = body or MemoryVersionBody()
+    return publish_version(reason=body.reason, approved_by=body.approvedBy)
+
+
+@app.post("/api/memory/versions/rollback")
+def api_memory_versions_rollback(body: MemoryRollbackBody) -> dict[str, Any]:
+    """Admin-only: restore libraries from versions/vN, then snapshot as new version."""
+    from WEOS.memory.admin import rollback_kb
+
+    try:
+        return rollback_kb(body.toVersion, rolled_back_by=body.rolledBackBy, reason=body.reason)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/memory/{memory_type}")
+def api_memory_list(memory_type: str, status: str | None = None) -> dict[str, Any]:
+    from WEOS.memory.schemas import MEMORY_TYPES
+    from WEOS.memory.store import get_store
+
+    if memory_type not in MEMORY_TYPES:
+        raise HTTPException(status_code=404, detail=f"Unknown memory type: {memory_type}")
+    items = get_store().list(memory_type, status=status)
+    return {"memoryType": memory_type, "items": items, "count": len(items)}
+
+
+@app.get("/api/memory/{memory_type}/{item_id}")
+def api_memory_get(memory_type: str, item_id: str) -> dict[str, Any]:
+    from WEOS.memory.schemas import MEMORY_TYPES
+    from WEOS.memory.store import get_store
+
+    if memory_type not in MEMORY_TYPES:
+        raise HTTPException(status_code=404, detail=f"Unknown memory type: {memory_type}")
+    try:
+        return get_store().get(memory_type, item_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/memory/{memory_type}")
+def api_memory_save(memory_type: str, body: MemorySaveBody) -> dict[str, Any]:
+    """Create/update a memory record. Default draft — production never touched."""
+    from WEOS.memory.schemas import MEMORY_TYPES
+    from WEOS.memory.store import get_store
+
+    if memory_type not in MEMORY_TYPES:
+        raise HTTPException(status_code=404, detail=f"Unknown memory type: {memory_type}")
+    item = dict(body.item or {})
+    item["memoryType"] = memory_type
+    saved = get_store().save(
+        memory_type,
+        item,
+        as_approved=body.asApproved,
+        approved_by=body.approvedBy,
+        publish_to_library=body.publishToLibrary and body.asApproved,
+    )
+    return {"ok": True, "item": saved, "production_modified": False}
+
+
+@app.post("/api/memory/{memory_type}/{item_id}/approve")
+def api_memory_approve(memory_type: str, item_id: str, body: MemoryApproveBody | None = None) -> dict[str, Any]:
+    from WEOS.memory.admin import approve_memory
+
+    body = body or MemoryApproveBody()
+    try:
+        return approve_memory(
+            memory_type,
+            item_id,
+            approved_by=body.approvedBy,
+            publish_version=body.publishVersion,
+            publish_to_library=body.publishToLibrary,
+            reason=body.reason,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/memory/{memory_type}/{item_id}/reject")
+def api_memory_reject(memory_type: str, item_id: str, body: MemoryRejectBody | None = None) -> dict[str, Any]:
+    from WEOS.memory.admin import reject_memory
+
+    body = body or MemoryRejectBody()
+    try:
+        return reject_memory(memory_type, item_id, rejected_by=body.rejectedBy, reason=body.reason)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/memory/{memory_type}/merge")
+def api_memory_merge(memory_type: str, body: MemoryMergeBody) -> dict[str, Any]:
+    from WEOS.memory.admin import merge_memory
+
+    try:
+        return merge_memory(
+            memory_type,
+            body.sourceId,
+            body.targetId,
+            merged_by=body.mergedBy,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/brain/status")
+def api_brain_status() -> dict[str, Any]:
+    from WEOS.brain import brain_status
+
+    return brain_status()
+
+
+@app.post("/api/brain/load")
+def api_brain_load(body: BrainLoadBody) -> dict[str, Any]:
+    from WEOS.brain import load_context
+
+    return load_context(
+        series=body.series,
+        product_type=body.productType,
+        customer=body.customer,
+        use_cache=body.useCache,
+    )
+
+
+@app.get("/api/brain/load/{series_id}")
+def api_brain_load_get(series_id: str, productType: str | None = None, customer: str | None = None) -> dict[str, Any]:
+    from WEOS.brain import load_context
+
+    return load_context(series=series_id, product_type=productType, customer=customer)
+
+
+@app.post("/api/brain/reason")
+def api_brain_reason(body: BrainLoadBody) -> dict[str, Any]:
+    from WEOS.brain import reason
+
+    return reason(
+        series=body.series,
+        product_type=body.productType,
+        customer=body.customer,
+        use_cache=body.useCache,
+    )
+
+
+@app.post("/api/brain/generate")
+def api_brain_generate(body: BrainGenerateBody) -> dict[str, Any]:
+    from WEOS.brain import generate
+
+    return generate(
+        series=body.series,
+        product_type=body.productType,
+        customer=body.customer,
+        width_mm=body.widthMm,
+        height_mm=body.heightMm,
+        quantity=body.quantity,
+        outputs=body.outputs,
     )
 
 

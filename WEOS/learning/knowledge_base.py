@@ -31,15 +31,21 @@ PRODUCTS_DIR = PACKAGE_ROOT / "products"
 def ensure_kb_dirs() -> None:
     for d in (KB_PROFILES, KB_PENDING, KB_HARDWARE, KB_GLASS):
         d.mkdir(parents=True, exist_ok=True)
+    # V2 libraries / versions / uploads (lazy; full ensure via v2_store.ensure_v2_dirs)
+    for sub in ("libraries", "versions", "uploads", "pipeline", "pending/v2"):
+        (KB_ROOT / sub).mkdir(parents=True, exist_ok=True)
     readme = KB_ROOT / "README.md"
     if not readme.is_file():
         readme.write_text(
             "# Manufacturing Knowledge Base\n\n"
-            "- `profiles/<series>/vN/` — immutable version snapshots of approved profile JSON\n"
-            "- `pending/` — learning proposals awaiting user `--approve`\n"
-            "- `hardware_library/` / `glass_library/` — shared catalogues (stubs)\n"
-            "\nProduction engineering rules remain in `profiles/*.json`.\n"
-            "Learning Engine never auto-writes production rules.\n",
+            "- `profiles/<series>/vN/` — immutable version snapshots of approved engineering profile JSON\n"
+            "- `pending/` — legacy learning proposals; `pending/v2/` — Learning Engine V2 queue\n"
+            "- `libraries/` — approved Product Series / Profiles / Hardware / Glass / Formulas / Templates\n"
+            "- `versions/vN/` — immutable KB snapshots after admin approve\n"
+            "- `uploads/` — source PDFs/images for review\n"
+            "- `hardware_library/` / `glass_library/` — legacy shared catalogues (stubs)\n"
+            "\nFlow: Extract → Review → Approve → Knowledge Base Version → Production (manual).\n"
+            "Learning Engine never auto-writes production products or profiles.\n",
             encoding="utf-8",
         )
 
