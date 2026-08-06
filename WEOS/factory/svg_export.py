@@ -141,7 +141,7 @@ def _arrow(
 ) -> None:
     parts.append(
         f'<line x1="{tx(x0):.2f}" y1="{ty(y0):.2f}" x2="{tx(x1):.2f}" y2="{ty(y1):.2f}" '
-        f'stroke="{stroke}" stroke-width="2.2" marker-end="url(#slideArrow)"/>'
+        f'stroke="{stroke}" stroke-width="1.6" marker-end="url(#slideArrow)"/>'
     )
 
 
@@ -177,6 +177,38 @@ def _draw_grid_in_rect(
         )
 
 
+def _hollow_plan_band(
+    parts: list[str],
+    *,
+    tx,
+    ty,
+    x0: float,
+    x1: float,
+    y_bot: float,
+    y_top: float,
+    stroke: str = "#222",
+    stroke_width: float = 0.9,
+) -> None:
+    """Outline sash section with a light inner parallel pair (aluminium plan look)."""
+    w = tx(x1) - tx(x0)
+    h = abs(ty(y_bot) - ty(y_top))
+    if w < 2 or h < 2:
+        return
+    parts.append(
+        f'<rect x="{tx(x0):.2f}" y="{ty(y_top):.2f}" width="{w:.2f}" height="{h:.2f}" '
+        f'fill="none" stroke="{stroke}" stroke-width="{stroke_width:.2f}"/>'
+    )
+    # Inner parallel rails (hollow section)
+    inset_y = max(h * 0.22, 1.2)
+    inset_x = min(max(w * 0.012, 1.0), 4.0)
+    if h > inset_y * 2.4 and w > inset_x * 2.4:
+        parts.append(
+            f'<rect x="{tx(x0) + inset_x:.2f}" y="{ty(y_top) + inset_y:.2f}" '
+            f'width="{w - 2 * inset_x:.2f}" height="{h - 2 * inset_y:.2f}" '
+            f'fill="none" stroke="{stroke}" stroke-width="{stroke_width * 0.75:.2f}"/>'
+        )
+
+
 def _draw_plan(
     parts: list[str],
     *,
@@ -185,40 +217,45 @@ def _draw_plan(
     model: DrawingModel,
     plan_y0: float,
     plan_h: float,
-    frame_fill: str,
 ) -> None:
-    """Simple top-down track/sash overlap sketch under the elevation."""
+    """Top-down track/sash sketch — thin hollow outlines, not filled bars."""
     W = model.width
     meta = model.metadata or {}
     inset = float(meta.get("shutter_inset") or 0)
     il = float(meta.get("interlock_left") or W / 2)
     ir = float(meta.get("interlock_right") or W / 2)
     y_mid = plan_y0 + plan_h / 2.0
-    band = plan_h * 0.28
-    # Outer frame
+    band = plan_h * 0.16  # thinner than old filled “mole” bars
+    sw = 0.95
+    # Outer frame / track box
     parts.append(
         f'<rect x="{tx(0):.2f}" y="{ty(plan_y0 + plan_h):.2f}" width="{tx(W) - tx(0):.2f}" '
-        f'height="{ty(plan_y0) - ty(plan_y0 + plan_h):.2f}" fill="none" stroke="#222" stroke-width="1.6"/>'
+        f'height="{ty(plan_y0) - ty(plan_y0 + plan_h):.2f}" fill="none" stroke="#222" stroke-width="1.15"/>'
     )
-    # Left sash band
-    parts.append(
-        f'<rect x="{tx(inset):.2f}" y="{ty(y_mid + band):.2f}" width="{tx(il) - tx(inset):.2f}" '
-        f'height="{abs(ty(y_mid - band) - ty(y_mid + band)):.2f}" fill="{frame_fill}" stroke="#222" stroke-width="1.2"/>'
+    # Track guide lines (front/back)
+    for dy in (-band * 1.55, band * 1.55):
+        parts.append(
+            f'<line x1="{tx(inset):.2f}" y1="{ty(y_mid + dy):.2f}" x2="{tx(W - inset):.2f}" '
+            f'y2="{ty(y_mid + dy):.2f}" stroke="#888" stroke-width="0.55"/>'
+        )
+    # Left sash (hollow)
+    _hollow_plan_band(
+        parts, tx=tx, ty=ty, x0=inset, x1=il,
+        y_bot=y_mid - band, y_top=y_mid + band, stroke="#222", stroke_width=sw,
     )
-    # Right sash band (slightly lower to show overlap)
-    parts.append(
-        f'<rect x="{tx(il):.2f}" y="{ty(y_mid + band * 0.55):.2f}" width="{tx(W - inset) - tx(il):.2f}" '
-        f'height="{abs(ty(y_mid - band * 1.15) - ty(y_mid + band * 0.55)):.2f}" fill="{frame_fill}" '
-        f'stroke="#222" stroke-width="1.2" fill-opacity="0.85"/>'
+    # Right sash offset to show overlap (hollow)
+    _hollow_plan_band(
+        parts, tx=tx, ty=ty, x0=il, x1=W - inset,
+        y_bot=y_mid - band * 1.15, y_top=y_mid + band * 0.45, stroke="#222", stroke_width=sw,
     )
-    # Interlock mark
+    # Interlock
     parts.append(
-        f'<line x1="{tx(il):.2f}" y1="{ty(plan_y0 + 4):.2f}" x2="{tx(ir):.2f}" y2="{ty(plan_y0 + plan_h - 4):.2f}" '
-        f'stroke="#444" stroke-width="1.2"/>'
+        f'<line x1="{tx(il):.2f}" y1="{ty(plan_y0 + 6):.2f}" x2="{tx(ir):.2f}" y2="{ty(plan_y0 + plan_h - 6):.2f}" '
+        f'stroke="#555" stroke-width="0.85"/>'
     )
     parts.append(
-        f'<text x="{tx(W / 2):.2f}" y="{ty(plan_y0 - 18):.2f}" text-anchor="middle" '
-        f'font-family="Segoe UI, Arial, sans-serif" font-size="28" fill="#555">PLAN</text>'
+        f'<text x="{tx(W / 2):.2f}" y="{ty(plan_y0 - 14):.2f}" text-anchor="middle" '
+        f'font-family="Segoe UI, Arial, sans-serif" font-size="24" fill="#666">PLAN</text>'
     )
 
 
@@ -270,20 +307,15 @@ def render_svg_string(
     def ty(y: float) -> float:
         return max_y - y
 
-    colour_key = (colour or "white").lower().replace(" ", "_")
-    colour_map = {
-        "white": "#e8e8e6",
-        "black": "#2a2a2a",
-        "black_texture": "#2a2a2a",
-        "wood_oak": "#8b5a2b",
-    }
-    frame_fill = colour_map.get(colour_key, "#d0d0ce")
-    frame_stroke = "#111" if colour_key.startswith("black") else "#222"
-    glass_fill = "rgba(150, 195, 230, 0.45)" if pdf else "rgba(120, 180, 230, 0.38)"
+    # Drafting style: profile outlines only (never solid colour fills — even for black_texture)
+    _ = colour  # kept for API / quote colour label; frames stay stroke-only
+    frame_stroke = "#1a1a1a"
+    glass_fill = "rgba(150, 195, 230, 0.42)" if pdf else "rgba(120, 180, 230, 0.36)"
+    glass_stroke = "#2a6fad"
     dim_stroke = "#8b1e1a"
-    sw_profile = 2.2 if pdf else 1.6
-    sw_seg = 1.6 if pdf else 1.1
-    sw_grid = 1.8 if pdf else 1.1
+    sw_profile = 1.35 if pdf else 1.15
+    sw_seg = 1.0 if pdf else 0.85
+    sw_grid = 1.15 if pdf else 0.95
     dim_font = 44.0 if pdf else 36.0
     label_font = 32.0 if pdf else 26.0
 
@@ -297,18 +329,23 @@ def render_svg_string(
         '<path d="M0,0 L8,4 L0,8 Z" fill="#0b3d7a"/></marker></defs>',
     ]
 
-    # Profiles + glass
+    # Glass first (filled), then profile outlines on top
     for pl in model.polylines:
-        if len(pl.points) < 2:
+        if pl.layer != "GLASS" or len(pl.points) < 2:
             continue
         pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
-        if pl.layer == "GLASS":
+        parts.append(
+            f'<polygon points="{pts}" fill="{glass_fill}" stroke="{glass_stroke}" '
+            f'stroke-width="{sw_profile * 0.75:.2f}"/>'
+        )
+
+    for pl in model.polylines:
+        if pl.layer == "GLASS" or len(pl.points) < 2:
+            continue
+        pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
+        if pl.closed:
             parts.append(
-                f'<polygon points="{pts}" fill="{glass_fill}" stroke="#1f5fad" stroke-width="{sw_profile * 0.85:.2f}"/>'
-            )
-        elif pl.closed:
-            parts.append(
-                f'<polygon points="{pts}" fill="{frame_fill}" stroke="{frame_stroke}" stroke-width="{sw_profile:.2f}"/>'
+                f'<polygon points="{pts}" fill="none" stroke="{frame_stroke}" stroke-width="{sw_profile:.2f}"/>'
             )
         else:
             parts.append(
@@ -316,7 +353,7 @@ def render_svg_string(
             )
 
     for seg in model.segments:
-        stroke = frame_stroke if seg.layer == "PROFILES" else "#666"
+        stroke = frame_stroke if seg.layer == "PROFILES" else "#777"
         parts.append(
             f'<line x1="{tx(seg.start.x):.2f}" y1="{ty(seg.start.y):.2f}" '
             f'x2="{tx(seg.end.x):.2f}" y2="{ty(seg.end.y):.2f}" '
@@ -332,7 +369,7 @@ def render_svg_string(
         for _name, x0, y0, x1, y1 in glasses:
             _draw_grid_in_rect(
                 parts, tx=tx, ty=ty, x0=x0, y0=y0, x1=x1, y1=y1,
-                cols=cols, rows=rows, stroke="#2f4f6f", stroke_width=sw_grid,
+                cols=cols, rows=rows, stroke="#4a6a88", stroke_width=sw_grid,
             )
 
     if annotations:
@@ -352,7 +389,7 @@ def render_svg_string(
             chip_y = cy + (y1 - y0) * 0.32
             parts.append(
                 f'<rect x="{tx(cx) - 40:.2f}" y="{ty(chip_y) - 18:.2f}" '
-                f'width="80" height="36" rx="3" fill="#fff" fill-opacity="0.95" stroke="#222" stroke-width="1.6"/>'
+                f'width="80" height="36" rx="3" fill="#fff" fill-opacity="0.95" stroke="#333" stroke-width="1.15"/>'
             )
             parts.append(
                 f'<text x="{tx(cx):.2f}" y="{ty(chip_y) + 8:.2f}" text-anchor="middle" '
@@ -411,7 +448,6 @@ def render_svg_string(
                 model=model,
                 plan_y0=min_y + margin * 0.25,
                 plan_h=plan_h,
-                frame_fill=frame_fill,
             )
 
     parts.append("</svg>")

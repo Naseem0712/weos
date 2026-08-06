@@ -555,7 +555,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
         <div class="two">
           <div class="panel">
             <strong>Memory browser</strong>
-            <p class="muted" style="margin:.25rem 0 .6rem;font-size:.82rem">Eleven separate memories — never mixed.</p>
+            <p class="muted" style="margin:.25rem 0 .6rem;font-size:.82rem">Ranking: Confidence % · Source · Approved · Used N · Last Used · Priority</p>
             <div class="row">
               <div class="grow"><label class="l">Memory type</label>
                 <select id="memTypeSelect"></select>
@@ -572,22 +572,46 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
               <button class="btn sm" id="btnMemSearch" style="margin-top:1rem">Search</button>
             </div>
             <div id="memSearchHits" style="margin-top:.5rem;font-size:.85rem"></div>
+            <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
+            <strong>Memory graph</strong>
+            <div class="row" style="margin-top:.4rem">
+              <button class="btn sm" id="btnMemGraph">Load graph</button>
+              <button class="btn ghost sm" id="btnMemGraphNeigh">Neighbors (series)</button>
+            </div>
+            <pre class="optbox" id="memGraphOut" style="max-height:140px;margin-top:.5rem;font-size:.75rem">—</pre>
           </div>
           <div class="panel">
             <strong>Engineering Brain</strong>
-            <p class="muted" style="margin:.25rem 0 .6rem;font-size:.82rem">Load approved KB for a series → BOM / weight / quotation plan.</p>
+            <p class="muted" style="margin:.25rem 0 .6rem;font-size:.82rem">Validate → Conflict/Compat → Generate + Explain proof.</p>
             <div class="row">
               <div class="grow"><label class="l">Series</label>
                 <input id="brainSeries" value="29mm_sliding_smoke" placeholder="S29 / 29mm_sliding_smoke"/>
               </div>
-              <button class="btn sm" id="btnBrainLoad" style="margin-top:1rem">Brain load</button>
+              <button class="btn sm" id="btnBrainLoad" style="margin-top:1rem">Load</button>
+              <button class="btn ghost sm" id="btnBrainValidate" style="margin-top:1rem">Validate</button>
               <button class="btn sec sm" id="btnBrainGen" style="margin-top:1rem">Generate</button>
             </div>
-            <pre class="optbox" id="brainOut" style="max-height:260px;margin-top:.6rem">—</pre>
+            <div class="row" style="margin-top:.4rem">
+              <button class="btn ghost sm" id="btnBrainExplain">Explain</button>
+              <button class="btn ghost sm" id="btnBrainCompat">Compat 10mm</button>
+              <button class="btn ghost sm" id="btnBrainConflict">Conflict check</button>
+              <button class="btn ghost sm" id="btnBrainRec">Recommend</button>
+            </div>
+            <pre class="optbox" id="brainOut" style="max-height:200px;margin-top:.6rem">—</pre>
+            <div id="brainExplainPanel" style="margin-top:.6rem;font-size:.85rem"></div>
             <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
-            <strong>KB versions &amp; rollback</strong>
+            <strong>KB versions · compare · rollback</strong>
             <p class="muted" id="memKbStatus" style="margin:.25rem 0 .4rem;font-size:.82rem">—</p>
             <div class="row">
+              <div class="grow"><label class="l">Compare from</label>
+                <select id="memCompareFrom"></select>
+              </div>
+              <div class="grow"><label class="l">to</label>
+                <select id="memCompareTo"></select>
+              </div>
+              <button class="btn sm" id="btnMemCompare" style="margin-top:1rem">Diff</button>
+            </div>
+            <div class="row" style="margin-top:.4rem">
               <div class="grow"><label class="l">Rollback to version</label>
                 <select id="memRollbackVer"></select>
               </div>
@@ -595,6 +619,13 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
               <button class="btn ghost sm" id="btnMemVerRefresh" style="margin-top:1rem">Refresh</button>
             </div>
             <pre class="optbox" id="memAdminOut" style="max-height:160px;margin-top:.6rem">—</pre>
+            <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
+            <strong>Size-scale learn (suggest only)</strong>
+            <p class="muted" style="margin:.25rem 0 .4rem;font-size:.82rem">Same design small vs large → material/cost delta suggestion for admin review.</p>
+            <div class="row">
+              <button class="btn sm" id="btnSizeCompare">Compare 3×4 vs 5×5 ft</button>
+            </div>
+            <pre class="optbox" id="sizeCompareOut" style="max-height:140px;margin-top:.5rem;font-size:.75rem">—</pre>
           </div>
         </div>
       </div>
@@ -726,12 +757,22 @@ const state = {
 const $ = (id) => document.getElementById(id);
 const toast = (m) => { const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); };
 
+/** Same-origin when UI is served by WEOS; otherwise hit local API (file:// / Live Server). */
+const API_BASE = (() => {
+  if (location.protocol === 'file:') return 'http://127.0.0.1:8000';
+  if (['5500','5501','5173','3000','8080'].includes(location.port)) return 'http://127.0.0.1:8000';
+  return '';
+})();
+
 async function api(path, opts={}) {
-  const res = await fetch(path, {
+  const url = path.startsWith('http') ? path : (API_BASE + path);
+  console.log("API Request:", url);
+  const res = await fetch(url, {
     headers: opts.body && !(opts.body instanceof FormData) ? {'Content-Type':'application/json'} : undefined,
     ...opts,
     body: opts.body && !(opts.body instanceof FormData) ? JSON.stringify(opts.body) : opts.body,
   });
+  console.log("Response Status:", res.status);
   const ct = res.headers.get('content-type')||'';
   const data = ct.includes('application/json') ? await res.json() : await res.blob();
   if (!res.ok) throw new Error((data && data.detail) ? (typeof data.detail==='string'?data.detail:JSON.stringify(data.detail)) : res.statusText);
@@ -1020,9 +1061,9 @@ function updatePdfLinks(){
   if (!id) return;
   const brand = ($('pdfBrand') && $('pdfBrand').value) || 'woodenmax';
   const q = '?brand='+encodeURIComponent(brand);
-  $('linkQuote').href = `/api/projects/${id}/quotation`;
-  $('linkCust').href = `/api/projects/${id}/customer-pdf`+q;
-  $('linkFact').href = `/api/projects/${id}/factory-pdf`+q;
+  $('linkQuote').href = `${API_BASE}/api/projects/${id}/quotation`;
+  $('linkCust').href = `${API_BASE}/api/projects/${id}/customer-pdf`+q;
+  $('linkFact').href = `${API_BASE}/api/projects/${id}/factory-pdf`+q;
 }
 
 async function ensureProject() {
@@ -1129,7 +1170,10 @@ $('importFile').onchange = async (ev) => {
 $('sectionsFile').onchange = async (ev) => {
   const f = ev.target.files[0]; if(!f) return;
   const fd = new FormData(); fd.append('file', f);
-  const res = await fetch('/api/sections/import', {method:'POST', body:fd});
+  const url = API_BASE + '/api/sections/import';
+  console.log("API Request:", url);
+  const res = await fetch(url, {method:'POST', body:fd});
+  console.log("Response Status:", res.status);
   const data = await res.json();
   if (!res.ok) { toast(data.detail || 'Import failed'); return; }
   toast(`Sections: ${data.seriesCount} series, ${data.sectionCount} profiles`);
@@ -1410,10 +1454,13 @@ $('btnTplSave').onclick = async () => {
   toast('Template saved');
 };
 $('btnTplPreview').onclick = async () => {
-  const res = await fetch('/api/templates/preview-pdf', {
+  const url = API_BASE + '/api/templates/preview-pdf';
+  console.log("API Request:", url);
+  const res = await fetch(url, {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({brand:$('tplBrand').value, kind:$('tplKind').value, templateId:state.template.id, template:state.template})
   });
+  console.log("Response Status:", res.status);
   if (!res.ok) { toast('Preview failed'); return; }
   const blob = await res.blob();
   window.open(URL.createObjectURL(blob), '_blank');
@@ -1874,9 +1921,10 @@ async function browseMemory() {
     $('memBrowserList').innerHTML = items.length
       ? items.slice(0,40).map(it => {
           const title = it.title || it.seriesName || it.profileName || it.name || it.id;
+          const r = it.ranking || {};
           return `<div class="pending-card" data-mid="${esc(it.id)}">
             <div class="pc-title"><span class="pc-kind">${esc(it.status||'—')}</span>${esc(title)}</div>
-            <div class="pc-meta">${esc(it.id)}</div>
+            <div class="pc-meta">${esc(it.id)} · P${r.priority??'—'} · Conf ${esc(r.confidenceLabel||'—')} · Src ${esc(r.source||'—')} · Approved ${esc(r.approvedLabel||'—')} · Used ${r.usedInProjects??0}${r.lastUsed ? ' · Last '+esc(String(r.lastUsed).slice(0,10)) : ''}</div>
           </div>`;
         }).join('')
       : '<p class="muted">No items in this memory yet.</p>';
@@ -1898,10 +1946,17 @@ async function refreshMemVersions() {
   try {
     const data = await api('/api/memory/versions');
     $('memKbStatus').textContent = `Current KB v${data.current||0} · ${ (data.versions||[]).length } snapshots`;
-    const sel = $('memRollbackVer');
-    sel.innerHTML = (data.versions||[]).slice().reverse().map(v =>
+    const opts = (data.versions||[]).slice().reverse().map(v =>
       `<option value="${v.version}">v${v.version} · ${esc((v.reason||'').slice(0,48))}</option>`
     ).join('') || '<option value="">No versions</option>';
+    $('memRollbackVer').innerHTML = opts;
+    if ($('memCompareFrom')) $('memCompareFrom').innerHTML = opts;
+    if ($('memCompareTo')) $('memCompareTo').innerHTML = opts;
+    const vers = (data.versions||[]).map(v => v.version);
+    if (vers.length >= 2 && $('memCompareFrom') && $('memCompareTo')) {
+      $('memCompareFrom').value = String(vers[vers.length-2] || vers[0]);
+      $('memCompareTo').value = String(vers[vers.length-1]);
+    }
   } catch(e) { $('memKbStatus').textContent = e.message; }
 }
 $('btnMemVerRefresh').onclick = refreshMemVersions;
@@ -1919,6 +1974,49 @@ $('btnMemRollback').onclick = async () => {
     refreshLearnStatus();
   } catch(e) { toast(e.message); $('memAdminOut').textContent = e.message; }
 };
+if ($('btnMemCompare')) $('btnMemCompare').onclick = async () => {
+  const fromV = Number($('memCompareFrom').value), toV = Number($('memCompareTo').value);
+  if (!fromV || !toV) { toast('Pick versions'); return; }
+  try {
+    const res = await api('/api/memory/versions/compare?fromVersion='+fromV+'&toVersion='+toV);
+    $('memAdminOut').textContent = JSON.stringify({
+      message: res.message, summary: res.summary, highlights: (res.highlights||[]).slice(0,12)
+    }, null, 2);
+  } catch(e) { $('memAdminOut').textContent = e.message; }
+};
+if ($('btnMemGraph')) $('btnMemGraph').onclick = async () => {
+  try {
+    const res = await api('/api/memory/graph');
+    $('memGraphOut').textContent = JSON.stringify({
+      nodeCount: res.nodeCount, edgeCount: res.edgeCount, chain: res.chain,
+      sampleEdges: (res.edges||[]).slice(0,8)
+    }, null, 2);
+  } catch(e) { $('memGraphOut').textContent = e.message; }
+};
+if ($('btnMemGraphNeigh')) $('btnMemGraphNeigh').onclick = async () => {
+  const series = ($('brainSeries').value||'29mm_sliding_smoke').trim();
+  try {
+    const res = await api('/api/memory/graph/neighbors?memoryType=product&id='+encodeURIComponent(series)+'&depth=2');
+    $('memGraphOut').textContent = JSON.stringify({
+      root: res.root, neighbors: res.neighbors, chainHint: res.chainHint, edges: (res.edges||[]).slice(0,12)
+    }, null, 2);
+  } catch(e) { $('memGraphOut').textContent = e.message; }
+};
+function renderExplainPanel(proof) {
+  const panel = $('brainExplainPanel');
+  if (!panel) return;
+  if (!proof || !proof.results) { panel.innerHTML = ''; return; }
+  const blocks = Object.values(proof.results).map(r => {
+    const steps = (r.steps||[]).map(s => `<li>${esc(s.text||JSON.stringify(s))}</li>`).join('');
+    return `<div style="margin:.4rem 0;padding:.5rem;border:1px solid var(--line);border-radius:6px">
+      <div><b>${esc(r.name||'')}</b> = <code>${esc(String(r.value))}</code> ${esc(r.unit||'')}</div>
+      ${r.equation ? `<div class="muted" style="margin:.2rem 0">${esc(r.equation)}</div>` : ''}
+      <div class="muted" style="font-size:.78rem">formula v${esc(String(r.formula_version||'—'))} · KB v${esc(String(r.kb_version||'—'))} · approved ${r.approved?'Yes':'No'} · mem ${(r.memory_refs||[]).map(m=>m.id).join(', ')||'—'}</div>
+      <ol style="margin:.3rem 0 0;padding-left:1.2rem;font-size:.8rem">${steps}</ol>
+    </div>`;
+  }).join('');
+  panel.innerHTML = `<strong>Explain / proof</strong>${blocks}`;
+}
 $('btnBrainLoad').onclick = async () => {
   const series = $('brainSeries').value.trim();
   if (!series) return;
@@ -1926,8 +2024,16 @@ $('btnBrainLoad').onclick = async () => {
     const res = await api('/api/brain/load', {method:'POST', body:{ series, productType:'Sliding Door' }});
     $('brainOut').textContent = JSON.stringify({
       ok: res.ok, seriesId: res.seriesId, kbVersion: res.kbVersion, counts: res.counts,
-      cacheHit: res.cacheHit, rules: Object.keys(res.rules||{}),
+      cacheHit: res.cacheHit, formulaPriority: res.formulaPriority, rules: Object.keys(res.rules||{}),
     }, null, 2);
+  } catch(e) { $('brainOut').textContent = e.message; }
+};
+if ($('btnBrainValidate')) $('btnBrainValidate').onclick = async () => {
+  const series = $('brainSeries').value.trim();
+  try {
+    const res = await api('/api/brain/validate', {method:'POST', body:{ series, productType:'Sliding Door' }});
+    $('brainOut').textContent = JSON.stringify(res, null, 2);
+    toast(res.canGenerate ? 'Ready to generate' : res.message);
   } catch(e) { $('brainOut').textContent = e.message; }
 };
 $('btnBrainGen').onclick = async () => {
@@ -1936,16 +2042,82 @@ $('btnBrainGen').onclick = async () => {
   try {
     const res = await api('/api/brain/generate', {
       method:'POST',
-      body:{ series, productType:'Sliding Door', widthMm:1200, heightMm:1500, quantity:1 }
+      body:{ series, productType:'Sliding Door', widthMm:1200, heightMm:1500, quantity:1, shutterCount:2 }
     });
     $('brainOut').textContent = JSON.stringify({
-      ok: res.ok, seriesId: res.seriesId, kbVersion: res.kbVersion,
+      ok: res.ok, blocked: res.blocked, blockReason: res.blockReason, seriesId: res.seriesId, kbVersion: res.kbVersion,
       bomLines: res.generated?.bom?.lineCount,
       weight: res.generated?.weight,
-      quotation: res.generated?.quotation,
-      machineCuts: (res.generated?.machine_cutting?.cuts||[]).length,
+      compatibility: res.compatibility,
+      recommendations: (res.recommendations||[]).slice(0,6),
     }, null, 2);
+    renderExplainPanel(res.explain || res.generated?.explain);
   } catch(e) { $('brainOut').textContent = e.message; }
+};
+if ($('btnBrainExplain')) $('btnBrainExplain').onclick = async () => {
+  const series = $('brainSeries').value.trim();
+  try {
+    const res = await api('/api/brain/explain', {
+      method:'POST', body:{ series, widthMm:1200, heightMm:1500, shutterCount:2 }
+    });
+    $('brainOut').textContent = JSON.stringify({
+      ok: res.ok, prioritySelection: res.prioritySelection,
+      glass: res.results?.glassWidth, handle: res.results?.handleQty
+    }, null, 2);
+    renderExplainPanel(res);
+  } catch(e) { $('brainOut').textContent = e.message; }
+};
+if ($('btnBrainCompat')) $('btnBrainCompat').onclick = async () => {
+  const series = $('brainSeries').value.trim();
+  try {
+    const res = await api('/api/brain/compatibility', {
+      method:'POST', body:{ series, glassThicknessMm: 10 }
+    });
+    $('brainOut').textContent = JSON.stringify(res, null, 2);
+    toast(res.message || 'Checked');
+  } catch(e) { $('brainOut').textContent = e.message; }
+};
+if ($('btnBrainConflict')) $('btnBrainConflict').onclick = async () => {
+  const series = $('brainSeries').value.trim();
+  try {
+    const res = await api('/api/brain/conflicts', {
+      method:'POST',
+      body:{ series, selections: [
+        {id:'hw_handle_premium', name:'Premium Handle'},
+        {id:'hw_roller_old', name:'Old Roller'}
+      ]}
+    });
+    $('brainOut').textContent = JSON.stringify(res, null, 2);
+    toast(res.blocked ? 'Hard block' : 'No hard conflict');
+  } catch(e) { $('brainOut').textContent = e.message; }
+};
+if ($('btnBrainRec')) $('btnBrainRec').onclick = async () => {
+  try {
+    const res = await api('/api/brain/recommend', {method:'POST', body:{ series: $('brainSeries').value.trim(), productType:'Sliding' }});
+    $('brainOut').textContent = JSON.stringify(res, null, 2);
+  } catch(e) { $('brainOut').textContent = e.message; }
+};
+if ($('btnSizeCompare')) $('btnSizeCompare').onclick = async () => {
+  // 3×4 ft ≈ 914×1219 mm; 5×5 ft ≈ 1524×1524 mm
+  try {
+    const res = await api('/api/memory/size-compare', {
+      method:'POST',
+      body:{
+        small: {width_mm: 914, height_mm: 1219},
+        large: {width_mm: 1524, height_mm: 1524},
+        seriesId: $('brainSeries').value.trim() || '29mm_sliding_smoke',
+        productType: 'Sliding',
+        designWhy: 'Same sliding design — profiles follow perimeter, glass follows area',
+        profilesUsed: ['outer_track','shutter','interlock'],
+        jointTypes: ['mitre']
+      }
+    });
+    $('sizeCompareOut').textContent = JSON.stringify({
+      ok: res.ok, delta: res.delta, why: res.why,
+      suggestion: res.scaleRule?.suggestion, autoApplied: res.autoApplied
+    }, null, 2);
+    toast('Size suggestion queued for admin (not auto-applied)');
+  } catch(e) { $('sizeCompareOut').textContent = e.message; }
 };
 
 async function refreshEngineeringLive() {

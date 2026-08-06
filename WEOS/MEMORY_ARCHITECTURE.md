@@ -99,14 +99,22 @@ flowchart LR
 ```
 WEOS/
   memory/                 # Memory Architecture package
-    schemas.py            # JSON models for 11 memory types
+    schemas.py            # JSON models for 11 memory types + ranking helpers
     store.py              # CRUD / namespaces / relationships
     admin.py              # approve / reject / merge / version / rollback
-    cache.py              # Brain load cache (in-process + file TTL)
+    cache.py              # Brain cache L1 RAM → L2 SQLite → L3 vector/keyword
+    ranking.py            # Confidence / Source / Approved / Used / Priority
+    explain.py            # ★ Engineering Explanation Engine (traceable proof)
+    validate.py           # Pre-generate approved-memory gate
+    compatibility.py      # Glass/series allow-list warnings
+    conflicts.py          # Hard/soft conflict rules (stop generate)
+    graph.py              # Relationship neighbors / tree JSON
+    version_diff.py       # KB vN ↔ vM field-level compare
+    size_learn.py         # Size-scale + teach-upload suggestions
     search/
       index.py            # Inverted index + keyword/filter search
   brain/
-    engine.py             # load / reason / generate orchestration
+    engine.py             # load / reason / validate / explain / generate
   learning/               # Existing V2 — still the extract/approve path
   api/server.py           # /api/memory/* + /api/brain/*
 
@@ -114,22 +122,11 @@ knowledge_base/
   libraries/              # Approved working set (V2)
   versions/vN/            # Immutable snapshots + rollback source
   memories/               # Dedicated memory namespaces
-    engineering/
-    commercial/
-    product/              # overrides / rich Product Memory
-    profile/
-    hardware/
-    glass/
-    formula/              # version history lives here
-    drawing/
-    quotation/
-    factory/
-    learning/             # observations → suggestions
+    … (11 types)
+    _rules/               # conflicts.json · compatibility.json
     relationships.json
     _index/inverted.json
-    _cache/
-  commercial/             # Existing customer memory + observations
-  engineering/            # Existing eng observations
+    _cache/               # file + brain_cache.sqlite3
 ```
 
 **Storage choice:** JSON files on disk (same as Learning Engine V2 today). Fits WEOS portability (`WEOS_KB_DIR`). SQLite can be layered later without changing API shapes.
@@ -171,26 +168,52 @@ Agents already in-tree (`commercial_agent`, `engineering_agent`, `product_builde
 
 ### Memory
 - `GET /api/memory/status` · `GET /api/memory/types`
-- `GET|POST /api/memory/{type}` · `GET /api/memory/{type}/{id}`
+- `GET|POST /api/memory/{type}` · `GET /api/memory/{type}/{id}` (list includes **ranking** card)
 - `POST /api/memory/{type}/{id}/approve|reject` · `POST /api/memory/{type}/merge`
 - `POST /api/memory/observe`
 - `GET|POST /api/memory/search` · `POST /api/memory/search/rebuild`
 - `GET /api/memory/versions` · `POST .../publish` · `POST .../rollback`
-- `GET /api/memory/meta/relationships`
+- `GET|POST /api/memory/versions/compare` — field-level KB vN↔vM diff
+- `GET /api/memory/meta/relationships` · `GET /api/memory/graph` · `GET|POST .../graph/neighbors`
+- `GET|POST /api/memory/conflicts` · `GET|POST /api/memory/compatibility`
+- `POST /api/memory/size-compare` · `POST /api/memory/teach-upload` (suggest only)
+- `GET /api/memory/cache/status` · `POST /api/memory/cache/invalidate`
 
 ### Brain
 - `GET /api/brain/status`
 - `POST /api/brain/load` · `GET /api/brain/load/{series_id}`
 - `POST /api/brain/reason`
-- `POST /api/brain/generate` → BOM, drawing, PDF, quotation, weight, cost, packing, machine_cutting
+- `POST /api/brain/validate` — missing approved Glass/Profiles/Formula/Hardware → no generate
+- `POST /api/brain/explain` — ★ traceable proof (steps + memory_refs + formula_version + kb_version)
+- `POST /api/brain/compatibility` — e.g. 10mm glass on 5/6/8-only series → warning
+- `POST /api/brain/conflicts` — hard block (Premium Handle + Old Roller)
+- `POST /api/brain/recommend` — Sliding → Mesh / Mosquito / Restrictor / Safety Lock
+- `POST /api/brain/generate` → BOM, drawing, PDF, quotation, weight, cost, packing, machine_cutting, **explain**
+
+---
+
+## Intelligence layers (Brain upgrade)
+
+| Feature | Behaviour |
+|---------|-----------|
+| **Ranking** | Every item: Confidence %, Source, Approved Yes/No, Used N Projects, Last Used, Priority |
+| **Rule priority** | Multiple formulas → highest **approved** `priority` (100 → 80 → 20) |
+| **Compatibility** | Declarative allow-lists in `memories/_rules/compatibility.json` |
+| **Conflicts** | Declarative hard/soft rules in `memories/_rules/conflicts.json`; hard = stop generate |
+| **Explain / proof** | Value + steps + equation + memory_refs + formula_version + kb_version + approval |
+| **Validation** | Pre-generate gate; clear `missing[]` list; never silent fail |
+| **Graph** | Persist edges in `relationships.json`; neighbors/tree API for UI |
+| **Size learning** | Upload / size-compare → Learning Memory + Engineering draft (**never auto-apply**) |
 
 ---
 
 ## Caching
 
+**3 layers:** L1 in-process RAM → L2 SQLite (`memories/_cache/brain_cache.sqlite3`) → L3 vector/keyword stub (sqlite-vss if installed, else token overlap).
+
 - Keyed by `(series, productType, customer, kbVersion)`
-- In-process dict + file under `knowledge_base/memories/_cache/`
-- TTL ~2–3 minutes; **invalidated** on approve / version publish / rollback
+- TTL ~2–3 minutes
+- **Invalidated** on approve / version publish / rollback
 
 ---
 
@@ -206,10 +229,11 @@ Supports queries like:
 - products compatible with Series S29
 
 ### Honest gaps
-- No vector embeddings / ANN semantic search yet (documented; same `search()` API can host them later)
+- L3 vector search is a keyword stub unless `sqlite-vss` is installed (same API)
 - No OCR/vision catalogue understanding beyond existing heuristic PDF text extract
 - Factory engines still primarily read `WEOS/products/*`; Brain is the bridge to gradually replace hardcoded ERP tables
 - Full `rules/*.json` packs are not auto-generated from Memory on approve (Product Builder publish remains explicit)
+- Graph UI is list/tree JSON (not a full force-directed canvas yet)
 
 ---
 
@@ -217,6 +241,7 @@ Supports queries like:
 
 - Approve → optional snapshot `versions/v{N}/` (immutable)
 - Rollback → copy `vN` → working `libraries/`, then **publish v{N+1}** with `action: rollback` (history never rewritten)
+- **Compare** → field-level diff (e.g. Track 29→30) via `/api/memory/versions/compare`
 - Production products untouched
 
 ---
@@ -224,10 +249,13 @@ Supports queries like:
 ## UI
 
 Learning Engine → **Memory & Brain** tab:
-- Memory browser (11 types)
+- Memory browser with ranking metadata
 - Search box
-- Brain load / generate for a series
-- KB version list + rollback
+- Brain load / validate / generate / explain / compat / conflict / recommend
+- Explain proof panel
+- KB version list + **compare** + rollback
+- Memory graph neighbors
+- Size-scale compare (suggest only)
 
 ---
 
@@ -237,4 +265,4 @@ Learning Engine → **Memory & Brain** tab:
 python -m WEOS.memory.smoke_test
 ```
 
-Covers: observation → suggest → approve → new KB version → Brain load (S29-like) → rollback.
+Covers: observation → suggest → approve → new KB version → Brain load → **validation block** → **explain proof** → **priority pick** → **compatibility warning** → **conflict stop** → **version diff** → **size-compare suggestion** → rollback.

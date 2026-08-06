@@ -26,11 +26,12 @@ def _area_sqft(w: float, h: float) -> float:
 
 def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: float, *, track_count: int = 2):
     """Fallback schematic only — prefer draw_line_elevation (canvas geometry SVG)."""
-    # Outer frame
-    c.setStrokeColorRGB(0.15, 0.15, 0.18)
-    c.setFillColorRGB(0.93, 0.95, 0.97)
-    c.setLineWidth(1.4)
-    c.rect(x, y, box_w, box_h, fill=1, stroke=1)
+    # Outer frame — outline drafting style
+    c.setStrokeColorRGB(0.12, 0.12, 0.14)
+    c.setLineWidth(0.9)
+    c.rect(x, y, box_w, box_h, fill=0, stroke=1)
+    c.setLineWidth(0.55)
+    c.rect(x + 3, y + 3, box_w - 6, box_h - 6, fill=0, stroke=1)
 
     # Inner glass panes
     pad = 6
@@ -39,16 +40,13 @@ def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: flo
     for i in range(panes):
         px = x + pad + i * (pane_w + pad)
         c.setFillColorRGB(0.78, 0.88, 0.95)
-        c.setStrokeColorRGB(0.35, 0.45, 0.55)
-        c.setLineWidth(0.8)
+        c.setStrokeColorRGB(0.30, 0.48, 0.65)
+        c.setLineWidth(0.55)
         c.rect(px, y + pad, pane_w, box_h - 2 * pad, fill=1, stroke=1)
-        if i == 0 and pane_w > 18:
-            c.setFillColorRGB(0.25, 0.25, 0.28)
-            c.circle(px + pane_w - 6, y + box_h / 2, 2, fill=1, stroke=0)
 
     c.setStrokeColorRGB(0.55, 0.15, 0.12)
     c.setFillColorRGB(0.55, 0.15, 0.12)
-    c.setLineWidth(0.7)
+    c.setLineWidth(0.55)
     dim_y = y - 12
     c.line(x, dim_y, x + box_w, dim_y)
     c.line(x, dim_y - 3, x, dim_y + 3)

@@ -75,9 +75,53 @@ def _meta() -> dict[str, Any]:
         "approved_at": None,
         "approved_by": None,
         "kb_version": None,
-        "source": {},
+        "source": {},  # {kind, ref, quote, page, file} — PDF / quote / user / factory / …
+        "sourceKind": "",  # pdf | quote | user | factory | catalogue | learned | manual
+        "confidence": None,  # 0..100 — ranking Confidence %
+        "priority": 50,  # rule priority 0..100 (higher wins when multiple match)
+        "usedInProjects": 0,  # ranking: Used N Projects
+        "lastUsed": None,  # ISO timestamp
         "tags": [],
         "relationships": {},  # typed links: seriesIds, profileIds, formulaIds, …
+    }
+
+
+def ranking_fields(item: dict[str, Any] | None) -> dict[str, Any]:
+    """UI/API ranking card: Confidence %, Source, Approved Yes/No, Used N, Last Used."""
+    it = item or {}
+    status = (it.get("status") or "").lower()
+    approved = status == "approved"
+    src = it.get("source") if isinstance(it.get("source"), dict) else {}
+    kind = (
+        it.get("sourceKind")
+        or src.get("kind")
+        or ("pdf" if src.get("file") or src.get("page") else "")
+        or ("quote" if src.get("quote") else "")
+        or ("user" if it.get("approved_by") else "")
+        or "unknown"
+    )
+    conf = it.get("confidence")
+    if conf is None and approved:
+        conf = 90
+    elif conf is None:
+        conf = 40
+    try:
+        conf_pct = max(0, min(100, float(conf)))
+    except (TypeError, ValueError):
+        conf_pct = 0.0
+    return {
+        "confidence": conf_pct,
+        "confidenceLabel": f"{conf_pct:.0f}%",
+        "source": kind,
+        "sourceDetail": src,
+        "approved": approved,
+        "approvedLabel": "Yes" if approved else "No",
+        "usedInProjects": int(it.get("usedInProjects") or 0),
+        "lastUsed": it.get("lastUsed"),
+        "priority": int(it.get("priority") if it.get("priority") is not None else 50),
+        "status": it.get("status") or "draft",
+        "id": it.get("id"),
+        "memoryType": it.get("memoryType"),
     }
 
 
@@ -100,6 +144,9 @@ def empty_engineering_memory() -> dict[str, Any]:
         "hardwareUsage": [],
         "brushRailGlass": {},
         "weightRules": {},
+        "compatibilityRules": [],  # [{field, allowed, message}]
+        "conflictRules": [],  # [{a, b, severity, reason}] — drafts until approved
+        "scaleRules": [],  # size-scale suggestions (never auto-apply)
         "notes": "",
         **_meta(),
     }
@@ -262,7 +309,10 @@ def empty_formula_memory() -> dict[str, Any]:
         "name": "",
         "category": "",  # glass | brush | track | hardware | weight | waste | packing | cutting
         "expression": "",
-        "variables": [],  # [{name, unit, description}]
+        "variables": [],  # [{name, unit, description, default}]
+        "steps": [],  # optional human-readable proof steps template
+        "outputName": "",  # e.g. glassWidth
+        "unit": "",
         "formulaVersion": 1,
         "description": "",
         "compatibleSeries": [],
@@ -271,6 +321,40 @@ def empty_formula_memory() -> dict[str, Any]:
         "history": [],  # [{formulaVersion, expression, variables, approved_at, approved_by, reason}]
         "source": "",
         **_meta(),
+    }
+
+
+def empty_conflict_rule() -> dict[str, Any]:
+    """Declarative hard/soft conflict between memory items (admin-gated)."""
+    return {
+        "id": "",
+        "ruleType": "conflict",
+        "memoryType": MEM_ENGINEERING,
+        "title": "",
+        "a": {"memoryType": "", "id": "", "name": ""},
+        "b": {"memoryType": "", "id": "", "name": ""},
+        "severity": "hard",  # hard = stop generation | soft = warning
+        "reason": "",
+        "seriesIds": [],
+        "status": "draft",
+        **{k: v for k, v in _meta().items() if k != "status"},
+    }
+
+
+def empty_compatibility_rule() -> dict[str, Any]:
+    """Series/product compatibility constraint (e.g. glass thickness allow-list)."""
+    return {
+        "id": "",
+        "ruleType": "compatibility",
+        "memoryType": MEM_ENGINEERING,
+        "title": "",
+        "seriesId": "",
+        "field": "glassThicknessMm",
+        "allowed": [],
+        "message": "",
+        "severity": "warning",
+        "status": "draft",
+        **{k: v for k, v in _meta().items() if k != "status"},
     }
 
 
@@ -386,4 +470,11 @@ def enrich_from_library(memory_type: str, library_item: dict[str, Any]) -> dict[
     merged["id"] = library_item.get("id") or base["id"]
     if library_item.get("status") == "approved":
         merged["status"] = "approved"
+    # Preserve ranking defaults when library item omitted them
+    if merged.get("confidence") is None and merged.get("status") == "approved":
+        merged["confidence"] = 90
+    if merged.get("priority") is None:
+        merged["priority"] = 50
+    if not merged.get("sourceKind"):
+        merged["sourceKind"] = "catalogue" if library_item.get("linked_from_learning") else "manual"
     return merged

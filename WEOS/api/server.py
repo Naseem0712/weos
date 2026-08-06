@@ -326,6 +326,80 @@ class BrainGenerateBody(BaseModel):
     heightMm: float | None = 1500
     quantity: int = 1
     outputs: list[str] | None = None
+    glassThicknessMm: float | None = None
+    shutterCount: int = 2
+    selections: list[dict[str, Any]] | None = None
+    skipValidation: bool = False
+
+
+class BrainExplainBody(BaseModel):
+    series: str
+    widthMm: float = 1200
+    heightMm: float = 1500
+    shutterCount: int = 2
+    productType: str | None = None
+
+
+class BrainCompatBody(BaseModel):
+    series: str
+    glassThicknessMm: float | None = None
+    selections: dict[str, Any] = Field(default_factory=dict)
+
+
+class BrainConflictBody(BaseModel):
+    series: str
+    selections: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class BrainRecommendBody(BaseModel):
+    series: str | None = None
+    productType: str | None = "Sliding"
+
+
+class MemoryVersionCompareBody(BaseModel):
+    fromVersion: int
+    toVersion: int
+    folder: str | None = None
+
+
+class MemoryGraphNeighborsBody(BaseModel):
+    memoryType: str
+    id: str
+    depth: int = 1
+    direction: str = "both"
+
+
+class SizeCompareBody(BaseModel):
+    small: dict[str, Any]
+    large: dict[str, Any]
+    seriesId: str | None = None
+    productType: str | None = None
+    profilesUsed: list[Any] = Field(default_factory=list)
+    jointTypes: list[Any] = Field(default_factory=list)
+    designWhy: str = ""
+    saveObservation: bool = True
+
+
+class TeachUploadBody(BaseModel):
+    seriesId: str | None = None
+    productType: str | None = None
+    profilesUsed: list[Any] = Field(default_factory=list)
+    jointTypes: list[Any] = Field(default_factory=list)
+    designWhy: str = ""
+    sizes: list[dict[str, Any]] = Field(default_factory=list)
+    source: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConflictSaveBody(BaseModel):
+    rule: dict[str, Any] = Field(default_factory=dict)
+    asApproved: bool = False
+    approvedBy: str = "admin"
+
+
+class CompatibilitySaveBody(BaseModel):
+    rule: dict[str, Any] = Field(default_factory=dict)
+    asApproved: bool = False
+    approvedBy: str = "admin"
 
 
 def _pdf_response(project_id: str, kind: str, brand: str | None = None, template_id: str | None = None) -> Response:
@@ -1307,26 +1381,151 @@ def api_memory_versions_rollback(body: MemoryRollbackBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@app.get("/api/memory/versions/compare")
+def api_memory_versions_compare_get(fromVersion: int, toVersion: int, folder: str | None = None) -> dict[str, Any]:
+    from WEOS.memory.version_diff import compare_versions
+
+    return compare_versions(fromVersion, toVersion, folder=folder)
+
+
+@app.post("/api/memory/versions/compare")
+def api_memory_versions_compare(body: MemoryVersionCompareBody) -> dict[str, Any]:
+    from WEOS.memory.version_diff import compare_versions
+
+    return compare_versions(body.fromVersion, body.toVersion, folder=body.folder)
+
+
+@app.get("/api/memory/graph")
+def api_memory_graph() -> dict[str, Any]:
+    from WEOS.memory.graph import graph_snapshot
+
+    return graph_snapshot()
+
+
+@app.get("/api/memory/graph/neighbors")
+def api_memory_graph_neighbors(
+    memoryType: str,
+    id: str,
+    depth: int = 1,
+    direction: str = "both",
+) -> dict[str, Any]:
+    from WEOS.memory.graph import neighbors
+
+    return neighbors(memoryType, id, depth=depth, direction=direction)
+
+
+@app.post("/api/memory/graph/neighbors")
+def api_memory_graph_neighbors_post(body: MemoryGraphNeighborsBody) -> dict[str, Any]:
+    from WEOS.memory.graph import neighbors
+
+    return neighbors(body.memoryType, body.id, depth=body.depth, direction=body.direction)
+
+
+@app.get("/api/memory/cache/status")
+def api_memory_cache_status() -> dict[str, Any]:
+    from WEOS.memory import cache
+
+    return cache.status()
+
+
+@app.post("/api/memory/cache/invalidate")
+def api_memory_cache_invalidate() -> dict[str, Any]:
+    from WEOS.memory import cache
+
+    n = cache.invalidate_kb()
+    return {"ok": True, "cleared": n}
+
+
+@app.get("/api/memory/conflicts")
+def api_memory_conflicts(status: str | None = "approved") -> dict[str, Any]:
+    from WEOS.memory.conflicts import list_conflicts
+
+    rules = list_conflicts(status=status)
+    return {"rules": rules, "count": len(rules)}
+
+
+@app.post("/api/memory/conflicts")
+def api_memory_conflicts_save(body: ConflictSaveBody) -> dict[str, Any]:
+    from WEOS.memory.conflicts import save_conflict, suggest_conflict
+
+    if body.asApproved:
+        rule = save_conflict(body.rule, as_approved=True, approved_by=body.approvedBy)
+        return {"ok": True, "rule": rule, "production_modified": False}
+    return suggest_conflict(body.rule)
+
+
+@app.get("/api/memory/compatibility")
+def api_memory_compatibility(status: str | None = "approved", seriesId: str | None = None) -> dict[str, Any]:
+    from WEOS.memory.compatibility import list_compatibility
+
+    rules = list_compatibility(status=status, series_id=seriesId)
+    return {"rules": rules, "count": len(rules)}
+
+
+@app.post("/api/memory/compatibility")
+def api_memory_compatibility_save(body: CompatibilitySaveBody) -> dict[str, Any]:
+    from WEOS.memory.compatibility import save_compatibility
+
+    rule = save_compatibility(body.rule, as_approved=body.asApproved, approved_by=body.approvedBy)
+    return {"ok": True, "rule": rule, "production_modified": False}
+
+
+@app.post("/api/memory/size-compare")
+def api_memory_size_compare(body: SizeCompareBody) -> dict[str, Any]:
+    from WEOS.memory.size_learn import compare_sizes
+
+    return compare_sizes(
+        small=body.small,
+        large=body.large,
+        series_id=body.seriesId,
+        product_type=body.productType,
+        profiles_used=body.profilesUsed,
+        joint_types=body.jointTypes,
+        design_why=body.designWhy,
+        save_observation=body.saveObservation,
+    )
+
+
+@app.post("/api/memory/teach-upload")
+def api_memory_teach_upload(body: TeachUploadBody) -> dict[str, Any]:
+    from WEOS.memory.size_learn import learn_from_upload
+
+    return learn_from_upload(
+        series_id=body.seriesId,
+        product_type=body.productType,
+        profiles_used=body.profilesUsed,
+        joint_types=body.jointTypes,
+        design_why=body.designWhy,
+        sizes=body.sizes,
+        source=body.source,
+    )
+
+
 @app.get("/api/memory/{memory_type}")
-def api_memory_list(memory_type: str, status: str | None = None) -> dict[str, Any]:
+def api_memory_list(memory_type: str, status: str | None = None, ranked: bool = True) -> dict[str, Any]:
+    from WEOS.memory.ranking import enrich_list, list_ranked
     from WEOS.memory.schemas import MEMORY_TYPES
     from WEOS.memory.store import get_store
 
     if memory_type not in MEMORY_TYPES:
         raise HTTPException(status_code=404, detail=f"Unknown memory type: {memory_type}")
-    items = get_store().list(memory_type, status=status)
+    if ranked:
+        items = list_ranked(memory_type, status=status)
+    else:
+        items = enrich_list(get_store().list(memory_type, status=status))
     return {"memoryType": memory_type, "items": items, "count": len(items)}
 
 
 @app.get("/api/memory/{memory_type}/{item_id}")
 def api_memory_get(memory_type: str, item_id: str) -> dict[str, Any]:
+    from WEOS.memory.ranking import enrich_item
     from WEOS.memory.schemas import MEMORY_TYPES
     from WEOS.memory.store import get_store
 
     if memory_type not in MEMORY_TYPES:
         raise HTTPException(status_code=404, detail=f"Unknown memory type: {memory_type}")
     try:
-        return get_store().get(memory_type, item_id)
+        return enrich_item(get_store().get(memory_type, item_id))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -1445,7 +1644,57 @@ def api_brain_generate(body: BrainGenerateBody) -> dict[str, Any]:
         height_mm=body.heightMm,
         quantity=body.quantity,
         outputs=body.outputs,
+        glass_thickness_mm=body.glassThicknessMm,
+        shutter_count=body.shutterCount,
+        selections=body.selections,
+        skip_validation=body.skipValidation,
     )
+
+
+@app.post("/api/brain/validate")
+def api_brain_validate(body: BrainLoadBody) -> dict[str, Any]:
+    from WEOS.brain import validate_series
+
+    return validate_series(series=body.series, product_type=body.productType, customer=body.customer)
+
+
+@app.post("/api/brain/explain")
+def api_brain_explain(body: BrainExplainBody) -> dict[str, Any]:
+    from WEOS.brain import explain
+
+    return explain(
+        series=body.series,
+        width_mm=body.widthMm,
+        height_mm=body.heightMm,
+        shutter_count=body.shutterCount,
+        product_type=body.productType,
+    )
+
+
+@app.post("/api/brain/compatibility")
+def api_brain_compatibility(body: BrainCompatBody) -> dict[str, Any]:
+    from WEOS.brain import check_series_compatibility
+
+    return check_series_compatibility(
+        series=body.series,
+        glass_thickness_mm=body.glassThicknessMm,
+        selections=body.selections or None,
+    )
+
+
+@app.post("/api/brain/conflicts")
+def api_brain_conflicts(body: BrainConflictBody) -> dict[str, Any]:
+    from WEOS.brain import check_series_conflicts
+
+    return check_series_conflicts(series=body.series, selections=body.selections)
+
+
+@app.post("/api/brain/recommend")
+def api_brain_recommend(body: BrainRecommendBody | None = None) -> dict[str, Any]:
+    from WEOS.brain import recommend
+
+    body = body or BrainRecommendBody()
+    return recommend(series=body.series, product_type=body.productType)
 
 
 # ── PDF Template Designer (handlers) ─────────────────────────────────────────
