@@ -10,7 +10,7 @@ from typing import Any, Mapping
 from WEOS.paths import PACKAGE_ROOT, data_dir
 
 PACKAGE_TEMPLATES = PACKAGE_ROOT / "templates"
-BRANDS = ("woodenmax", "allkraft")
+BRANDS = ("woodenmax", "allkraft", "marqt")
 KINDS = ("customer", "factory")
 
 
@@ -38,12 +38,19 @@ def _seed_defaults() -> None:
 
 def default_template(brand: str, kind: str) -> dict[str, Any]:
     brand = brand.lower()
-    company = "WoodenMax" if brand == "woodenmax" else "AllKraft"
+    company = {"woodenmax": "WoodenMax", "allkraft": "AllKraft", "marqt": "WEOS Windows"}.get(brand, brand.title())
     colors = {
         "woodenmax": {"primary": [0.04, 0.35, 0.28], "accent": [0.71, 0.33, 0.14]},
         "allkraft": {"primary": [0.12, 0.22, 0.45], "accent": [0.85, 0.55, 0.12]},
+        "marqt": {"primary": [0.12, 0.22, 0.38], "accent": [0.75, 0.15, 0.12]},
     }
     c = colors.get(brand, colors["woodenmax"])
+    if brand == "marqt" and kind == "customer":
+        pkg = PACKAGE_TEMPLATES / "marqt_customer.json"
+        if pkg.is_file():
+            import json as _json
+
+            return _json.loads(pkg.read_text(encoding="utf-8-sig"))
     if kind == "factory":
         blocks = [
             {"id": "logo", "type": "logo", "x": 40, "y": 40, "w": 160, "h": 36, "label": company},

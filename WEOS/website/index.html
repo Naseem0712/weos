@@ -82,6 +82,19 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 .admin-split{display:grid;grid-template-columns:1fr 280px;gap:1rem}
 @media(max-width:1000px){.admin-split{grid-template-columns:1fr}}
 .chip{display:inline-block;background:#e7f3ee;color:var(--green);border-radius:6px;padding:.1rem .4rem;font-size:.7rem;margin:.1rem;cursor:pointer}
+.livebox{background:linear-gradient(135deg,#f3faf6,#fff8f3);border:1px solid var(--line);border-radius:12px;padding:.75rem .9rem;margin-top:.65rem}
+.livebox .big{font-family:Fraunces,serif;font-size:1.45rem;margin:.15rem 0}
+.livebox .row2{display:flex;gap:1rem;flex-wrap:wrap;margin-top:.45rem}
+.livebox .kpi{min-width:110px}
+.livebox .kpi .l{margin:0}
+.agent{background:#0f2a22;color:#e8f2ed;border-radius:14px;padding:1rem 1.1rem}
+.agent h3{font-family:Fraunces,serif;margin:0 0 .35rem;font-size:1.15rem;font-weight:500}
+.agent .muted{color:#9bb0a4}
+.agent ul{margin:.4rem 0 0;padding-left:1.1rem;font-size:.88rem}
+.agent .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#3dba8a;margin-right:.35rem}
+.block.resize-e{cursor:ew-resize}
+.tpl-swatches{display:flex;gap:.35rem;flex-wrap:wrap;margin:.35rem 0}
+.tpl-swatches button{width:28px;height:28px;border-radius:6px;border:2px solid #fff;box-shadow:0 0 0 1px #ccc;cursor:pointer}
 </style>
 </head>
 <body>
@@ -111,12 +124,23 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
     <!-- DASHBOARD -->
     <section id="view-dashboard" class="grid">
       <div class="grid cards" id="dashCards"></div>
-      <div class="panel">
-        <div class="row" style="justify-content:space-between;margin-bottom:.6rem">
-          <strong>Recent Projects</strong>
-          <button class="btn sm" id="btnNewFromDash">New Project</button>
+      <div class="two">
+        <div class="panel">
+          <div class="row" style="justify-content:space-between;margin-bottom:.6rem">
+            <strong>Recent Projects</strong>
+            <button class="btn sm" id="btnNewFromDash">New Project</button>
+          </div>
+          <div style="overflow:auto"><table><thead><tr><th>ID</th><th>Name</th><th>Customer</th><th>Lines</th><th>Total</th><th>Status</th></tr></thead><tbody id="recentBody"></tbody></table></div>
         </div>
-        <div style="overflow:auto"><table><thead><tr><th>ID</th><th>Name</th><th>Customer</th><th>Lines</th><th>Total</th><th>Status</th></tr></thead><tbody id="recentBody"></tbody></table></div>
+        <div class="agent" id="agentPanel">
+          <h3><span class="dot" id="agentDot"></span>Quote Learning Agent</h3>
+          <p class="muted" id="agentBlurb" style="margin:0">Watching your quotes…</p>
+          <p id="agentMsg" style="margin:.55rem 0 .2rem;font-size:.95rem">Open Window Cart, set a selling rate, and Calculate — I’ll remember patterns for this customer.</p>
+          <ul id="agentTips"></ul>
+          <div class="row" style="margin-top:.75rem">
+            <button class="btn sm" id="btnAgentRefresh" style="background:#1a4a3a;border-color:#2a6b55">Refresh insights</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -140,22 +164,51 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
         <div class="panel">
           <div class="row" style="margin-bottom:.6rem">
             <div class="grow"><label class="l">Project name</label><input id="cartName" value="WEOS Project"/></div>
-            <div class="grow"><label class="l">Customer</label><input id="cartCustomer" value=""/></div>
+            <div class="grow"><label class="l">Customer</label><input id="cartCustomer" value="" placeholder="Customer name (rates saved per customer)"/></div>
             <div><label class="l">PDF Brand</label>
-              <select id="pdfBrand"><option value="woodenmax">WoodenMax</option><option value="allkraft">AllKraft</option></select>
+              <select id="pdfBrand">
+                <option value="marqt">MAR-QT Style</option>
+                <option value="woodenmax">WoodenMax</option>
+                <option value="allkraft">AllKraft</option>
+              </select>
             </div>
           </div>
           <div class="row">
             <div class="grow"><label class="l">Product</label><select id="lineProduct"></select></div>
-            <div><label class="l">W</label><input id="lineW" type="number" value="2050" style="width:90px"/></div>
-            <div><label class="l">H</label><input id="lineH" type="number" value="1970" style="width:90px"/></div>
-            <div><label class="l">Qty</label><input id="lineQty" type="number" value="1" min="1" style="width:70px"/></div>
+            <div class="grow"><label class="l">Section series (Excel)</label><select id="lineSeries"><option value="">— optional —</option></select></div>
           </div>
           <div class="row" style="margin-top:.5rem">
+            <div><label class="l">W (mm)</label><input id="lineW" type="number" value="2050" style="width:90px"/></div>
+            <div><label class="l">H (mm)</label><input id="lineH" type="number" value="1970" style="width:90px"/></div>
+            <div><label class="l">Qty</label><input id="lineQty" type="number" value="1" min="1" style="width:70px"/></div>
             <div class="grow"><label class="l">Glass</label><select id="lineGlass"><option value="5mm_clear">5mm Clear</option><option value="8mm_toughened" selected>8mm Toughened</option><option value="10mm_toughened">10mm Toughened</option></select></div>
+          </div>
+          <div class="row" style="margin-top:.5rem">
             <div class="grow"><label class="l">Colour</label><select id="lineColour"><option value="white">White</option><option value="black_texture" selected>Black Texture</option><option value="wood_oak">Wood Oak</option></select></div>
             <div class="grow"><label class="l">Handle</label><select id="lineHandle"><option value="standard">Standard</option><option value="premium" selected>Premium</option></select></div>
-            <button class="btn" id="btnAddLine" style="margin-top:1rem">Add</button>
+            <div class="grow"><label class="l">Description</label><input id="lineDesc" placeholder="Customer-facing description"/></div>
+          </div>
+          <div class="livebox" id="livePriceBox">
+            <div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.06em">Live amount</div>
+            <div class="big" id="liveCost">₹ —</div>
+            <div class="muted" id="liveMeta">Pick product + size — cost updates instantly</div>
+            <div class="row2">
+              <div class="kpi grow"><label class="l">Sale unit</label>
+                <select id="lineSaleUnit">
+                  <option value="sqft">Per Sq.Ft.</option>
+                  <option value="sqm">Per Sq.M.</option>
+                  <option value="opening">Per Opening</option>
+                  <option value="rft">Per Running Ft</option>
+                </select>
+              </div>
+              <div class="kpi grow"><label class="l">Your selling rate</label><input id="lineSellRate" type="number" step="0.01" placeholder="e.g. 950"/></div>
+              <div class="kpi"><label class="l">Sell amount</label><div class="big" style="font-size:1.2rem" id="liveSell">₹ —</div></div>
+            </div>
+            <div class="row" style="margin-top:.55rem;align-items:center">
+              <div class="muted" id="liveMargin" style="flex:1"></div>
+              <button class="btn ghost sm" id="btnSaveRate" type="button">Save rate for customer</button>
+              <button class="btn" id="btnAddLine" type="button">Add to cart</button>
+            </div>
           </div>
           <div class="row" style="margin-top:.75rem">
             <button class="btn ghost sm" id="btnUndo">Undo</button>
@@ -163,6 +216,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <button class="btn ghost sm" id="btnAutosave">Save</button>
             <button class="btn sm" id="btnCalc">Calculate</button>
             <label class="btn ghost sm" style="margin:0">Import<input id="importFile" type="file" accept=".csv,.xlsx" hidden/></label>
+            <label class="btn ghost sm" style="margin:0" title="Import DETA windows section catalogue">Sections Excel<input id="sectionsFile" type="file" accept=".xlsx" hidden/></label>
           </div>
           <div style="overflow:auto;margin-top:.8rem">
             <table>
@@ -318,23 +372,31 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
       <div class="panel">
         <div class="row" style="margin-bottom:.6rem">
           <div><label class="l">Brand</label>
-            <select id="tplBrand"><option value="woodenmax">WoodenMax</option><option value="allkraft">AllKraft</option></select>
+            <select id="tplBrand">
+              <option value="marqt">MAR-QT Style</option>
+              <option value="woodenmax">WoodenMax</option>
+              <option value="allkraft">AllKraft</option>
+            </select>
           </div>
           <div><label class="l">Kind</label>
             <select id="tplKind"><option value="customer">Customer PDF</option><option value="factory">Factory PDF</option></select>
           </div>
           <div class="grow"><label class="l">Template</label><select id="tplSelect"></select></div>
           <button class="btn sm" id="btnTplLoad" style="margin-top:1rem">Load</button>
-          <button class="btn sm" id="btnTplSave" style="margin-top:1rem">Save JSON</button>
+          <button class="btn sm" id="btnTplSave" style="margin-top:1rem">Save</button>
           <button class="btn sec sm" id="btnTplPreview" style="margin-top:1rem">Preview PDF</button>
         </div>
+        <p class="muted" style="margin:0 0 .6rem">Drag blocks on the page · edit company colours · Preview shows live PDF. MAR-QT style draws window sizes (W/H) and specs like the reference quote.</p>
         <div class="admin-split">
           <div>
-            <div class="row" style="margin-bottom:.4rem">
+            <div class="row" style="margin-bottom:.4rem;flex-wrap:wrap">
               <button class="btn ghost sm" data-addblock="logo">+ Logo</button>
-              <button class="btn ghost sm" data-addblock="title">+ Title</button>
+              <button class="btn ghost sm" data-addblock="quote_header">+ Quote header</button>
+              <button class="btn ghost sm" data-addblock="cover_letter">+ Cover letter</button>
               <button class="btn ghost sm" data-addblock="customer_details">+ Customer</button>
+              <button class="btn ghost sm" data-addblock="line_items_marqt">+ Window items (MAR-QT)</button>
               <button class="btn ghost sm" data-addblock="price_table">+ Price table</button>
+              <button class="btn ghost sm" data-addblock="quote_totals">+ Quote totals</button>
               <button class="btn ghost sm" data-addblock="totals">+ Totals</button>
               <button class="btn ghost sm" data-addblock="terms">+ T&amp;C</button>
               <button class="btn ghost sm" data-addblock="footer">+ Footer</button>
@@ -343,10 +405,19 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <div class="canvas-wrap"><div class="canvas-page" id="tplCanvas"></div></div>
           </div>
           <div>
-            <strong>Selected block</strong>
+            <strong>Easy branding</strong>
+            <label class="l" style="margin-top:.5rem">Company name</label><input id="tplCompany"/>
+            <label class="l" style="margin-top:.4rem">Phone</label><input id="tplPhone" placeholder="+91 …"/>
+            <label class="l" style="margin-top:.4rem">Email</label><input id="tplEmail"/>
+            <label class="l" style="margin-top:.4rem">Logo image (optional)</label><input id="tplLogoFile" type="file" accept="image/*"/>
+            <div class="tpl-swatches" id="tplSwatches">
+              <button type="button" data-primary="0.12,0.22,0.38" data-accent="0.75,0.15,0.12" style="background:#1f385f" title="MAR-QT blue"></button>
+              <button type="button" data-primary="0.04,0.35,0.28" data-accent="0.71,0.33,0.14" style="background:#0a5a48" title="WoodenMax"></button>
+              <button type="button" data-primary="0.12,0.22,0.45" data-accent="0.85,0.55,0.12" style="background:#1f3873" title="AllKraft"></button>
+            </div>
+            <strong style="display:block;margin-top:.8rem">Selected block</strong>
             <div id="tplProps" class="muted" style="margin:.4rem 0 .6rem;font-size:.85rem">Click a block</div>
-            <label class="l">Company name</label><input id="tplCompany"/>
-            <label class="l" style="margin-top:.4rem">Block text</label><input id="tplBlockText"/>
+            <label class="l">Block text</label><input id="tplBlockText"/>
             <div class="row" style="margin-top:.4rem">
               <div><label class="l">X</label><input id="tplX" type="number" style="width:70px"/></div>
               <div><label class="l">Y</label><input id="tplY" type="number" style="width:70px"/></div>
@@ -368,9 +439,12 @@ const state = {
   projectId: null,
   lines: [],
   products: [],
+  series: [],
   selectedProduct: '29mm_sliding',
   selectedLine: 0,
   lastResult: null,
+  livePrice: null,
+  liveTimer: null,
   saveTimer: null,
   adminProduct: null,
   materials: [],
@@ -444,6 +518,26 @@ async function loadDashboard() {
       <td>${money(p.grandTotal)}</td><td><span class="pill">${p.status||''}</span></td>
     </tr>`).join('') || '<tr><td colspan="6" class="muted">No projects yet</td></tr>';
   $('recentBody').querySelectorAll('[data-open]').forEach(a => a.onclick = async (e) => { e.preventDefault(); await openProject(a.dataset.open); setView('cart'); });
+  await refreshAgent();
+}
+
+async function refreshAgent() {
+  try {
+    const st = await api('/api/agent');
+    const customer = ($('cartCustomer') && $('cartCustomer').value) || '';
+    const insights = await api('/api/agent/insights' + (customer ? ('?customer='+encodeURIComponent(customer)) : ''));
+    if ($('agentBlurb')) $('agentBlurb').textContent = st.blurb || '';
+    if ($('agentMsg')) $('agentMsg').textContent = insights.message || 'Learning from your quotes…';
+    if ($('agentDot')) $('agentDot').style.background = insights.status === 'learning' ? '#3dba8a' : '#c4a35a';
+    const tips = insights.tips || [];
+    const rates = (insights.suggestedRates || []).slice(0,3).map(r =>
+      `${r.product}: median ₹${r.medianRate} (${r.samples} quotes)`
+    );
+    if ($('agentTips')) $('agentTips').innerHTML = [...tips.slice(0,2), ...rates].map(t => `<li>${t}</li>`).join('')
+      || '<li>No observations yet — save a quote with selling rate.</li>';
+  } catch(e) {
+    if ($('agentMsg')) $('agentMsg').textContent = 'Agent unavailable: '+e.message;
+  }
 }
 
 async function loadProjects() {
@@ -478,6 +572,66 @@ async function loadProducts() {
   const data = await api('/api/products');
   state.products = data.products || [];
   $('lineProduct').innerHTML = state.products.map(p => `<option value="${p.id}">${p.displayName}${p.manufacturingReady?'':' (catalogue)'}</option>`).join('');
+  try {
+    const sec = await api('/api/sections');
+    state.series = sec.series || [];
+    if ($('lineSeries')) {
+      $('lineSeries').innerHTML = '<option value="">— optional —</option>' +
+        state.series.map(s => `<option value="${s.id}">${s.displayName||s.title} (${s.sectionCount})</option>`).join('');
+    }
+  } catch(_) { state.series = []; }
+}
+
+function currentLineDraft() {
+  const rateRaw = $('lineSellRate') ? $('lineSellRate').value : '';
+  return {
+    product: $('lineProduct').value,
+    sectionSeries: ($('lineSeries') && $('lineSeries').value) || null,
+    width: +$('lineW').value,
+    height: +$('lineH').value,
+    qty: +$('lineQty').value || 1,
+    glass: $('lineGlass').value,
+    colour: $('lineColour').value,
+    handle: $('lineHandle').value,
+    saleUnit: ($('lineSaleUnit') && $('lineSaleUnit').value) || 'sqft',
+    sellingRate: rateRaw === '' ? null : +rateRaw,
+    description: ($('lineDesc') && $('lineDesc').value.trim()) || null,
+  };
+}
+
+function scheduleLivePrice() {
+  clearTimeout(state.liveTimer);
+  state.liveTimer = setTimeout(refreshLivePrice, 220);
+}
+
+async function refreshLivePrice() {
+  if (!$('liveCost')) return;
+  const draft = currentLineDraft();
+  if (!draft.width || !draft.height) return;
+  try {
+    const body = { ...draft, customer: $('cartCustomer').value || null, lookupSavedRate: true };
+    const live = await api('/api/quote/live', { method:'POST', body });
+    state.livePrice = live;
+    $('liveCost').textContent = money(live.cost?.total);
+    const m = live.metrics || {};
+    $('liveMeta').textContent = `${m.areaSqft||'—'} sft · ${draft.width}×${draft.height} mm · qty ${draft.qty}` +
+      (live.rateSource === 'customer_saved' ? ' · rate from customer history' : '');
+    if (live.selling) {
+      $('liveSell').textContent = money(live.selling.sellingAmount);
+      if ($('lineSellRate').value === '' && live.selling.sellingRate != null) {
+        $('lineSellRate').value = live.selling.sellingRate;
+      }
+    } else {
+      $('liveSell').textContent = '₹ —';
+    }
+    if (live.margin) {
+      $('liveMargin').textContent = `Margin ${money(live.margin.marginAmount)} (${live.margin.marginPercent}%)`;
+    } else {
+      $('liveMargin').textContent = 'Enter selling rate to see sell amount & margin';
+    }
+  } catch(e) {
+    $('liveMeta').textContent = e.message;
+  }
 }
 
 function renderLibrary() {
@@ -509,9 +663,9 @@ async function openProduct(id) {
 
 function renderCart() {
   $('cartBody').innerHTML = state.lines.map((ln,i) => `
-    <tr class="${i===state.selectedLine?'':' '}" style="${i===state.selectedLine?'background:#f3faf6':''}">
+    <tr style="${i===state.selectedLine?'background:#f3faf6':''}">
       <td>${i+1}</td>
-      <td>${ln.product}</td>
+      <td>${ln.product}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}</td>
       <td><input data-f="width" data-i="${i}" type="number" value="${ln.width}" style="width:70px"/>×<input data-f="height" data-i="${i}" type="number" value="${ln.height}" style="width:70px"/></td>
       <td><input data-f="qty" data-i="${i}" type="number" min="1" value="${ln.qty}" style="width:56px"/></td>
       <td style="font-size:.8rem">${ln.glass||''}<br>${ln.colour||''}</td>
@@ -529,9 +683,33 @@ function renderCart() {
       scheduleSave();
       refreshPreview();
       updateLocalTotalHint();
+      // sync draft fields + live price when editing a line
+      const ln = state.lines[i];
+      if (ln) {
+        $('lineProduct').value = ln.product;
+        $('lineW').value = ln.width; $('lineH').value = ln.height; $('lineQty').value = ln.qty;
+        if (ln.sellingRate != null) $('lineSellRate').value = ln.sellingRate;
+        if (ln.saleUnit) $('lineSaleUnit').value = ln.saleUnit;
+      }
+      scheduleLivePrice();
     };
   });
-  $('cartBody').querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { state.selectedLine=+b.dataset.sel; renderCart(); refreshPreview(); });
+  $('cartBody').querySelectorAll('[data-sel]').forEach(b => b.onclick = () => {
+    state.selectedLine=+b.dataset.sel;
+    const ln = state.lines[state.selectedLine];
+    if (ln) {
+      $('lineProduct').value = ln.product;
+      $('lineW').value = ln.width; $('lineH').value = ln.height; $('lineQty').value = ln.qty;
+      if (ln.glass) $('lineGlass').value = ln.glass;
+      if (ln.colour) $('lineColour').value = ln.colour;
+      if (ln.handle) $('lineHandle').value = ln.handle;
+      if (ln.saleUnit) $('lineSaleUnit').value = ln.saleUnit;
+      $('lineSellRate').value = ln.sellingRate != null ? ln.sellingRate : '';
+      if ($('lineDesc')) $('lineDesc').value = ln.description || '';
+      if ($('lineSeries')) $('lineSeries').value = ln.sectionSeries || '';
+    }
+    renderCart(); refreshPreview(); scheduleLivePrice();
+  });
   $('cartBody').querySelectorAll('[data-dup]').forEach(b => b.onclick = () => { const i=+b.dataset.dup; state.lines.splice(i+1,0,{...state.lines[i]}); renderCart(); scheduleSave(); });
   $('cartBody').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { state.lines.splice(+b.dataset.del,1); renderCart(); scheduleSave(); });
   const items = state.lines.reduce((s,l)=>s+(+l.qty||0),0);
@@ -640,16 +818,28 @@ async function calculate() {
     }, null, 2);
     updatePdfLinks();
     toast('Calculated in '+ms+' ms');
+    refreshAgent();
   } catch(e) { $('cartErr').textContent = e.message; }
 }
 
 $('btnAddLine').onclick = () => {
-  state.lines.push({
-    product: $('lineProduct').value, width:+$('lineW').value, height:+$('lineH').value,
-    qty:+$('lineQty').value, glass:$('lineGlass').value, colour:$('lineColour').value, handle:$('lineHandle').value
-  });
+  const draft = currentLineDraft();
+  state.lines.push(draft);
   state.selectedLine = state.lines.length-1;
-  renderCart(); scheduleSave(); refreshPreview();
+  renderCart(); scheduleSave(); refreshPreview(); scheduleLivePrice();
+  toast('Line added');
+};
+$('btnSaveRate').onclick = async () => {
+  const draft = currentLineDraft();
+  const customer = ($('cartCustomer').value || '').trim();
+  if (!customer) { toast('Enter customer name first'); return; }
+  if (draft.sellingRate == null) { toast('Enter selling rate'); return; }
+  await api('/api/customers/rates', {method:'POST', body:{
+    customer, product: draft.product, sellingRate: draft.sellingRate,
+    saleUnit: draft.saleUnit, sectionSeries: draft.sectionSeries, notes: draft.description
+  }});
+  toast('Rate saved for '+customer);
+  refreshAgent();
 };
 $('btnCalc').onclick = calculate;
 $('btnAutosave').onclick = () => saveProject(false);
@@ -662,11 +852,25 @@ $('importFile').onchange = async (ev) => {
   await api('/api/projects/import?projectId='+encodeURIComponent(state.projectId), {method:'POST', body:fd});
   await openProject(state.projectId); toast('Imported');
 };
-['lineW','lineH','lineColour','lineGlass','lineProduct'].forEach(id => $(id).onchange = refreshPreview);
+$('sectionsFile').onchange = async (ev) => {
+  const f = ev.target.files[0]; if(!f) return;
+  const fd = new FormData(); fd.append('file', f);
+  const res = await fetch('/api/sections/import', {method:'POST', body:fd});
+  const data = await res.json();
+  if (!res.ok) { toast(data.detail || 'Import failed'); return; }
+  toast(`Sections: ${data.seriesCount} series, ${data.sectionCount} profiles`);
+  await loadProducts();
+};
+['lineW','lineH','lineQty','lineColour','lineGlass','lineProduct','lineSeries','lineSaleUnit','lineSellRate','lineHandle','lineDesc','cartCustomer'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('input', () => { scheduleLivePrice(); if (['lineW','lineH','lineColour','lineGlass','lineProduct'].includes(id)) refreshPreview(); });
+  el.addEventListener('change', () => { scheduleLivePrice(); if (['lineW','lineH','lineColour','lineGlass','lineProduct'].includes(id)) refreshPreview(); });
+});
+if ($('btnAgentRefresh')) $('btnAgentRefresh').onclick = refreshAgent;
 $('btnNewFromDash').onclick = $('btnNewProj').onclick = async () => {
   state.projectId=null; state.lines=[]; state.lastResult=null;
   $('cartName').value='New WEOS Project'; $('cartCustomer').value='';
-  $('cartTotal').textContent='₹ —'; renderCart(); setView('cart'); await ensureProject();
+  $('cartTotal').textContent='₹ —'; renderCart(); setView('cart'); await ensureProject(); scheduleLivePrice();
 };
 $('btnRefreshProj').onclick = loadProjects;
 $('projSearch').oninput = () => { clearTimeout(state._ps); state._ps=setTimeout(loadProjects,250); };
@@ -808,7 +1012,10 @@ async function loadTemplate() {
   const id = $('tplSelect').value || ($('tplBrand').value+'_'+$('tplKind').value);
   state.template = await api('/api/templates/'+id);
   state.selectedBlock = null;
-  $('tplCompany').value = (state.template.branding||{}).companyName || '';
+  const b = state.template.branding || {};
+  $('tplCompany').value = b.companyName || '';
+  if ($('tplPhone')) $('tplPhone').value = b.phone || '';
+  if ($('tplEmail')) $('tplEmail').value = b.email || '';
   renderCanvas();
   $('tplJson').textContent = JSON.stringify(state.template, null, 2);
 }
@@ -870,6 +1077,36 @@ $('tplCompany').onchange = () => {
   state.template.branding.logoText = $('tplCompany').value;
   $('tplJson').textContent = JSON.stringify(state.template, null, 2);
 };
+if ($('tplPhone')) $('tplPhone').onchange = () => {
+  state.template.branding = state.template.branding || {};
+  state.template.branding.phone = $('tplPhone').value;
+  $('tplJson').textContent = JSON.stringify(state.template, null, 2);
+};
+if ($('tplEmail')) $('tplEmail').onchange = () => {
+  state.template.branding = state.template.branding || {};
+  state.template.branding.email = $('tplEmail').value;
+  $('tplJson').textContent = JSON.stringify(state.template, null, 2);
+};
+document.querySelectorAll('#tplSwatches [data-primary]').forEach(btn => {
+  btn.onclick = () => {
+    state.template.branding = state.template.branding || {};
+    state.template.branding.primaryColor = btn.dataset.primary.split(',').map(Number);
+    state.template.branding.accentColor = btn.dataset.accent.split(',').map(Number);
+    $('tplJson').textContent = JSON.stringify(state.template, null, 2);
+    toast('Colours updated');
+  };
+});
+if ($('tplLogoFile')) $('tplLogoFile').onchange = async (ev) => {
+  const f = ev.target.files[0]; if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    state.template.branding = state.template.branding || {};
+    state.template.branding.logoDataUrl = reader.result;
+    $('tplJson').textContent = JSON.stringify(state.template, null, 2);
+    toast('Logo attached to template');
+  };
+  reader.readAsDataURL(f);
+};
 document.querySelectorAll('[data-addblock]').forEach(btn => btn.onclick = () => {
   const type = btn.dataset.addblock;
   state.template.blocks.push({id:type+'_'+Date.now(), type, x:60, y:60, w:160, h:40, text:type});
@@ -900,14 +1137,14 @@ $('btnTplPreview').onclick = async () => {
 (async function init(){
   await loadProducts();
   try { state.adminMeta = await api('/api/admin/meta'); } catch(_){}
-  // seed demo cart lines if empty
   state.lines = [
-    {product:'29mm_sliding', width:2050, height:1970, qty:4, glass:'8mm_toughened', colour:'black_texture', handle:'premium'},
-    {product:'29mm_sliding', width:1500, height:1500, qty:6, glass:'5mm_clear', colour:'white', handle:'standard'},
-    {product:'casement_stub', width:900, height:1500, qty:2, glass:'5mm_clear', colour:'white', handle:'standard'},
-    {product:'fixed_stub', width:1200, height:600, qty:8, glass:'5mm_clear', colour:'white', handle:'standard'},
+    {product:'29mm_sliding', width:2050, height:1970, qty:4, glass:'8mm_toughened', colour:'black_texture', handle:'premium', saleUnit:'sqft', sellingRate:1100},
+    {product:'29mm_sliding', width:1500, height:1500, qty:6, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft', sellingRate:950},
+    {product:'casement_stub', width:900, height:1500, qty:2, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft'},
+    {product:'fixed_stub', width:1200, height:600, qty:8, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft'},
   ];
   setView('dashboard');
+  scheduleLivePrice();
 })();
 </script>
 </body>

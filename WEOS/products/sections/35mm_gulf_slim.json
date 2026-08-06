@@ -1,0 +1,69 @@
+{
+  "id": "35mm_gulf_slim",
+  "title": "35MM Gulf Slim Series",
+  "displayName": "35MM Gulf Slim Series",
+  "productId": "35mm_sliding",
+  "sections": [
+    {
+      "id": "35mm_gulf_slim__2-track-top-bottom-horizontle-track",
+      "name": "2 track top/bottom horizontle track",
+      "usage": "track_horizontal",
+      "usageLabel": "Track — horizontal",
+      "sectionDepthMm": 95.3,
+      "widthMm": 31.2,
+      "standardLength": null,
+      "weightKgPerMtrRaw": "1.65 kg/m",
+      "weightKgPerMtr": 1.65,
+      "heightLimit": null,
+      "heightLimitMm": null,
+      "wallThicknessMm": null,
+      "designNote": null
+    },
+    {
+      "id": "35mm_gulf_slim__2-track-left-right-verticale-track",
+      "name": "2 track left/right verticale track",
+      "usage": "track_vertical",
+      "usageLabel": "Track — vertical",
+      "sectionDepthMm": 100.0,
+      "widthMm": 32.8,
+      "standardLength": null,
+      "weightKgPerMtrRaw": "1.230 kg/m",
+      "weightKgPerMtr": 1.23,
+      "heightLimit": null,
+      "heightLimitMm": null,
+      "wallThicknessMm": null,
+      "designNote": null
+    },
+    {
+      "id": "35mm_gulf_slim__3-track-top-bottom-horizontle-track",
+      "name": "3 track top/bottom horizontle track",
+      "usage": "track_horizontal",
+      "usageLabel": "Track — horizontal",
+      "sectionDepthMm": 145.2,
+      "widthMm": 31.0,
+      "standardLength": null,
+      "weightKgPerMtrRaw": "2.450 kg/m",
+      "weightKgPerMtr": 2.45,
+      "heightLimit": null,
+      "heightLimitMm": null,
+      "wallThicknessMm": null,
+      "designNote": null
+    },
+    {
+      "id": "35mm_gulf_slim__3-track-left-right-verticale-track",
+      "name": "3 track left/right verticale track",
+      "usage": "track_vertical",
+      "usageLabel": "Track — vertical",
+      "sectionDepthMm": 150.0,
+      "widthMm": 32.8,
+      "standardLength": null,
+      "weightKgPerMtrRaw": "2.150 kg/m",
+      "weightKgPerMtr": 2.15,
+      "heightLimit": null,
+      "heightLimitMm": null,
+      "wallThicknessMm": null,
+      "designNote": null
+    }
+  ],
+  "designOptions": []
+}

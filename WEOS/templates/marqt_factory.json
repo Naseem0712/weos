@@ -1,0 +1,91 @@
+{
+  "id": "marqt_factory",
+  "brand": "marqt",
+  "kind": "factory",
+  "name": "WEOS Windows Factory PDF",
+  "pageSize": "A4",
+  "branding": {
+    "companyName": "WEOS Windows",
+    "tagline": "Design \u2022 Calculate \u2022 Manufacture \u2022 Quote",
+    "primaryColor": [
+      0.12,
+      0.22,
+      0.38
+    ],
+    "accentColor": [
+      0.75,
+      0.15,
+      0.12
+    ],
+    "logoText": "WEOS Windows"
+  },
+  "blocks": [
+    {
+      "id": "logo",
+      "type": "logo",
+      "x": 40,
+      "y": 40,
+      "w": 160,
+      "h": 36,
+      "label": "WEOS Windows"
+    },
+    {
+      "id": "title",
+      "type": "title",
+      "x": 40,
+      "y": 90,
+      "w": 400,
+      "h": 28,
+      "text": "Factory Production Package"
+    },
+    {
+      "id": "qr",
+      "type": "qr",
+      "x": 480,
+      "y": 40,
+      "w": 70,
+      "h": 70
+    },
+    {
+      "id": "meta",
+      "type": "customer_details",
+      "x": 40,
+      "y": 130,
+      "w": 400,
+      "h": 60
+    },
+    {
+      "id": "glass",
+      "type": "glass_table",
+      "x": 40,
+      "y": 210,
+      "w": 515,
+      "h": 160
+    },
+    {
+      "id": "hardware",
+      "type": "hardware_table",
+      "x": 40,
+      "y": 390,
+      "w": 515,
+      "h": 140
+    },
+    {
+      "id": "cutlist",
+      "type": "cutlist_table",
+      "x": 40,
+      "y": 550,
+      "w": 515,
+      "h": 160
+    },
+    {
+      "id": "footer",
+      "type": "footer",
+      "x": 40,
+      "y": 780,
+      "w": 515,
+      "h": 24,
+      "text": "WEOS Windows Factory \u2014 machine-ready data"
+    }
+  ]
+}

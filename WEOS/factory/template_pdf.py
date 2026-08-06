@@ -26,6 +26,14 @@ def render_template_pdf(
         template = load_template(tid)
     except FileNotFoundError:
         template = load_template(f"woodenmax_{kind}")
+
+    # MAR-QT commercial layout (cover + drawings with W/H callouts + specs)
+    layout = str(template.get("layoutStyle") or "").lower()
+    block_types = {str(b.get("type") or "") for b in (template.get("blocks") or [])}
+    if layout == "marqt" or "line_items_marqt" in block_types or tid.startswith("marqt"):
+        from WEOS.factory.marqt_pdf import render_marqt_pdf
+
+        return render_marqt_pdf(template, payload)
     return _render_reportlab(template, payload)
 
 

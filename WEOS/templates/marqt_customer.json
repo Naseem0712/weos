@@ -1,0 +1,73 @@
+{
+  "id": "marqt_customer",
+  "brand": "marqt",
+  "kind": "customer",
+  "name": "MAR-QT Style Customer Quotation",
+  "pageSize": "A4",
+  "layoutStyle": "marqt",
+  "branding": {
+    "companyName": "WEOS Windows",
+    "tagline": "Windows & Doors Quotation",
+    "address": "",
+    "phone": "",
+    "email": "",
+    "primaryColor": [0.12, 0.22, 0.38],
+    "accentColor": [0.75, 0.15, 0.12],
+    "logoText": "WEOS",
+    "fontSizeTitle": 14,
+    "fontSizeBody": 8
+  },
+  "blocks": [
+    {
+      "id": "cover",
+      "type": "cover_letter",
+      "x": 40,
+      "y": 40,
+      "w": 515,
+      "h": 200,
+      "text": "We thank you for your enquiry and are pleased to offer our windows and doors as per the enclosed design, specifications and value."
+    },
+    {
+      "id": "header",
+      "type": "quote_header",
+      "x": 40,
+      "y": 40,
+      "w": 515,
+      "h": 56
+    },
+    {
+      "id": "items",
+      "type": "line_items_marqt",
+      "x": 36,
+      "y": 110,
+      "w": 523,
+      "h": 560
+    },
+    {
+      "id": "totals",
+      "type": "quote_totals",
+      "x": 40,
+      "y": 680,
+      "w": 515,
+      "h": 90
+    },
+    {
+      "id": "terms",
+      "type": "terms",
+      "x": 40,
+      "y": 40,
+      "w": 515,
+      "h": 400,
+      "text": "1. Specs & sizes: Opening sizes may differ by 7–9 mm after site measurement.\n2. Pricing: Ex-Works, White profile unless noted. GST extra as applicable.\n3. Payment: As per agreed schedule. Order confirmation required to start production.\n4. Delivery: Typically 3 weeks or more from confirmation, subject to site readiness.\n5. Validity: This quotation is valid for 15 days.\n6. Warranty: Profile manufacturing defects as per company policy. Glass excluded unless specified."
+    },
+    {
+      "id": "footer",
+      "type": "footer",
+      "x": 40,
+      "y": 800,
+      "w": 515,
+      "h": 24,
+      "text": "powered by WEOS — Window Engineering Operating System"
+    }
+  ]
+}

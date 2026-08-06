@@ -55,6 +55,8 @@ def _stub_line_result(line: Mapping[str, Any], product: Mapping[str, Any]) -> di
 
 def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
     """Calculate one cart line (product × size × qty × options)."""
+    from WEOS.factory.live_pricing import apply_selling_to_line_result
+
     product_id = str(line.get("product") or line.get("productId") or "29mm_sliding")
     product = load_product(product_id, strict=False)
     qty = int(line.get("qty") or line.get("quantity") or 1)
@@ -62,7 +64,7 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
     height = float(line.get("height", 0))
 
     if product.get("_stub") or product.get("status") == "stub":
-        return _stub_line_result(line, product)
+        return apply_selling_to_line_result(_stub_line_result(line, product), line)
 
     job = generate_job(
         width,
@@ -87,7 +89,7 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
             brush_m = b.length_mm / 1000.0
             break
 
-    return {
+    result_base = {
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
         "product": job.profile_id,
         "displayName": job.display_name,
@@ -172,12 +174,15 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
             for g in job.glass
         ],
     }
+    return apply_selling_to_line_result(result_base, line)
 
 
 def combine_lines(line_results: list[dict[str, Any]]) -> dict[str, Any]:
     total_items = sum(int(r.get("qty", 0)) for r in line_results)
     currency = "INR"
     grand = 0.0
+    commercial_grand = 0.0
+    has_commercial = False
     alu = glass_kg = hw_kg = total_kg = 0.0
     brush_m = 0.0
     glass_pcs = 0
@@ -190,8 +195,13 @@ def combine_lines(line_results: list[dict[str, Any]]) -> dict[str, Any]:
         currency = (r.get("price") or {}).get("currency", currency)
         total = float((r.get("price") or {}).get("total", 0))
         grand += total
+        if r.get("commercialTotal") is not None and r.get("selling"):
+            has_commercial = True
+            commercial_grand += float(r.get("commercialTotal") or 0)
+        else:
+            commercial_grand += total
         cat = r.get("category") or "Windows"
-        by_category[cat] = by_category.get(cat, 0.0) + total
+        by_category[cat] = by_category.get(cat, 0.0) + float(r.get("commercialTotal") or total)
         w = r.get("weight") or {}
         alu += float(w.get("aluminiumKg") or 0)
         glass_kg += float(w.get("glassKg") or 0)
@@ -212,6 +222,8 @@ def combine_lines(line_results: list[dict[str, Any]]) -> dict[str, Any]:
         "lineCount": len(line_results),
         "currency": currency,
         "grandTotal": round(grand, 2),
+        "commercialGrandTotal": round(commercial_grand, 2) if has_commercial else round(grand, 2),
+        "hasSellingRates": has_commercial,
         "categoryTotals": {k: round(v, 2) for k, v in by_category.items()},
         "weight": {
             "aluminiumKg": round(alu, 3),
@@ -259,6 +271,7 @@ def calculate_project(project: Mapping[str, Any], *, optimize: bool = True) -> d
         public_lines.append(clean)
 
     quotation_id = project.get("quotationId") or new_quotation_id()
+    price_total = combined.get("commercialGrandTotal", combined["grandTotal"])
     return {
         "projectId": project.get("projectId"),
         "name": project.get("name"),
@@ -269,7 +282,10 @@ def calculate_project(project: Mapping[str, Any], *, optimize: bool = True) -> d
         "optimization": optimization,
         "price": {
             "currency": combined["currency"],
-            "total": combined["grandTotal"],
+            "total": price_total,
+            "costTotal": combined["grandTotal"],
+            "commercialTotal": combined.get("commercialGrandTotal", combined["grandTotal"]),
+            "hasSellingRates": combined.get("hasSellingRates", False),
             "categoryTotals": combined["categoryTotals"],
         },
     }

@@ -1,0 +1,437 @@
+"""Windows section catalogue — Excel → series-wise JSON (profile library data layer).
+
+Engineering usage (track / sash / interlock / meeting) is inferred from catalogue
+``name`` text and stored on each section so quotation/PDF can annotate like MAR-QT.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+from WEOS.paths import PACKAGE_ROOT, WORKSPACE_ROOT, data_dir, products_dir
+
+HEADER_MARKERS = {
+    "section depth mm",
+    "width mm",
+    "name",
+    "standerd length",
+    "standard length",
+    "weight (kg/mtr)",
+    "height limit",
+    "design options",
+    "wall thikness",
+    "wall thickness",
+}
+
+# Prefer shorter, stable ids for UI / API
+SERIES_ID_ALIASES: dict[str, str] = {
+    "25mm-eco-gulf-system-windows-25mm-2-track-3-track": "25mm_eco_gulf",
+    "27mm-high-end-domal": "27mm_high_end_domal",
+    "29mm-premium-system-windows-euro-grove": "29mm_premium_euro",
+    "31-mm-gulf-lux-slim-sreis": "31mm_gulf_lux_slim",
+    "32-mm-dual-euro-grove-sreies": "32mm_dual_euro",
+    "35mm-gulf-slim-series": "35mm_gulf_slim",
+}
+
+# Map catalogue series → existing WEOS product ids (when manufacturing rules exist)
+SERIES_PRODUCT_MAP: dict[str, str] = {
+    "29mm_premium_euro": "29mm_sliding",
+    "35mm_gulf_slim": "35mm_sliding",
+    "25mm_eco_gulf": "29mm_sliding",  # nearest active engine until dedicated product
+    "27mm_high_end_domal": "29mm_sliding",
+    "31mm_gulf_lux_slim": "29mm_sliding",
+    "32mm_dual_euro": "29mm_sliding",
+}
+
+
+def sections_dir() -> Path:
+    d = products_dir() / "sections"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def catalogue_path() -> Path:
+    return sections_dir() / "catalogue.json"
+
+
+def _slug(text: str) -> str:
+    s = re.sub(r"[^a-zA-Z0-9]+", "-", (text or "").strip().lower()).strip("-")
+    return s or "series"
+
+
+def _norm_header(cell: Any) -> str:
+    return re.sub(r"\s+", " ", str(cell or "").strip().lower())
+
+
+def _clean_text(val: Any) -> str | None:
+    if val is None:
+        return None
+    s = str(val).replace("\u00b0", "°").replace("Degree", "Degree").strip()
+    s = re.sub(r"\s+", " ", s)
+    return s or None
+
+
+def _parse_weight_kg_m(val: Any) -> float | None:
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    m = re.search(r"([\d.]+)", str(val).replace(",", "."))
+    return float(m.group(1)) if m else None
+
+
+def _parse_height_limit_mm(val: Any) -> float | None:
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    m = re.search(r"([\d.]+)", str(val).replace(",", ""))
+    return float(m.group(1)) if m else None
+
+
+def infer_usage(name: str | None) -> str:
+    """Map catalogue section name → usage role (frame/track/sash/interlock/…)."""
+    n = (name or "").lower()
+    if not n:
+        return "unknown"
+    if "meeting" in n:
+        return "meeting"
+    if "interlock" in n or "renf" in n or re.search(r"\bint\.?\b", n):
+        return "interlock"
+    if "shutter" in n or "sash" in n:
+        return "sash"
+    if "domal" in n:
+        return "track"
+    if "track" in n or "trck" in n:
+        if any(k in n for k in ("horiz", "top", "bottom", "tp ")):
+            return "track_horizontal"
+        if any(k in n for k in ("vert", "left", "right")):
+            return "track_vertical"
+        if "add" in n or "4" in n:
+            return "track_add"
+        return "track"
+    if "frame" in n or "outer" in n:
+        return "frame"
+    return "other"
+
+
+def _usage_label(usage: str) -> str:
+    return {
+        "track": "Track / Outer frame",
+        "track_horizontal": "Track — horizontal",
+        "track_vertical": "Track — vertical",
+        "track_add": "Add track",
+        "sash": "Sash / Shutter",
+        "interlock": "Interlock",
+        "meeting": "Meeting section",
+        "frame": "Frame",
+        "other": "Section",
+        "unknown": "Section",
+    }.get(usage, usage)
+
+
+def _is_header_row(row: Sequence[Any]) -> bool:
+    cells = {_norm_header(c) for c in row if c is not None and str(c).strip()}
+    return "section depth mm" in cells and "width mm" in cells
+
+
+def _is_series_title_row(row: Sequence[Any]) -> bool:
+    vals = [c for c in row if c is not None and str(c).strip() != ""]
+    if len(vals) != 1:
+        return False
+    text = _norm_header(vals[0])
+    if text in HEADER_MARKERS or "section depth" in text:
+        return False
+    # Title-like: contains mm / series / system / track
+    return bool(re.search(r"\d+\s*mm|series|system|track|domal|gulf|euro", text, re.I))
+
+
+def _is_section_row(row: Sequence[Any]) -> bool:
+    depth = row[0] if len(row) > 0 else None
+    width = row[1] if len(row) > 1 else None
+    try:
+        float(depth)
+        float(width)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def find_excel_path(explicit: str | Path | None = None) -> Path:
+    if explicit:
+        p = Path(explicit)
+        if p.is_file():
+            return p
+        raise FileNotFoundError(f"Excel not found: {explicit}")
+    candidates = [
+        WORKSPACE_ROOT / "deta windows.xlsx",
+        WORKSPACE_ROOT / "references" / "deta windows.xlsx",
+        Path(r"d:\Downloads\deta windows.xlsx"),
+        PACKAGE_ROOT.parent / "deta windows.xlsx",
+    ]
+    for c in candidates:
+        if c.is_file():
+            return c
+    raise FileNotFoundError(
+        "deta windows.xlsx not found. Place it in workspace root or references/."
+    )
+
+
+def parse_excel(path: str | Path | None = None) -> dict[str, Any]:
+    """Parse DETA windows catalogue Excel into series-wise structure."""
+    from openpyxl import load_workbook
+
+    xlsx = find_excel_path(path)
+    wb = load_workbook(xlsx, data_only=True, read_only=True)
+    ws = wb[wb.sheetnames[0]]
+
+    series_list: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    headers_seen = False
+
+    for row in ws.iter_rows(values_only=True):
+        cells = list(row[:8]) if row else []
+        if not any(c is not None and str(c).strip() != "" for c in cells):
+            continue
+
+        if _is_series_title_row(cells):
+            title = _clean_text(cells[0]) or "Untitled series"
+            raw_id = _slug(title)
+            sid = SERIES_ID_ALIASES.get(raw_id, raw_id.replace("-", "_"))
+            # Prefer short aliases even when slug differs slightly
+            for alias_key, alias_id in SERIES_ID_ALIASES.items():
+                if alias_key in raw_id or raw_id in alias_key:
+                    sid = alias_id
+                    break
+            # Manual fixes for known titles
+            tl = title.lower()
+            if "25mm" in tl and "eco" in tl:
+                sid = "25mm_eco_gulf"
+            elif "27mm" in tl or ("high end" in tl and "domal" in tl):
+                sid = "27mm_high_end_domal"
+            elif "29mm" in tl:
+                sid = "29mm_premium_euro"
+            elif "31" in tl and "gulf" in tl:
+                sid = "31mm_gulf_lux_slim"
+            elif "32" in tl:
+                sid = "32mm_dual_euro"
+            elif "35mm" in tl:
+                sid = "35mm_gulf_slim"
+
+            current = {
+                "id": sid,
+                "title": title,
+                "displayName": title,
+                "productId": SERIES_PRODUCT_MAP.get(sid),
+                "sections": [],
+                "designOptions": [],
+            }
+            series_list.append(current)
+            headers_seen = False
+            continue
+
+        if _is_header_row(cells):
+            headers_seen = True
+            continue
+
+        if current is None:
+            continue
+
+        if _is_section_row(cells):
+            name = _clean_text(cells[2]) if len(cells) > 2 else None
+            # Skip nameless incomplete rows (e.g. trailing depth/width only)
+            if not name and len(series_list[-1]["sections"]) >= 4:
+                # still record if both dims present and earlier sections exist — keep if name missing only at end
+                if not name:
+                    continue
+            usage = infer_usage(name)
+            weight_raw = cells[4] if len(cells) > 4 else None
+            design_opt = _clean_text(cells[6]) if len(cells) > 6 else None
+            section = {
+                "id": f"{current['id']}__{_slug(name or 'section')}",
+                "name": name or "Unnamed",
+                "usage": usage,
+                "usageLabel": _usage_label(usage),
+                "sectionDepthMm": float(cells[0]),
+                "widthMm": float(cells[1]),
+                "standardLength": _clean_text(cells[3]) if len(cells) > 3 else None,
+                "weightKgPerMtrRaw": _clean_text(weight_raw),
+                "weightKgPerMtr": _parse_weight_kg_m(weight_raw),
+                "heightLimit": _clean_text(cells[5]) if len(cells) > 5 else None,
+                "heightLimitMm": _parse_height_limit_mm(cells[5] if len(cells) > 5 else None),
+                "wallThicknessMm": (
+                    float(cells[7])
+                    if len(cells) > 7 and cells[7] is not None and str(cells[7]).strip() != ""
+                    else None
+                ),
+                "designNote": design_opt,
+            }
+            current["sections"].append(section)
+            if design_opt and design_opt not in current["designOptions"]:
+                current["designOptions"].append(design_opt)
+            continue
+
+        # Design-option / note rows (often only column G populated)
+        note = None
+        for c in cells:
+            t = _clean_text(c)
+            if t and _norm_header(t) not in HEADER_MARKERS:
+                note = t
+                break
+        if note and current is not None and note not in current["designOptions"]:
+            current["designOptions"].append(note)
+
+    wb.close()
+
+    # Drop empty series
+    series_list = [s for s in series_list if s["sections"]]
+
+    return {
+        "source": xlsx.name,
+        "sourcePath": str(xlsx),
+        "version": 1,
+        "seriesCount": len(series_list),
+        "sectionCount": sum(len(s["sections"]) for s in series_list),
+        "series": series_list,
+    }
+
+
+def persist_catalogue(doc: Mapping[str, Any]) -> Path:
+    """Write catalogue.json + one JSON file per series under products/sections/."""
+    root = sections_dir()
+    path = catalogue_path()
+    path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    for series in doc.get("series") or []:
+        sid = series["id"]
+        series_path = root / f"{sid}.json"
+        series_path.write_text(
+            json.dumps(series, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+
+    # Writable mirror under data_dir for runtime overrides
+    mirror = data_dir() / "sections"
+    mirror.mkdir(parents=True, exist_ok=True)
+    (mirror / "catalogue.json").write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    return path
+
+
+def import_excel(path: str | Path | None = None) -> dict[str, Any]:
+    doc = parse_excel(path)
+    persist_catalogue(doc)
+    return {
+        "ok": True,
+        "path": str(catalogue_path()),
+        "seriesCount": doc["seriesCount"],
+        "sectionCount": doc["sectionCount"],
+        "series": [{"id": s["id"], "title": s["title"], "sections": len(s["sections"])} for s in doc["series"]],
+    }
+
+
+def load_catalogue() -> dict[str, Any]:
+    path = catalogue_path()
+    if not path.is_file():
+        # Auto-import from known Excel locations
+        try:
+            import_excel()
+        except FileNotFoundError:
+            return {"source": None, "series": [], "seriesCount": 0, "sectionCount": 0}
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def list_series() -> list[dict[str, Any]]:
+    doc = load_catalogue()
+    out = []
+    for s in doc.get("series") or []:
+        out.append(
+            {
+                "id": s["id"],
+                "title": s.get("title"),
+                "displayName": s.get("displayName") or s.get("title"),
+                "productId": s.get("productId") or SERIES_PRODUCT_MAP.get(s["id"]),
+                "sectionCount": len(s.get("sections") or []),
+                "usages": sorted({sec.get("usage") for sec in (s.get("sections") or [])}),
+            }
+        )
+    return out
+
+
+def get_series(series_id: str) -> dict[str, Any]:
+    path = sections_dir() / f"{series_id}.json"
+    if path.is_file():
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    doc = load_catalogue()
+    for s in doc.get("series") or []:
+        if s.get("id") == series_id:
+            return s
+    raise FileNotFoundError(f"Section series '{series_id}' not found")
+
+
+def sections_for_usage(series_id: str, usage: str | None = None) -> list[dict[str, Any]]:
+    series = get_series(series_id)
+    secs = list(series.get("sections") or [])
+    if usage:
+        secs = [s for s in secs if s.get("usage") == usage]
+    return secs
+
+
+def specs_summary_for_series(series_id: str | None) -> dict[str, Any]:
+    """Build MAR-QT-style specification fields from catalogue sections."""
+    if not series_id:
+        return {}
+    try:
+        series = get_series(series_id)
+    except FileNotFoundError:
+        return {}
+
+    by_usage: dict[str, list[dict[str, Any]]] = {}
+    for sec in series.get("sections") or []:
+        by_usage.setdefault(sec.get("usage") or "other", []).append(sec)
+
+    def pick(usages: Sequence[str]) -> dict[str, Any] | None:
+        for u in usages:
+            if by_usage.get(u):
+                return by_usage[u][0]
+        return None
+
+    track = pick(("track", "track_horizontal", "track_vertical", "frame"))
+    sash = pick(("sash",))
+    interlock = pick(("interlock",))
+    meeting = pick(("meeting",))
+
+    def dim_str(sec: dict[str, Any] | None) -> str | None:
+        if not sec:
+            return None
+        d, w = sec.get("sectionDepthMm"), sec.get("widthMm")
+        if d is None or w is None:
+            return None
+        return f"{sec.get('name')} {d:g}×{w:g} mm"
+
+    return {
+        "seriesId": series["id"],
+        "seriesTitle": series.get("title"),
+        "track": dim_str(track),
+        "sash": dim_str(sash),
+        "interlock": dim_str(interlock),
+        "meeting": dim_str(meeting),
+        "wallThicknessMm": next(
+            (s.get("wallThicknessMm") for s in (series.get("sections") or []) if s.get("wallThicknessMm")),
+            None,
+        ),
+        "sections": series.get("sections") or [],
+        "designOptions": series.get("designOptions") or [],
+    }
+
+
+def ensure_catalogue_imported() -> dict[str, Any]:
+    """Idempotent: import Excel if catalogue missing or empty."""
+    path = catalogue_path()
+    if path.is_file():
+        doc = json.loads(path.read_text(encoding="utf-8-sig"))
+        if doc.get("series"):
+            return {"ok": True, "imported": False, "seriesCount": doc.get("seriesCount", 0)}
+    return {**import_excel(), "imported": True}

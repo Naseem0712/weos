@@ -95,6 +95,44 @@ class CartLine(BaseModel):
     colour: str = "white"
     handle: str = "standard"
     category: str | None = None
+    sectionSeries: str | None = None
+    saleUnit: str | None = "sqft"
+    sellingRate: float | None = None
+    description: str | None = None
+    terms: str | None = None
+
+
+class LivePriceRequest(BaseModel):
+    product: str = "29mm_sliding"
+    width: float = 1440
+    height: float = 1800
+    qty: int = 1
+    glass: str = "5mm_clear"
+    colour: str = "white"
+    handle: str = "standard"
+    sectionSeries: str | None = None
+    saleUnit: str | None = "sqft"
+    sellingRate: float | None = None
+    customer: str | None = None
+    description: str | None = None
+    lookupSavedRate: bool = True
+
+
+class CustomerRateBody(BaseModel):
+    customer: str
+    product: str
+    sellingRate: float
+    saleUnit: str = "sqft"
+    sectionSeries: str | None = None
+    notes: str | None = None
+
+
+class AgentObserveBody(BaseModel):
+    customer: str | None = None
+    projectId: str | None = None
+    quotationId: str | None = None
+    terms: str | None = None
+    lines: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ProjectCreate(BaseModel):
@@ -163,8 +201,12 @@ class TemplateBody(BaseModel):
     kind: str | None = None
     name: str | None = None
     pageSize: str = "A4"
+    layoutStyle: str | None = None
     branding: dict[str, Any] | None = None
     blocks: list[dict[str, Any]] | None = None
+
+    class Config:
+        extra = "allow"
 
 
 class TemplatePreviewRequest(BaseModel):
@@ -427,6 +469,22 @@ def api_project_calculate(project_id: str, body: ProjectCalculateOpts | None = N
         if i < len(result["lines"]):
             ln["lineId"] = result["lines"][i].get("lineId", ln.get("lineId"))
     save_project(doc, action="calculate")
+    try:
+        from WEOS.learning.commercial_agent import observe_quote
+        from WEOS.factory.customer_rates import save_quote_line_rates
+
+        observe_quote(
+            customer=doc.get("customer"),
+            project_id=project_id,
+            quotation_id=result.get("quotationId"),
+            lines=result.get("lines") or [],
+            terms=doc.get("terms"),
+            source="calculate",
+        )
+        if doc.get("customer"):
+            save_quote_line_rates(str(doc["customer"]), doc.get("lines") or [])
+    except Exception:
+        pass
     result["project"] = {
         "projectId": doc["projectId"],
         "version": doc["version"],
@@ -619,6 +677,135 @@ def api_formula_preview(body: FormulaPreviewRequest) -> dict[str, Any]:
 def api_list_templates(brand: str | None = None, kind: str | None = None) -> dict[str, Any]:
     return {"templates": list_templates(brand=brand, kind=kind), "brands": list(BRANDS)}
 
+
+# ── Live pricing + sections + learning agent ─────────────────────────────────
+
+@app.post("/api/quote/live")
+def api_quote_live(body: LivePriceRequest) -> dict[str, Any]:
+    """Reactive cost + selling amount for product × size × qty."""
+    from WEOS.factory.live_pricing import live_price
+    from WEOS.factory.customer_rates import lookup_rate
+
+    payload = body.model_dump()
+    if body.lookupSavedRate and body.customer and (body.sellingRate is None):
+        saved = lookup_rate(
+            body.customer,
+            body.product,
+            sale_unit=body.saleUnit,
+            section_series=body.sectionSeries,
+        )
+        if saved:
+            payload["sellingRate"] = saved.get("sellingRate")
+            payload["saleUnit"] = saved.get("saleUnit") or body.saleUnit
+            payload["_rateSource"] = "customer_saved"
+    result = live_price(payload)
+    if payload.get("_rateSource"):
+        result["rateSource"] = payload["_rateSource"]
+    return result
+
+
+@app.get("/api/sale-units")
+def api_sale_units() -> dict[str, Any]:
+    from WEOS.factory.live_pricing import SALE_UNITS
+
+    return {"units": SALE_UNITS}
+
+
+@app.get("/api/customers/rates")
+def api_list_customer_rates() -> dict[str, Any]:
+    from WEOS.factory.customer_rates import list_customers_with_rates
+
+    return {"customers": list_customers_with_rates()}
+
+
+@app.get("/api/customers/{customer}/rates")
+def api_get_customer_rates(customer: str) -> dict[str, Any]:
+    from WEOS.factory.customer_rates import load_customer_rates
+
+    return load_customer_rates(customer)
+
+
+@app.post("/api/customers/rates")
+def api_save_customer_rate(body: CustomerRateBody) -> dict[str, Any]:
+    from WEOS.factory.customer_rates import save_customer_rate
+
+    return save_customer_rate(
+        body.customer,
+        product=body.product,
+        selling_rate=body.sellingRate,
+        sale_unit=body.saleUnit,
+        section_series=body.sectionSeries,
+        notes=body.notes,
+    )
+
+
+@app.get("/api/sections")
+def api_list_sections() -> dict[str, Any]:
+    from WEOS.factory.section_catalogue import ensure_catalogue_imported, list_series
+
+    ensure_catalogue_imported()
+    return {"series": list_series()}
+
+
+@app.get("/api/sections/{series_id}")
+def api_get_section_series(series_id: str) -> dict[str, Any]:
+    from WEOS.factory.section_catalogue import get_series
+
+    try:
+        return get_series(series_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/sections/import")
+async def api_import_sections(file: UploadFile | None = File(None)) -> dict[str, Any]:
+    """Import DETA windows Excel into series-wise section library JSON."""
+    from WEOS.factory.section_catalogue import import_excel
+    import tempfile
+    from pathlib import Path
+
+    if file is None:
+        return import_excel()
+    raw = await file.read()
+    suffix = Path(file.filename or "sections.xlsx").suffix or ".xlsx"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(raw)
+        tmp_path = tmp.name
+    try:
+        return import_excel(tmp_path)
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+@app.get("/api/agent")
+def api_agent_status() -> dict[str, Any]:
+    from WEOS.learning.commercial_agent import agent_status
+
+    return agent_status()
+
+
+@app.get("/api/agent/insights")
+def api_agent_insights(customer: str | None = None, product: str | None = None) -> dict[str, Any]:
+    from WEOS.learning.commercial_agent import agent_insights
+
+    return agent_insights(customer=customer, product=product)
+
+
+@app.post("/api/agent/observe")
+def api_agent_observe(body: AgentObserveBody) -> dict[str, Any]:
+    from WEOS.learning.commercial_agent import observe_quote
+
+    return observe_quote(
+        customer=body.customer,
+        project_id=body.projectId,
+        quotation_id=body.quotationId,
+        lines=body.lines,
+        terms=body.terms,
+        source="manual",
+    )
+
+
+# ── PDF Template Designer (handlers) ─────────────────────────────────────────
 
 @app.get("/api/templates/{template_id}")
 def api_get_template(template_id: str) -> dict[str, Any]:
