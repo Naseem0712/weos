@@ -3203,6 +3203,177 @@ if ($('btnEngSeed')) $('btnEngSeed').onclick = async () => {
   try { await api('/api/engineering/seed-formulas',{method:'POST'}); await api('/api/glass/seed',{method:'POST'}); await api('/api/hardware/seed',{method:'POST'}); toast('Defaults preloaded'); await initEngines(); } catch(e){ toast(e.message); }
 };
 
+// ── WEOS Agent dock: mobile login + cloud quotes + live suggestions ─────────
+// Cloud-first: quotes/customers live in PostgreSQL via the API. The browser
+// only caches the logged-in mobile for convenience; it is NEVER the source of
+// truth. Server-persistence failures surface as a clear error (no localStorage DB).
+window.WEOS_AUTH = null;
+window.WEOS_QUOTE_ID = null;
+
+function weosAgentCtx(){
+  const l = (state.lines && (state.lines[state.selectedLine] || state.lines[0])) || {};
+  return {
+    product: l.product, series: l.sectionSeries || l.series,
+    width: Number(l.width) || null, height: Number(l.height) || null,
+    quantity: Number(l.qty) || 1,
+    trackCount: (l.trackCount != null ? Number(l.trackCount) : null),
+    shutterCount: (l.glassShutters != null ? Number(l.glassShutters)
+                  : (l.shutterCount != null ? Number(l.shutterCount) : null)),
+    colour: l.colour, glass: l.glass, handle: l.handle,
+    hardware: l.handle ? [{ name: 'handle', category: 'handle', qty: (l.handleQty || null) }] : null,
+  };
+}
+
+function weosConfBadge(c){
+  const pct = Math.round((Number(c)||0) * 100);
+  const col = pct >= 80 ? '#16a34a' : (pct >= 60 ? '#d97706' : '#6b7280');
+  return `<span style="background:${col};color:#fff;border-radius:8px;padding:1px 6px;font-size:11px">${pct}%</span>`;
+}
+
+function weosRenderSuggestions(suggestions){
+  const box = $('weosAgentList'); if (!box) return;
+  const list = suggestions || [];
+  if (!list.length){ box.innerHTML = '<div style="color:#64748b;font-size:13px">No suggestions — change product, size, glass, shutters or hardware.</div>'; return; }
+  const icon = { warning:'⚠️', recommendation:'💡', info:'ℹ️' };
+  box.innerHTML = list.map((s, i) => {
+    const why = s.why ? JSON.stringify(s.why, null, 2) : '';
+    return `<div class="weos-sug" data-sid="${s.id||''}" data-key="${s.key||''}" style="border:1px solid #e2e8f0;border-left:3px solid ${s.type==='warning'?'#dc2626':(s.type==='recommendation'?'#2563eb':'#94a3b8')};border-radius:8px;padding:8px;margin-bottom:6px;background:#fff">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+        <strong style="font-size:13px">${icon[s.type]||''} ${s.message||''}</strong>${weosConfBadge(s.confidence)}
+      </div>
+      <div style="font-size:12px;color:#475569;margin-top:3px">${s.reason||''}</div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:2px">Source: ${s.source||'—'}</div>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="weos-why" style="font-size:11px;padding:3px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;cursor:pointer">Why?</button>
+        <button class="weos-apply" style="font-size:11px;padding:3px 8px;border:1px solid #16a34a;color:#16a34a;border-radius:6px;background:#fff;cursor:pointer">Apply</button>
+        <button class="weos-ignore" style="font-size:11px;padding:3px 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;cursor:pointer">Ignore</button>
+      </div>
+      <pre class="weos-whybox" style="display:none;white-space:pre-wrap;font-size:11px;background:#0f172a;color:#e2e8f0;padding:8px;border-radius:6px;margin-top:6px;max-height:180px;overflow:auto">${why.replace(/</g,'&lt;')}</pre>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('.weos-sug').forEach(node => {
+    node.querySelector('.weos-why').onclick = () => { const b = node.querySelector('.weos-whybox'); b.style.display = b.style.display==='none' ? 'block' : 'none'; };
+    node.querySelector('.weos-apply').onclick = () => weosSuggestionAction(node, 'accepted');
+    node.querySelector('.weos-ignore').onclick = () => weosSuggestionAction(node, 'rejected');
+  });
+}
+
+async function weosSuggestionAction(node, status){
+  const sid = node.dataset.sid;
+  if (window.WEOS_QUOTE_ID && sid){
+    try { await api(`/api/quotes/${window.WEOS_QUOTE_ID}/suggestions/${sid}/status`, { method:'POST', body:{ status, appliedBy:(window.WEOS_AUTH&&window.WEOS_AUTH.mobile)||'customer' } }); }
+    catch(e){ toast(e.message); return; }
+  }
+  node.style.opacity = status==='accepted' ? '0.6' : '0.4';
+  node.querySelector('.weos-apply').disabled = true; node.querySelector('.weos-ignore').disabled = true;
+  toast(status==='accepted' ? 'Suggestion applied (recorded)' : 'Suggestion ignored (recorded)');
+}
+
+async function weosRunAgent(){
+  try {
+    const res = await api('/api/agent/analyze', { method:'POST', body:{ trigger:'manual', quoteId: window.WEOS_QUOTE_ID, context: weosAgentCtx() } });
+    weosRenderSuggestions(res.suggestions);
+  } catch(e){ toast('Agent: ' + e.message); }
+}
+
+async function weosLogin(){
+  const mob = ($('weosMobile').value||'').trim();
+  const nm = ($('weosName').value||'').trim();
+  if (!mob){ toast('Enter a mobile number'); return; }
+  try {
+    const res = await api('/api/auth/login', { method:'POST', body:{ mobile: mob, name: nm||undefined } });
+    window.WEOS_AUTH = res.customer;
+    $('weosWho').textContent = `${res.customer.name||res.customer.mobile} · ${res.quoteCount} cloud quote(s)`;
+    $('weosLoginRow').style.display = 'none';
+    $('weosAuthed').style.display = 'block';
+    weosRenderQuotes(res.quotes);
+    weosRunAgent();
+  } catch(e){ toast('Login: ' + e.message); }
+}
+
+function weosRenderQuotes(quotes){
+  const box = $('weosQuotes'); if (!box) return;
+  if (!quotes || !quotes.length){ box.innerHTML = '<div style="color:#64748b;font-size:12px">No saved quotes yet.</div>'; return; }
+  box.innerHTML = quotes.map(q => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid #eef2f7">
+      <a href="#" data-qid="${q.quoteId}" class="weos-open" style="color:#2563eb;text-decoration:none">${q.quoteNumber||q.quoteId}</a>
+      <span style="color:#64748b">${q.product||''} · ${q.status} · ₹${q.grandTotal||0}</span>
+    </div>`).join('');
+  box.querySelectorAll('.weos-open').forEach(a => a.onclick = (e) => { e.preventDefault(); weosOpenQuote(a.dataset.qid); });
+}
+
+async function weosOpenQuote(qid){
+  try {
+    const q = await api(`/api/quotes/${qid}`);
+    window.WEOS_QUOTE_ID = q.quoteId;
+    $('weosCurrentQuote').textContent = `Editing ${q.quoteNumber||q.quoteId} (v${q.version}, ${q.status})`;
+    weosRenderSuggestions((q.suggestions||[]).filter(s=>s.status==='open'));
+    toast('Loaded ' + (q.quoteNumber||q.quoteId));
+  } catch(e){ toast(e.message); }
+}
+
+async function weosSaveQuote(){
+  if (!window.WEOS_AUTH){ toast('Login with your mobile number first'); return; }
+  const ctx = weosAgentCtx();
+  const total = (state.lastResult && state.lastResult.price && state.lastResult.price.total) || (state.livePrice && state.livePrice.sellingAmount) || null;
+  const payload = { ...ctx, mobile: window.WEOS_AUTH.mobile, customerName: window.WEOS_AUTH.name, grandTotal: total, lines: state.lines, createdBy: window.WEOS_AUTH.mobile };
+  try {
+    let q;
+    if (window.WEOS_QUOTE_ID){ q = await api(`/api/quotes/${window.WEOS_QUOTE_ID}`, { method:'PUT', body: payload }); }
+    else { q = await api('/api/quotes', { method:'POST', body: payload }); }
+    window.WEOS_QUOTE_ID = q.quoteId;
+    $('weosCurrentQuote').textContent = `Saved ${q.quoteNumber||q.quoteId} (v${q.version}, ${q.status})`;
+    weosRenderSuggestions((q.agent && q.agent.suggestions) || (q.suggestions||[]).filter(s=>s.status==='open'));
+    weosRenderQuotes((await api('/api/quotes?mobile=' + encodeURIComponent(window.WEOS_AUTH.mobile))).quotes);
+    toast('Saved to cloud: ' + (q.quoteNumber||q.quoteId));
+  } catch(e){ toast('Save failed (server persistence): ' + e.message); }
+}
+
+async function weosFinalize(){
+  if (!window.WEOS_QUOTE_ID){ toast('Save the quote first'); return; }
+  try { const q = await api(`/api/quotes/${window.WEOS_QUOTE_ID}/finalize`, { method:'POST' });
+    $('weosCurrentQuote').textContent = `Finalized ${q.quoteNumber||q.quoteId} (v${q.version})`; toast('Finalized'); }
+  catch(e){ toast(e.message); }
+}
+
+function weosMountAgentDock(){
+  if ($('weosAgentDock')) return;
+  const dock = document.createElement('div');
+  dock.id = 'weosAgentDock';
+  dock.style.cssText = 'position:fixed;right:16px;bottom:16px;width:340px;max-height:78vh;overflow:auto;background:#f8fafc;border:1px solid #cbd5e1;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);z-index:9999;font-family:inherit';
+  dock.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#0f172a;color:#fff;border-radius:12px 12px 0 0">
+      <strong style="font-size:14px">🤖 WEOS Agent</strong>
+      <button id="weosToggle" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:16px">–</button>
+    </div>
+    <div id="weosBody" style="padding:12px">
+      <div id="weosLoginRow">
+        <div style="font-size:12px;color:#475569;margin-bottom:6px">Login with your mobile number (no OTP):</div>
+        <input id="weosMobile" placeholder="Mobile number" style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px;box-sizing:border-box">
+        <input id="weosName" placeholder="Name (optional)" style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px;box-sizing:border-box">
+        <button id="weosLoginBtn" style="width:100%;padding:7px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer">Login</button>
+      </div>
+      <div id="weosAuthed" style="display:none">
+        <div id="weosWho" style="font-size:12px;color:#0f172a;font-weight:600;margin-bottom:6px"></div>
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <button id="weosSaveBtn" style="flex:1;padding:6px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">Save to cloud</button>
+          <button id="weosRunBtn" style="flex:1;padding:6px;background:#0f172a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">Run agent</button>
+          <button id="weosFinBtn" style="padding:6px 8px;background:#7c3aed;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">Finalize</button>
+        </div>
+        <div id="weosCurrentQuote" style="font-size:11px;color:#64748b;margin-bottom:6px"></div>
+        <div style="font-size:12px;font-weight:600;color:#334155;margin:6px 0 3px">Live suggestions</div>
+        <div id="weosAgentList"></div>
+        <div style="font-size:12px;font-weight:600;color:#334155;margin:10px 0 3px">Your cloud quotes</div>
+        <div id="weosQuotes"></div>
+      </div>
+    </div>`;
+  document.body.appendChild(dock);
+  $('weosLoginBtn').onclick = weosLogin;
+  $('weosSaveBtn').onclick = weosSaveQuote;
+  $('weosRunBtn').onclick = weosRunAgent;
+  $('weosFinBtn').onclick = weosFinalize;
+  $('weosToggle').onclick = () => { const b = $('weosBody'); b.style.display = b.style.display==='none' ? 'block' : 'none'; };
+}
+
 (async function init(){
   await loadProducts();
   try { state.adminMeta = await api('/api/admin/meta'); } catch(_){}
@@ -3214,6 +3385,7 @@ if ($('btnEngSeed')) $('btnEngSeed').onclick = async () => {
   ];
   setView('dashboard');
   scheduleLivePrice();
+  try { weosMountAgentDock(); } catch(e){ console.warn('WEOS Agent dock failed to mount', e); }
 })();
 </script>
 </body>

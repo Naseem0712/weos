@@ -11,6 +11,10 @@ openpyxl>=3.1,<4
 python-multipart>=0.0.9,<1
 lxml>=5.0,<6
 pypdf>=4.0,<6
+# Cloud-first persistence (Part 1 / Part 9). Production uses PostgreSQL via
+# DATABASE_URL (Railway); local dev degrades to sqlite through the same layer.
+SQLAlchemy>=2.0,<3
+psycopg2-binary>=2.9,<3
 # Optional (tables / page renders) — Learning Engine degrades gracefully if missing:
 # pdfplumber>=0.11
 # pypdfium2>=4.0

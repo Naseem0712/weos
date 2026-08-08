@@ -2380,6 +2380,328 @@ def api_engineering_seed_formulas(force: bool = False) -> dict[str, Any]:
     return seed_formula_memory(force=force)
 
 
+# ── Persistent Quotes (PostgreSQL) + Mobile Login + Live Agent (Parts 1-12) ──
+
+
+class MobileLoginBody(BaseModel):
+    mobile: str
+    name: str | None = None
+
+
+class QuoteBody(BaseModel):
+    model_config = {"extra": "allow"}
+
+    quoteId: str | None = None
+    quoteNumber: str | None = None
+    customerId: int | None = None
+    mobile: str | None = None
+    customerMobile: str | None = None
+    customerName: str | None = None
+    projectId: int | None = None
+    product: str | None = None
+    series: str | None = None
+    width: float | None = None
+    height: float | None = None
+    quantity: int | None = None
+    trackCount: float | None = None
+    shutterCount: int | None = None
+    colour: str | None = None
+    glass: Any = None
+    hardware: Any = None
+    materials: Any = None
+    bom: Any = None
+    rates: dict[str, Any] | None = None
+    lines: list[dict[str, Any]] | None = None
+    sellingPrice: float | None = None
+    gstPercent: float | None = None
+    gstAmount: float | None = None
+    grandTotal: float | None = None
+    status: str | None = None
+    calculation: dict[str, Any] | None = None
+    createdBy: str | None = None
+
+
+class AgentAnalyzeBody(BaseModel):
+    model_config = {"extra": "allow"}
+
+    quoteId: str | None = None
+    trigger: str = "manual"
+    persist: bool = True
+    learn: bool = True
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class SuggestionStatusBody(BaseModel):
+    status: str = "accepted"
+    appliedBy: str = "customer"
+
+
+def _db_error() -> HTTPException:
+    """Consistent 503 when server persistence is offline (never fall back to browser)."""
+    return HTTPException(
+        status_code=503,
+        detail="Server persistence unavailable. Set DATABASE_URL (PostgreSQL) on Railway. Quotes are never stored in the browser.",
+    )
+
+
+@app.post("/api/auth/login")
+def api_auth_login(body: MobileLoginBody) -> dict[str, Any]:
+    """Mobile-number login (no OTP): valid number → find/create customer account."""
+    from WEOS.db.quote_store import login_by_mobile
+
+    try:
+        return login_by_mobile(body.mobile, name=body.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise _db_error() from exc
+
+
+@app.get("/api/quotes")
+def api_list_quotes(
+    mobile: str | None = None,
+    customerId: int | None = None,
+    status: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.db.quote_store import list_quotes
+
+    try:
+        items = list_quotes(mobile=mobile, customer_id=customerId, status=status)
+        return {"quotes": items, "count": len(items)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise _db_error() from exc
+
+
+@app.post("/api/quotes")
+def api_create_quote(body: QuoteBody) -> dict[str, Any]:
+    from WEOS.db.quote_store import create_quote
+
+    try:
+        quote = create_quote(body.model_dump(exclude_none=True), created_by=body.createdBy)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise _db_error() from exc
+    # Run the Agent on create so suggestions are ready immediately (Part 3 + 12).
+    try:
+        from WEOS.agent import analyze
+
+        quote["agent"] = analyze(_quote_to_context(quote), trigger="bom_calc", quote_id=quote["quoteId"])
+    except Exception:
+        _log.exception("agent analyze failed on quote create")
+    return quote
+
+
+@app.get("/api/quotes/{quote_id}")
+def api_get_quote(quote_id: str) -> dict[str, Any]:
+    from WEOS.db.quote_store import get_quote
+
+    try:
+        return get_quote(quote_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise _db_error() from exc
+
+
+@app.put("/api/quotes/{quote_id}")
+def api_update_quote(quote_id: str, body: QuoteBody) -> dict[str, Any]:
+    from WEOS.db.quote_store import update_quote
+
+    try:
+        quote = update_quote(quote_id, body.model_dump(exclude_none=True), created_by=body.createdBy)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise _db_error() from exc
+    try:
+        from WEOS.agent import analyze
+
+        quote["agent"] = analyze(_quote_to_context(quote), trigger="price_calc", quote_id=quote_id)
+    except Exception:
+        _log.exception("agent analyze failed on quote update")
+    return quote
+
+
+@app.delete("/api/quotes/{quote_id}")
+def api_delete_quote(quote_id: str) -> dict[str, Any]:
+    from WEOS.db.quote_store import delete_quote
+
+    try:
+        return delete_quote(quote_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise _db_error() from exc
+
+
+@app.post("/api/quotes/{quote_id}/duplicate")
+def api_duplicate_quote(quote_id: str) -> dict[str, Any]:
+    from WEOS.db.quote_store import duplicate_quote
+
+    try:
+        return duplicate_quote(quote_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise _db_error() from exc
+
+
+@app.get("/api/quotes/{quote_id}/versions")
+def api_quote_versions(quote_id: str) -> dict[str, Any]:
+    from WEOS.db.quote_store import list_versions
+
+    try:
+        versions = list_versions(quote_id)
+        return {"quoteId": quote_id, "versions": versions, "count": len(versions)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise _db_error() from exc
+
+
+@app.get("/api/quotes/{quote_id}/events")
+def api_quote_events(quote_id: str) -> dict[str, Any]:
+    from WEOS.db.quote_store import list_events
+
+    try:
+        events = list_events(quote_id)
+        return {"quoteId": quote_id, "events": events, "count": len(events)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise _db_error() from exc
+
+
+@app.post("/api/quotes/{quote_id}/finalize")
+def api_finalize_quote(quote_id: str) -> dict[str, Any]:
+    from WEOS.db.quote_store import finalize_quote
+
+    try:
+        quote = finalize_quote(quote_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise _db_error() from exc
+    try:
+        from WEOS.agent import analyze
+
+        analyze(_quote_to_context(quote), trigger="finalize", quote_id=quote_id)
+    except Exception:
+        _log.exception("agent analyze failed on finalize")
+    return quote
+
+
+@app.post("/api/quotes/{quote_id}/suggestions/{suggestion_id}/status")
+def api_suggestion_status(quote_id: str, suggestion_id: int, body: SuggestionStatusBody) -> dict[str, Any]:
+    from WEOS.db.quote_store import set_suggestion_status
+
+    try:
+        return set_suggestion_status(quote_id, suggestion_id, body.status, created_by=body.appliedBy)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise _db_error() from exc
+
+
+def _quote_to_context(quote: dict[str, Any]) -> dict[str, Any]:
+    """Build the live Agent context from a stored quote dict."""
+    return {
+        "product": quote.get("product"),
+        "series": quote.get("series"),
+        "width": quote.get("width"),
+        "height": quote.get("height"),
+        "quantity": quote.get("quantity"),
+        "trackCount": quote.get("trackCount"),
+        "shutterCount": quote.get("shutterCount"),
+        "colour": quote.get("colour"),
+        "glass": quote.get("glass"),
+        "hardware": quote.get("hardware"),
+        "rates": quote.get("rates"),
+        "grandTotal": quote.get("grandTotal"),
+    }
+
+
+@app.post("/api/agent/analyze")
+def api_agent_analyze(body: AgentAnalyzeBody) -> dict[str, Any]:
+    """Live Agent Orchestrator — runs on any important quote change (Part 3/4)."""
+    from WEOS.agent import analyze
+
+    ctx = dict(body.context or {})
+    # Allow flat context keys too (extra="allow").
+    extra = body.model_dump(exclude={"quoteId", "trigger", "persist", "learn", "context"}, exclude_none=True)
+    ctx.update({k: v for k, v in extra.items() if k not in ctx})
+    return analyze(ctx, trigger=body.trigger, quote_id=body.quoteId, persist=body.persist, learn=body.learn)
+
+
+@app.get("/api/admin/health")
+@app.get("/api/health")
+def api_admin_health() -> dict[str, Any]:
+    """Startup / health diagnostic (Part 10)."""
+    checks: dict[str, Any] = {}
+    # Database
+    try:
+        from WEOS.db import health as db_health
+
+        checks["database"] = db_health()
+    except Exception as exc:
+        checks["database"] = {"status": "ERROR", "error": str(exc)}
+    # Quote Store
+    try:
+        from WEOS.db.quote_store import store_health
+
+        checks["quoteStore"] = store_health()
+    except Exception as exc:
+        checks["quoteStore"] = {"status": "ERROR", "error": str(exc)}
+    # Memory Store
+    try:
+        from WEOS.memory.store import get_store
+
+        checks["memoryStore"] = {"status": "READY", **get_store().summary().get("counts", {})}
+    except Exception as exc:
+        checks["memoryStore"] = {"status": "ERROR", "error": str(exc)}
+    # Knowledge Base
+    try:
+        from WEOS.learning.v2_store import current_kb_version
+
+        checks["knowledgeBase"] = {"status": "READY", "kbVersion": current_kb_version()}
+    except Exception as exc:
+        checks["knowledgeBase"] = {"status": "ERROR", "error": str(exc)}
+    # Agent + Suggestion Engine
+    try:
+        from WEOS.agent import status as agent_status_fn
+
+        st = agent_status_fn()
+        checks["agent"] = {"status": st.get("agent", "ERROR")}
+        checks["suggestionEngine"] = {"status": st.get("suggestionEngine", "ERROR"), "triggers": st.get("triggers")}
+    except Exception as exc:
+        checks["agent"] = {"status": "ERROR", "error": str(exc)}
+        checks["suggestionEngine"] = {"status": "ERROR", "error": str(exc)}
+
+    def _ok(node: Any) -> bool:
+        return isinstance(node, dict) and node.get("status") in ("READY", "CONNECTED")
+
+    overall = "ok" if all(_ok(v) for v in checks.values()) else "degraded"
+    return {"status": overall, "checks": checks, "version": __version__}
+
+
+@app.on_event("startup")
+def _weos_init_database() -> None:
+    """Create quote tables on boot (PostgreSQL in prod, sqlite dev fallback)."""
+    try:
+        from WEOS.db import init_db
+
+        res = init_db()
+        if res.get("ok"):
+            _log.info("WEOS DB ready (%s)", res.get("backend"))
+        else:
+            _log.warning("WEOS DB not ready: %s", res.get("error"))
+    except Exception:
+        _log.exception("WEOS DB init failed on startup")
+
+
 @app.on_event("startup")
 def _weos_seed_defaults() -> None:
     """Preload baseline formulas + starter glass/hardware libraries (idempotent)."""
