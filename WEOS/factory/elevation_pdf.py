@@ -351,12 +351,18 @@ def draw_model_elevation(
     c.setFont("Helvetica-Bold", 7)
     slide_idx = 0
     fix_idx = 0
+    # Sliding sashes labelled A1, A2 … from the RIGHT (rightmost = A1), like reference.
+    n_slide = sum(
+        1 for _nm, *_ in glasses
+        if not any(t in (str(_nm) or "").lower() for t in ("fix", "leaf", "door"))
+    )
     for name, x0, y0, x1, y1 in glasses:
         cx = (x0 + x1) / 2.0
         cy = (y0 + y1) / 2.0
         lname = (name or "").lower()
         _m = _re.search(r"(\d+)", lname)
         sp_meta = shutters_by_idx.get(int(_m.group(1))) if _m else None
+        is_sliding = False
         if "fix" in lname:
             fix_idx += 1
             panel_id, role = f"F{fix_idx}", "FIX"
@@ -370,23 +376,25 @@ def draw_model_elevation(
             role_rgb = (0.05, 0.30, 0.55)
         else:
             slide_idx += 1
-            panel_id, role = f"S{slide_idx}", sys_role
+            panel_id, role = f"A{max(n_slide - slide_idx + 1, 1)}", sys_role
             role_rgb = (0.05, 0.30, 0.55)
+            is_sliding = role == "SLIDING"
 
-        chip_w, chip_h = 18, 9
-        c.setFillColorRGB(1, 1, 1)
-        c.setStrokeColorRGB(0.2, 0.2, 0.2)
-        c.setLineWidth(0.5)
-        c.roundRect(px(cx) - chip_w / 2, py(cy + (y1 - y0) * 0.28) - chip_h / 2, chip_w, chip_h, 1.5, fill=1, stroke=1)
-        c.setFillColorRGB(0.05, 0.05, 0.05)
-        c.drawCentredString(px(cx), py(cy + (y1 - y0) * 0.28) - 2.2, panel_id)
+        if not is_sliding:
+            chip_w, chip_h = 18, 9
+            c.setFillColorRGB(1, 1, 1)
+            c.setStrokeColorRGB(0.2, 0.2, 0.2)
+            c.setLineWidth(0.5)
+            c.roundRect(px(cx) - chip_w / 2, py(cy + (y1 - y0) * 0.28) - chip_h / 2, chip_w, chip_h, 1.5, fill=1, stroke=1)
+            c.setFillColorRGB(0.05, 0.05, 0.05)
+            c.drawCentredString(px(cx), py(cy + (y1 - y0) * 0.28) - 2.2, panel_id)
 
         c.setFillColorRGB(*role_rgb)
         c.setFont("Helvetica-Bold", 6)
         c.drawCentredString(px(cx), py(cy - (y1 - y0) * 0.30) - 2, role)
         c.setFont("Helvetica-Bold", 7)
 
-        if role == "SLIDING":
+        if is_sliding:
             c.setStrokeColorRGB(0.05, 0.30, 0.55)
             c.setFillColorRGB(0.05, 0.30, 0.55)
             c.setLineWidth(0.75)
@@ -395,14 +403,21 @@ def draw_model_elevation(
             if od == 0:
                 od = 1.0 if slide_idx % 2 == 1 else -1.0
             if od > 0:
-                ax0, ax1 = cx - (x1 - x0) * 0.26, cx + (x1 - x0) * 0.22
+                ax0, ax1 = cx - (x1 - x0) * 0.24, cx + (x1 - x0) * 0.22
+                lx, align = ax0 - (x1 - x0) * 0.02, "right"
             else:
-                ax0, ax1 = cx + (x1 - x0) * 0.26, cx - (x1 - x0) * 0.22
+                ax0, ax1 = cx + (x1 - x0) * 0.24, cx - (x1 - x0) * 0.22
+                lx, align = ax0 + (x1 - x0) * 0.02, "left"
             c.line(px(ax0), py(ay), px(ax1), py(ay))
             ah = 2.8
             direction = 1 if ax1 > ax0 else -1
             c.line(px(ax1), py(ay), px(ax1) - direction * ah, py(ay) + ah * 0.7)
             c.line(px(ax1), py(ay), px(ax1) - direction * ah, py(ay) - ah * 0.7)
+            c.setFont("Helvetica-Bold", 7)
+            if align == "right":
+                c.drawRightString(px(lx), py(ay) - 8, panel_id)
+            else:
+                c.drawString(px(lx), py(ay) - 8, panel_id)
 
     # Dimension helpers in PDF points
     def dim_h(x0: float, x1: float, y_mm: float, text: str, text_dy: float = -9) -> None:
@@ -584,7 +599,7 @@ def draw_line_model_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
             glass_count=lo.get("glassCount"),
             mesh_count=lo.get("meshCount"),
             opening=lo.get("opening"),
-            fixed_shutters=lo.get("fixedShutters"),
+            fixed_shutters=lo.get("fixShuttersRaw"),
             system=lo.get("system"),
             fold_left=lo.get("foldLeft"),
             fold_right=lo.get("foldRight"),

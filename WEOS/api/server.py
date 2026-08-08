@@ -559,6 +559,26 @@ class DefaultsSuggestBody(BaseModel):
     customer: str | None = None
 
 
+def _sanitize_filename_part(value: Any) -> str:
+    """ASCII-safe, filesystem-safe chunk for a Content-Disposition filename."""
+    import re
+    import unicodedata
+
+    text = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii")
+    text = re.sub(r"[^A-Za-z0-9._-]+", "-", text)
+    text = re.sub(r"-{2,}", "-", text).strip("-._")
+    return text
+
+
+def _pdf_filename(quote_no: Any, customer: Any, project_id: str, kind: str) -> str:
+    """Downloaded PDF name = quotenumber_customername (sanitized)."""
+    parts = [p for p in (_sanitize_filename_part(quote_no), _sanitize_filename_part(customer)) if p]
+    base = "_".join(parts) or _sanitize_filename_part(project_id) or "WEOS-quotation"
+    if kind == "factory":
+        base = f"{base}_factory"
+    return f"{base}.pdf"
+
+
 def _pdf_response(project_id: str, kind: str, brand: str | None = None, template_id: str | None = None) -> Response:
     # load_project raises FileNotFoundError → 404 (handled by the caller).
     doc = load_project(project_id)
@@ -612,13 +632,13 @@ def _pdf_response(project_id: str, kind: str, brand: str | None = None, template
             payload["updatedOn"] = updated_fmt
     except Exception:
         pass
+    quote_no = payload.get("quotationId") or result.get("quotationId") or project_id
+    name = _pdf_filename(quote_no, doc.get("customer") or payload.get("customer"), project_id, kind)
     try:
         if kind == "factory":
             pdf = build_factory_pdf_bytes(payload)
-            name = f"{project_id}_factory.pdf"
         else:
             pdf = build_customer_pdf_bytes(payload)
-            name = f"{project_id}_quotation.pdf"
     except Exception:
         # build_*_pdf_bytes already degrade internally; this is a final belt-and-
         # suspenders guard so a PDF is ALWAYS returned instead of a bare 500.
@@ -626,7 +646,6 @@ def _pdf_response(project_id: str, kind: str, brand: str | None = None, template
         from WEOS.factory.pdf_engine import _minimal_text_pdf
 
         pdf = _minimal_text_pdf(f"WEOS {kind.title()} PDF", payload)
-        name = f"{project_id}_{kind}.pdf"
     return Response(
         content=pdf,
         media_type="application/pdf",

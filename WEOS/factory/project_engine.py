@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import copy
+import logging
 import uuid
 from typing import Any, Mapping
 
 from WEOS.factory.optimize_engine import CutPiece, GlassPiece, optimize_project_materials
+
+_log = logging.getLogger("weos.project_engine")
 from WEOS.factory.pipeline import generate_job
 from WEOS.factory.product_loader import load_product
 from WEOS.factory.project_store import new_quotation_id
@@ -50,6 +53,59 @@ def _stub_line_result(line: Mapping[str, Any], product: Mapping[str, Any]) -> di
         },
         "preview": {"svg": None},
         "note": "Stub product — manual rate until engines are wired",
+    }
+
+
+def _error_line_result(line: Mapping[str, Any], error: str = "") -> dict[str, Any]:
+    """Minimal, render-safe line result used when a single line fails to calculate.
+
+    Keeps the row visible in the PDF (size / qty / an error note) instead of
+    letting one bad line blank the whole quotation.
+    """
+    def _num(val: Any) -> float:
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return 0.0
+
+    try:
+        qty = int(float(line.get("qty") or line.get("quantity") or 1))
+    except (TypeError, ValueError):
+        qty = 1
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    merged_opts = {
+        "glass": line.get("glass"),
+        "colour": line.get("colour"),
+        "handle": line.get("handle"),
+    }
+    if isinstance(opts, Mapping):
+        merged_opts.update({k: v for k, v in opts.items()})
+    return {
+        "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
+        "product": line.get("product") or line.get("productId"),
+        "displayName": line.get("displayName") or line.get("product") or "Item",
+        "category": line.get("category") or "Windows",
+        "status": "error",
+        "error": str(error or "calculation failed"),
+        "width": _num(line.get("width")),
+        "height": _num(line.get("height")),
+        "qty": qty,
+        "sectionSeries": line.get("sectionSeries"),
+        "partitions": [],
+        "mesh": False,
+        "trackCount": 2.0,
+        "options": merged_opts,
+        "layout": {},
+        "glass": [],
+        "hardware": [],
+        "materials": [],
+        "brush": {"totalMeters": 0},
+        "trackRail": [],
+        "cutList": [],
+        "bom": [],
+        "weight": {"aluminiumKg": 0, "glassKg": 0, "hardwareKg": 0, "totalKg": 0},
+        "price": {"currency": "INR", "unitTotal": 0, "subtotal": 0, "total": 0},
+        "preview": {"svg": None},
     }
 
 
@@ -271,7 +327,19 @@ def combine_lines(line_results: list[dict[str, Any]]) -> dict[str, Any]:
 def calculate_project(project: Mapping[str, Any], *, optimize: bool = True) -> dict[str, Any]:
     """Full project calculation: each line → combine → material optimization."""
     lines = project.get("lines") or []
-    results = [calculate_line(ln) for ln in lines]
+    results: list[dict[str, Any]] = []
+    for idx, ln in enumerate(lines):
+        try:
+            results.append(calculate_line(ln))
+        except Exception as exc:
+            # One bad line must NEVER blank the whole quotation/PDF — log the real
+            # traceback and keep the row with an error note so the rest render.
+            _log.exception(
+                "calculate_line failed for line %d (product=%s); using error stub",
+                idx,
+                (ln or {}).get("product") if isinstance(ln, Mapping) else None,
+            )
+            results.append(_error_line_result(ln if isinstance(ln, Mapping) else {}, error=str(exc)))
     combined = combine_lines(results)
 
     cut_pieces: list[CutPiece] = []

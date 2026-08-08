@@ -150,21 +150,33 @@ def _build_shutters(
     depths = [(G + 1) if i in fixed_set else depth_for(i) for i in range(G)]
 
     def default_handle_side(i: int, operable: bool) -> str | None:
+        # Fixed panels NEVER carry a handle (applies to every system).
         if not operable:
             return None
         if casement:
             # Handle on the centre-meeting stile (hinge ends up on the outer stile)
             return "right" if i <= center_l else "left"
-        # Sliding
-        if G == 2:
-            return "left" if i == 0 else "right"  # outer stiles (Image B)
-        if mode == "center":
-            if i == center_l:
-                return "right"
-            if i == center_r:
+        # --- Sliding handle placement rules (fix-aware) ---
+        # 2 glass: handle on BOTH doors, on the OUTER stiles (left→left, right→right).
+        if G <= 2:
+            return "left" if i == 0 else "right"
+        # 3 glass: handles ONLY on the outer sliding doors; the centre door gets none.
+        if G == 3:
+            if i == 0:
                 return "left"
-            return "left" if i < center_l else "right"
-        return "left" if i == 0 else "right"
+            if i == G - 1:
+                return "right"
+            return None
+        # 4+ glass (centre-opening family): every operable door gets a handle.
+        #   - outer doors → outer stile
+        #   - inner doors → their centre-meeting stile
+        # Fixed side doors are already excluded above (operable=False → None), so
+        # when the sides ARE fixed only the selected sliding doors keep handles.
+        if i == 0:
+            return "left"
+        if i == G - 1:
+            return "right"
+        return "right" if i <= center_l else "left"
 
     def make_handle(nom_a: float, nom_b: float, side: str | None, x_frac: float | None, y_frac: float) -> Rect | None:
         if side == "none":

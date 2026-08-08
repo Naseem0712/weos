@@ -313,6 +313,9 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
         "meshCount": 0 if (is_bifold or is_casement) else shutter_cfg["meshCount"],
         "opening": shutter_cfg["opening"],
         "fixedShutters": shutter_cfg["fixedShutters"],
+        # Raw (1-based / string) fix value — pass THIS to generate_job so it
+        # normalises exactly once (avoids double 1-based conversion).
+        "fixShuttersRaw": pick("fixShutters", "fixedShutters", "fixed_shutters"),
         "system": resolved_system,
         "foldLeft": _coerce_int(pick("foldLeft", "fold_left")),
         "foldRight": _coerce_int(pick("foldRight", "fold_right")),

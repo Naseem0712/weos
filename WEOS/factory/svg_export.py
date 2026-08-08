@@ -10,17 +10,41 @@ from WEOS.factory.types import DrawingModel, Polyline
 
 
 def _parse_grid(grid: Any) -> tuple[int, int] | None:
-    """Return (cols, rows) muntin divisions, or None."""
+    """Return (cols, rows) muntin divisions, or None.
+
+    IMPORTANT: this parses a *muntin* grid (small internal glazing bars), e.g.
+    ``{"cols": 3, "rows": 2}`` or ``"3x2"``. It is NOT the partition/grid-designer
+    spec (``{"cols": [..], "rows": [..], "cells": [..]}``) — that one has LIST
+    cols/rows and a ``cells`` array and is rendered separately by
+    ``_draw_grid_svg``. Passing that spec here previously raised ``TypeError`` via
+    ``int([...])`` and blanked the whole export, so we defensively ignore it.
+    """
     if not grid:
         return None
     if isinstance(grid, Mapping):
-        cols = int(grid.get("cols") or grid.get("v") or grid.get("columns") or grid.get("vertical") or 0)
-        rows = int(grid.get("rows") or grid.get("h") or grid.get("horizontal") or 0)
+        # Partition/grid-designer spec → not a muntin grid; ignore here.
+        if grid.get("cells") is not None:
+            return None
+        raw_cols = grid.get("cols") or grid.get("v") or grid.get("columns") or grid.get("vertical") or 0
+        raw_rows = grid.get("rows") or grid.get("h") or grid.get("horizontal") or 0
+        if isinstance(raw_cols, (list, tuple)) or isinstance(raw_rows, (list, tuple)):
+            return None
+        try:
+            cols = int(raw_cols)
+            rows = int(raw_rows)
+        except (TypeError, ValueError):
+            return None
         if cols <= 0 and rows <= 0:
             return None
         return (max(cols, 1), max(rows, 1))
     if isinstance(grid, (list, tuple)) and len(grid) >= 2:
-        cols, rows = int(grid[0] or 0), int(grid[1] or 0)
+        # A list-of-lists is a partition spec, not a muntin (cols, rows) pair.
+        if isinstance(grid[0], (list, tuple)) or isinstance(grid[1], (list, tuple)):
+            return None
+        try:
+            cols, rows = int(grid[0] or 0), int(grid[1] or 0)
+        except (TypeError, ValueError):
+            return None
         if cols <= 0 and rows <= 0:
             return None
         return (max(cols, 1), max(rows, 1))
@@ -720,12 +744,19 @@ def render_svg_string(
         }
         slide_idx = 0
         fix_idx = 0
+        # Sliding sashes are labelled A1, A2 … counted from the RIGHT (reference: the
+        # right-hand sash is A1, the left is A2), so pre-count the sliding lites.
+        n_slide = sum(
+            1 for _nm, *_ in glasses
+            if not any(t in (str(_nm) or "").lower() for t in ("fix", "leaf", "door"))
+        )
         for name, x0, y0, x1, y1 in glasses:
             cx = (x0 + x1) / 2.0
             cy = (y0 + y1) / 2.0
             lname = (name or "").lower()
             _m = _re.search(r"(\d+)", lname)
             sp_meta = shutters_by_idx.get(int(_m.group(1))) if _m else None
+            is_sliding = False
             if "fix" in lname:
                 fix_idx += 1
                 panel_id = f"F{fix_idx}"
@@ -742,22 +773,26 @@ def render_svg_string(
                 role_color = "#0b3d7a"
             else:
                 slide_idx += 1
-                panel_id = f"S{slide_idx}"
+                # A-number from the right → rightmost sliding sash = A1
+                panel_id = f"A{max(n_slide - slide_idx + 1, 1)}"
                 role = sys_role
                 role_color = "#0b3d7a"
+                is_sliding = role == "SLIDING"
 
-            chip_w, chip_h = 80 * k, 36 * k
-            chip_y = cy + (y1 - y0) * 0.32
-            parts.append(
-                f'<rect x="{tx(cx) - chip_w / 2:.2f}" y="{ty(chip_y) - chip_h / 2:.2f}" '
-                f'width="{chip_w:.2f}" height="{chip_h:.2f}" rx="{3 * k:.1f}" fill="#fff" fill-opacity="0.95" '
-                f'stroke="#333" stroke-width="{1.15 * k:.2f}"/>'
-            )
-            parts.append(
-                f'<text x="{tx(cx):.2f}" y="{ty(chip_y) + label_font * 0.32:.2f}" text-anchor="middle" '
-                f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font:.0f}" font-weight="700" fill="#111">'
-                f"{escape(panel_id)}</text>"
-            )
+            # Sliding sashes read like the reference: clean arrow + A-label, no chip.
+            if not is_sliding:
+                chip_w, chip_h = 80 * k, 36 * k
+                chip_y = cy + (y1 - y0) * 0.32
+                parts.append(
+                    f'<rect x="{tx(cx) - chip_w / 2:.2f}" y="{ty(chip_y) - chip_h / 2:.2f}" '
+                    f'width="{chip_w:.2f}" height="{chip_h:.2f}" rx="{3 * k:.1f}" fill="#fff" fill-opacity="0.95" '
+                    f'stroke="#333" stroke-width="{1.15 * k:.2f}"/>'
+                )
+                parts.append(
+                    f'<text x="{tx(cx):.2f}" y="{ty(chip_y) + label_font * 0.32:.2f}" text-anchor="middle" '
+                    f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font:.0f}" font-weight="700" fill="#111">'
+                    f"{escape(panel_id)}</text>"
+                )
             parts.append(
                 f'<text x="{tx(cx):.2f}" y="{ty(cy - (y1 - y0) * 0.28) + label_font * 0.35:.2f}" text-anchor="middle" '
                 f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font * 0.85:.0f}" font-weight="600" fill="{role_color}">'
@@ -765,20 +800,25 @@ def render_svg_string(
             )
 
             # Slide-direction arrow (sliding only) — direction from the sash openDir
-            if role == "SLIDING" and (x1 - x0) > 40:
-                ay = cy - (y1 - y0) * 0.02
+            if is_sliding and (x1 - x0) > 40:
+                ay = cy
                 od = float(sp_meta.get("openDir") or 0) if sp_meta else 0.0
                 if od == 0:
                     od = 1.0 if slide_idx % 2 == 1 else -1.0
                 halfw = (x1 - x0)
                 if od > 0:
-                    ax0, ax1 = cx - halfw * 0.26, cx + halfw * 0.24
+                    ax0, ax1 = cx - halfw * 0.24, cx + halfw * 0.22
+                    lx = ax0 - halfw * 0.02
+                    anchor = "end"
                 else:
-                    ax0, ax1 = cx + halfw * 0.26, cx - halfw * 0.24
+                    ax0, ax1 = cx + halfw * 0.24, cx - halfw * 0.22
+                    lx = ax0 + halfw * 0.02
+                    anchor = "start"
                 _arrow(parts, tx=tx, ty=ty, x0=ax0, y0=ay, x1=ax1, y1=ay)
+                # Label sits beside the arrow tail (like "A2 →" / "← A1")
                 parts.append(
-                    f'<text x="{tx(cx):.2f}" y="{ty(ay) + label_font * 0.95:.2f}" text-anchor="middle" '
-                    f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font * 0.8:.0f}" '
+                    f'<text x="{tx(lx):.2f}" y="{ty(ay) + label_font * 1.05:.2f}" text-anchor="{anchor}" '
+                    f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font * 0.85:.0f}" '
                     f'font-weight="700" fill="#0b3d7a">{escape(panel_id)}</text>'
                 )
 
@@ -904,7 +944,7 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
             glass_count=lo.get("glassCount"),
             mesh_count=lo.get("meshCount"),
             opening=lo.get("opening"),
-            fixed_shutters=lo.get("fixedShutters"),
+            fixed_shutters=lo.get("fixShuttersRaw"),
             system=lo.get("system"),
             fold_left=lo.get("foldLeft"),
             fold_right=lo.get("foldRight"),

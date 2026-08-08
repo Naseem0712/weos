@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import io
+import logging
 from datetime import date
 from typing import Any, Mapping, Sequence
+
+_log = logging.getLogger("weos.marqt_pdf")
 
 
 def _rgb(color: Sequence[float] | None, fallback=(0.12, 0.22, 0.38)):
@@ -441,10 +444,17 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         c.setFillColorRGB(*accent)
         set_font(c, 9, bold=True)
         c.drawString(42, y + 4, code)
-        draw_line_elevation(c, line, 38, y - draw_h, draw_w, draw_h)
+        try:
+            draw_line_elevation(c, line, 38, y - draw_h, draw_w, draw_h)
+        except Exception:
+            _log.exception("marqt elevation draw failed for line %d; leaving cell blank", idx)
 
         # Specs (no sell-rate line — rate is in RATE column only)
-        specs = _spec_lines(line)
+        try:
+            specs = _spec_lines(line)
+        except Exception:
+            _log.exception("marqt spec build failed for line %d; using name only", idx)
+            specs = [str(line.get("displayName") or line.get("product") or "Window")]
         c.setFillColorRGB(0, 0, 0)
         set_font(c, 7)
         sy = y
