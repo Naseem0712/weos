@@ -27,6 +27,20 @@ def render_template_pdf(
     except FileNotFoundError:
         template = load_template(f"woodenmax_{kind}")
 
+    # Overlay saved Company Setup identity onto template branding (auto-applied to
+    # every quote header). Company name renders in UPPERCASE for headers.
+    try:
+        from WEOS.factory.company_store import company_branding
+
+        overlay = company_branding()
+        if overlay:
+            template = dict(template)
+            branding = dict(template.get("branding") or {})
+            branding.update({k: v for k, v in overlay.items() if v})
+            template["branding"] = branding
+    except Exception:
+        pass
+
     # MAR-QT commercial layout (cover + drawings with W/H callouts + specs)
     layout = str(template.get("layoutStyle") or "").lower()
     block_types = {str(b.get("type") or "") for b in (template.get("blocks") or [])}
@@ -103,8 +117,21 @@ def _render_reportlab(template: Mapping[str, Any], payload: Mapping[str, Any]) -
             c.setFont("Helvetica", 9)
             c.drawString(x, y - 12, f"Project: {payload.get('projectId', '')}")
             c.drawString(x, y - 24, f"Quotation: {payload.get('quotationId', '')}")
-            c.drawString(x, y - 36, f"Customer: {payload.get('customer') or '—'}")
-            c.drawString(x, y - 48, f"Name: {payload.get('name') or '—'}")
+            c.drawString(x, y - 36, f"Customer: {str(payload.get('customer') or '—').upper()}")
+            yy = y - 48
+            prof = payload.get("customerProfile") or {}
+            if prof.get("address"):
+                c.drawString(x, yy, str(prof["address"])[:60])
+                yy -= 12
+            if prof.get("gstNo"):
+                c.drawString(x, yy, f"GSTIN: {prof['gstNo']}")
+                yy -= 12
+            c.drawString(x, yy, f"Date: {payload.get('createdOn') or ''}")
+            yy -= 12
+            if payload.get("updatedOn"):
+                c.setFillColorRGB(*accent)
+                c.drawString(x, yy, f"Updated on: {payload.get('updatedOn')}")
+                c.setFillColorRGB(0, 0, 0)
 
         elif btype == "product_image":
             c.setStrokeColorRGB(*accent)

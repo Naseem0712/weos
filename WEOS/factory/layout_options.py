@@ -158,27 +158,143 @@ def resolve_mesh_track(
     }
 
 
+def _coerce_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        s = str(value).strip()
+        if s == "":
+            return None
+        return int(round(float(s)))
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_fixed_shutters(raw: Any, glass_count: int) -> list[int]:
+    """Return sorted, de-duplicated 0-based glass-shutter indices to lock as FIX.
+
+    Accepts a list/tuple, a comma-separated string ("1,3"), or a single value.
+    Inputs are treated as 1-based positions (left→right) and clamped to range.
+    """
+    if raw is None or raw == "":
+        return []
+    items: list[Any]
+    if isinstance(raw, (list, tuple)):
+        items = list(raw)
+    else:
+        items = [p for p in str(raw).replace(";", ",").split(",")]
+    out: set[int] = set()
+    for it in items:
+        n = _coerce_int(it)
+        if n is None:
+            continue
+        idx = n - 1  # UI is 1-based
+        if 0 <= idx < int(glass_count):
+            out.add(idx)
+    return sorted(out)
+
+
+def resolve_shutter_config(
+    *,
+    glass_count: Any = None,
+    mesh_count: Any = None,
+    mesh: bool = False,
+    track_count: float | None = None,
+    fixed_shutters: Any = None,
+    opening: str | None = None,
+    default_glass: int = 2,
+) -> dict[str, Any]:
+    """Normalize a flexible sliding configuration.
+
+    Rules:
+      - ``glass_count`` >= 1 (defaults to product ``shutterCount`` / 2).
+      - ``mesh_count`` >= 0. If ``mesh`` is truthy but no count given, defaults to 1.
+      - ``opening`` is 'center' for an even glass count (default), else 'telescopic'.
+        An explicit value wins when provided.
+      - Mesh validity vs. track type is handled by ``resolve_mesh_track`` upstream;
+        here we only clamp counts and derive the opening mode.
+    """
+    g = _coerce_int(glass_count)
+    if g is None or g < 1:
+        g = max(int(default_glass or 2), 1)
+
+    m = _coerce_int(mesh_count)
+    if m is None:
+        m = 1 if bool(mesh) else 0
+    m = max(int(m), 0)
+    if bool(mesh) and m == 0:
+        m = 1
+
+    mode = str(opening or "").strip().lower()
+    if mode not in ("center", "telescopic"):
+        mode = "center" if g % 2 == 0 else "telescopic"
+
+    fixed = normalize_fixed_shutters(fixed_shutters, g)
+
+    return {
+        "glassCount": int(g),
+        "meshCount": int(m),
+        "opening": mode,
+        "fixedShutters": fixed,
+        "mesh": bool(mesh) or m > 0,
+        "trackCount": float(track_count) if track_count is not None else None,
+    }
+
+
 def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Extract partitions / mesh / trackCount from a cart line or preview body."""
+    """Extract partitions / mesh / trackCount / shutter config from a cart line."""
     line = line or {}
     opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+
+    def pick(*keys: str) -> Any:
+        for k in keys:
+            if line.get(k) is not None:
+                return line.get(k)
+            if isinstance(opts, Mapping) and opts.get(k) is not None:
+                return opts.get(k)
+        return None
+
     partitions = (
         line.get("partitions")
         or (opts or {}).get("partitions")
         or []
     )
     mesh = bool(line.get("mesh") if line.get("mesh") is not None else (opts or {}).get("mesh"))
-    track_raw = line.get("trackCount")
-    if track_raw is None:
-        track_raw = (opts or {}).get("trackCount")
+    track_raw = pick("trackCount")
     try:
         track_count = float(track_raw) if track_raw is not None and str(track_raw).strip() != "" else None
     except (TypeError, ValueError):
         track_count = None
+
+    shutter_cfg = resolve_shutter_config(
+        glass_count=pick("glassShutters", "glassCount", "glass_count"),
+        mesh_count=pick("meshShutters", "meshCount", "mesh_count"),
+        mesh=mesh,
+        track_count=track_count,
+        fixed_shutters=pick("fixShutters", "fixedShutters", "fixed_shutters"),
+        opening=pick("opening"),
+    )
+    system_raw = pick("system", "windowSystem")
+    system = str(system_raw or "sliding").strip().lower()
+    is_bifold = system in ("bifold", "fold", "fold_sliding", "fold_and_sliding")
+
+    section_sizes = pick("sectionSizes", "sections")
+    if not isinstance(section_sizes, Mapping):
+        section_sizes = None
+
     return {
         "partitions": normalize_partitions(partitions),
-        "mesh": mesh,
+        "mesh": shutter_cfg["mesh"] and not is_bifold,
         "trackCount": track_count,
+        "glassCount": shutter_cfg["glassCount"],
+        "meshCount": 0 if is_bifold else shutter_cfg["meshCount"],
+        "opening": shutter_cfg["opening"],
+        "fixedShutters": shutter_cfg["fixedShutters"],
+        "system": "bifold" if is_bifold else "sliding",
+        "foldLeft": _coerce_int(pick("foldLeft", "fold_left")),
+        "foldRight": _coerce_int(pick("foldRight", "fold_right")),
+        "sectionSizes": section_sizes,
+        "handleFinish": pick("handleFinish", "handle_finish"),
         "sectionSeries": line.get("sectionSeries") or (opts or {}).get("sectionSeries"),
         "grid": line.get("grid") or (opts or {}).get("grid") or (opts or {}).get("grille"),
     }

@@ -1,0 +1,196 @@
+{
+  "ok": true,
+  "status": "learning",
+  "observationCount": 4,
+  "tips": [
+    "mosquito_mesh margin ~62.5% · sliding margin ~60.6%",
+    "August: white finish trending",
+    "Dealer City Dealer typical discount ~5.0%",
+    "Architect XYZ Architect usually black_texture"
+  ],
+  "customers": [
+    {
+      "customer": "Demo Customer",
+      "topPrefs": [
+        [
+          "colour:white",
+          2
+        ],
+        [
+          "glass:5mm_clear",
+          2
+        ]
+      ],
+      "topProducts": [
+        [
+          "29mm_sliding",
+          2
+        ]
+      ]
+    },
+    {
+      "customer": "ABC Builders",
+      "topPrefs": [
+        [
+          "colour:black_texture",
+          2
+        ],
+        [
+          "glass:8mm_toughened",
+          1
+        ],
+        [
+          "handle:premium",
+          1
+        ]
+      ],
+      "topProducts": [
+        [
+          "29mm_sliding",
+          1
+        ],
+        [
+          "mosquito_mesh",
+          1
+        ]
+      ]
+    }
+  ],
+  "architects": [
+    {
+      "architect": "XYZ Architect",
+      "preferredFinish": "black_texture",
+      "counts": [
+        [
+          "black_texture",
+          2
+        ]
+      ]
+    }
+  ],
+  "dealers": [
+    {
+      "dealer": "City Dealer",
+      "avgDiscountPercent": 5.0,
+      "samples": 2
+    }
+  ],
+  "marginsByProduct": [
+    {
+      "productFamily": "mosquito_mesh",
+      "avgMarginPercent": 62.5,
+      "samples": 1
+    },
+    {
+      "productFamily": "sliding",
+      "avgMarginPercent": 60.6,
+      "samples": 3
+    }
+  ],
+  "seasonal": [
+    {
+      "month": "August",
+      "topColour": "white",
+      "colours": [
+        [
+          "white",
+          2
+        ],
+        [
+          "black_texture",
+          2
+        ]
+      ]
+    }
+  ],
+  "vendors": [
+    {
+      "vendor": "Vendor A",
+      "mentions": 2,
+      "avgCostAmount": 21500.0,
+      "hint": "best_price"
+    }
+  ],
+  "productRecommendations": [
+    {
+      "when": "mosquito_mesh",
+      "recommend": "sliding",
+      "coOccurrences": 1,
+      "source": "learned"
+    },
+    {
+      "when": "sliding",
+      "recommend": "mosquito_mesh",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "sliding",
+      "recommend": "shower",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "casement",
+      "recommend": "mosquito_mesh",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "casement",
+      "recommend": "fixed",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "fixed",
+      "recommend": "sliding",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "fixed",
+      "recommend": "casement",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "shower",
+      "recommend": "wardrobe",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "shower",
+      "recommend": "sliding",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "wardrobe",
+      "recommend": "sliding",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "wardrobe",
+      "recommend": "shower",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "pergola",
+      "recommend": "sliding",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "pergola",
+      "recommend": "casement",
+      "coOccurrences": 0,
+      "source": "default"
+    }
+  ],
+  "message": "mosquito_mesh margin ~62.5% · sliding margin ~60.6%",
+  "safety": "Insights & suggestions only. Customer Memory apply requires explicit confirm. No production engineering auto-write."
+}

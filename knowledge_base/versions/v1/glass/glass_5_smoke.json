@@ -1,0 +1,12 @@
+{
+  "id": "glass_5_smoke",
+  "name": "5mm Clear Glass",
+  "glassType": "Clear",
+  "thicknessMm": 5,
+  "compatibleProducts": [
+    "29mm_sliding_smoke"
+  ],
+  "created_at": "2026-08-06T21:00:17.397613+00:00",
+  "updated_at": "2026-08-06T21:00:17.397613+00:00",
+  "status": "approved"
+}

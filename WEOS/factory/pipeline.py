@@ -41,8 +41,17 @@ def generate_job(
     mesh: bool = False,
     track_count: float | None = None,
     section_series: str | None = None,
+    glass_count: int | None = None,
+    mesh_count: int | None = None,
+    opening: str | None = None,
+    fixed_shutters: Any = None,
+    system: str | None = None,
+    fold_left: int | None = None,
+    fold_right: int | None = None,
+    section_sizes: Mapping[str, Any] | None = None,
+    handle_finish: str | None = None,
 ) -> JobResult:
-    from WEOS.factory.layout_options import resolve_mesh_track
+    from WEOS.factory.layout_options import resolve_mesh_track, resolve_shutter_config
 
     product = load_product(product_id)
     product = apply_customer_options(product, glass=glass, colour=colour, handle=handle)
@@ -67,16 +76,49 @@ def generate_job(
     )
     geom["trackCount"] = mesh_res["trackCount"]
 
+    sys_kind = str(system or "sliding").strip().lower()
+    is_bifold = sys_kind in ("bifold", "fold", "fold_sliding", "fold_and_sliding")
+
+    if is_bifold:
+        fl = int(fold_left) if fold_left is not None else 2
+        fr = int(fold_right) if fold_right is not None else 1
+        total_leaves = max(fl + fr, 1)
+        shutter_cfg = {
+            "glassCount": total_leaves,
+            "meshCount": 0,
+            "opening": "center",
+            "fixedShutters": [],
+        }
+    else:
+        shutter_cfg = resolve_shutter_config(
+            glass_count=glass_count,
+            mesh_count=mesh_count,
+            mesh=bool(mesh_res.get("mesh")),
+            track_count=float(mesh_res["trackCount"]),
+            fixed_shutters=fixed_shutters,
+            opening=opening,
+            default_glass=int(float(geom.get("shutterCount") or 2)),
+        )
+
     layout = compute_two_track_layout(
         width,
         height,
         geom,
         partitions=partitions,
-        mesh=bool(mesh_res.get("mesh")),
+        mesh=bool(mesh_res.get("mesh")) and not is_bifold,
         track_count=float(mesh_res["trackCount"]),
+        glass_count=shutter_cfg["glassCount"],
+        mesh_count=shutter_cfg["meshCount"],
+        opening=shutter_cfg["opening"],
+        fixed_shutters=shutter_cfg["fixedShutters"],
+        system="bifold" if is_bifold else "sliding",
+        fold_left=fold_left,
+        fold_right=fold_right,
+        section_sizes=section_sizes,
     )
     params = geometry_as_engine_dict(product)
     params["track_count"] = float(mesh_res["trackCount"])
+    params["shutter_count"] = float(layout.glass_count)
     style = dim_style_from_profile(product.get("dimensioning") or {})
     drawing = build_drawing(
         layout,
@@ -86,10 +128,23 @@ def generate_job(
     )
     # Stash mesh/track resolution on drawing metadata for PDF/preview consumers
     meta = dict(drawing.metadata or {})
-    meta["mesh"] = bool(mesh_res.get("mesh"))
+    meta["mesh"] = (bool(mesh_res.get("mesh")) or shutter_cfg["meshCount"] > 0) and not is_bifold
     meta["track_count"] = float(mesh_res["trackCount"])
     meta["mesh_track"] = mesh_res
+    meta["glass_count"] = int(layout.glass_count)
+    meta["mesh_count"] = int(layout.mesh_count)
+    meta["opening"] = layout.opening
+    meta["system"] = layout.system
+    if handle_finish:
+        meta["handle_finish"] = str(handle_finish)
+    elif colour and ("black" in str(colour).lower() or "dark" in str(colour).lower()):
+        meta["handle_finish"] = "black"
+    else:
+        meta["handle_finish"] = "silver"
     drawing.metadata = meta
+
+    # Glass / hardware quantities follow the actual glass shutter / leaf count
+    geom["shutterCount"] = float(layout.glass_count)
 
     extras_ctx = {
         "leftShutterWidth": layout.left_shutter_width,

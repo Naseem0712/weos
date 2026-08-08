@@ -1,0 +1,71 @@
+{
+  "ok": true,
+  "observationCount": 1,
+  "tips": [
+    "Most common canvas config: 29mm_sliding|8mm_toughened|black_texture|premium|p2 (1×)",
+    "Avg wall thickness for large_2.5-4.5m2: 1.5 mm",
+    "Observed aluminium cut waste avg: 9.5%"
+  ],
+  "profilesBySize": {
+    "large_2.5-4.5m2": [
+      [
+        "Outer Track",
+        1
+      ],
+      [
+        "OT-29",
+        1
+      ]
+    ]
+  },
+  "avgWallThicknessBySizeMm": {
+    "large_2.5-4.5m2": 1.5
+  },
+  "avgWallThicknessByDesignMm": {
+    "sliding": 1.5
+  },
+  "hardwareBySituation": {
+    "sliding|panels=2|large_2.5-4.5m2": [
+      [
+        "Roller",
+        1
+      ],
+      [
+        "Premium Handle",
+        1
+      ],
+      [
+        "handle:premium",
+        1
+      ]
+    ]
+  },
+  "designConfigurations": [
+    [
+      "29mm_sliding|8mm_toughened|black_texture|premium|p2",
+      1
+    ]
+  ],
+  "glassByProduct": {
+    "29mm_sliding": [
+      [
+        "8mm_toughened",
+        1
+      ]
+    ]
+  },
+  "avgWastePercent": 9.5,
+  "recentWeights": [
+    {
+      "product": "29mm_sliding",
+      "size": "2050×1970",
+      "totalKg": 43.7,
+      "aluminiumKg": 12.5,
+      "glassKg": 30
+    }
+  ],
+  "formulasKnown": 5,
+  "status": "learning",
+  "message": "Most common canvas config: 29mm_sliding|8mm_toughened|black_texture|premium|p2 (1×)",
+  "safety": "Suggestions / pending only — production profiles never auto-modified."
+}

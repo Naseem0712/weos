@@ -1,0 +1,27 @@
+{
+  "description": "Declarative conflict rules. Hard = stop generation. Soft = warning. Admin approve required for production use.",
+  "rules": [
+    {
+      "id": "conflict_premium_handle_old_roller",
+      "title": "Premium Handle + Old Roller incompatible",
+      "a": {
+        "memoryType": "hardware",
+        "id": "hw_handle_premium",
+        "name": "Premium Handle"
+      },
+      "b": {
+        "memoryType": "hardware",
+        "id": "hw_roller_old",
+        "name": "Old Roller"
+      },
+      "severity": "hard",
+      "reason": "Premium Handle requires matched roller set \u2014 Old Roller is mechanically incompatible.",
+      "seriesIds": [],
+      "status": "approved",
+      "priority": 100,
+      "approved_at": "2026-08-06T22:36:15.922478+00:00",
+      "approved_by": "seed"
+    }
+  ],
+  "updated_at": "2026-08-06T22:36:15.922478+00:00"
+}

@@ -1,0 +1,23 @@
+{
+  "description": "Compatibility constraints. Warnings by default; never auto-rewrite production.",
+  "rules": [
+    {
+      "id": "compat_29mm_glass_thickness",
+      "title": "29mm Sliding glass thickness",
+      "seriesId": "29mm_sliding_smoke",
+      "field": "glassThicknessMm",
+      "allowed": [
+        5,
+        6,
+        8
+      ],
+      "message": "Series only supports 5/6/8 mm glass",
+      "severity": "warning",
+      "status": "approved",
+      "priority": 80,
+      "approved_by": "seed",
+      "approved_at": "2026-08-06T22:36:15.981236+00:00"
+    }
+  ],
+  "updated_at": "2026-08-06T22:36:15.981236+00:00"
+}

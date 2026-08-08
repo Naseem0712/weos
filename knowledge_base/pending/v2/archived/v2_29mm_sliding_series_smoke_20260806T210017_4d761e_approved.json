@@ -1,0 +1,256 @@
+{
+  "proposal_id": "v2_29mm_sliding_series_smoke_20260806T210017_4d761e",
+  "kind": "catalogue_bundle",
+  "status": "approved",
+  "created_at": "2026-08-06T21:00:17.673228+00:00",
+  "title": "29mm Sliding Series Smoke",
+  "summary": "JSON catalogue ingest",
+  "confidence": 0.9,
+  "source": {
+    "type": "json",
+    "filename": "_smoke_catalogue.json",
+    "path": "knowledge_base\\uploads\\_smoke_catalogue.json"
+  },
+  "payload": {
+    "series": {
+      "id": "29mm_sliding_smoke",
+      "seriesName": "29mm Sliding Series",
+      "brand": "WoodenMax",
+      "productCategory": "Sliding Windows",
+      "productDescription": "Smoke-test series",
+      "aluminiumAlloy": "6063-T5",
+      "temper": "T5",
+      "wallThicknessMm": 1.2,
+      "powderCoatingType": "Polyester",
+      "surfaceFinish": "Matt",
+      "profiles": [],
+      "hardware": [],
+      "glass": []
+    },
+    "profiles": [
+      {
+        "id": "prof_outer_smoke",
+        "profileName": "Outer Track 29x65",
+        "profileCode": "OT-29-65",
+        "profileType": "Outer Track",
+        "crossSectionWidthMm": 29,
+        "crossSectionHeightMm": 65,
+        "wallThicknessMm": 1.2,
+        "weightPerMeterKg": 0.756,
+        "usePosition": [
+          "Top",
+          "Bottom",
+          "Left",
+          "Right"
+        ],
+        "usageRules": {
+          "positions": [
+            "Top",
+            "Bottom",
+            "Left",
+            "Right"
+          ],
+          "bomRole": "outer_frame",
+          "orientation": [
+            "horizontal",
+            "vertical"
+          ]
+        },
+        "compatibleSeries": [
+          "29mm_sliding_smoke"
+        ],
+        "seriesId": "29mm_sliding_smoke",
+        "bomRole": "outer_frame",
+        "pdfPageNumber": 2,
+        "confidence": 0.9
+      },
+      {
+        "id": "prof_shutter_smoke",
+        "profileName": "Shutter Frame",
+        "profileCode": "SF-29",
+        "profileType": "Shutter Frame",
+        "crossSectionWidthMm": 29,
+        "crossSectionHeightMm": 40,
+        "weightPerMeterKg": 0.52,
+        "usePosition": [
+          "Vertical",
+          "Horizontal"
+        ],
+        "usageRules": {
+          "positions": [
+            "Vertical",
+            "Horizontal"
+          ],
+          "bomRole": "shutter_frame"
+        },
+        "compatibleSeries": [
+          "29mm_sliding_smoke"
+        ],
+        "seriesId": "29mm_sliding_smoke",
+        "bomRole": "shutter_frame",
+        "pdfPageNumber": 3,
+        "confidence": 0.85
+      },
+      {
+        "id": "prof_il_smoke",
+        "profileName": "Interlock",
+        "profileCode": "IL-22",
+        "profileType": "Interlock",
+        "crossSectionWidthMm": 22,
+        "crossSectionHeightMm": 40,
+        "weightPerMeterKg": 0.41,
+        "usePosition": [
+          "Meeting Side"
+        ],
+        "usageRules": {
+          "positions": [
+            "Meeting Side"
+          ],
+          "bomRole": "interlock"
+        },
+        "compatibleSeries": [
+          "29mm_sliding_smoke"
+        ],
+        "seriesId": "29mm_sliding_smoke",
+        "bomRole": "interlock",
+        "pdfPageNumber": 4,
+        "confidence": 0.85
+      },
+      {
+        "id": "prof_bead_smoke",
+        "profileName": "Glass Beading",
+        "profileCode": "GB-10",
+        "profileType": "Glass Beading",
+        "crossSectionWidthMm": 10,
+        "crossSectionHeightMm": 12,
+        "weightPerMeterKg": 0.12,
+        "compatibleSeries": [
+          "29mm_sliding_smoke"
+        ],
+        "seriesId": "29mm_sliding_smoke",
+        "bomRole": "beading",
+        "pdfPageNumber": 5,
+        "confidence": 0.8
+      }
+    ],
+    "hardware": [
+      {
+        "id": "hw_handle_smoke",
+        "name": "Standard Handle",
+        "hardwareType": "Handle",
+        "partNumber": "H-001",
+        "compatibleSeries": [
+          "29mm_sliding_smoke"
+        ],
+        "unit": "PC",
+        "sellingRate": 180
+      },
+      {
+        "id": "hw_roller_smoke",
+        "name": "Wheel Roller",
+        "hardwareType": "Roller",
+        "partNumber": "R-002",
+        "compatibleSeries": [
+          "29mm_sliding_smoke"
+        ],
+        "unit": "PC",
+        "sellingRate": 55
+      }
+    ],
+    "glass": [
+      {
+        "id": "glass_5_smoke",
+        "name": "5mm Clear Glass",
+        "glassType": "Clear",
+        "thicknessMm": 5,
+        "compatibleProducts": [
+          "29mm_sliding_smoke"
+        ]
+      },
+      {
+        "id": "glass_8_smoke",
+        "name": "8mm Toughened Glass",
+        "glassType": "Toughened",
+        "thicknessMm": 8,
+        "compatibleProducts": [
+          "29mm_sliding_smoke"
+        ]
+      }
+    ],
+    "formulas": [
+      {
+        "id": "fx_glass_smoke",
+        "name": "Glass area",
+        "category": "glass",
+        "expression": "glassArea",
+        "compatibleSeries": [
+          "29mm_sliding_smoke"
+        ]
+      }
+    ]
+  },
+  "edits": {},
+  "item_counts": {},
+  "match_hints": [],
+  "notes": [
+    "JSON ingest — review before approve."
+  ],
+  "safety": {
+    "auto_write_production": false,
+    "message": "Production data is never modified automatically. Approve publishes to the Knowledge Base only."
+  },
+  "approved_at": "2026-08-06T21:00:18.189141+00:00",
+  "approved_by": "smoke_test",
+  "approve_results": [
+    {
+      "action": "linked",
+      "library": "product_series",
+      "id": "29mm_sliding_smoke"
+    },
+    {
+      "action": "linked",
+      "library": "profiles",
+      "id": "prof_outer_smoke"
+    },
+    {
+      "action": "linked",
+      "library": "profiles",
+      "id": "prof_shutter_smoke"
+    },
+    {
+      "action": "linked",
+      "library": "profiles",
+      "id": "prof_il_smoke"
+    },
+    {
+      "action": "linked",
+      "library": "profiles",
+      "id": "prof_bead_smoke"
+    },
+    {
+      "action": "linked",
+      "library": "hardware",
+      "id": "hw_handle_smoke"
+    },
+    {
+      "action": "linked",
+      "library": "hardware",
+      "id": "hw_roller_smoke"
+    },
+    {
+      "action": "linked",
+      "library": "glass",
+      "id": "glass_5_smoke"
+    },
+    {
+      "action": "linked",
+      "library": "glass",
+      "id": "glass_8_smoke"
+    },
+    {
+      "action": "linked",
+      "library": "formulas",
+      "id": "fx_glass_smoke"
+    }
+  ]
+}

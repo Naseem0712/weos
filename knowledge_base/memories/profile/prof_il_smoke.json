@@ -1,0 +1,52 @@
+{
+  "id": "prof_il_smoke",
+  "memoryType": "profile",
+  "profileName": "Interlock",
+  "profileCode": "IL-22",
+  "profileType": "Interlock",
+  "series": [],
+  "crossSectionWidthMm": 22,
+  "crossSectionHeightMm": 40,
+  "wallThicknessMm": null,
+  "weightPerMeterKg": 0.41,
+  "materialGrade": "",
+  "alloy": "",
+  "temper": "",
+  "powderCoat": "",
+  "usePosition": [
+    "Meeting Side"
+  ],
+  "usageRules": {
+    "positions": [
+      "Meeting Side"
+    ],
+    "bomRole": "interlock"
+  },
+  "compatibleProducts": [],
+  "compatibleSeries": [
+    "29mm_sliding_smoke"
+  ],
+  "drawingId": null,
+  "dxfCrossSection": null,
+  "pdfPageNumber": 4,
+  "profileImage": null,
+  "bomRole": "interlock",
+  "engineeringNotes": "",
+  "status": "approved",
+  "revision": 1,
+  "created_at": "2026-08-06T21:00:17.285999+00:00",
+  "updated_at": "2026-08-06T22:39:02.201168+00:00",
+  "approved_at": "2026-08-06T22:39:02.201168+00:00",
+  "approved_by": "admin",
+  "kb_version": null,
+  "source": {},
+  "sourceKind": "catalogue",
+  "confidence": 0.85,
+  "priority": 50,
+  "usedInProjects": 2,
+  "lastUsed": "2026-08-06T22:39:02.193283+00:00",
+  "tags": [],
+  "relationships": {},
+  "seriesId": "29mm_sliding_smoke",
+  "linked_from_learning": true
+}

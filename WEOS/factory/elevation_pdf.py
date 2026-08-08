@@ -4,8 +4,24 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from typing import Mapping as _Mapping
+
 from WEOS.factory.svg_export import _parse_grid
 from WEOS.factory.types import DrawingModel, Polyline
+
+
+def _handle_finish_rgb(finish: str) -> dict[str, tuple[float, float, float]]:
+    if str(finish).lower() in ("black", "black_texture", "matte_black", "dark"):
+        return {"plate": (0.22, 0.24, 0.27), "stroke": (0.08, 0.09, 0.11), "lever": (0.30, 0.32, 0.36)}
+    return {"plate": (0.79, 0.81, 0.83), "stroke": (0.50, 0.53, 0.56), "lever": (0.89, 0.91, 0.93)}
+
+
+def _resolve_finish(meta: _Mapping, colour: str | None) -> str:
+    f = str(meta.get("handle_finish") or "")
+    if f:
+        return f
+    cl = str(colour or "").lower()
+    return "black" if ("black" in cl or "dark" in cl) else "silver"
 
 
 def _bbox(pl: Polyline) -> tuple[float, float, float, float] | None:
@@ -58,8 +74,8 @@ def draw_model_elevation(
     Drafting style: profile outlines only (no solid colour fills), light glass, thin plan.
     ``colour`` is accepted for API compatibility but does not fill frames.
     """
-    del colour  # outline drafting — colour stays in the text specs, not as solid fills
     meta = model.metadata or {}
+    finish = _resolve_finish(meta, colour)
     W = float(model.width)
     H = float(model.height)
     glasses = _glasses(model)
@@ -107,7 +123,7 @@ def draw_model_elevation(
 
     # Closed profile outlines (no fill)
     for pl in model.polylines:
-        if len(pl.points) < 2 or pl.layer == "GLASS" or not pl.closed:
+        if len(pl.points) < 2 or pl.layer in ("GLASS", "HARDWARE") or not pl.closed:
             continue
         path = c.beginPath()
         path.moveTo(px(pl.points[0].x), py(pl.points[0].y))
@@ -137,6 +153,43 @@ def draw_model_elevation(
             c.setLineWidth(0.6)
         c.line(px(seg.start.x), py(seg.start.y), px(seg.end.x), py(seg.end.y))
 
+    # Hardware — bifold hinge knuckles + lever handles (drawn above glass/frames)
+    fc = _handle_finish_rgb(finish)
+    for h in meta.get("hinges") or []:
+        if not isinstance(h, _Mapping):
+            continue
+        hx0, hy0, hx1, hy1 = float(h["x0"]), float(h["y0"]), float(h["x1"]), float(h["y1"])
+        c.setFillColorRGB(*fc["plate"])
+        c.setStrokeColorRGB(*fc["stroke"])
+        c.setLineWidth(0.5)
+        c.roundRect(px(hx0), py(hy0), (hx1 - hx0) * scale, (hy1 - hy0) * scale, 1.2, fill=1, stroke=1)
+    for sp in meta.get("shutters") or []:
+        if not isinstance(sp, _Mapping):
+            continue
+        hd = sp.get("handle")
+        if not isinstance(hd, _Mapping):
+            continue
+        hx0, hy0, hx1, hy1 = float(hd["x0"]), float(hd["y0"]), float(hd["x1"]), float(hd["y1"])
+        hcx, hcy = (hx0 + hx1) / 2.0, (hy0 + hy1) / 2.0
+        pw, ph = (hx1 - hx0), (hy1 - hy0)
+        rx = max(pw * 0.62, 2.0)
+        ry = max(ph * 0.5, 4.0)
+        # oval plate
+        c.setFillColorRGB(*fc["plate"])
+        c.setStrokeColorRGB(*fc["stroke"])
+        c.setLineWidth(0.5)
+        c.ellipse(px(hcx) - rx * scale, py(hcy) - ry * scale, px(hcx) + rx * scale, py(hcy) + ry * scale, fill=1, stroke=1)
+        # lever arm into the leaf
+        direction = -1.0 if sp.get("handleSide") == "right" else 1.0
+        arm = max(pw * 2.6, 10.0)
+        bar_h = max(pw * 0.55, 2.0) * scale
+        lx0 = hcx if direction > 0 else hcx - arm
+        lx1 = hcx + arm if direction > 0 else hcx
+        ly = hcy - ry * 0.35
+        c.setFillColorRGB(*fc["lever"])
+        c.setStrokeColorRGB(*fc["stroke"])
+        c.roundRect(px(lx0), py(ly) - bar_h / 2, (lx1 - lx0) * scale, bar_h, bar_h / 2, fill=1, stroke=1)
+
     # Muntin grids
     if grid_div:
         cols, rows = grid_div
@@ -163,6 +216,10 @@ def draw_model_elevation(
             fix_idx += 1
             panel_id, role = f"F{fix_idx}", "FIX"
             role_rgb = (0.35, 0.22, 0.05)
+        elif "leaf" in lname:
+            slide_idx += 1
+            panel_id, role = f"L{slide_idx}", "FOLD"
+            role_rgb = (0.05, 0.30, 0.55)
         elif "door" in lname:
             panel_id, role = "D1", "DOOR"
             role_rgb = (0.05, 0.30, 0.55)
@@ -226,23 +283,42 @@ def draw_model_elevation(
         c.drawCentredString(0, 0, text)
         c.restoreState()
 
-    left_w = float(meta.get("left_shutter_width") or W / 2)
-    right_w = float(meta.get("right_shutter_width") or W / 2)
-    slide_x0 = float(meta.get("sliding_x0") or meta.get("shutter_inset") or 0)
-    slide_x1 = float(meta.get("sliding_x1") or (W - float(meta.get("shutter_inset") or 0)))
-    il = float(meta.get("interlock_left") or (slide_x0 + left_w))
+    shutters_meta = [s for s in (meta.get("shutters") or []) if isinstance(s, _Mapping)]
+    glass_meta = [s for s in shutters_meta if s.get("role") == "glass"]
+    mesh_meta = [s for s in shutters_meta if s.get("role") == "mesh"]
     mesh = bool(meta.get("mesh"))
     track_count = float(meta.get("track_count") or 2)
+    system = str(meta.get("system") or "sliding")
 
-    # Overall H left, overall W bottom, panel widths, glass H
+    # Overall H left, overall W bottom
     dim_v(0.0, H, -18.0 / max(scale, 1e-6), f"{H:g}", text_dx=-9)
     dim_h(0.0, W, -28.0 / max(scale, 1e-6), f"{W:g}", text_dy=-9)
-    dim_h(slide_x0, il, -12.0 / max(scale, 1e-6), f"{left_w:g}", text_dy=-8)
-    dim_h(il, slide_x1, -12.0 / max(scale, 1e-6), f"{right_w:g}", text_dy=-8)
+    # Per-shutter equal-division widths (nominal shares)
+    if glass_meta:
+        for s in glass_meta:
+            nx0 = float(s.get("nomX0") or s.get("x0") or 0.0)
+            nx1 = float(s.get("nomX1") or s.get("x1") or 0.0)
+            dim_h(nx0, nx1, -12.0 / max(scale, 1e-6), f"{(nx1 - nx0):g}", text_dy=-8)
     sliding_glasses = [g for g in glasses if "fix" not in (g[0] or "").lower()]
     if sliding_glasses:
         _n, _a, gy0, _b, gy1 = sliding_glasses[0]
         dim_v(gy0, gy1, W + 14.0 / max(scale, 1e-6), f"{(gy1 - gy0):g}", text_dx=8)
+
+    # Section sizes (bifold): top/bottom rail + jamb/leaf stile — printed on the PDF
+    sec = meta.get("sectionSizes")
+    if isinstance(sec, _Mapping):
+        c.setFont("Helvetica", 5.5)
+        c.setFillColorRGB(*dim)
+        bits = [
+            f"Top {sec.get('topRail','?')}", f"Bot {sec.get('bottomRail','?')}",
+            f"Jamb {sec.get('leftJamb','?')}/{sec.get('rightJamb','?')}", f"Leaf {sec.get('leafStile','?')}",
+        ]
+        c.drawString(px(0), py(H) + 3, "Sections(mm): " + "  ".join(bits))
+    notes = meta.get("notes") or []
+    if notes:
+        c.setFont("Helvetica-Oblique", 5)
+        c.setFillColorRGB(0.55, 0.12, 0.10)
+        c.drawString(px(0), y + 0.5, "; ".join(str(n) for n in notes)[:120])
 
     if include_plan and plan_h > 0:
         py0 = y + 4
@@ -250,38 +326,61 @@ def draw_model_elevation(
         c.setStrokeColorRGB(*stroke)
         c.setLineWidth(0.7)
         c.rect(px(0), py0, W * scale, box_ph, fill=0, stroke=1)
-        # Track guides (2 / 3 for mesh)
-        c.setStrokeColorRGB(0.55, 0.55, 0.55)
-        c.setLineWidth(0.35)
-        n_guides = 3 if (mesh or track_count >= 2.5) else 2
-        for i in range(n_guides):
-            t = i / max(n_guides - 1, 1)
-            gy = py0 + box_ph * (0.22 + 0.56 * t)
-            c.line(px(slide_x0), gy, px(slide_x1), gy)
-        # Hollow sash bands
-        c.setStrokeColorRGB(*stroke)
-        band = box_ph * 0.20
-        _hollow_plan_band(
-            c, px(slide_x0), py0 + box_ph / 2 - band / 2,
-            (il - slide_x0) * scale, band, lw=0.55,
-        )
-        _hollow_plan_band(
-            c, px(il), py0 + box_ph / 2 - band * 0.85,
-            (slide_x1 - il) * scale, band, lw=0.55,
-        )
-        if mesh or track_count >= 2.5:
-            c.setStrokeColorRGB(0.15, 0.45, 0.30)
-            c.setDash(2, 1.5)
-            c.setLineWidth(0.55)
-            my = py0 + box_ph * 0.12
-            c.rect(px(slide_x0), my, (slide_x1 - slide_x0) * scale, band * 0.7, fill=0, stroke=1)
-            c.setDash()
-            c.setFont("Helvetica", 4.5)
-            c.setFillColorRGB(0.15, 0.45, 0.30)
-            c.drawCentredString(px(W / 2), my + band * 0.85, "MESH")
         c.setFont("Helvetica", 5)
         c.setFillColorRGB(0.4, 0.4, 0.4)
         c.drawCentredString(px(W / 2), py0 + box_ph + 1.5, "PLAN")
+
+        if system == "bifold" and glass_meta:
+            # Accordion zigzag across leaf boundaries
+            bounds = [float(glass_meta[0].get("nomX0") or 0)] + [float(s.get("nomX1") or 0) for s in glass_meta]
+            amp = box_ph * 0.32
+            ymid = py0 + box_ph / 2
+            c.setStrokeColorRGB(0.09, 0.23, 0.39)
+            c.setLineWidth(0.8)
+            prev = None
+            for j, bx in enumerate(bounds):
+                yy = ymid + (amp if j % 2 == 0 else -amp)
+                if prev is not None:
+                    c.line(px(prev[0]), prev[1], px(bx), yy)
+                prev = (bx, yy)
+        elif glass_meta:
+            depths = sorted({int(s.get("depth") or 1) for s in glass_meta}) or [1]
+            dmin, dmax = min(depths), max(depths)
+            spread = box_ph * 0.42
+            band = box_ph * 0.32
+
+            def y_for(depth: int) -> float:
+                if dmax == dmin:
+                    return py0 + box_ph / 2
+                t = (depth - dmin) / (dmax - dmin)
+                return py0 + box_ph / 2 + spread * (0.5 - t)  # front lower
+
+            # Track guides
+            c.setStrokeColorRGB(0.6, 0.6, 0.6)
+            c.setLineWidth(0.3)
+            n_guides = max(len(depths) + (1 if mesh_meta else 0), 2)
+            for i in range(n_guides):
+                t = i / max(n_guides - 1, 1)
+                gy = py0 + box_ph * (0.18 + 0.64 * t)
+                c.line(px(0), gy, px(W), gy)
+            # Mesh frontmost
+            for s in mesh_meta:
+                mx0, mx1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
+                c.setStrokeColorRGB(0.15, 0.45, 0.30)
+                c.setDash(2, 1.5)
+                c.setLineWidth(0.5)
+                c.rect(px(mx0), y_for(dmin) - band * 0.9, (mx1 - mx0) * scale, band * 0.5, fill=0, stroke=1)
+                c.setDash()
+            # Glass sashes: back first
+            for s in sorted(glass_meta, key=lambda p: -int(p.get("depth") or 1)):
+                depth = int(s.get("depth") or 1)
+                sx0, sx1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
+                gy = y_for(depth)
+                if depth == dmin:
+                    c.setStrokeColorRGB(0.09, 0.23, 0.39)
+                else:
+                    c.setStrokeColorRGB(*stroke)
+                _hollow_plan_band(c, px(sx0), gy - band / 2, (sx1 - sx0) * scale, band, lw=0.55)
 
 
 def draw_line_model_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
@@ -323,6 +422,15 @@ def draw_line_model_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
             mesh=bool(lo.get("mesh")),
             track_count=lo.get("trackCount"),
             section_series=lo.get("sectionSeries") or line.get("sectionSeries"),
+            glass_count=lo.get("glassCount"),
+            mesh_count=lo.get("meshCount"),
+            opening=lo.get("opening"),
+            fixed_shutters=lo.get("fixedShutters"),
+            system=lo.get("system"),
+            fold_left=lo.get("foldLeft"),
+            fold_right=lo.get("foldRight"),
+            section_sizes=lo.get("sectionSizes"),
+            handle_finish=lo.get("handleFinish"),
         )
         draw_model_elevation(
             c,

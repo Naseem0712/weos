@@ -19,6 +19,7 @@ _META_KEYS = {
     "description", "tagline", "warranty", "heroImage", "gallery", "sectionDrawings",
     "specifications", "materials", "formulas", "pdfLayout", "brand", "engineeringRules",
     "glassRules", "hardwareRules", "weightRules", "pricingRules",
+    "catalogue", "sectionSeries", "linkedProductId",
 }
 
 
@@ -81,6 +82,9 @@ def get_admin_product(product_id: str) -> dict[str, Any]:
         "formulas": meta.get("formulas") or {},
         "pdfLayout": meta.get("pdfLayout") or {},
         "brand": meta.get("brand", "woodenmax"),
+        "catalogue": meta.get("catalogue") or {},
+        "sectionSeries": meta.get("sectionSeries"),
+        "linkedProductId": meta.get("linkedProductId"),
         "materialUnits": list(MATERIAL_UNITS),
         "rules": {
             "geometry": doc.get("geometry"),
@@ -127,6 +131,7 @@ def create_product(payload: Mapping[str, Any]) -> dict[str, Any]:
         "formulas": dict(payload.get("formulas") or {}),
         "pdfLayout": dict(payload.get("pdfLayout") or {"customer": "woodenmax_customer", "factory": "woodenmax_factory"}),
         "brand": payload.get("brand") or "woodenmax",
+        "catalogue": dict(payload.get("catalogue") or {}),
     }
     _write_json(target / "product.json", meta)
 
@@ -156,6 +161,7 @@ def update_product(product_id: str, payload: Mapping[str, Any]) -> dict[str, Any
         "displayName", "productType", "category", "units", "version", "status",
         "description", "tagline", "warranty", "heroImage", "gallery", "sectionDrawings",
         "specifications", "materials", "formulas", "pdfLayout", "brand",
+        "catalogue", "sectionSeries", "linkedProductId",
     ):
         if key in payload:
             meta[key] = copy.deepcopy(payload[key])

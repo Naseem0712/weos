@@ -42,6 +42,10 @@ def compute_materials(
             if length_val:
                 wctx["runningMeters"] = length_val if normalize_unit(mat.get("unit")) == "RM" else length_val / 1000.0
             weight_kg = eval_formula(mat["weightFormula"], wctx)
+        else:
+            # Default weight formula fallback — makes basic material weights compute
+            # out-of-the-box from the preloaded baseline formulas (Part 1).
+            weight_kg = _default_material_weight(mat, ctx, qty)
 
         unit = normalize_unit(mat.get("unit", "PC"))
         unit_rate = mat.get("unitRate")
@@ -71,6 +75,78 @@ def compute_materials(
             )
         )
     return items
+
+
+def _default_material_weight(
+    mat: Mapping[str, Any], ctx: Mapping[str, float], qty: float
+) -> float | None:
+    """Compute a material weight from the preloaded baseline formulas when the
+    material declares a materialType but no explicit weightFormula.
+
+    Non-fatal: any issue simply returns None (no weight shown), never raises.
+    """
+    material_key = (
+        mat.get("materialType")
+        or mat.get("material")
+        or mat.get("weightMaterial")
+    )
+    if not material_key:
+        return None
+    try:
+        from WEOS.learning.material_formulas import (
+            DEFAULT_WEIGHT_FORMULA_BY_MATERIAL,
+            compute_weight as _fx_weight,
+        )
+    except Exception:
+        return None
+
+    key = str(material_key).strip().lower().replace(" ", "_")
+    formula_key = DEFAULT_WEIGHT_FORMULA_BY_MATERIAL.get(key, key)
+
+    def _num(*names: str) -> float | None:
+        for n in names:
+            if mat.get(n) is not None:
+                try:
+                    return float(mat[n])
+                except (TypeError, ValueError):
+                    pass
+            if n in ctx:
+                try:
+                    return float(ctx[n])
+                except (TypeError, ValueError):
+                    pass
+        return None
+
+    params: dict[str, Any] = {"qty": qty}
+    width = _num("widthMm", "width")
+    height = _num("heightMm", "height")
+    if width is not None:
+        params["widthMm"] = width
+    if height is not None:
+        params["heightMm"] = height
+    for src, dst in (
+        ("thicknessMm", "thicknessMm"),
+        ("thickness", "thicknessMm"),
+        ("lengthMm", "lengthMm"),
+        ("weightPerMeterKg", "weightPerMeterKg"),
+        ("weightPerMeter", "weightPerMeterKg"),
+        ("densityKgPerM3", "densityKgPerM3"),
+        ("glass1Mm", "glass1Mm"),
+        ("glass2Mm", "glass2Mm"),
+        ("pvbMm", "pvbMm"),
+    ):
+        if mat.get(src) is not None:
+            try:
+                params[dst] = float(mat[src])
+            except (TypeError, ValueError):
+                pass
+    try:
+        res = _fx_weight(str(material_key), params=params, formula_key=formula_key)
+    except Exception:
+        return None
+    if isinstance(res, dict) and res.get("ok"):
+        return float(res.get("weightKg") or 0.0)
+    return None
 
 
 def materials_to_hardware_rules(materials: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]]:

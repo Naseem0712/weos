@@ -41,3 +41,8 @@ analyze_out.txt
 # Local secrets / scratch
 *.pem
 .local/
+MAR-QT-*.pdf
+_pdf_preview/
+_smoke_*.pdf
+_smoke_unify.py
+deta windows.xlsx

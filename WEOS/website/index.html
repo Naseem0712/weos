@@ -142,7 +142,9 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
     <button class="navbtn" data-view="cart">Window Cart</button>
     <button class="navbtn" data-view="library">Product Library</button>
     <button class="navbtn" data-view="product">Product Details</button>
-    <button class="navbtn" data-view="admin">Admin · Products</button>
+    <button class="navbtn" data-view="admin">Admin · Product Library</button>
+    <button class="navbtn" data-view="customers">Customers</button>
+    <button class="navbtn" data-view="company">Company Setup</button>
     <button class="navbtn" data-view="learning">Learning Engine</button>
     <button class="navbtn" data-view="formulas">Formula Builder</button>
     <button class="navbtn" data-view="templates">Template Designer</button>
@@ -254,9 +256,46 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             </div>
             <div class="muted" id="meshHint" style="font-size:.78rem;flex:1"></div>
           </div>
+          <div class="row" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
+            <div><label class="l">System</label>
+              <select id="lineSystem" style="width:140px">
+                <option value="sliding" selected>Sliding</option>
+                <option value="bifold">Fold &amp; Sliding</option>
+              </select>
+            </div>
+            <div id="wrapGlassShutters"><label class="l">Glass shutters</label><input id="lineGlassShutters" type="number" min="1" value="2" style="width:90px"/></div>
+            <div id="wrapMeshShutters"><label class="l">Mesh shutters</label><input id="lineMeshShutters" type="number" min="0" value="0" style="width:90px"/></div>
+            <div id="wrapFixShutters"><label class="l">Mark fix (e.g. 1,3)</label><input id="lineFixShutters" type="text" placeholder="none" style="width:100px"/></div>
+          </div>
+          <div class="row" id="bifoldRow" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end;display:none">
+            <div><label class="l">Config</label>
+              <select id="lineFoldPreset" style="width:100px">
+                <option value="3+1" selected>3 + 1</option>
+                <option value="5+1">5 + 1</option>
+                <option value="1+1">1 + 1</option>
+                <option value="3+3">3 + 3</option>
+                <option value="2+2">2 + 2</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+            <div><label class="l">Fold left</label><input id="lineFoldLeft" type="number" min="0" value="3" style="width:70px"/></div>
+            <div><label class="l">Fold right</label><input id="lineFoldRight" type="number" min="0" value="1" style="width:70px"/></div>
+            <div><label class="l">Top rail</label><input id="secTop" type="number" min="0" placeholder="mm" style="width:70px"/></div>
+            <div><label class="l">Bottom rail</label><input id="secBottom" type="number" min="0" placeholder="mm" style="width:70px"/></div>
+            <div><label class="l">Jamb L/R</label><input id="secJamb" type="number" min="0" placeholder="mm" style="width:70px"/></div>
+            <div><label class="l">Leaf stile</label><input id="secLeaf" type="number" min="0" placeholder="mm" style="width:70px"/></div>
+            <div class="muted" style="font-size:.72rem;flex:1;min-width:150px">Max 25 ft × 12 ft. Leaves auto equal-divide.</div>
+          </div>
           <div class="row" style="margin-top:.5rem">
             <div class="grow"><label class="l">Colour</label><select id="lineColour"><option value="white">White</option><option value="black_texture" selected>Black Texture</option><option value="wood_oak">Wood Oak</option></select></div>
             <div class="grow"><label class="l">Handle</label><select id="lineHandle"><option value="standard">Standard</option><option value="premium" selected>Premium</option></select></div>
+            <div><label class="l">Handle finish</label>
+              <select id="lineHandleFinish" style="width:110px">
+                <option value="auto" selected>Auto (colour)</option>
+                <option value="silver">Silver</option>
+                <option value="black">Black</option>
+              </select>
+            </div>
             <div class="grow"><label class="l">Description</label><input id="lineDesc" placeholder="Customer-facing description"/></div>
           </div>
           <div class="livebox" id="livePriceBox">
@@ -357,12 +396,24 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 
     <!-- ADMIN PRODUCT LIBRARY -->
     <section id="view-admin" class="grid hidden">
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <strong>All products <span class="muted" id="adminCount" style="font-weight:400;font-size:.82rem"></span></strong>
+          <div class="row" style="gap:.5rem;align-items:center">
+            <input id="adminSearch" placeholder="Search products…" style="min-width:220px"/>
+            <button class="btn sec sm" id="btnAdminNew2">New Product</button>
+            <button class="btn ghost sm" id="btnAdminListToggle" title="Collapse / expand list">▾</button>
+          </div>
+        </div>
+        <div id="adminProdList" class="prodgrid" style="margin-top:.75rem"></div>
+      </div>
       <div class="panel">
         <div class="row" style="margin-bottom:.75rem">
-          <div class="grow"><label class="l">Product</label><select id="adminProdSelect"></select></div>
+          <div class="grow"><label class="l">Editing product</label><select id="adminProdSelect"></select></div>
           <button class="btn sm" id="btnAdminLoad" style="margin-top:1rem">Load</button>
           <button class="btn sec sm" id="btnAdminNew" style="margin-top:1rem">New Product</button>
           <button class="btn sm" id="btnAdminSave" style="margin-top:1rem">Save</button>
+          <button class="btn ghost sm" id="btnAdminDelete" style="margin-top:1rem">Archive</button>
         </div>
         <div class="tabs" id="adminTabs">
           <button class="tab active" data-tab="meta">Catalogue</button>
@@ -388,6 +439,28 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <div class="grow"><label class="l">Customer PDF template</label><input id="adPdfCust" placeholder="woodenmax_customer"/></div>
             <div class="grow"><label class="l">Factory PDF template</label><input id="adPdfFact" placeholder="woodenmax_factory"/></div>
           </div>
+          <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
+          <strong style="font-size:.9rem">Catalogue (editable anytime)</strong>
+          <p class="muted" style="margin:.15rem 0 .5rem;font-size:.8rem">Size, weight, rate, standard length &amp; profiles — persisted to the product store.</p>
+          <div class="row">
+            <div><label class="l">Section size (mm)</label><input id="adCatSize" type="number" step="0.1" style="width:120px"/></div>
+            <div><label class="l">Weight (kg/mtr)</label><input id="adCatWeight" type="number" step="0.001" style="width:120px"/></div>
+            <div><label class="l">Rate / unit</label><input id="adCatRate" type="number" step="0.01" style="width:120px"/></div>
+            <div><label class="l">Sale unit</label>
+              <select id="adCatSaleUnit" style="width:130px">
+                <option value="sqft">Per Sq.Ft.</option>
+                <option value="sqm">Per Sq.M.</option>
+                <option value="opening">Per Opening</option>
+                <option value="rft">Per Running Ft</option>
+              </select>
+            </div>
+            <div class="grow"><label class="l">Standard length</label><input id="adCatStdLen" placeholder="e.g. 16 ft / 5.85 m"/></div>
+          </div>
+          <div class="row" style="margin-top:.5rem">
+            <div class="grow"><label class="l">Section series id</label><input id="adSectionSeries" placeholder="e.g. 29mm_premium_euro"/></div>
+          </div>
+          <label class="l" style="margin-top:.5rem">Profiles (JSON list — name, usage, sectionDepthMm, widthMm, weightKgPerMtr, standardLength)</label>
+          <textarea id="adCatProfiles" style="width:100%;min-height:130px;font-family:ui-monospace,monospace;font-size:.75rem;border:1px solid var(--line);border-radius:10px;padding:.6rem"></textarea>
         </div>
         <div id="admin-materials" class="hidden">
           <div class="row" style="margin-bottom:.5rem">
@@ -404,6 +477,99 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           <textarea id="adRulesJson" style="width:100%;min-height:280px;font-family:ui-monospace,monospace;font-size:.78rem;border:1px solid var(--line);border-radius:10px;padding:.6rem"></textarea>
         </div>
         <div class="err" id="adminErr" style="margin-top:.5rem"></div>
+      </div>
+    </section>
+
+    <!-- CUSTOMERS -->
+    <section id="view-customers" class="grid hidden">
+      <div class="two">
+        <div class="panel">
+          <div class="row" style="justify-content:space-between;margin-bottom:.6rem">
+            <strong>Customers</strong>
+            <button class="btn sm" id="btnCustNew">New customer</button>
+          </div>
+          <input id="custSearch" placeholder="Search customer…" style="width:100%;margin-bottom:.6rem"/>
+          <div id="custList" style="max-height:520px;overflow:auto"></div>
+        </div>
+        <div class="panel">
+          <strong id="custAccTitle">Customer account</strong>
+          <p class="muted" style="margin:.2rem 0 .7rem;font-size:.82rem">Details auto-print into the quote bill-to. All quotes &amp; versions below.</p>
+          <div class="row">
+            <div class="grow"><label class="l">Customer name</label><input id="cpName"/></div>
+            <div class="grow"><label class="l">GST No</label><input id="cpGst"/></div>
+          </div>
+          <div class="row" style="margin-top:.5rem">
+            <div class="grow"><label class="l">Address</label><input id="cpAddress"/></div>
+          </div>
+          <div class="row" style="margin-top:.5rem">
+            <div class="grow"><label class="l">Contact person</label><input id="cpContact"/></div>
+            <div class="grow"><label class="l">Phone</label><input id="cpPhone"/></div>
+            <div class="grow"><label class="l">Email</label><input id="cpEmail"/></div>
+          </div>
+          <div class="row" style="margin-top:.5rem">
+            <div class="grow"><label class="l">Site / project</label><input id="cpSite"/></div>
+            <div><label class="l">State code</label><input id="cpStateCode" style="width:100px"/></div>
+          </div>
+          <div class="row" style="margin-top:.6rem">
+            <button class="btn sm" id="btnCpSave">Save details</button>
+            <button class="btn ghost sm" id="btnCpNewQuote">New quote for customer</button>
+          </div>
+          <div class="err" id="cpErr" style="margin-top:.4rem"></div>
+          <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
+          <strong style="font-size:.9rem">Quotes &amp; versions <span class="muted" id="cpQuoteCount" style="font-weight:400;font-size:.8rem"></span></strong>
+          <div id="cpQuotes" style="margin-top:.6rem"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- COMPANY SETUP -->
+    <section id="view-company" class="grid hidden">
+      <div class="two">
+        <div class="panel">
+          <strong>Company Setup</strong>
+          <p class="muted" style="margin:.2rem 0 .8rem;font-size:.82rem">Saved once — auto-applied to every quote header &amp; branding. Company name prints in UPPERCASE.</p>
+          <div class="row">
+            <div class="grow"><label class="l">Company name</label><input id="coName" style="text-transform:uppercase"/></div>
+            <div class="grow"><label class="l">GST No</label><input id="coGst"/></div>
+          </div>
+          <div class="row" style="margin-top:.5rem">
+            <div class="grow"><label class="l">Address</label><input id="coAddress"/></div>
+          </div>
+          <div class="row" style="margin-top:.5rem">
+            <div class="grow"><label class="l">Website</label><input id="coWebsite" placeholder="https://"/></div>
+            <div class="grow"><label class="l">Phone</label><input id="coPhone"/></div>
+            <div class="grow"><label class="l">Email</label><input id="coEmail"/></div>
+          </div>
+          <div class="row" style="margin-top:.5rem">
+            <div class="grow"><label class="l">Tagline</label><input id="coTagline"/></div>
+            <div><label class="l">State code</label><input id="coStateCode" style="width:100px"/></div>
+          </div>
+          <div class="row" style="margin-top:.5rem">
+            <div class="grow"><label class="l">PAN</label><input id="coPan"/></div>
+            <div class="grow"><label class="l">Bank details</label><input id="coBank"/></div>
+          </div>
+          <div class="row" style="margin-top:.7rem;align-items:center">
+            <button class="btn" id="btnCoSave">Save company</button>
+            <label class="btn ghost sm" style="margin:0">Upload logo<input id="coLogoFile" type="file" accept="image/*" hidden/></label>
+          </div>
+          <div class="err" id="coErr" style="margin-top:.4rem"></div>
+        </div>
+        <div class="panel">
+          <strong>Header preview</strong>
+          <div id="coPreview" style="border:1px solid var(--line);border-radius:10px;padding:1rem;margin-top:.6rem;min-height:120px">
+            <div style="display:flex;gap:1rem;align-items:center">
+              <img id="coLogoImg" src="/api/company/logo" alt="" style="max-height:60px;max-width:150px;display:none"/>
+              <div>
+                <div id="coPrevName" style="font-family:Fraunces,serif;font-size:1.3rem;font-weight:600;text-transform:uppercase"></div>
+                <div id="coPrevTag" class="muted" style="font-size:.82rem"></div>
+                <div id="coPrevAddr" class="muted" style="font-size:.78rem;margin-top:.3rem"></div>
+                <div id="coPrevContact" class="muted" style="font-size:.78rem"></div>
+                <div id="coPrevGst" class="muted" style="font-size:.78rem"></div>
+              </div>
+            </div>
+          </div>
+          <p class="muted" style="margin-top:.7rem;font-size:.8rem">This branding replaces the template company name on Customer &amp; Factory PDFs automatically.</p>
+        </div>
       </div>
     </section>
 
@@ -812,7 +978,7 @@ async function api(path, opts={}) {
 function setView(v) {
   state.view = v;
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view===v));
-  ['dashboard','projects','cart','library','product','admin','learning','formulas','templates'].forEach(id => {
+  ['dashboard','projects','cart','library','product','admin','customers','company','learning','formulas','templates'].forEach(id => {
     const el = $('view-'+id); if (el) el.classList.toggle('hidden', id!==v);
   });
   const titles = {
@@ -821,7 +987,9 @@ function setView(v) {
     cart:['Window Cart','Unlimited lines · live preview · instant totals'],
     library:['Product Library','Digital catalogue + manufacturing source of truth'],
     product:['Product Details','Specs from Product JSON only'],
-    admin:['Admin · Product Library','Create products without Python — materials, formulas, PDF layout'],
+    admin:['Admin · Product Library','Every product editable — catalogue, materials, formulas, rules'],
+    customers:['Customers','Details auto-fill quotes · all quotes & versions per customer'],
+    company:['Company Setup','One company identity auto-applied to every quote'],
     learning:['Learning Engine','Upload → Review → Approve → Knowledge Base (never auto-production)'],
     formulas:['Formula Builder','Safe expressions over width, height, shutterCount, glassArea…'],
     templates:['Template Designer','Drag blocks → JSON → Customer & Factory PDFs per brand'],
@@ -834,6 +1002,8 @@ function setView(v) {
   if (v==='library') renderLibrary();
   if (v==='cart') { renderCart(); refreshPreview(); }
   if (v==='admin') initAdmin();
+  if (v==='customers') initCustomers();
+  if (v==='company') initCompany();
   if (v==='learning') initLearning();
   if (v==='formulas') initFormulas();
   if (v==='templates') initTemplates();
@@ -964,18 +1134,59 @@ function applyMeshTrackRules() {
   }
 }
 
+function applySystemUiRules() {
+  const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
+  const bifold = sys === 'bifold';
+  const show = (id, on) => { const el = $(id); if (el) el.style.display = on ? '' : 'none'; };
+  show('bifoldRow', bifold);
+  show('wrapGlassShutters', !bifold);
+  show('wrapMeshShutters', !bifold);
+  show('wrapFixShutters', !bifold);
+  // Fold preset → left/right
+  const preset = $('lineFoldPreset') && $('lineFoldPreset').value;
+  if (bifold && preset && preset !== 'custom') {
+    const m = preset.split('+');
+    if ($('lineFoldLeft')) $('lineFoldLeft').value = m[0];
+    if ($('lineFoldRight')) $('lineFoldRight').value = m[1];
+  }
+}
+
+function currentSectionSizes() {
+  const s = {};
+  const map = { topRail: 'secTop', bottomRail: 'secBottom', leafStile: 'secLeaf' };
+  for (const k in map) { const el = $(map[k]); if (el && el.value !== '') s[k] = +el.value; }
+  const jamb = $('secJamb'); if (jamb && jamb.value !== '') { s.leftJamb = +jamb.value; s.rightJamb = +jamb.value; }
+  return Object.keys(s).length ? s : null;
+}
+
 function syncDraftFromLine(ln) {
   if (!ln) return;
   state.draftPartitions = Array.isArray(ln.partitions) ? ln.partitions.map(p => ({...p})) : [];
   if ($('lineMesh')) $('lineMesh').checked = !!ln.mesh;
   if ($('lineTrack') && ln.trackCount != null) $('lineTrack').value = String(ln.trackCount);
+  if ($('lineSystem')) $('lineSystem').value = ln.system || 'sliding';
+  if ($('lineGlassShutters') && ln.glassShutters != null) $('lineGlassShutters').value = ln.glassShutters;
+  if ($('lineMeshShutters') && ln.meshShutters != null) $('lineMeshShutters').value = ln.meshShutters;
+  if ($('lineFixShutters')) $('lineFixShutters').value = Array.isArray(ln.fixShutters) ? ln.fixShutters.join(',') : (ln.fixShutters || '');
+  if ($('lineHandleFinish')) $('lineHandleFinish').value = ln.handleFinish || 'auto';
+  if ($('lineFoldLeft') && ln.foldLeft != null) $('lineFoldLeft').value = ln.foldLeft;
+  if ($('lineFoldRight') && ln.foldRight != null) $('lineFoldRight').value = ln.foldRight;
+  const ss = ln.sectionSizes || {};
+  if ($('secTop')) $('secTop').value = ss.topRail != null ? ss.topRail : '';
+  if ($('secBottom')) $('secBottom').value = ss.bottomRail != null ? ss.bottomRail : '';
+  if ($('secJamb')) $('secJamb').value = ss.leftJamb != null ? ss.leftJamb : '';
+  if ($('secLeaf')) $('secLeaf').value = ss.leafStile != null ? ss.leafStile : '';
   renderPartChips();
   applyMeshTrackRules();
+  applySystemUiRules();
 }
 
 function currentLineDraft() {
   const rateRaw = $('lineSellRate') ? $('lineSellRate').value : '';
   applyMeshTrackRules();
+  applySystemUiRules();
+  const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
+  const finish = ($('lineHandleFinish') && $('lineHandleFinish').value) || 'auto';
   return {
     product: $('lineProduct').value,
     sectionSeries: ($('lineSeries') && $('lineSeries').value) || null,
@@ -985,12 +1196,20 @@ function currentLineDraft() {
     glass: $('lineGlass').value,
     colour: $('lineColour').value,
     handle: $('lineHandle').value,
+    handleFinish: finish === 'auto' ? null : finish,
     saleUnit: ($('lineSaleUnit') && $('lineSaleUnit').value) || 'sqft',
     sellingRate: rateRaw === '' ? null : +rateRaw,
     description: ($('lineDesc') && $('lineDesc').value.trim()) || null,
     partitions: (state.draftPartitions || []).slice(),
     mesh: !!( $('lineMesh') && $('lineMesh').checked ),
     trackCount: $('lineTrack') ? parseFloat($('lineTrack').value) || 2 : 2,
+    system: sys,
+    glassShutters: $('lineGlassShutters') ? (parseInt($('lineGlassShutters').value) || 2) : 2,
+    meshShutters: $('lineMeshShutters') ? (parseInt($('lineMeshShutters').value) || 0) : 0,
+    fixShutters: ($('lineFixShutters') && $('lineFixShutters').value.trim()) || null,
+    foldLeft: $('lineFoldLeft') ? (parseInt($('lineFoldLeft').value) || 0) : 0,
+    foldRight: $('lineFoldRight') ? (parseInt($('lineFoldRight').value) || 0) : 0,
+    sectionSizes: sys === 'bifold' ? currentSectionSizes() : null,
   };
 }
 
@@ -1133,6 +1352,14 @@ async function refreshPreview() {
       mesh: !!ln.mesh,
       trackCount: ln.trackCount != null ? ln.trackCount : 2,
       sectionSeries: ln.sectionSeries || null,
+      system: ln.system || 'sliding',
+      glassShutters: ln.glassShutters != null ? ln.glassShutters : null,
+      meshShutters: ln.meshShutters != null ? ln.meshShutters : null,
+      fixShutters: ln.fixShutters || null,
+      foldLeft: ln.foldLeft != null ? ln.foldLeft : null,
+      foldRight: ln.foldRight != null ? ln.foldRight : null,
+      sectionSizes: ln.sectionSizes || null,
+      handleFinish: ln.handleFinish || null,
     }});
     if (prev.meshTrack && prev.meshTrack.shifted && $('lineTrack')) {
       $('lineTrack').value = String(prev.trackCount || 3);
@@ -1147,9 +1374,19 @@ async function refreshPreview() {
     if (layout.panels) {
       extra.push(['Panels', (layout.panels||[]).map(p => `${p.id} ${p.label||p.role} ${p.widthMm||'?'}×${p.heightMm||'?'}`).join('; ')]);
     }
-    if (prev.mesh) extra.push(['Mesh', `Yes · ${prev.trackCount}-track`]);
-    else if (prev.trackCount) extra.push(['Track', `${prev.trackCount}-track`]);
-    const rows = [...Object.entries(specs).slice(0,6), ...extra];
+    if (prev.system === 'bifold') {
+      extra.push(['System', `Fold & Sliding ${prev.foldLeft||'?'}+${prev.foldRight||'?'}`]);
+      if (layout.sectionSizes) {
+        const s = layout.sectionSizes;
+        extra.push(['Sections', `Top ${s.topRail} · Bot ${s.bottomRail} · Jamb ${s.leftJamb}/${s.rightJamb} · Leaf ${s.leafStile}`]);
+      }
+    } else {
+      extra.push(['System', `Sliding · ${prev.glassShutters||'?'} glass${prev.meshShutters?(' + '+prev.meshShutters+' mesh'):''}`]);
+      if (prev.mesh) extra.push(['Mesh', `Yes · ${prev.trackCount}-track`]);
+      else if (prev.trackCount) extra.push(['Track', `${prev.trackCount}-track`]);
+    }
+    if (prev.notes && prev.notes.length) extra.push(['Note', prev.notes.join('; ')]);
+    const rows = [...Object.entries(specs).slice(0,5), ...extra];
     $('lineSpecs').innerHTML = rows.map(([k,v])=>`<div><span class="muted">${k}</span><div>${v??'—'}</div></div>`).join('');
   } catch(e) {
     $('livePreview').innerHTML = `<span class="muted">${e.message}</span>`;
@@ -1277,7 +1514,9 @@ $('sectionsFile').onchange = async (ev) => {
   console.log("Response Status:", res.status);
   const data = await res.json();
   if (!res.ok) { toast(data.detail || 'Import failed'); return; }
-  toast(`Sections: ${data.seriesCount} series, ${data.sectionCount} profiles`);
+  const lib = data.library || {};
+  const libN = (lib.count!=null) ? ` · ${lib.count} in Product Library` : '';
+  toast(`Sections: ${data.seriesCount} series, ${data.sectionCount} profiles${libN}`);
   await loadProducts();
 };
 ['lineW','lineH','lineQty','lineColour','lineGlass','lineProduct','lineSeries','lineSaleUnit','lineSellRate','lineHandle','lineDesc','cartCustomer','lineTrack','partSize'].forEach(id => {
@@ -1297,6 +1536,20 @@ if ($('lineMesh')) {
     scheduleLivePrice();
   });
 }
+// Flexible window-config + Fold & Sliding controls
+['lineSystem','lineFoldPreset','lineGlassShutters','lineMeshShutters','lineFixShutters',
+ 'lineHandleFinish','lineFoldLeft','lineFoldRight','secTop','secBottom','secJamb','secLeaf'].forEach(id => {
+  const el = $(id); if (!el) return;
+  const handler = () => {
+    if (id === 'lineSystem' || id === 'lineFoldPreset') applySystemUiRules();
+    if (id === 'lineFoldLeft' || id === 'lineFoldRight') { if ($('lineFoldPreset')) $('lineFoldPreset').value = 'custom'; }
+    refreshPreview();
+    scheduleLivePrice();
+  };
+  el.addEventListener('input', handler);
+  el.addEventListener('change', handler);
+});
+applySystemUiRules();
 if ($('btnAddPart')) {
   $('btnAddPart').onclick = () => {
     const side = ($('partSide') && $('partSide').value) || '';
@@ -1344,7 +1597,26 @@ async function initAdmin() {
   await loadProducts();
   $('adminProdSelect').innerHTML = state.products.map(p => `<option value="${p.id}">${p.displayName}</option>`).join('');
   if (state.selectedProduct) $('adminProdSelect').value = state.selectedProduct;
-  await loadAdminProduct($('adminProdSelect').value || '29mm_sliding');
+  renderAdminList();
+  await loadAdminProduct($('adminProdSelect').value || (state.products[0] && state.products[0].id) || '29mm_sliding');
+}
+function renderAdminList() {
+  const box = $('adminProdList'); if (!box) return;
+  const q = (($('adminSearch') && $('adminSearch').value) || '').trim().toLowerCase();
+  const list = state.products.filter(p => !q || (`${p.displayName} ${p.id} ${p.category||''}`).toLowerCase().includes(q));
+  $('adminCount').textContent = `(${list.length}/${state.products.length})`;
+  box.innerHTML = list.map(p => `
+    <div class="card prod ${p.id===state.selectedProduct?'':''}" data-aid="${p.id}" style="cursor:pointer;${p.id===state.selectedProduct?'outline:2px solid var(--green)':''}">
+      <img class="ph" src="${p.heroImage||'/static/products/placeholder.svg'}" alt="" style="height:70px"/>
+      <div style="padding-top:.4rem"><strong style="font-size:.85rem">${p.displayName}</strong>
+      <div class="muted" style="font-size:.72rem">${p.id}</div>
+      <span class="pill ${p.manufacturingReady?'':'stub'}" style="font-size:.6rem">${p.manufacturingReady?'ready':'catalogue'}</span></div>
+    </div>`).join('') || '<p class="muted">No products match</p>';
+  box.querySelectorAll('[data-aid]').forEach(el => el.onclick = async () => {
+    $('adminProdSelect').value = el.dataset.aid;
+    await loadAdminProduct(el.dataset.aid);
+    renderAdminList();
+  });
 }
 async function loadAdminProduct(id) {
   $('adminErr').textContent = '';
@@ -1363,6 +1635,14 @@ async function loadAdminProduct(id) {
   $('adPdfCust').value = (p.pdfLayout || {}).customer || '';
   $('adPdfFact').value = (p.pdfLayout || {}).factory || '';
   $('adRulesJson').value = JSON.stringify(p.rules || {}, null, 2);
+  const cat = p.catalogue || {};
+  if ($('adCatSize')) $('adCatSize').value = cat.sizeMm ?? '';
+  if ($('adCatWeight')) $('adCatWeight').value = cat.weightKgPerMtr ?? '';
+  if ($('adCatRate')) $('adCatRate').value = cat.ratePerUnit ?? '';
+  if ($('adCatSaleUnit')) $('adCatSaleUnit').value = cat.saleUnit || 'sqft';
+  if ($('adCatStdLen')) $('adCatStdLen').value = cat.standardLength || '';
+  if ($('adSectionSeries')) $('adSectionSeries').value = p.sectionSeries || cat.sectionSeries || '';
+  if ($('adCatProfiles')) $('adCatProfiles').value = JSON.stringify(cat.profiles || [], null, 2);
   renderMaterials();
 }
 function renderMaterials() {
@@ -1410,6 +1690,18 @@ $('btnAdminSave').onclick = async () => {
   try {
     let rules = undefined;
     try { rules = JSON.parse($('adRulesJson').value || '{}'); } catch(e) { throw new Error('Rules JSON invalid: '+e.message); }
+    let profiles = [];
+    try { profiles = JSON.parse($('adCatProfiles').value || '[]'); } catch(e) { throw new Error('Profiles JSON invalid: '+e.message); }
+    const num = (id) => { const v = $(id).value; return v==='' ? null : +v; };
+    const catalogue = {
+      sizeMm: num('adCatSize'),
+      weightKgPerMtr: num('adCatWeight'),
+      ratePerUnit: num('adCatRate'),
+      saleUnit: $('adCatSaleUnit').value,
+      standardLength: $('adCatStdLen').value || null,
+      sectionSeries: $('adSectionSeries').value || null,
+      profiles,
+    };
     const body = {
       displayName: $('adName').value,
       category: $('adCat').value,
@@ -1421,12 +1713,32 @@ $('btnAdminSave').onclick = async () => {
       gallery: $('adGallery').value.split(',').map(s=>s.trim()).filter(Boolean),
       pdfLayout: { customer: $('adPdfCust').value || undefined, factory: $('adPdfFact').value || undefined },
       materials: state.materials,
+      catalogue,
+      sectionSeries: $('adSectionSeries').value || undefined,
       rules,
       syncHardware: true,
     };
     const p = await api('/api/admin/products/'+state.selectedProduct, {method:'PUT', body});
     toast('Saved '+p.id+' v'+p.version);
     await loadProducts();
+    renderAdminList();
+  } catch(e) { $('adminErr').textContent = e.message; }
+};
+if ($('adminSearch')) $('adminSearch').oninput = renderAdminList;
+if ($('btnAdminListToggle')) $('btnAdminListToggle').onclick = () => {
+  const l = $('adminProdList');
+  const hidden = l.style.display === 'none';
+  l.style.display = hidden ? '' : 'none';
+  $('btnAdminListToggle').textContent = hidden ? '▾' : '▸';
+};
+if ($('btnAdminNew2')) $('btnAdminNew2').onclick = () => $('btnAdminNew').click();
+if ($('btnAdminDelete')) $('btnAdminDelete').onclick = async () => {
+  if (!state.selectedProduct) return;
+  if (!confirm('Archive product '+state.selectedProduct+'? (soft delete)')) return;
+  try {
+    await api('/api/admin/products/'+state.selectedProduct, {method:'DELETE'});
+    toast('Archived '+state.selectedProduct);
+    await loadProducts(); renderAdminList();
   } catch(e) { $('adminErr').textContent = e.message; }
 };
 
@@ -2314,6 +2626,165 @@ if ($('btnMemLookup')) $('btnMemLookup').onclick = async () => {
     const mem = await api('/api/customers/'+encodeURIComponent(c)+'/memory');
     $('memOut').textContent = JSON.stringify(mem, null, 2);
   } catch(e) { $('memOut').textContent = e.message; }
+};
+
+/* ── Company Setup ─────────────────────────────────────────────────────────── */
+async function initCompany() {
+  try {
+    const c = await api('/api/company');
+    state.company = c;
+    $('coName').value = c.companyName || '';
+    $('coGst').value = c.gstNo || '';
+    $('coAddress').value = c.address || '';
+    $('coWebsite').value = c.website || '';
+    $('coPhone').value = c.phone || '';
+    $('coEmail').value = c.email || '';
+    $('coTagline').value = c.tagline || '';
+    $('coStateCode').value = c.stateCode || '';
+    $('coPan').value = c.pan || '';
+    $('coBank').value = c.bankDetails || '';
+    renderCompanyPreview();
+    const img = $('coLogoImg');
+    if (img) { img.src = API_BASE+'/api/company/logo?t='+Date.now(); img.onload = () => img.style.display=''; img.onerror = () => img.style.display='none'; }
+  } catch(e) { $('coErr').textContent = e.message; }
+}
+function renderCompanyPreview() {
+  $('coPrevName').textContent = ($('coName').value || 'YOUR COMPANY').toUpperCase();
+  $('coPrevTag').textContent = $('coTagline').value || '';
+  $('coPrevAddr').textContent = $('coAddress').value || '';
+  const contact = [$('coPhone').value, $('coEmail').value, $('coWebsite').value].filter(Boolean).join(' · ');
+  $('coPrevContact').textContent = contact;
+  $('coPrevGst').textContent = $('coGst').value ? ('GSTIN: '+$('coGst').value) : '';
+}
+['coName','coTagline','coAddress','coPhone','coEmail','coWebsite','coGst'].forEach(id => {
+  const el = $(id); if (el) el.addEventListener('input', renderCompanyPreview);
+});
+if ($('btnCoSave')) $('btnCoSave').onclick = async () => {
+  $('coErr').textContent = '';
+  try {
+    const body = {
+      companyName: $('coName').value, gstNo: $('coGst').value, address: $('coAddress').value,
+      website: $('coWebsite').value, phone: $('coPhone').value, email: $('coEmail').value,
+      tagline: $('coTagline').value, stateCode: $('coStateCode').value, pan: $('coPan').value,
+      bankDetails: $('coBank').value,
+    };
+    await api('/api/company', {method:'PUT', body});
+    toast('Company saved');
+  } catch(e) { $('coErr').textContent = e.message; }
+};
+if ($('coLogoFile')) $('coLogoFile').onchange = async (ev) => {
+  const f = ev.target.files[0]; if (!f) return;
+  const fd = new FormData(); fd.append('file', f);
+  try {
+    await api('/api/company/logo', {method:'POST', body: fd});
+    toast('Logo uploaded');
+    const img = $('coLogoImg');
+    if (img) { img.src = API_BASE+'/api/company/logo?t='+Date.now(); img.style.display=''; }
+  } catch(e) { $('coErr').textContent = e.message; }
+};
+
+/* ── Customers (accounts + quotes + versions) ─────────────────────────────── */
+async function initCustomers() {
+  await loadCustomerList();
+  if (state.selectedCustomer) await openCustomer(state.selectedCustomer);
+}
+async function loadCustomerList() {
+  try {
+    const data = await api('/api/customers');
+    state.customers = data.customers || [];
+    renderCustomerList();
+  } catch(e) { $('custList').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+function renderCustomerList() {
+  const q = (($('custSearch') && $('custSearch').value) || '').trim().toLowerCase();
+  const list = (state.customers||[]).filter(c => !q || (c.name||'').toLowerCase().includes(q));
+  $('custList').innerHTML = list.map(c => `
+    <div class="card" data-cust="${esc(c.name)}" style="cursor:pointer;padding:.6rem .75rem;margin-bottom:.4rem;${c.name===state.selectedCustomer?'outline:2px solid var(--green)':''}">
+      <strong>${esc(c.name)}</strong>
+      <div class="muted" style="font-size:.75rem">${esc(c.gstNo||'')} ${c.phone?('· '+esc(c.phone)):''}</div>
+    </div>`).join('') || '<p class="muted">No customers yet</p>';
+  $('custList').querySelectorAll('[data-cust]').forEach(el => el.onclick = () => openCustomer(el.dataset.cust));
+}
+async function openCustomer(name) {
+  state.selectedCustomer = name;
+  $('custAccTitle').textContent = 'Account · ' + name;
+  renderCustomerList();
+  try {
+    const acc = await api('/api/customers/'+encodeURIComponent(name)+'/quotes');
+    const p = acc.profile || {};
+    $('cpName').value = p.name || name;
+    $('cpGst').value = p.gstNo || '';
+    $('cpAddress').value = p.address || '';
+    $('cpContact').value = p.contactPerson || '';
+    $('cpPhone').value = p.phone || '';
+    $('cpEmail').value = p.email || '';
+    $('cpSite').value = p.site || '';
+    $('cpStateCode').value = p.stateCode || '';
+    renderCustomerQuotes(acc.quotes || []);
+    $('cpQuoteCount').textContent = `(${acc.quoteCount||0})`;
+  } catch(e) { $('cpErr').textContent = e.message; }
+}
+function renderCustomerQuotes(quotes) {
+  if (!quotes.length) { $('cpQuotes').innerHTML = '<p class="muted">No quotes yet for this customer</p>'; return; }
+  $('cpQuotes').innerHTML = quotes.map(q => {
+    const brand = 'marqt';
+    const versions = (q.versions||[]).map(v =>
+      `<span class="chip">v${v.version} <a href="${API_BASE}/api/projects/${q.projectId}/customer-pdf?brand=${brand}" target="_blank" title="Print current">🖨</a></span>`
+    ).join(' ');
+    return `<div class="card" style="padding:.65rem .8rem;margin-bottom:.55rem">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div>
+          <strong>${esc(q.name||q.projectId)}</strong>
+          <div class="muted" style="font-size:.74rem">${q.projectId} · v${q.version||1} · ${(q.status||'')} · ${money(q.grandTotal)}</div>
+          <div class="muted" style="font-size:.72rem">Created ${fmtDate(q.createdAt)}${q.updatedAt&&q.updatedAt!==q.createdAt?(' · Updated '+fmtDate(q.updatedAt)):''}</div>
+        </div>
+        <div class="actions-inline">
+          <a class="btn ghost sm" href="${API_BASE}/api/projects/${q.projectId}/customer-pdf?brand=marqt" target="_blank">Print</a>
+          <button class="btn ghost sm" data-open-q="${q.projectId}">Edit</button>
+          <button class="btn ghost sm" data-reuse-q="${q.projectId}">Reuse</button>
+        </div>
+      </div>
+      ${versions?('<div style="margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.3rem">Versions: '+versions+'</div>'):''}
+    </div>`;
+  }).join('');
+  $('cpQuotes').querySelectorAll('[data-open-q]').forEach(b => b.onclick = async () => { await openProject(b.dataset.openQ); setView('cart'); });
+  $('cpQuotes').querySelectorAll('[data-reuse-q]').forEach(b => b.onclick = async () => {
+    const d = await api('/api/projects/'+b.dataset.reuseQ+'/duplicate', {method:'POST'});
+    toast('Reused → '+d.projectId);
+    await openProject(d.projectId); setView('cart');
+  });
+}
+function fmtDate(iso){ if(!iso) return '—'; try { return new Date(iso).toLocaleDateString('en-IN'); } catch(_){ return iso; } }
+if ($('custSearch')) $('custSearch').oninput = renderCustomerList;
+if ($('btnCustNew')) $('btnCustNew').onclick = () => {
+  const name = prompt('New customer name'); if (!name) return;
+  state.selectedCustomer = name;
+  ['cpGst','cpAddress','cpContact','cpPhone','cpEmail','cpSite','cpStateCode'].forEach(id => $(id).value='');
+  $('cpName').value = name; $('custAccTitle').textContent = 'Account · '+name;
+  $('cpQuotes').innerHTML = '<p class="muted">Save details, then create a quote.</p>';
+};
+if ($('btnCpSave')) $('btnCpSave').onclick = async () => {
+  $('cpErr').textContent = '';
+  const name = ($('cpName').value||'').trim();
+  if (!name) { $('cpErr').textContent = 'Customer name required'; return; }
+  try {
+    const body = {
+      name, gstNo: $('cpGst').value, address: $('cpAddress').value, contactPerson: $('cpContact').value,
+      phone: $('cpPhone').value, email: $('cpEmail').value, site: $('cpSite').value, stateCode: $('cpStateCode').value,
+    };
+    await api('/api/customers/'+encodeURIComponent(name)+'/profile', {method:'PUT', body});
+    toast('Customer saved');
+    state.selectedCustomer = name;
+    await loadCustomerList();
+  } catch(e) { $('cpErr').textContent = e.message; }
+};
+if ($('btnCpNewQuote')) $('btnCpNewQuote').onclick = async () => {
+  const name = ($('cpName').value||'').trim();
+  if (!name) { $('cpErr').textContent = 'Save customer first'; return; }
+  state.projectId=null; state.lines=[]; state.lastResult=null;
+  state.customerMemory=null; state.memoryAskedFor=null;
+  $('cartName').value = name+' — Quote'; $('cartCustomer').value = name;
+  $('cartTotal').textContent='₹ —'; renderCart(); setView('cart'); await ensureProject(); scheduleLivePrice();
 };
 
 (async function init(){

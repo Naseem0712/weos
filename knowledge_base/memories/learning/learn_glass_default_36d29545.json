@@ -1,0 +1,36 @@
+{
+  "id": "learn_glass_default_36d29545",
+  "memoryType": "learning",
+  "observationType": "glass_default",
+  "summary": "92/100 quotes used 5mm glass -- make default?",
+  "evidence": {
+    "count": 92,
+    "total": 100,
+    "value": "5mm"
+  },
+  "suggestion": "Set default glass thickness to 5mm for sliding series",
+  "frequency": 0.92,
+  "targetMemoryType": "glass",
+  "targetPayload": {
+    "thicknessMm": 5,
+    "name": "5mm Clear Default Suggestion"
+  },
+  "adminDecision": "approved",
+  "resultingKbVersion": 11,
+  "domain": "engineering",
+  "status": "approved",
+  "revision": 1,
+  "created_at": null,
+  "updated_at": "2026-08-06T22:39:01.295429+00:00",
+  "approved_at": "2026-08-06T22:39:01.295429+00:00",
+  "approved_by": "smoke_test",
+  "kb_version": 11,
+  "source": {},
+  "sourceKind": "",
+  "confidence": null,
+  "priority": 50,
+  "usedInProjects": 0,
+  "lastUsed": null,
+  "tags": [],
+  "relationships": {}
+}

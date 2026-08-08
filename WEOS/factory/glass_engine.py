@@ -29,20 +29,25 @@ def compute_glass(
         raise KeyError("profile.glass.densityKgPerM3 is required (no Python default)")
     thk = float(glass_rules["thicknessMm"])
     density = float(glass_rules["densityKgPerM3"])
-    qty = int(round(eval_formula(glass_rules.get("quantityFormula", "shutterCount"), ctx)))
 
     panes: list[GlassPane] = []
-    specs = [
-        ("left_glass", layout.left_glass.width, layout.left_glass.height),
-        ("right_glass", layout.right_glass.width, layout.right_glass.height),
-    ]
+    specs: list[tuple[str, float, float]] = []
+    # One lite per glass sash / fold leaf (mesh sashes carry no glass)
+    shutters = [sp for sp in (getattr(layout, "shutters", ()) or ()) if sp.role == "glass"]
+    if shutters:
+        for sp in shutters:
+            specs.append((f"shutter_{sp.index}_glass", sp.glass.width, sp.glass.height))
+    else:  # legacy fallback (2-sash)
+        qty = int(round(eval_formula(glass_rules.get("quantityFormula", "shutterCount"), ctx)))
+        base = [
+            ("left_glass", layout.left_glass.width, layout.left_glass.height),
+            ("right_glass", layout.right_glass.width, layout.right_glass.height),
+        ]
+        specs.extend(base[: min(qty, 2)] if qty > 0 else [])
     # Fixed partition lites (clear opening ≈ glass rect; still apply overlaps)
     for fp in getattr(layout, "fix_panels", ()) or ():
         specs.append((f"fix_{fp.side}_glass", fp.glass.width, fp.glass.height))
-    # quantityFormula is total panes; emit sliding first, then fix panels
-    n = min(qty, 2) if qty > 0 else 0
-    emit = list(specs[:n]) + list(specs[2:])  # always include fix panes when present
-    for name, ow, oh in emit:
+    for name, ow, oh in specs:
         gw = ow + hs + ils
         gh = oh + top + bot
         area = (gw / 1000.0) * (gh / 1000.0)

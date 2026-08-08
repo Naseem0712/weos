@@ -1,0 +1,32 @@
+{
+  "version": 7,
+  "created_at": "2026-08-06T21:47:46.835861+00:00",
+  "reason": "Smoke rollback",
+  "proposal_id": null,
+  "approved_by": "smoke_test",
+  "libraries": {
+    "product_series": 1,
+    "profiles": 4,
+    "hardware": 2,
+    "glass": 3,
+    "accessories": 0,
+    "packaging": 0,
+    "formulas": 1,
+    "templates": 0,
+    "quotation_patterns": 0
+  },
+  "auto_write_production": false,
+  "rolled_back_to": 4,
+  "action": "rollback",
+  "libraries_restored": {
+    "product_series": 1,
+    "profiles": 4,
+    "hardware": 2,
+    "glass": 3,
+    "accessories": 0,
+    "packaging": 0,
+    "formulas": 1,
+    "templates": 0,
+    "quotation_patterns": 0
+  }
+}

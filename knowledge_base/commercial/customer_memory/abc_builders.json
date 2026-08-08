@@ -1,0 +1,78 @@
+{
+  "ok": true,
+  "hasMemory": true,
+  "customer": "ABC Builders",
+  "observationCount": 2,
+  "quotationCount": 1,
+  "preferredPayment": "30 Days",
+  "preferredColour": "black_texture",
+  "preferredGlass": "8mm_toughened",
+  "preferredHandle": "premium",
+  "preferredTerms": "30 Days payment",
+  "preferredSaleUnit": "sqft",
+  "averageDiscountPercent": 5.0,
+  "averageProjectValue": 103000.0,
+  "averageMarginPercent": 60.2,
+  "lastQuotations": [
+    {
+      "quotationId": "Q-SMOKE",
+      "ts": "2026-08-06T21:24:22.573755+00:00",
+      "projectId": "PRJ-SMOKE",
+      "lineCount": 2,
+      "products": [
+        "mosquito_mesh",
+        "29mm_sliding"
+      ],
+      "totalSelling": 103000.0,
+      "colour": "black_texture",
+      "glass": "8mm_toughened"
+    }
+  ],
+  "sellingRateHints": [
+    {
+      "product": "29mm_sliding",
+      "medianRate": 1100.0,
+      "avgRate": 1100.0,
+      "samples": 1,
+      "saleUnit": "sqft"
+    },
+    {
+      "product": "mosquito_mesh",
+      "medianRate": 400.0,
+      "avgRate": 400.0,
+      "samples": 1,
+      "saleUnit": "sqft"
+    }
+  ],
+  "askPrompt": "Is customer ke liye pichli baar jaisi commercial settings apply karni hain?",
+  "askPromptEn": "Apply this customer's preferred commercial settings from previous quotations?",
+  "applyPayload": {
+    "colour": "black_texture",
+    "glass": "8mm_toughened",
+    "handle": "premium",
+    "saleUnit": "sqft",
+    "paymentTerm": "30 Days",
+    "terms": "30 Days payment",
+    "discountPercent": 5.0,
+    "sellingRateHints": [
+      {
+        "product": "29mm_sliding",
+        "medianRate": 1100.0,
+        "avgRate": 1100.0,
+        "samples": 1,
+        "saleUnit": "sqft"
+      },
+      {
+        "product": "mosquito_mesh",
+        "medianRate": 400.0,
+        "avgRate": 400.0,
+        "samples": 1,
+        "saleUnit": "sqft"
+      }
+    ]
+  },
+  "updatedAt": "2026-08-06T21:24:22.614920+00:00",
+  "message": "ABC Builders: prefers black_texture / 8mm_toughened / premium · payment 30 Days",
+  "safety": "Apply only after user confirms. Does not change engineering production rules.",
+  "lastAppliedAt": "2026-08-06T21:24:22.643311+00:00"
+}

@@ -1,0 +1,43 @@
+{
+  "id": "fx_glass_priority_low_smoke",
+  "memoryType": "formula",
+  "name": "Glass Width Low",
+  "category": "glass",
+  "expression": "innerWidth - 20",
+  "variables": [],
+  "steps": [],
+  "outputName": "glassWidth",
+  "unit": "",
+  "formulaVersion": 1,
+  "description": "",
+  "compatibleSeries": [
+    "29mm_sliding_smoke"
+  ],
+  "compatibleProducts": [],
+  "approvalDate": "2026-08-06T22:39:02.548585+00:00",
+  "history": [
+    {
+      "formulaVersion": 1,
+      "expression": "innerWidth - 20",
+      "variables": [],
+      "approved_at": "2026-08-06T22:39:02.548585+00:00",
+      "approved_by": "smoke_test",
+      "reason": "admin_approve"
+    }
+  ],
+  "source": {},
+  "status": "approved",
+  "revision": 1,
+  "created_at": null,
+  "updated_at": "2026-08-06T22:39:02.546572+00:00",
+  "approved_at": "2026-08-06T22:39:02.546572+00:00",
+  "approved_by": "smoke_test",
+  "kb_version": null,
+  "sourceKind": "",
+  "confidence": null,
+  "priority": 20,
+  "usedInProjects": 0,
+  "lastUsed": null,
+  "tags": [],
+  "relationships": {}
+}

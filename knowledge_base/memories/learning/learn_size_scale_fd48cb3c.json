@@ -1,0 +1,127 @@
+{
+  "id": "learn_size_scale_fd48cb3c",
+  "memoryType": "learning",
+  "observationType": "size_scale",
+  "summary": "Size compare (914×1219 → 1524×1524 mm): profile Δ 1.5555 kg, glass Δ 1.2084 sqm, cost Δ ₹979.32. Same sliding design at two sizes",
+  "evidence": {
+    "small": {
+      "width_mm": 914.0,
+      "height_mm": 1219.0,
+      "perimeter_m": 4.266,
+      "area_sqm": 1.114166
+    },
+    "large": {
+      "width_mm": 1524.0,
+      "height_mm": 1524.0,
+      "perimeter_m": 6.096,
+      "area_sqm": 2.322576
+    },
+    "delta": {
+      "perimeter_m": 1.83,
+      "area_sqm": 1.2084,
+      "profile_kg": 1.5555,
+      "glass_kg": 15.1051,
+      "material_cost_inr": 979.32,
+      "area_ratio": 2.0846,
+      "perimeter_ratio": 1.429,
+      "cost_ratio": 1.6457
+    },
+    "profilesUsed": [
+      "outer_track",
+      "shutter"
+    ],
+    "jointTypes": [
+      "mitre"
+    ],
+    "designWhy": "Same sliding design at two sizes",
+    "scaleRule": {
+      "id": "scale_29mm_sliding_smoke",
+      "seriesId": "29mm_sliding_smoke",
+      "productType": "Sliding",
+      "rule": "profile_kg ≈ perimeter_m × kg_per_m; glass_sqm ≈ W×H/1e6",
+      "profileScale": "perimeter",
+      "glassScale": "area",
+      "observed": {
+        "small_ft": {
+          "w": 3.0,
+          "h": 4.0,
+          "area_sqft": 11.99
+        },
+        "large_ft": {
+          "w": 5.0,
+          "h": 5.0,
+          "area_sqft": 25.0
+        },
+        "delta": {
+          "perimeter_m": 1.83,
+          "area_sqm": 1.2084,
+          "profile_kg": 1.5555,
+          "glass_kg": 15.1051,
+          "material_cost_inr": 979.32,
+          "area_ratio": 2.0846,
+          "perimeter_ratio": 1.429,
+          "cost_ratio": 1.6457
+        }
+      },
+      "suggestion": "When scaling this design, expect ~1.429× profile length and ~2.0846× glass area; est. material Δ ₹979.32.",
+      "autoApply": false
+    }
+  },
+  "suggestion": "When scaling this design, expect ~1.429× profile length and ~2.0846× glass area; est. material Δ ₹979.32.",
+  "frequency": null,
+  "targetMemoryType": "engineering",
+  "targetPayload": {
+    "scaleRules": [
+      {
+        "id": "scale_29mm_sliding_smoke",
+        "seriesId": "29mm_sliding_smoke",
+        "productType": "Sliding",
+        "rule": "profile_kg ≈ perimeter_m × kg_per_m; glass_sqm ≈ W×H/1e6",
+        "profileScale": "perimeter",
+        "glassScale": "area",
+        "observed": {
+          "small_ft": {
+            "w": 3.0,
+            "h": 4.0,
+            "area_sqft": 11.99
+          },
+          "large_ft": {
+            "w": 5.0,
+            "h": 5.0,
+            "area_sqft": 25.0
+          },
+          "delta": {
+            "perimeter_m": 1.83,
+            "area_sqm": 1.2084,
+            "profile_kg": 1.5555,
+            "glass_kg": 15.1051,
+            "material_cost_inr": 979.32,
+            "area_ratio": 2.0846,
+            "perimeter_ratio": 1.429,
+            "cost_ratio": 1.6457
+          }
+        },
+        "suggestion": "When scaling this design, expect ~1.429× profile length and ~2.0846× glass area; est. material Δ ₹979.32.",
+        "autoApply": false
+      }
+    ]
+  },
+  "adminDecision": null,
+  "resultingKbVersion": null,
+  "domain": "engineering",
+  "status": "pending_approval",
+  "revision": 1,
+  "created_at": null,
+  "updated_at": "2026-08-06T22:39:03.121932+00:00",
+  "approved_at": null,
+  "approved_by": null,
+  "kb_version": null,
+  "source": {},
+  "sourceKind": "",
+  "confidence": null,
+  "priority": 50,
+  "usedInProjects": 0,
+  "lastUsed": null,
+  "tags": [],
+  "relationships": {}
+}

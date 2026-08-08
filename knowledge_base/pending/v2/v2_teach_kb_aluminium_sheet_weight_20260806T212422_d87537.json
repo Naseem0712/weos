@@ -1,0 +1,61 @@
+{
+  "proposal_id": "v2_teach_kb_aluminium_sheet_weight_20260806T212422_d87537",
+  "kind": "formula",
+  "status": "pending_approval",
+  "created_at": "2026-08-06T21:24:22.776745+00:00",
+  "title": "Teach KB: Aluminium sheet weight",
+  "summary": "Sheet weight (kg) from thickness × area × Al density, with waste allowance.",
+  "confidence": 0.9,
+  "source": {
+    "type": "engineering_live_learn",
+    "suggestionId": "teach_aluminium_sheet",
+    "appliedBy": "admin"
+  },
+  "payload": {
+    "formulas": [
+      {
+        "id": "fx_alu_sheet_weight",
+        "name": "Aluminium sheet weight",
+        "category": "weight",
+        "material": "aluminium_sheet",
+        "expression": "thicknessMm * widthMm * heightMm * densityKgPerM3 / 1e9 * (1 + wastePercent/100) * qty",
+        "variables": [
+          "thicknessMm",
+          "widthMm",
+          "heightMm",
+          "densityKgPerM3",
+          "wastePercent",
+          "qty"
+        ],
+        "defaults": {
+          "densityKgPerM3": 2700.0,
+          "wastePercent": 5.0,
+          "qty": 1
+        },
+        "description": "Seed baseline formula into formulas library: Aluminium sheet weight",
+        "unit": "kg",
+        "source": "engineering_live_learn",
+        "key": "aluminium_sheet",
+        "evidence": {
+          "source": "baseline"
+        }
+      }
+    ],
+    "refinementOf": "aluminium_sheet",
+    "note": "Seed baseline formula into formulas library: Aluminium sheet weight",
+    "safety": "Pending admin review — does not modify production engines until approved into KB formulas library."
+  },
+  "edits": {},
+  "item_counts": {
+    "formulas": 1
+  },
+  "match_hints": [],
+  "notes": [
+    "Queued from Engineering Live Learning one-click apply.",
+    "Approve to write formulas library / KB version — production engines unchanged until Product Builder / manual sync."
+  ],
+  "safety": {
+    "auto_write_production": false,
+    "message": "Production data is never modified automatically. Approve publishes to the Knowledge Base only."
+  }
+}

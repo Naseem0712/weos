@@ -1,0 +1,20 @@
+{
+  "id": "prof_bead_smoke",
+  "profileName": "Glass Beading",
+  "profileCode": "GB-10",
+  "profileType": "Glass Beading",
+  "crossSectionWidthMm": 10,
+  "crossSectionHeightMm": 12,
+  "weightPerMeterKg": 0.12,
+  "compatibleSeries": [
+    "29mm_sliding_smoke"
+  ],
+  "seriesId": "29mm_sliding_smoke",
+  "bomRole": "beading",
+  "pdfPageNumber": 5,
+  "confidence": 0.8,
+  "created_at": "2026-08-06T21:00:17.338062+00:00",
+  "updated_at": "2026-08-06T21:00:17.962322+00:00",
+  "status": "approved",
+  "linked_from_learning": true
+}

@@ -320,16 +320,152 @@ def persist_catalogue(doc: Mapping[str, Any]) -> Path:
     return path
 
 
-def import_excel(path: str | Path | None = None) -> dict[str, Any]:
+def _library_catalogue_block(series: Mapping[str, Any]) -> dict[str, Any]:
+    """Build an editable catalogue block for a Product Library entry from a series."""
+    sections = list(series.get("sections") or [])
+    profiles = [
+        {
+            "name": sec.get("name"),
+            "usage": sec.get("usage"),
+            "usageLabel": sec.get("usageLabel"),
+            "sectionDepthMm": sec.get("sectionDepthMm"),
+            "widthMm": sec.get("widthMm"),
+            "weightKgPerMtr": sec.get("weightKgPerMtr"),
+            "standardLength": sec.get("standardLength"),
+            "wallThicknessMm": sec.get("wallThicknessMm"),
+        }
+        for sec in sections
+    ]
+    # Representative standard length (first non-empty)
+    std_len = next((s.get("standardLength") for s in sections if s.get("standardLength")), None)
+    depth = next((s.get("sectionDepthMm") for s in sections if s.get("sectionDepthMm")), None)
+    return {
+        "sectionSeries": series.get("id"),
+        "saleUnit": "sqft",
+        "ratePerUnit": 0,
+        "sizeMm": depth,
+        "standardLength": std_len,
+        "weightKgPerMtr": next((s.get("weightKgPerMtr") for s in sections if s.get("weightKgPerMtr")), None),
+        "profiles": profiles,
+        "designOptions": list(series.get("designOptions") or []),
+        "source": "excel_section_catalogue",
+    }
+
+
+def sync_catalogue_to_library() -> dict[str, Any]:
+    """Feed imported section series INTO the single Product Library (idempotent).
+
+    Every series becomes an editable Product Library entry so it is selectable in
+    the Window Cart and manageable in Admin · Product Library. Existing products
+    (with manufacturing rules) are never overwritten — only their catalogue block
+    and section specs are refreshed.
+    """
+    import json as _json
+
+    from WEOS.factory.section_catalogue import specs_summary_for_series
+
+    doc = load_catalogue()
+    created: list[str] = []
+    updated: list[str] = []
+    for series in doc.get("series") or []:
+        sid = series.get("id")
+        if not sid:
+            continue
+        pdir = products_dir() / sid
+        meta_path = pdir / "product.json"
+        catalogue_block = _library_catalogue_block(series)
+        try:
+            specs = specs_summary_for_series(sid)
+        except Exception:
+            specs = {}
+        spec_fields = {
+            "profileSeries": series.get("title"),
+            "sectionSizeMm": catalogue_block.get("sizeMm"),
+            "standardLength": catalogue_block.get("standardLength"),
+            "wallThicknessMm": specs.get("wallThicknessMm"),
+            "track": specs.get("track"),
+            "sash": specs.get("sash"),
+            "interlock": specs.get("interlock"),
+        }
+        spec_fields = {k: v for k, v in spec_fields.items() if v is not None}
+
+        if meta_path.is_file():
+            try:
+                meta = _json.loads(meta_path.read_text(encoding="utf-8-sig"))
+            except Exception:
+                meta = {"id": sid}
+            meta["catalogue"] = catalogue_block
+            meta["sectionSeries"] = sid
+            specs_existing = dict(meta.get("specifications") or {})
+            for k, v in spec_fields.items():
+                specs_existing.setdefault(k, v)
+            meta["specifications"] = specs_existing
+            meta_path.write_text(_json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            updated.append(sid)
+            continue
+
+        pdir.mkdir(parents=True, exist_ok=True)
+        (pdir / "rules").mkdir(exist_ok=True)
+        meta = {
+            "id": sid,
+            "displayName": series.get("displayName") or series.get("title") or sid,
+            "productType": "section_series",
+            "category": "Windows",
+            "units": "mm",
+            "version": 1,
+            "status": "stub",
+            "description": f"Imported from section catalogue — {series.get('title') or sid}.",
+            "tagline": series.get("title") or "",
+            "warranty": "",
+            "heroImage": "/static/products/placeholder.svg",
+            "gallery": [],
+            "sectionDrawings": [],
+            "specifications": spec_fields,
+            "materials": [],
+            "formulas": {},
+            "pdfLayout": {"customer": "marqt_customer", "factory": "woodenmax_factory"},
+            "brand": "woodenmax",
+            "sectionSeries": sid,
+            "linkedProductId": SERIES_PRODUCT_MAP.get(sid),
+            "catalogue": catalogue_block,
+        }
+        meta_path.write_text(_json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        (pdir / "rules" / "quotation.json").write_text(
+            _json.dumps(
+                {
+                    "currency": "INR",
+                    "labourPerOpening": 0,
+                    "markupPercent": 15,
+                    "gstPercent": 18,
+                    "stub": True,
+                    "manualRatePerOpening": 0,
+                    "rates": {},
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        created.append(sid)
+    return {"ok": True, "created": created, "updated": updated, "count": len(created) + len(updated)}
+
+
+def import_excel(path: str | Path | None = None, *, sync_library: bool = True) -> dict[str, Any]:
     doc = parse_excel(path)
     persist_catalogue(doc)
-    return {
+    result = {
         "ok": True,
         "path": str(catalogue_path()),
         "seriesCount": doc["seriesCount"],
         "sectionCount": doc["sectionCount"],
         "series": [{"id": s["id"], "title": s["title"], "sections": len(s["sections"])} for s in doc["series"]],
     }
+    if sync_library:
+        try:
+            result["library"] = sync_catalogue_to_library()
+        except Exception as exc:  # pragma: no cover - defensive
+            result["library"] = {"ok": False, "error": str(exc)}
+    return result
 
 
 def load_catalogue() -> dict[str, Any]:

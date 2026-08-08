@@ -1,0 +1,111 @@
+{
+  "updatedAt": "2026-08-06T22:39:02.178835+00:00",
+  "marginsByProduct": [
+    {
+      "productFamily": "mosquito_mesh",
+      "avgMarginPercent": 62.5,
+      "samples": 1
+    },
+    {
+      "productFamily": "sliding",
+      "avgMarginPercent": 60.6,
+      "samples": 3
+    }
+  ],
+  "seasonal": [
+    {
+      "month": "August",
+      "topColour": "white",
+      "colours": [
+        [
+          "white",
+          2
+        ],
+        [
+          "black_texture",
+          2
+        ]
+      ]
+    }
+  ],
+  "productRecommendations": [
+    {
+      "when": "mosquito_mesh",
+      "recommend": "sliding",
+      "coOccurrences": 1,
+      "source": "learned"
+    },
+    {
+      "when": "sliding",
+      "recommend": "mosquito_mesh",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "sliding",
+      "recommend": "shower",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "casement",
+      "recommend": "mosquito_mesh",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "casement",
+      "recommend": "fixed",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "fixed",
+      "recommend": "sliding",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "fixed",
+      "recommend": "casement",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "shower",
+      "recommend": "wardrobe",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "shower",
+      "recommend": "sliding",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "wardrobe",
+      "recommend": "sliding",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "wardrobe",
+      "recommend": "shower",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "pergola",
+      "recommend": "sliding",
+      "coOccurrences": 0,
+      "source": "default"
+    },
+    {
+      "when": "pergola",
+      "recommend": "casement",
+      "coOccurrences": 0,
+      "source": "default"
+    }
+  ]
+}

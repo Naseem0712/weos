@@ -1,0 +1,14 @@
+{
+  "customer": "Demo Customer",
+  "rates": [
+    {
+      "product": "29mm_sliding",
+      "saleUnit": "sqft",
+      "sellingRate": 1060.0,
+      "sectionSeries": null,
+      "notes": null,
+      "updatedAt": "2026-08-06T20:35:56.028739+00:00"
+    }
+  ],
+  "updatedAt": "2026-08-06T20:35:56.028739+00:00"
+}

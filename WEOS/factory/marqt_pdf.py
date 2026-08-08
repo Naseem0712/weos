@@ -195,30 +195,108 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     phone = branding.get("phone") or ""
     email = branding.get("email") or ""
     address = branding.get("address") or ""
+    website = branding.get("website") or ""
+    gst = branding.get("gstNo") or ""
+    logo_path = branding.get("logoPath")
     qid = payload.get("quotationId") or payload.get("projectId") or "WEOS-QT"
-    qdate = payload.get("quoteDate") or date.today().strftime("%d-%m-%Y")
+    qdate = payload.get("quoteDate") or payload.get("createdOn") or date.today().strftime("%d-%m-%Y")
+    updated_on = payload.get("updatedOn")
     customer = payload.get("customer") or "—"
+    cust_profile = payload.get("customerProfile") or {}
     project_name = payload.get("name") or ""
     lines = list(payload.get("lines") or [])
     _rs = rupee_prefix()
 
+    def _draw_logo(cx: float, top_y: float, max_w: float, max_h: float) -> float:
+        """Draw company logo if configured. Returns drawn height (0 if none)."""
+        if not logo_path:
+            return 0.0
+        try:
+            from reportlab.lib.utils import ImageReader
+
+            lp = str(logo_path)
+            if lp.lower().endswith(".svg"):
+                from WEOS.factory.image_engine import svg_to_png_bytes
+
+                png = svg_to_png_bytes(open(lp, "r", encoding="utf-8").read(), scale=1.0)
+                if not png:
+                    return 0.0
+                img = ImageReader(io.BytesIO(png))
+            else:
+                img = ImageReader(lp)
+            iw, ih = img.getSize()
+            if iw <= 0 or ih <= 0:
+                return 0.0
+            scale = min(max_w / float(iw), max_h / float(ih))
+            dw, dh = iw * scale, ih * scale
+            c.drawImage(img, cx, top_y - dh, width=dw, height=dh, mask="auto")
+            return dh
+        except Exception:
+            return 0.0
+
     # —— Cover letter page ——
+    logo_h = _draw_logo(40, H - 34, 150, 46)
+    text_x = 40 + (170 if logo_h else 0)
     c.setFillColorRGB(*primary)
     set_font(c, 16, bold=True)
-    c.drawString(40, H - 50, company)
+    c.drawString(text_x, H - 50, company)
     c.setFillColorRGB(0.3, 0.3, 0.3)
     set_font(c, 9)
-    c.drawString(40, H - 66, branding.get("tagline") or "Windows and Doors Quotation")
-    y = H - 100
+    c.drawString(text_x, H - 66, branding.get("tagline") or "Windows and Doors Quotation")
+    header_extra = H - 80
+    if address:
+        set_font(c, 8)
+        c.setFillColorRGB(0.35, 0.35, 0.35)
+        c.drawString(text_x, header_extra, address[:110])
+        header_extra -= 11
+    contact_bits = " · ".join(x for x in (phone, email, website) if x)
+    if contact_bits:
+        set_font(c, 8)
+        c.setFillColorRGB(0.35, 0.35, 0.35)
+        c.drawString(text_x, header_extra, contact_bits[:110])
+        header_extra -= 11
+    if gst:
+        set_font(c, 8)
+        c.setFillColorRGB(0.35, 0.35, 0.35)
+        c.drawString(text_x, header_extra, f"GSTIN: {gst}")
+        header_extra -= 11
+    y = min(H - 118, header_extra - 8)
     c.setFillColorRGB(0, 0, 0)
+    set_font(c, 10, bold=True)
+    c.drawString(40, y, "To:")
     set_font(c, 10)
-    c.drawString(40, y, f"To: {customer}")
-    y -= 16
+    c.drawString(60, y, str(customer).upper() if customer else "—")
+    y -= 14
+    set_font(c, 8)
+    c.setFillColorRGB(0.3, 0.3, 0.3)
+    if cust_profile.get("address"):
+        c.drawString(60, y, str(cust_profile["address"])[:110])
+        y -= 11
+    cust_contact = " · ".join(
+        x for x in (cust_profile.get("contactPerson"), cust_profile.get("phone"), cust_profile.get("email")) if x
+    )
+    if cust_contact:
+        c.drawString(60, y, cust_contact[:110])
+        y -= 11
+    if cust_profile.get("gstNo"):
+        c.drawString(60, y, f"GSTIN: {cust_profile['gstNo']}")
+        y -= 11
+    c.setFillColorRGB(0, 0, 0)
+    y -= 4
+    set_font(c, 10)
     if project_name:
         c.drawString(40, y, f"Project: {project_name}")
         y -= 16
     c.drawString(40, y, f"Quote No: {qid}    Date: {qdate}")
-    y -= 28
+    y -= 16
+    if updated_on:
+        c.setFillColorRGB(*accent)
+        set_font(c, 9, bold=True)
+        c.drawString(40, y, f"Updated on: {updated_on}")
+        c.setFillColorRGB(0, 0, 0)
+        set_font(c, 10)
+        y -= 16
+    y -= 12
     cover = ""
     for b in template.get("blocks") or []:
         if b.get("type") == "cover_letter":
@@ -277,6 +355,10 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         c.setFillColorRGB(0.25, 0.25, 0.25)
         c.drawRightString(W - 36, H - 32, f"Quote No. {qid}")
         c.drawRightString(W - 36, H - 44, f"Quote Date {qdate}")
+        if updated_on:
+            c.setFillColorRGB(*accent)
+            c.drawRightString(W - 36, H - 55, f"Updated {updated_on}")
+            c.setFillColorRGB(0.25, 0.25, 0.25)
         c.setStrokeColorRGB(*primary)
         c.setLineWidth(1)
         c.line(36, H - 52, W - 36, H - 52)

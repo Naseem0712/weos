@@ -1,0 +1,19 @@
+{
+  "description": "Continuous learn pipeline hooks — always gated by admin review",
+  "autoWriteProduction": false,
+  "sources": [
+    {"id": "dxf", "label": "DXF drawings", "status": "active"},
+    {"id": "json", "label": "JSON catalogues / rules", "status": "active"},
+    {"id": "pdf_catalogue", "label": "Product catalogue PDFs", "status": "active"},
+    {"id": "images", "label": "Product / cross-section images", "status": "partial"},
+    {"id": "old_quotes", "label": "Previous quotations", "status": "active"},
+    {"id": "calculate_cart", "label": "Calculate / Window Cart engineering", "status": "active"},
+    {"id": "material_formulas", "label": "Material weight / waste formulas", "status": "active"},
+    {"id": "commercial_quotes", "label": "Commercial quote intelligence", "status": "active"},
+    {"id": "customer_memory", "label": "Customer Memory (prefs)", "status": "active"},
+    {"id": "factory_feedback", "label": "Factory feedback", "status": "scaffolded"},
+    {"id": "customer_feedback", "label": "Customer feedback", "status": "scaffolded"},
+    {"id": "updated_catalogues", "label": "Updated catalogues", "status": "active"},
+    {"id": "supplier_catalogues", "label": "Supplier catalogues", "status": "scaffolded"}
+  ]
+}

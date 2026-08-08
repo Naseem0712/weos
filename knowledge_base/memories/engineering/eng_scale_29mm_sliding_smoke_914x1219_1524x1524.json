@@ -1,0 +1,73 @@
+{
+  "id": "eng_scale_29mm_sliding_smoke_914x1219_1524x1524",
+  "memoryType": "engineering",
+  "title": "Size-scale suggestion 29mm_sliding_smoke",
+  "seriesId": "29mm_sliding_smoke",
+  "seriesCode": "",
+  "profiles": [],
+  "formulas": [],
+  "overlapRules": {},
+  "cuttingRules": {},
+  "bomRules": {},
+  "nestingRules": {},
+  "optimizationRules": {},
+  "wasteRules": {},
+  "hardwareUsage": [],
+  "brushRailGlass": {},
+  "weightRules": {},
+  "compatibilityRules": [],
+  "conflictRules": [],
+  "scaleRules": [
+    {
+      "id": "scale_29mm_sliding_smoke",
+      "seriesId": "29mm_sliding_smoke",
+      "productType": "Sliding",
+      "rule": "profile_kg ≈ perimeter_m × kg_per_m; glass_sqm ≈ W×H/1e6",
+      "profileScale": "perimeter",
+      "glassScale": "area",
+      "observed": {
+        "small_ft": {
+          "w": 3.0,
+          "h": 4.0,
+          "area_sqft": 11.99
+        },
+        "large_ft": {
+          "w": 5.0,
+          "h": 5.0,
+          "area_sqft": 25.0
+        },
+        "delta": {
+          "perimeter_m": 1.83,
+          "area_sqm": 1.2084,
+          "profile_kg": 1.5555,
+          "glass_kg": 15.1051,
+          "material_cost_inr": 979.32,
+          "area_ratio": 2.0846,
+          "perimeter_ratio": 1.429,
+          "cost_ratio": 1.6457
+        }
+      },
+      "suggestion": "When scaling this design, expect ~1.429× profile length and ~2.0846× glass area; est. material Δ ₹979.32.",
+      "autoApply": false
+    }
+  ],
+  "notes": "Same sliding design at two sizes",
+  "status": "pending_approval",
+  "revision": 1,
+  "created_at": null,
+  "updated_at": "2026-08-06T22:39:03.154658+00:00",
+  "approved_at": null,
+  "approved_by": null,
+  "kb_version": null,
+  "source": {
+    "kind": "size_compare",
+    "quote": "Size compare (914×1219 → 1524×1524 mm): profile Δ 1.5555 kg, glass Δ 1.2084 sqm, cost Δ ₹979.32. Same sliding design at two sizes"
+  },
+  "sourceKind": "learned",
+  "confidence": 70,
+  "priority": 40,
+  "usedInProjects": 0,
+  "lastUsed": null,
+  "tags": [],
+  "relationships": {}
+}

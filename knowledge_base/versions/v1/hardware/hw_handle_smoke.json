@@ -1,0 +1,14 @@
+{
+  "id": "hw_handle_smoke",
+  "name": "Standard Handle",
+  "hardwareType": "Handle",
+  "partNumber": "H-001",
+  "compatibleSeries": [
+    "29mm_sliding_smoke"
+  ],
+  "unit": "PC",
+  "sellingRate": 180,
+  "created_at": "2026-08-06T21:00:17.349484+00:00",
+  "updated_at": "2026-08-06T21:00:17.349484+00:00",
+  "status": "approved"
+}

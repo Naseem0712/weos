@@ -1,0 +1,102 @@
+{
+  "description": "Customer \u2192 Quotation \u2192 Products \u2192 Profiles \u2192 Hardware \u2192 Glass \u2192 Formula \u2192 Drawing \u2192 Machine \u2192 Factory \u2192 Costing \u2192 Reports",
+  "edges": [
+    {
+      "fromType": "profile",
+      "fromId": "prof_bead_smoke",
+      "toType": "product",
+      "toId": "29mm_sliding_smoke",
+      "rel": "compatibleSeries",
+      "updated_at": "2026-08-06T22:39:02.192785+00:00"
+    },
+    {
+      "fromType": "profile",
+      "fromId": "prof_bead_smoke",
+      "toType": "product",
+      "toId": "29mm_sliding_smoke",
+      "rel": "seriesId",
+      "updated_at": "2026-08-06T22:39:02.192785+00:00"
+    },
+    {
+      "fromType": "profile",
+      "fromId": "prof_il_smoke",
+      "toType": "product",
+      "toId": "29mm_sliding_smoke",
+      "rel": "compatibleSeries",
+      "updated_at": "2026-08-06T22:39:02.224725+00:00"
+    },
+    {
+      "fromType": "profile",
+      "fromId": "prof_il_smoke",
+      "toType": "product",
+      "toId": "29mm_sliding_smoke",
+      "rel": "seriesId",
+      "updated_at": "2026-08-06T22:39:02.224725+00:00"
+    },
+    {
+      "fromType": "profile",
+      "fromId": "prof_outer_smoke",
+      "toType": "product",
+      "toId": "29mm_sliding_smoke",
+      "rel": "compatibleSeries",
+      "updated_at": "2026-08-06T22:39:02.273909+00:00"
+    },
+    {
+      "fromType": "profile",
+      "fromId": "prof_outer_smoke",
+      "toType": "product",
+      "toId": "29mm_sliding_smoke",
+      "rel": "seriesId",
+      "updated_at": "2026-08-06T22:39:02.273909+00:00"
+    },
+    {
+      "fromType": "profile",
+      "fromId": "prof_shutter_smoke",
+      "toType": "product",
+      "toId": "29mm_sliding_smoke",
+      "rel": "compatibleSeries",
+      "updated_at": "2026-08-06T22:39:02.325417+00:00"
+    },
+    {
+      "fromType": "profile",
+      "fromId": "prof_shutter_smoke",
+      "toType": "product",
+      "toId": "29mm_sliding_smoke",
+      "rel": "seriesId",
+      "updated_at": "2026-08-06T22:39:02.325417+00:00"
+    },
+    {
+      "fromType": "formula",
+      "fromId": "fx_glass_smoke",
+      "toType": "product",
+      "toId": "29mm_sliding_smoke",
+      "rel": "compatibleSeries",
+      "updated_at": "2026-08-06T22:39:02.528435+00:00"
+    },
+    {
+      "fromType": "formula",
+      "fromId": "fx_glass_priority_low_smoke",
+      "toType": "product",
+      "toId": "29mm_sliding_smoke",
+      "rel": "compatibleSeries",
+      "updated_at": "2026-08-06T22:39:02.593037+00:00"
+    },
+    {
+      "fromType": "formula",
+      "fromId": "fx_glass_priority_high_smoke",
+      "toType": "product",
+      "toId": "29mm_sliding_smoke",
+      "rel": "compatibleSeries",
+      "updated_at": "2026-08-06T22:39:02.638228+00:00"
+    },
+    {
+      "fromType": "engineering",
+      "fromId": "eng_scale_29mm_sliding_smoke_914x1219_1524x1524",
+      "toType": "product",
+      "toId": "29mm_sliding_smoke",
+      "rel": "seriesId",
+      "updated_at": "2026-08-06T22:39:03.168242+00:00"
+    }
+  ],
+  "updated_at": "2026-08-06T22:39:03.168242+00:00"
+}

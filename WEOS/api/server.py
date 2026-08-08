@@ -103,6 +103,15 @@ class CartLine(BaseModel):
     partitions: list[dict[str, Any]] | None = None
     mesh: bool | None = None
     trackCount: float | None = None
+    glassShutters: int | None = None
+    meshShutters: int | None = None
+    fixShutters: Any = None
+    opening: str | None = None
+    system: str | None = None
+    foldLeft: int | None = None
+    foldRight: int | None = None
+    sectionSizes: dict[str, Any] | None = None
+    handleFinish: str | None = None
 
 
 class LivePriceRequest(BaseModel):
@@ -192,6 +201,15 @@ class PreviewRequest(BaseModel):
     partitions: list[dict[str, Any]] | None = None
     mesh: bool | None = None
     trackCount: float | None = None
+    glassShutters: int | None = None
+    meshShutters: int | None = None
+    fixShutters: Any = None
+    opening: str | None = None
+    system: str | None = None
+    foldLeft: int | None = None
+    foldRight: int | None = None
+    sectionSizes: dict[str, Any] | None = None
+    handleFinish: str | None = None
     sectionSeries: str | None = None
     grid: Any = None
 
@@ -224,9 +242,40 @@ class ProductAdminBody(BaseModel):
     pdfLayout: dict[str, Any] | None = None
     brand: str | None = None
     rules: dict[str, Any] | None = None
+    catalogue: dict[str, Any] | None = None
+    sectionSeries: str | None = None
+    linkedProductId: str | None = None
     syncHardware: bool = True
     bumpVersion: bool = True
     manualRatePerOpening: float | None = None
+
+
+class CompanyBody(BaseModel):
+    companyName: str | None = None
+    address: str | None = None
+    website: str | None = None
+    gstNo: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    tagline: str | None = None
+    state: str | None = None
+    stateCode: str | None = None
+    pan: str | None = None
+    bankDetails: str | None = None
+    cin: str | None = None
+
+
+class CustomerProfileBody(BaseModel):
+    name: str | None = None
+    address: str | None = None
+    gstNo: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    contactPerson: str | None = None
+    state: str | None = None
+    stateCode: str | None = None
+    site: str | None = None
+    notes: str | None = None
 
 
 class TemplateBody(BaseModel):
@@ -413,9 +462,82 @@ class CompatibilitySaveBody(BaseModel):
     approvedBy: str = "admin"
 
 
+class GlassSpecBody(BaseModel):
+    model_config = {"extra": "allow"}
+
+    id: str | None = None
+    name: str | None = None
+    makeup: str = "single"
+    thicknessMm: float | None = None
+    overallMm: float | None = None
+    glass1Mm: float | None = None
+    glass2Mm: float | None = None
+    airGapMm: float | None = None
+    pvbMm: float | None = None
+    colour: str = "clear"
+    brand: str = ""
+    toughened: bool = False
+    rate: float | None = None
+    rateUnit: str = "sqft"
+    densityKgPerM3: float = 2500.0
+    status: str = "active"
+
+
+class GlassComputeBody(BaseModel):
+    spec: dict[str, Any] = Field(default_factory=dict)
+    clearWidthMm: float = 650
+    clearHeightMm: float = 1700
+    glassRules: dict[str, Any] | None = None
+    qty: float = 1.0
+    interlockLeft: bool = False
+    interlockRight: bool = False
+
+
+class GlassSizeBody(BaseModel):
+    clearWidthMm: float
+    clearHeightMm: float
+    glassRules: dict[str, Any] | None = None
+    insertion: dict[str, Any] | None = None
+    interlockLeft: bool = False
+    interlockRight: bool = False
+    label: str = "glass"
+
+
+class HardwareItemBody(BaseModel):
+    model_config = {"extra": "allow"}
+
+    id: str | None = None
+    name: str
+    category: str = "accessory"
+    brand: str = ""
+    partNumber: str = ""
+    unit: str = "PC"
+    rate: float | None = None
+    weightKg: float | None = None
+    supplier: str = ""
+    compatibleProducts: list[str] = Field(default_factory=list)
+    compatibleSeries: list[str] = Field(default_factory=list)
+    remarks: str = ""
+    status: str = "active"
+
+
+class HardwareRulesApplyBody(BaseModel):
+    rules: list[dict[str, Any]] = Field(default_factory=list)
+    context: dict[str, Any] = Field(default_factory=dict)
+    leafWeightsKg: list[float] = Field(default_factory=list)
+
+
+class DefaultsSuggestBody(BaseModel):
+    product: str | None = None
+    customer: str | None = None
+
+
 def _pdf_response(project_id: str, kind: str, brand: str | None = None, template_id: str | None = None) -> Response:
     doc = load_project(project_id)
     result = calculate_project(doc, optimize=True)
+    created_at = doc.get("createdAt")
+    updated_at = doc.get("updatedAt")
+    version = int(doc.get("version") or 1)
     payload = {
         **result,
         "projectId": project_id,
@@ -423,7 +545,39 @@ def _pdf_response(project_id: str, kind: str, brand: str | None = None, template
         "name": doc.get("name"),
         "brand": brand or doc.get("brand") or "woodenmax",
         "templateId": template_id,
+        "createdAt": created_at,
+        "updatedAt": updated_at,
+        "version": version,
+        "terms": doc.get("terms"),
     }
+    # Bill-to details auto-filled from the saved customer profile
+    try:
+        from WEOS.factory.customer_store import load_customer_profile
+
+        if doc.get("customer"):
+            payload["customerProfile"] = load_customer_profile(str(doc["customer"]))
+    except Exception:
+        pass
+    # Print an "Updated on" date automatically when an old quote is edited
+    try:
+        from datetime import datetime as _dt
+
+        def _fmt(iso: str | None) -> str | None:
+            if not iso:
+                return None
+            try:
+                return _dt.fromisoformat(str(iso).replace("Z", "+00:00")).strftime("%d-%m-%Y")
+            except Exception:
+                return None
+
+        created_fmt = _fmt(created_at)
+        updated_fmt = _fmt(updated_at)
+        payload["createdOn"] = created_fmt
+        # Print "Updated on" only for a genuine later-date edit of an existing quote
+        if updated_fmt and created_fmt and updated_fmt != created_fmt:
+            payload["updatedOn"] = updated_fmt
+    except Exception:
+        pass
     if kind == "factory":
         pdf = build_factory_pdf_bytes(payload)
         name = f"{project_id}_factory.pdf"
@@ -527,6 +681,15 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             mesh=bool(body.mesh),
             track_count=mesh_res["trackCount"],
             section_series=body.sectionSeries,
+            glass_count=body.glassShutters,
+            mesh_count=body.meshShutters,
+            opening=body.opening,
+            fixed_shutters=body.fixShutters,
+            system=body.system,
+            fold_left=body.foldLeft,
+            fold_right=body.foldRight,
+            section_sizes=body.sectionSizes,
+            handle_finish=body.handleFinish,
         )
         svg = render_svg_string(
             job.drawing,
@@ -547,7 +710,13 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             "layout": layout,
             "meshTrack": mesh_res,
             "trackCount": mesh_res["trackCount"],
-            "mesh": bool(body.mesh),
+            "mesh": bool(job.layout_meta.get("mesh")),
+            "system": job.layout_meta.get("system"),
+            "glassShutters": job.layout_meta.get("glass_count"),
+            "meshShutters": job.layout_meta.get("mesh_count"),
+            "foldLeft": job.layout_meta.get("fold_left"),
+            "foldRight": job.layout_meta.get("fold_right"),
+            "notes": job.layout_meta.get("notes"),
             "heroImage": meta.get("heroImage"),
             "specifications": meta.get("specifications"),
         }
@@ -981,6 +1150,95 @@ def api_save_customer_rate(body: CustomerRateBody) -> dict[str, Any]:
         section_series=body.sectionSeries,
         notes=body.notes,
     )
+
+
+# ── Company Setup ────────────────────────────────────────────────────────────
+
+@app.get("/api/company")
+def api_get_company() -> dict[str, Any]:
+    from WEOS.factory.company_store import load_company
+
+    return load_company()
+
+
+@app.put("/api/company")
+@app.post("/api/company")
+def api_save_company(body: CompanyBody) -> dict[str, Any]:
+    from WEOS.factory.company_store import save_company
+
+    return save_company(body.model_dump(exclude_none=True))
+
+
+@app.post("/api/company/logo")
+async def api_upload_company_logo(file: UploadFile = File(...)) -> dict[str, Any]:
+    from WEOS.factory.company_store import save_logo
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty logo upload")
+    return save_logo(raw, filename=file.filename, content_type=file.content_type)
+
+
+@app.get("/api/company/logo")
+def api_get_company_logo() -> Response:
+    from WEOS.factory.company_store import logo_file
+
+    lf = logo_file()
+    if not lf:
+        raise HTTPException(status_code=404, detail="No company logo uploaded")
+    mime = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".svg": "image/svg+xml",
+        ".gif": "image/gif",
+    }.get(lf.suffix.lower(), "application/octet-stream")
+    return Response(content=lf.read_bytes(), media_type=mime)
+
+
+# ── Customer profiles + accounts ─────────────────────────────────────────────
+
+@app.get("/api/customers")
+def api_list_customers() -> dict[str, Any]:
+    """All customers (profiles ∪ rate books) for the customer account picker."""
+    from WEOS.factory.customer_store import list_customer_profiles
+    from WEOS.factory.customer_rates import list_customers_with_rates
+
+    profiles = list_customer_profiles()
+    seen = {str(p.get("name", "")).strip().lower() for p in profiles}
+    merged = list(profiles)
+    for r in list_customers_with_rates():
+        nm = str(r.get("customer") or "").strip()
+        if nm and nm.lower() not in seen:
+            merged.append({"name": nm, "slug": nm.lower().replace(" ", "_"), "rateCount": r.get("rateCount")})
+            seen.add(nm.lower())
+    return {"customers": merged, "count": len(merged)}
+
+
+@app.get("/api/customers/{customer}/profile")
+def api_get_customer_profile(customer: str) -> dict[str, Any]:
+    from WEOS.factory.customer_store import load_customer_profile
+
+    return load_customer_profile(customer)
+
+
+@app.put("/api/customers/{customer}/profile")
+@app.post("/api/customers/{customer}/profile")
+def api_save_customer_profile(customer: str, body: CustomerProfileBody) -> dict[str, Any]:
+    from WEOS.factory.customer_store import save_customer_profile
+
+    try:
+        return save_customer_profile(customer, body.model_dump(exclude_none=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/customers/{customer}/quotes")
+def api_customer_quotes(customer: str) -> dict[str, Any]:
+    from WEOS.factory.customer_store import customer_quotes
+
+    return customer_quotes(customer)
 
 
 @app.get("/api/sections")
@@ -1812,6 +2070,208 @@ def api_template_preview_pdf(body: TemplatePreviewRequest) -> Response:
         media_type="application/pdf",
         headers={"Content-Disposition": 'inline; filename="template_preview.pdf"'},
     )
+
+
+# ── Glass Engine + Glass Library (Part 2) ────────────────────────────────────
+
+@app.get("/api/glass/options")
+def api_glass_options() -> dict[str, Any]:
+    from WEOS.factory.glass_catalogue import makeup_options
+
+    return makeup_options()
+
+
+@app.get("/api/glass/library")
+def api_glass_library() -> dict[str, Any]:
+    from WEOS.factory.glass_catalogue import list_glass
+
+    items = list_glass()
+    return {"glass": items, "count": len(items)}
+
+
+@app.post("/api/glass/library")
+def api_glass_library_save(body: GlassSpecBody) -> dict[str, Any]:
+    from WEOS.factory.glass_catalogue import save_glass
+
+    return {"ok": True, "glass": save_glass(body.model_dump(exclude_none=True))}
+
+
+@app.delete("/api/glass/library/{glass_id}")
+def api_glass_library_delete(glass_id: str) -> dict[str, Any]:
+    from WEOS.factory.glass_catalogue import delete_glass
+
+    try:
+        return delete_glass(glass_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/glass/seed")
+def api_glass_seed(force: bool = False) -> dict[str, Any]:
+    from WEOS.factory.glass_catalogue import seed_default_glass
+
+    return seed_default_glass(force=force)
+
+
+@app.post("/api/glass/compute")
+def api_glass_compute(body: GlassComputeBody) -> dict[str, Any]:
+    from WEOS.factory.glass_catalogue import build_glass_spec, size_and_price
+
+    spec = body.spec or {}
+    if not spec.get("makeupLabel"):
+        spec = build_glass_spec(
+            makeup=str(spec.get("makeup") or "single"),
+            thickness_mm=spec.get("thicknessMm"),
+            overall_mm=spec.get("overallMm"),
+            glass1_mm=spec.get("glass1Mm"),
+            glass2_mm=spec.get("glass2Mm"),
+            air_gap_mm=spec.get("airGapMm"),
+            pvb_mm=spec.get("pvbMm"),
+            colour=str(spec.get("colour") or "clear"),
+            brand=str(spec.get("brand") or ""),
+            toughened=bool(spec.get("toughened")),
+            rate=spec.get("rate"),
+            rate_unit=str(spec.get("rateUnit") or "sqft"),
+            density=float(spec.get("densityKgPerM3") or 2500.0),
+            name=spec.get("name"),
+        )
+    return size_and_price(
+        spec,
+        clear_width_mm=body.clearWidthMm,
+        clear_height_mm=body.clearHeightMm,
+        glass_rules=body.glassRules,
+        qty=body.qty,
+        interlock_left=body.interlockLeft,
+        interlock_right=body.interlockRight,
+    )
+
+
+# ── Profile glass-insertion depth → accurate glass size (Part 4) ─────────────
+
+@app.post("/api/glass/size")
+def api_glass_size(body: GlassSizeBody) -> dict[str, Any]:
+    from WEOS.factory.glass_sizing import compute_glass_size, insertion_from_profile
+
+    if body.insertion is not None:
+        insertion = {"engagement": body.insertion.get("engagement") or {}, "clearance": body.insertion.get("clearance") or {}, "interlockOverlapMm": body.insertion.get("interlockOverlapMm", 0)} if ("engagement" in body.insertion or "clearance" in body.insertion) else insertion_from_profile({"glassInsertion": body.insertion})
+    else:
+        insertion = insertion_from_profile(body.glassRules)
+    return compute_glass_size(
+        body.clearWidthMm,
+        body.clearHeightMm,
+        insertion=insertion,
+        interlock_left=body.interlockLeft,
+        interlock_right=body.interlockRight,
+        label=body.label,
+    )
+
+
+# ── Hardware Engine + Hardware Library + rules (Part 3) ──────────────────────
+
+@app.get("/api/hardware/categories")
+def api_hardware_categories() -> dict[str, Any]:
+    from WEOS.factory.hardware_catalogue import HARDWARE_CATEGORIES, PER_BASIS
+
+    return {"categories": HARDWARE_CATEGORIES, "perBasis": list(PER_BASIS.keys())}
+
+
+@app.get("/api/hardware/library")
+def api_hardware_library() -> dict[str, Any]:
+    from WEOS.factory.hardware_catalogue import list_hardware
+
+    items = list_hardware()
+    return {"hardware": items, "count": len(items)}
+
+
+@app.post("/api/hardware/library")
+def api_hardware_library_save(body: HardwareItemBody) -> dict[str, Any]:
+    from WEOS.factory.hardware_catalogue import save_hardware
+
+    return {"ok": True, "hardware": save_hardware(body.model_dump(exclude_none=True))}
+
+
+@app.delete("/api/hardware/library/{hardware_id}")
+def api_hardware_library_delete(hardware_id: str) -> dict[str, Any]:
+    from WEOS.factory.hardware_catalogue import delete_hardware
+
+    try:
+        return delete_hardware(hardware_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/hardware/seed")
+def api_hardware_seed(force: bool = False) -> dict[str, Any]:
+    from WEOS.factory.hardware_catalogue import seed_default_hardware
+
+    return seed_default_hardware(force=force)
+
+
+@app.post("/api/hardware/rules/apply")
+def api_hardware_rules_apply(body: HardwareRulesApplyBody) -> dict[str, Any]:
+    from WEOS.factory.hardware_catalogue import apply_hardware_rules
+
+    return apply_hardware_rules(body.rules, body.context, leaf_weights_kg=body.leafWeightsKg)
+
+
+# ── Memory audit + Intelligence (Part 5) ─────────────────────────────────────
+
+@app.get("/api/memory/audit")
+def api_memory_audit() -> dict[str, Any]:
+    from WEOS.memory.audit import run_audit
+
+    return run_audit()
+
+
+@app.get("/api/intelligence")
+def api_intelligence() -> dict[str, Any]:
+    from WEOS.memory.intelligence import intelligence_report
+
+    return intelligence_report()
+
+
+@app.post("/api/intelligence/defaults")
+def api_intelligence_defaults(body: DefaultsSuggestBody) -> dict[str, Any]:
+    from WEOS.memory.intelligence import suggest_defaults
+
+    return suggest_defaults(product=body.product, customer=body.customer)
+
+
+@app.get("/api/intelligence/defaults")
+def api_intelligence_defaults_get(product: str | None = None, customer: str | None = None) -> dict[str, Any]:
+    from WEOS.memory.intelligence import suggest_defaults
+
+    return suggest_defaults(product=product, customer=customer)
+
+
+@app.post("/api/engineering/seed-formulas")
+def api_engineering_seed_formulas(force: bool = False) -> dict[str, Any]:
+    from WEOS.learning.material_formulas import seed_formula_memory
+
+    return seed_formula_memory(force=force)
+
+
+@app.on_event("startup")
+def _weos_seed_defaults() -> None:
+    """Preload baseline formulas + starter glass/hardware libraries (idempotent)."""
+    try:
+        from WEOS.learning.material_formulas import seed_formula_memory
+
+        seed_formula_memory()
+    except Exception:
+        pass
+    try:
+        from WEOS.factory.glass_catalogue import seed_default_glass
+
+        seed_default_glass()
+    except Exception:
+        pass
+    try:
+        from WEOS.factory.hardware_catalogue import seed_default_hardware
+
+        seed_default_hardware()
+    except Exception:
+        pass
 
 
 @app.get("/", response_class=HTMLResponse)
