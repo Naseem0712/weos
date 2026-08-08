@@ -112,6 +112,12 @@ class CartLine(BaseModel):
     foldRight: int | None = None
     sectionSizes: dict[str, Any] | None = None
     handleFinish: str | None = None
+    handleLevel: float | None = None
+    handleOverrides: dict[str, Any] | None = None
+    grid: dict[str, Any] | None = None
+    handleName: str | None = None
+    meshName: str | None = None
+    powderCoatName: str | None = None
 
 
 class LivePriceRequest(BaseModel):
@@ -210,6 +216,11 @@ class PreviewRequest(BaseModel):
     foldRight: int | None = None
     sectionSizes: dict[str, Any] | None = None
     handleFinish: str | None = None
+    handleLevel: float | None = None
+    handleOverrides: dict[str, Any] | None = None
+    handleName: str | None = None
+    meshName: str | None = None
+    powderCoatName: str | None = None
     sectionSeries: str | None = None
     grid: Any = None
 
@@ -690,13 +701,16 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             fold_right=body.foldRight,
             section_sizes=body.sectionSizes,
             handle_finish=body.handleFinish,
+            handle_level=body.handleLevel,
+            handle_overrides=body.handleOverrides,
+            grid=body.grid if str(body.system or "").lower() == "grid" else None,
         )
         svg = render_svg_string(
             job.drawing,
             colour=body.colour.lower().replace(" ", "_"),
             annotations=True,
             include_plan=True,
-            grid=body.grid,
+            grid=body.grid if str(body.system or "").lower() != "grid" else None,
         )
         layout = layout_summary_for_job(
             width=body.width, height=body.height, layout_meta=job.layout_meta
@@ -727,7 +741,7 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
 @app.post("/api/calculate")
 def api_calculate(body: CalculateRequest) -> dict[str, Any]:
     try:
-        return build_api_response(
+        response = build_api_response(
             product=body.profile or body.product,
             width=body.width,
             height=body.height,
@@ -747,6 +761,54 @@ def api_calculate(body: CalculateRequest) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Part 5 fix: a normal single calculate now *creates memory* (observations +
+    # a Learning Memory record) so the Brain / insights have something to consume.
+    try:
+        _observe_calculation(response)
+    except Exception:
+        pass
+    return response
+
+
+def _observe_calculation(response: dict[str, Any]) -> None:
+    """Turn a calculate response into engineering + learning-memory observations."""
+    from WEOS.learning.engineering_agent import observe_engineering
+    from WEOS.memory.store import write_observation_as_learning
+
+    product = (response.get("product") or {})
+    weight = response.get("weight") or {}
+    line = {
+        "product": product.get("id"),
+        "displayName": product.get("displayName"),
+        "width": response.get("width"),
+        "height": response.get("height"),
+        "qty": 1,
+        "options": response.get("options") or {},
+        "weight": weight,
+        "glass": response.get("glass") or [],
+        "hardware": response.get("hardware") or [],
+        "cutList": response.get("cutList") or [],
+        "bom": response.get("bom") or [],
+    }
+    observe_engineering(lines=[line], source="calculate_single")
+    opts = response.get("options") or {}
+    write_observation_as_learning(
+        observation_type="calculation",
+        summary=(
+            f"Calculated {product.get('id')} {response.get('width')}×{response.get('height')} "
+            f"glass={opts.get('glass')} colour={opts.get('colour')} → {weight.get('totalKg')} kg"
+        ),
+        evidence={
+            "product": product.get("id"),
+            "size": f"{response.get('width')}x{response.get('height')}",
+            "glass": opts.get("glass"),
+            "colour": opts.get("colour"),
+            "totalKg": weight.get("totalKg"),
+        },
+        suggestion="Observed calculation — feeds glass/colour default suggestions.",
+        domain="engineering",
+    )
 
 
 @app.get("/api/projects")
@@ -2153,7 +2215,15 @@ def api_glass_size(body: GlassSizeBody) -> dict[str, Any]:
     from WEOS.factory.glass_sizing import compute_glass_size, insertion_from_profile
 
     if body.insertion is not None:
-        insertion = {"engagement": body.insertion.get("engagement") or {}, "clearance": body.insertion.get("clearance") or {}, "interlockOverlapMm": body.insertion.get("interlockOverlapMm", 0)} if ("engagement" in body.insertion or "clearance" in body.insertion) else insertion_from_profile({"glassInsertion": body.insertion})
+        if "engagement" in body.insertion or "clearance" in body.insertion:
+            insertion = {
+                "engagement": body.insertion.get("engagement") or {},
+                "clearance": body.insertion.get("clearance") or {},
+                "interlockOverlapMm": body.insertion.get("interlockOverlapMm", 0),
+            }
+        else:
+            # Treat a flat dict as a glassInsertion block.
+            insertion = insertion_from_profile({"glassInsertion": body.insertion})
     else:
         insertion = insertion_from_profile(body.glassRules)
     return compute_glass_size(
@@ -2216,8 +2286,10 @@ def api_hardware_rules_apply(body: HardwareRulesApplyBody) -> dict[str, Any]:
 
 # ── Memory audit + Intelligence (Part 5) ─────────────────────────────────────
 
-@app.get("/api/memory/audit")
+@app.get("/api/memory-audit")
 def api_memory_audit() -> dict[str, Any]:
+    """Memory audit (renamed off /api/memory/* to avoid the dynamic
+    /api/memory/{memory_type} matcher capturing 'audit')."""
     from WEOS.memory.audit import run_audit
 
     return run_audit()

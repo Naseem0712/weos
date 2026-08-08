@@ -168,11 +168,27 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
     if section.get("interlock"):
         lines.append(f"Interlock = {section['interlock']}")
     handle = opts.get("handle")
-    if handle:
+    handle_name = opts.get("handleName") or line.get("handleName")
+    if handle_name:
+        lines.append(f"Handle = {handle_name}")
+    elif handle:
         lines.append(f"Handle = {str(handle).replace('_', ' ').title()}")
     # Sell rate prints in the RATE column only — never duplicate here
+    mesh_name = opts.get("meshName") or line.get("meshName")
     if layout.get("mesh") or (opts or {}).get("mesh"):
-        lines.append(f"Mesh = Yes (track {float(tc or 3):g})")
+        lines.append(f"Mesh = {mesh_name or 'Yes'} (track {float(tc or 3):g}, 1 panel wide)")
+    elif mesh_name:
+        lines.append(f"Mesh = {mesh_name}")
+    pc_name = opts.get("powderCoatName") or line.get("powderCoatName")
+    if pc_name:
+        lines.append(f"Powder Coat = {pc_name}")
+    system = str((layout or {}).get("system") or opts.get("system") or "").lower()
+    if system == "grid":
+        lines.append("Type = Partition grid (per-cell fix/sliding/openable)")
+    elif system == "casement":
+        lines.append("Type = Casement / Openable")
+    elif system == "bifold":
+        lines.append("Type = Fold & Sliding")
     return lines
 
 
@@ -367,7 +383,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         c.setFillColorRGB(*primary)
         set_font(c, 8, bold=True)
         c.drawString(40, yy, "DESIGN")
-        c.drawString(185, yy, "SPECIFICATIONS")
+        c.drawString(262, yy, "SPECIFICATIONS")
         c.drawRightString(430, yy, "QTY")
         c.drawRightString(490, yy, f"RATE ({_rs})")
         c.drawRightString(W - 40, yy, f"AMOUNT ({_rs})")
@@ -382,8 +398,8 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     grand = 0.0
 
     for idx, line in enumerate(lines):
-        # Design column needs room for annotated elevation + plan
-        draw_w, draw_h = 138, 175
+        # Design column needs room for annotated elevation + plan (enlarged for clarity)
+        draw_w, draw_h = 210, 250
         need = max(draw_h + 28, 150)
         if y < 80 + need:
             set_font(c, 7)
@@ -432,8 +448,8 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         c.setFillColorRGB(0, 0, 0)
         set_font(c, 7)
         sy = y
-        for s in specs[:14]:
-            c.drawString(180, sy, s[:66])
+        for s in specs[:18]:
+            c.drawString(262, sy, s[:50])
             sy -= 9
 
         # Qty / Rate / Amount — currency symbol via Unicode font

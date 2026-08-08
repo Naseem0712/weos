@@ -148,6 +148,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
     <button class="navbtn" data-view="learning">Learning Engine</button>
     <button class="navbtn" data-view="formulas">Formula Builder</button>
     <button class="navbtn" data-view="templates">Template Designer</button>
+    <button class="navbtn" data-view="engines">Engines &amp; Memory</button>
   </aside>
   <div class="main">
     <div class="top">
@@ -258,14 +259,23 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           </div>
           <div class="row" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
             <div><label class="l">System</label>
-              <select id="lineSystem" style="width:140px">
+              <select id="lineSystem" style="width:150px">
                 <option value="sliding" selected>Sliding</option>
+                <option value="casement">Casement / Openable</option>
                 <option value="bifold">Fold &amp; Sliding</option>
+                <option value="grid">Partition grid (mixed)</option>
               </select>
             </div>
-            <div id="wrapGlassShutters"><label class="l">Glass shutters</label><input id="lineGlassShutters" type="number" min="1" value="2" style="width:90px"/></div>
+            <div id="wrapGlassShutters"><label class="l" id="glassCountLbl">Glass shutters</label><input id="lineGlassShutters" type="number" min="1" value="2" style="width:90px"/></div>
             <div id="wrapMeshShutters"><label class="l">Mesh shutters</label><input id="lineMeshShutters" type="number" min="0" value="0" style="width:90px"/></div>
             <div id="wrapFixShutters"><label class="l">Mark fix (e.g. 1,3)</label><input id="lineFixShutters" type="text" placeholder="none" style="width:100px"/></div>
+          </div>
+          <div class="row" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
+            <div><label class="l">Handle level <span id="handleLevelVal" class="muted"></span></label>
+              <input id="lineHandleLevel" type="range" min="5" max="95" value="50" style="width:150px;vertical-align:middle"/>
+            </div>
+            <div id="handleHint" class="muted" style="font-size:.72rem;flex:1;min-width:180px">Drag the handle in the preview to reposition. Sliding keeps an equal level on both sashes; openable is free (hinge auto-moves opposite).</div>
+            <button type="button" id="btnResetHandles" class="ghost" style="font-size:.75rem">Reset handles</button>
           </div>
           <div class="row" id="bifoldRow" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end;display:none">
             <div><label class="l">Config</label>
@@ -285,6 +295,18 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <div><label class="l">Jamb L/R</label><input id="secJamb" type="number" min="0" placeholder="mm" style="width:70px"/></div>
             <div><label class="l">Leaf stile</label><input id="secLeaf" type="number" min="0" placeholder="mm" style="width:70px"/></div>
             <div class="muted" style="font-size:.72rem;flex:1;min-width:150px">Max 25 ft × 12 ft. Leaves auto equal-divide.</div>
+          </div>
+          <div class="row" id="gridRow" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end;display:none">
+            <div><label class="l">Column widths</label><input id="gridCols" type="text" value="1,1" placeholder="e.g. 700,700,2020" style="width:150px"/></div>
+            <div><label class="l">Row heights</label><input id="gridRows" type="text" value="1" placeholder="e.g. 1,2 or mm" style="width:120px"/></div>
+            <button type="button" id="btnGridBuild" class="ghost" style="font-size:.75rem">Build grid</button>
+            <div class="muted" style="font-size:.72rem;flex-basis:100%;min-width:150px">Widths/heights may be ratios or mm (scaled to fit). Set each cell's role below; sliding & openable get 2D handles, mesh = one panel wide.</div>
+            <div id="gridCells" style="flex-basis:100%"></div>
+          </div>
+          <div class="row" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
+            <div><label class="l">Handle name</label><input id="lineHandleName" type="text" placeholder="e.g. Ozone lever" style="width:150px"/></div>
+            <div><label class="l">Mesh name</label><input id="lineMeshName" type="text" placeholder="e.g. SS304 mesh" style="width:150px"/></div>
+            <div><label class="l">Powder-coat colour</label><input id="linePowderCoat" type="text" placeholder="e.g. RAL 9005 matt" style="width:170px"/></div>
           </div>
           <div class="row" style="margin-top:.5rem">
             <div class="grow"><label class="l">Colour</label><select id="lineColour"><option value="white">White</option><option value="black_texture" selected>Black Texture</option><option value="wood_oak">Wood Oak</option></select></div>
@@ -920,6 +942,98 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
         </div>
       </div>
     </section>
+
+    <!-- ENGINES & MEMORY -->
+    <section id="view-engines" class="grid hidden">
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap">
+          <div><strong>Intelligence</strong> <span class="muted" id="engIntelLevel">—</span></div>
+          <div class="row" style="gap:.4rem">
+            <button class="btn ghost sm" id="btnEngAudit">Refresh audit</button>
+            <button class="btn ghost sm" id="btnEngSeed">Preload defaults</button>
+          </div>
+        </div>
+        <div id="engIntel" class="muted" style="margin-top:.6rem;font-size:.85rem">Loading…</div>
+        <div id="engAudit" class="muted" style="margin-top:.6rem;font-size:.8rem"></div>
+      </div>
+
+      <div class="two">
+        <!-- GLASS LIBRARY -->
+        <div class="panel">
+          <strong>Glass Library (Glass Engine)</strong>
+          <p class="muted" style="font-size:.82rem;margin:.3rem 0 .6rem">Configure single / DGU / laminated glass with colour, brand, toughened + rate. Reused in Product Library & cart and printed in quotes.</p>
+          <div class="row" style="flex-wrap:wrap;gap:.4rem">
+            <div><label class="l">Makeup</label>
+              <select id="glMakeup"><option value="single">Single</option><option value="dgu">DGU</option><option value="laminated">Laminated</option></select>
+            </div>
+            <div><label class="l">Thickness / Overall (mm)</label><select id="glThk"></select></div>
+            <div><label class="l">Colour</label>
+              <select id="glColour"><option>clear</option><option>green</option><option>blue</option><option>grey</option><option>bronze</option><option>black</option><option>reflective</option><option>frosted</option></select>
+            </div>
+          </div>
+          <div class="row" style="flex-wrap:wrap;gap:.4rem;margin-top:.4rem">
+            <div><label class="l">Brand</label><input id="glBrand" placeholder="Saint-Gobain…" style="width:130px"/></div>
+            <div><label class="l">Toughened</label><select id="glTuff"><option value="false">No</option><option value="true">Yes</option></select></div>
+            <div><label class="l">Rate</label><input id="glRate" type="number" style="width:90px"/></div>
+            <div><label class="l">Unit</label><select id="glUnit"><option>sqft</option><option>sqm</option></select></div>
+            <button class="btn sm" id="btnGlSave" style="margin-top:1rem">Save glass</button>
+          </div>
+          <div class="muted" id="glCompute" style="margin-top:.5rem;font-size:.8rem"></div>
+          <table style="margin-top:.6rem"><thead><tr><th>Glass</th><th>Rate</th><th></th></tr></thead><tbody id="glList"></tbody></table>
+        </div>
+
+        <!-- HARDWARE LIBRARY -->
+        <div class="panel">
+          <strong>Hardware Library (Hardware Engine)</strong>
+          <p class="muted" style="font-size:.82rem;margin:.3rem 0 .6rem">Register hinges, rollers, floor springs, closers, handles, locks with brand, rate, unit, weight, part no. Attach rules in Product Library.</p>
+          <div class="row" style="flex-wrap:wrap;gap:.4rem">
+            <div class="grow"><label class="l">Name</label><input id="hwName" placeholder="Floor Spring 120kg"/></div>
+            <div><label class="l">Category</label><select id="hwCat"></select></div>
+          </div>
+          <div class="row" style="flex-wrap:wrap;gap:.4rem;margin-top:.4rem">
+            <div><label class="l">Brand</label><input id="hwBrand" style="width:110px"/></div>
+            <div><label class="l">Part no.</label><input id="hwPart" style="width:100px"/></div>
+            <div><label class="l">Unit</label><input id="hwUnit" value="PC" style="width:70px"/></div>
+            <div><label class="l">Rate</label><input id="hwRate" type="number" style="width:80px"/></div>
+            <div><label class="l">Weight kg</label><input id="hwWeight" type="number" style="width:80px"/></div>
+            <button class="btn sm" id="btnHwSave" style="margin-top:1rem">Save</button>
+          </div>
+          <table style="margin-top:.6rem"><thead><tr><th>Item</th><th>Cat</th><th>Rate</th><th></th></tr></thead><tbody id="hwList"></tbody></table>
+        </div>
+      </div>
+
+      <div class="two" style="margin-top:1rem">
+        <!-- PROFILE GLASS DEPTH -->
+        <div class="panel">
+          <strong>Profile Glass-Insertion Depth → accurate glass size</strong>
+          <p class="muted" style="font-size:.82rem;margin:.3rem 0 .6rem">How much glass goes into the profile (per side / axis). Glass size = clear opening ± engagement − clearance.</p>
+          <div class="row" style="flex-wrap:wrap;gap:.4rem">
+            <div><label class="l">Clear W (mm)</label><input id="gsW" type="number" value="650" style="width:90px"/></div>
+            <div><label class="l">Clear H (mm)</label><input id="gsH" type="number" value="1700" style="width:90px"/></div>
+          </div>
+          <div class="row" style="flex-wrap:wrap;gap:.4rem;margin-top:.4rem">
+            <div><label class="l">Horizontal engage (L/R)</label><input id="gsHoriz" type="number" value="12" style="width:110px"/></div>
+            <div><label class="l">Vertical engage (T/B)</label><input id="gsVert" type="number" value="12" style="width:110px"/></div>
+            <div><label class="l">Edge clearance</label><input id="gsClr" type="number" value="0" style="width:100px"/></div>
+            <button class="btn sm" id="btnGsCalc" style="margin-top:1rem">Compute size</button>
+          </div>
+          <div id="gsOut" class="muted" style="margin-top:.6rem;font-size:.82rem"></div>
+        </div>
+
+        <!-- HARDWARE RULE TESTER -->
+        <div class="panel">
+          <strong>Hardware rule tester (count + weight)</strong>
+          <p class="muted" style="font-size:.82rem;margin:.3rem 0 .6rem">Rules drive BOM quantities: N per shutter/leaf, and weight-based selection (floor spring by leaf weight).</p>
+          <div class="row" style="flex-wrap:wrap;gap:.4rem">
+            <div><label class="l">Shutters</label><input id="hrShutters" type="number" value="3" style="width:80px"/></div>
+            <div><label class="l">Leaves</label><input id="hrLeaves" type="number" value="2" style="width:80px"/></div>
+            <div class="grow"><label class="l">Leaf weights (kg, comma)</label><input id="hrWeights" value="130,60"/></div>
+            <button class="btn sm" id="btnHrRun" style="margin-top:1rem">Run rules</button>
+          </div>
+          <div id="hrOut" class="muted" style="margin-top:.6rem;font-size:.82rem"></div>
+        </div>
+      </div>
+    </section>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -978,7 +1092,7 @@ async function api(path, opts={}) {
 function setView(v) {
   state.view = v;
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view===v));
-  ['dashboard','projects','cart','library','product','admin','customers','company','learning','formulas','templates'].forEach(id => {
+  ['dashboard','projects','cart','library','product','admin','customers','company','learning','formulas','templates','engines'].forEach(id => {
     const el = $('view-'+id); if (el) el.classList.toggle('hidden', id!==v);
   });
   const titles = {
@@ -993,6 +1107,7 @@ function setView(v) {
     learning:['Learning Engine','Upload → Review → Approve → Knowledge Base (never auto-production)'],
     formulas:['Formula Builder','Safe expressions over width, height, shutterCount, glassArea…'],
     templates:['Template Designer','Drag blocks → JSON → Customer & Factory PDFs per brand'],
+    engines:['Engines & Memory','Glass & Hardware engines · glass-depth sizing · memory audit & intelligence'],
   };
   $('title').textContent = titles[v][0];
   $('subtitle').textContent = titles[v][1];
@@ -1007,6 +1122,7 @@ function setView(v) {
   if (v==='learning') initLearning();
   if (v==='formulas') initFormulas();
   if (v==='templates') initTemplates();
+  if (v==='engines') initEngines();
 }
 
 document.querySelectorAll('.navbtn').forEach(b => b.onclick = () => setView(b.dataset.view));
@@ -1134,14 +1250,102 @@ function applyMeshTrackRules() {
   }
 }
 
+function parseNumList(s, fallback) {
+  const arr = String(s || '').split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v) && v > 0);
+  return arr.length ? arr : fallback;
+}
+
+function ensureGridUI() {
+  if (!state.draftGrid) state.draftGrid = { cols: [1, 1], rows: [1], cells: [] };
+  renderGridCells();
+}
+
+function rebuildGrid() {
+  const cols = parseNumList($('gridCols') && $('gridCols').value, [1, 1]);
+  const rows = parseNumList($('gridRows') && $('gridRows').value, [1]);
+  state.draftGrid = state.draftGrid || {};
+  state.draftGrid.cols = cols;
+  state.draftGrid.rows = rows;
+  renderGridCells();
+  if (typeof refreshPreview === 'function') refreshPreview();
+}
+
+function renderGridCells() {
+  const host = $('gridCells');
+  if (!host) return;
+  const g = state.draftGrid || { cols: [1, 1], rows: [1], cells: [] };
+  const nc = g.cols.length, nr = g.rows.length;
+  const roleOf = (r, c) => {
+    const found = (g.cells || []).find(x => x.r === r && x.c === c);
+    return found ? (found.role || 'fix') : 'fix';
+  };
+  const extraOf = (r, c) => (g.cells || []).find(x => x.r === r && x.c === c) || {};
+  let html = '<div style="display:grid;gap:4px;margin-top:4px;grid-template-columns:repeat(' + nc + ',1fr)">';
+  for (let r = 0; r < nr; r++) {
+    for (let c = 0; c < nc; c++) {
+      const role = roleOf(r, c);
+      const ex = extraOf(r, c);
+      html += '<div style="border:1px solid #d5dbe3;border-radius:5px;padding:4px;font-size:.7rem;background:#fafbfc">'
+        + '<div class="muted" style="font-size:.62rem">R' + (r + 1) + '·C' + (c + 1) + '</div>'
+        + '<select data-gr="' + r + '" data-gc="' + c + '" class="gridRole" style="width:100%;font-size:.7rem">'
+        + '<option value="fix"' + (role === 'fix' ? ' selected' : '') + '>Fix</option>'
+        + '<option value="sliding"' + (role === 'sliding' ? ' selected' : '') + '>Sliding</option>'
+        + '<option value="openable"' + (role === 'openable' ? ' selected' : '') + '>Openable</option>'
+        + '</select>'
+        + '<input data-gr="' + r + '" data-gc="' + c + '" class="gridGlass" type="number" min="1" placeholder="panes" value="' + (ex.glass || '') + '" title="sliding panes" style="width:100%;font-size:.65rem;margin-top:2px"/>'
+        + '</div>';
+    }
+  }
+  html += '</div>';
+  host.innerHTML = html;
+  host.querySelectorAll('.gridRole').forEach(sel => {
+    sel.onchange = () => { collectGridCells(); if (typeof refreshPreview === 'function') refreshPreview(); };
+  });
+  host.querySelectorAll('.gridGlass').forEach(inp => {
+    inp.onchange = () => { collectGridCells(); if (typeof refreshPreview === 'function') refreshPreview(); };
+  });
+  collectGridCells();
+}
+
+function collectGridCells() {
+  const host = $('gridCells');
+  if (!host || !state.draftGrid) return;
+  const cells = [];
+  host.querySelectorAll('.gridRole').forEach(sel => {
+    const r = +sel.getAttribute('data-gr'), c = +sel.getAttribute('data-gc');
+    const cell = { r, c, role: sel.value };
+    const gi = host.querySelector('.gridGlass[data-gr="' + r + '"][data-gc="' + c + '"]');
+    if (gi && gi.value) cell.glass = parseInt(gi.value) || 2;
+    cells.push(cell);
+  });
+  state.draftGrid.cells = cells;
+}
+
+function currentGridSpec() {
+  const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
+  if (sys !== 'grid') return null;
+  collectGridCells();
+  const g = state.draftGrid || { cols: [1, 1], rows: [1], cells: [] };
+  return { cols: g.cols.slice(), rows: g.rows.slice(), cells: (g.cells || []).map(x => ({ ...x })) };
+}
+
 function applySystemUiRules() {
   const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
   const bifold = sys === 'bifold';
+  const casement = sys === 'casement';
+  const grid = sys === 'grid';
   const show = (id, on) => { const el = $(id); if (el) el.style.display = on ? '' : 'none'; };
   show('bifoldRow', bifold);
-  show('wrapGlassShutters', !bifold);
-  show('wrapMeshShutters', !bifold);
-  show('wrapFixShutters', !bifold);
+  show('gridRow', grid);
+  show('wrapGlassShutters', !bifold && !grid);
+  show('wrapMeshShutters', !bifold && !casement && !grid);
+  show('wrapFixShutters', !bifold && !grid);
+  if (grid) ensureGridUI();
+  const gl = $('glassCountLbl'); if (gl) gl.textContent = casement ? 'Sashes' : 'Glass shutters';
+  const hint = $('handleHint');
+  if (hint) hint.textContent = casement
+    ? 'Openable: drag the handle anywhere on a sash — hinges auto-move to the opposite stile.'
+    : 'Drag the handle in the preview to reposition. Sliding keeps an equal level on both sashes.';
   // Fold preset → left/right
   const preset = $('lineFoldPreset') && $('lineFoldPreset').value;
   if (bifold && preset && preset !== 'custom') {
@@ -1162,6 +1366,7 @@ function currentSectionSizes() {
 function syncDraftFromLine(ln) {
   if (!ln) return;
   state.draftPartitions = Array.isArray(ln.partitions) ? ln.partitions.map(p => ({...p})) : [];
+  state.draftHandleOverrides = (ln.handleOverrides && typeof ln.handleOverrides === 'object') ? {...ln.handleOverrides} : {};
   if ($('lineMesh')) $('lineMesh').checked = !!ln.mesh;
   if ($('lineTrack') && ln.trackCount != null) $('lineTrack').value = String(ln.trackCount);
   if ($('lineSystem')) $('lineSystem').value = ln.system || 'sliding';
@@ -1169,6 +1374,7 @@ function syncDraftFromLine(ln) {
   if ($('lineMeshShutters') && ln.meshShutters != null) $('lineMeshShutters').value = ln.meshShutters;
   if ($('lineFixShutters')) $('lineFixShutters').value = Array.isArray(ln.fixShutters) ? ln.fixShutters.join(',') : (ln.fixShutters || '');
   if ($('lineHandleFinish')) $('lineHandleFinish').value = ln.handleFinish || 'auto';
+  if ($('lineHandleLevel')) { const lvl = (ln.handleLevel != null ? ln.handleLevel : 0.5); $('lineHandleLevel').value = Math.round(lvl * 100); }
   if ($('lineFoldLeft') && ln.foldLeft != null) $('lineFoldLeft').value = ln.foldLeft;
   if ($('lineFoldRight') && ln.foldRight != null) $('lineFoldRight').value = ln.foldRight;
   const ss = ln.sectionSizes || {};
@@ -1176,9 +1382,23 @@ function syncDraftFromLine(ln) {
   if ($('secBottom')) $('secBottom').value = ss.bottomRail != null ? ss.bottomRail : '';
   if ($('secJamb')) $('secJamb').value = ss.leftJamb != null ? ss.leftJamb : '';
   if ($('secLeaf')) $('secLeaf').value = ss.leafStile != null ? ss.leafStile : '';
+  if ($('lineHandleName')) $('lineHandleName').value = ln.handleName || '';
+  if ($('lineMeshName')) $('lineMeshName').value = ln.meshName || '';
+  if ($('linePowderCoat')) $('linePowderCoat').value = ln.powderCoatName || '';
+  if (ln.grid && typeof ln.grid === 'object') {
+    state.draftGrid = { cols: (ln.grid.cols || [1, 1]).slice(), rows: (ln.grid.rows || [1]).slice(), cells: (ln.grid.cells || []).map(x => ({ ...x })) };
+    if ($('gridCols')) $('gridCols').value = state.draftGrid.cols.join(',');
+    if ($('gridRows')) $('gridRows').value = state.draftGrid.rows.join(',');
+  }
   renderPartChips();
   applyMeshTrackRules();
   applySystemUiRules();
+  updateHandleLevelLabel();
+}
+
+function updateHandleLevelLabel() {
+  const el = $('lineHandleLevel'); const out = $('handleLevelVal');
+  if (el && out) out.textContent = el.value + '%';
 }
 
 function currentLineDraft() {
@@ -1210,6 +1430,12 @@ function currentLineDraft() {
     foldLeft: $('lineFoldLeft') ? (parseInt($('lineFoldLeft').value) || 0) : 0,
     foldRight: $('lineFoldRight') ? (parseInt($('lineFoldRight').value) || 0) : 0,
     sectionSizes: sys === 'bifold' ? currentSectionSizes() : null,
+    handleLevel: $('lineHandleLevel') ? (parseInt($('lineHandleLevel').value) || 50) / 100 : 0.5,
+    handleOverrides: (state.draftHandleOverrides && Object.keys(state.draftHandleOverrides).length) ? {...state.draftHandleOverrides} : null,
+    grid: currentGridSpec(),
+    handleName: ($('lineHandleName') && $('lineHandleName').value.trim()) || null,
+    meshName: ($('lineMeshName') && $('lineMeshName').value.trim()) || null,
+    powderCoatName: ($('linePowderCoat') && $('linePowderCoat').value.trim()) || null,
   };
 }
 
@@ -1336,6 +1562,61 @@ function updateLocalTotalHint(){
   if (state.lastResult?.price?.total!=null) $('cartTotal').textContent = money(state.lastResult.price.total)+' (recalc to refresh)';
 }
 
+// Single global drag controller (window listeners attached once) — see initHandleDrag
+const _hdrag = { svg:null, minX:0, maxY:0, casement:false, sashes:[], active:null };
+
+function attachHandleDrag(container, meta, system) {
+  _hdrag.active = null;
+  if (!container) return;
+  const svg = container.querySelector('svg');
+  if (!svg) { _hdrag.svg = null; return; }
+  _hdrag.svg = svg;
+  _hdrag.minX = parseFloat(svg.getAttribute('data-model-minx') || '0');
+  _hdrag.maxY = parseFloat(svg.getAttribute('data-model-maxy') || '0');
+  const sys = (svg.getAttribute('data-model-system') || system || 'sliding');
+  _hdrag.casement = sys === 'casement';
+  _hdrag.sashes = (svg.getAttribute('data-shutters') || '').split('|').filter(Boolean).map(r => {
+    const a = r.split(';').map(Number);
+    return { i:a[0], x0:a[1], x1:a[2], y0:a[3], y1:a[4], nx0:a[5], nx1:a[6] };
+  });
+  svg.querySelectorAll('[data-handle]').forEach(g => {
+    g.style.cursor = 'grab';
+    const start = (ev) => { _hdrag.active = g; g.style.cursor='grabbing'; ev.preventDefault(); };
+    g.addEventListener('mousedown', start);
+    g.addEventListener('touchstart', start, {passive:false});
+  });
+}
+
+function initHandleDrag() {
+  const move = (ev) => {
+    if (!_hdrag.active || !_hdrag.svg) return;
+    const ctm = _hdrag.svg.getScreenCTM(); if (!ctm) return;
+    const t = ev.touches ? ev.touches[0] : ev;
+    const pt = _hdrag.svg.createSVGPoint(); pt.x = t.clientX; pt.y = t.clientY;
+    const u = pt.matrixTransform(ctm.inverse());
+    const mx = u.x + _hdrag.minX, my = _hdrag.maxY - u.y;
+    let sash = _hdrag.sashes.find(s => mx>=Math.min(s.x0,s.nx0) && mx<=Math.max(s.x1,s.nx1) && my>=s.y0 && my<=s.y1);
+    if (!sash) sash = _hdrag.sashes.reduce((b,s)=>{const c=(s.nx0+s.nx1)/2; return (b==null||Math.abs(mx-c)<Math.abs(mx-(b.nx0+b.nx1)/2))?s:b;}, null);
+    if (!sash) return;
+    let yFrac = Math.min(0.95, Math.max(0.05, (my - sash.y0) / Math.max(sash.y1 - sash.y0, 1)));
+    state.draftHandleOverrides = state.draftHandleOverrides || {};
+    if (_hdrag.casement) {
+      let xFrac = Math.min(0.95, Math.max(0.05, (mx - sash.nx0) / Math.max(sash.nx1 - sash.nx0, 1)));
+      state.draftHandleOverrides[sash.i] = { x:+xFrac.toFixed(3), y:+yFrac.toFixed(3) };
+    } else {
+      const side = ((mx - sash.nx0) < (sash.nx1 - mx)) ? 'left' : 'right';
+      state.draftHandleOverrides[sash.i] = { side, y:+yFrac.toFixed(3) };
+      if ($('lineHandleLevel')) { $('lineHandleLevel').value = Math.round(yFrac*100); updateHandleLevelLabel(); }
+    }
+    ev.preventDefault();
+  };
+  const end = () => { if (!_hdrag.active) return; _hdrag.active=null; refreshPreview(); scheduleLivePrice(); };
+  window.addEventListener('mousemove', move);
+  window.addEventListener('touchmove', move, {passive:false});
+  window.addEventListener('mouseup', end);
+  window.addEventListener('touchend', end);
+}
+
 async function refreshPreview() {
   const draft = currentLineDraft();
   const ln = state.lines[state.selectedLine] ? { ...state.lines[state.selectedLine], ...draft } : draft;
@@ -1360,12 +1641,18 @@ async function refreshPreview() {
       foldRight: ln.foldRight != null ? ln.foldRight : null,
       sectionSizes: ln.sectionSizes || null,
       handleFinish: ln.handleFinish || null,
+      handleLevel: ln.handleLevel != null ? ln.handleLevel : null,
+      handleOverrides: ln.handleOverrides || null,
+      grid: (ln.system === 'grid') ? (ln.grid || currentGridSpec()) : null,
+      handleName: ln.handleName || null,
+      meshName: ln.meshName || null,
+      powderCoatName: ln.powderCoatName || null,
     }});
     if (prev.meshTrack && prev.meshTrack.shifted && $('lineTrack')) {
       $('lineTrack').value = String(prev.trackCount || 3);
       if ($('meshHint')) $('meshHint').textContent = prev.meshTrack.reason || 'Track shifted for mesh';
     }
-    if (prev.svg) $('livePreview').innerHTML = prev.svg;
+    if (prev.svg) { $('livePreview').innerHTML = prev.svg; attachHandleDrag($('livePreview'), (prev.layout && prev.layout.meta) || prev.meta || null, ln.system || 'sliding'); }
     else if (prev.heroImage) $('livePreview').innerHTML = `<img src="${prev.heroImage}" alt=""/>`;
     else $('livePreview').innerHTML = '<span class="muted">No preview</span>';
     const specs = prev.specifications || {};
@@ -1538,10 +1825,12 @@ if ($('lineMesh')) {
 }
 // Flexible window-config + Fold & Sliding controls
 ['lineSystem','lineFoldPreset','lineGlassShutters','lineMeshShutters','lineFixShutters',
- 'lineHandleFinish','lineFoldLeft','lineFoldRight','secTop','secBottom','secJamb','secLeaf'].forEach(id => {
+ 'lineHandleFinish','lineHandleLevel','lineFoldLeft','lineFoldRight','secTop','secBottom','secJamb','secLeaf'].forEach(id => {
   const el = $(id); if (!el) return;
   const handler = () => {
     if (id === 'lineSystem' || id === 'lineFoldPreset') applySystemUiRules();
+    if (id === 'lineSystem' || id === 'lineGlassShutters') { state.draftHandleOverrides = {}; }
+    if (id === 'lineHandleLevel') updateHandleLevelLabel();
     if (id === 'lineFoldLeft' || id === 'lineFoldRight') { if ($('lineFoldPreset')) $('lineFoldPreset').value = 'custom'; }
     refreshPreview();
     scheduleLivePrice();
@@ -1549,7 +1838,27 @@ if ($('lineMesh')) {
   el.addEventListener('input', handler);
   el.addEventListener('change', handler);
 });
+// Name inputs → refresh preview (names print in specs; also drive live spec panel)
+['lineHandleName','lineMeshName','linePowderCoat'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('change', () => { refreshPreview(); scheduleLivePrice(); });
+});
+// Partition grid designer controls
+if ($('btnGridBuild')) $('btnGridBuild').onclick = () => rebuildGrid();
+['gridCols','gridRows'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('change', () => rebuildGrid());
+});
+if ($('btnResetHandles')) {
+  $('btnResetHandles').onclick = () => {
+    state.draftHandleOverrides = {};
+    if ($('lineHandleLevel')) { $('lineHandleLevel').value = 50; updateHandleLevelLabel(); }
+    refreshPreview(); scheduleLivePrice();
+  };
+}
 applySystemUiRules();
+updateHandleLevelLabel();
+initHandleDrag();
 if ($('btnAddPart')) {
   $('btnAddPart').onclick = () => {
     const side = ($('partSide') && $('partSide').value) || '';
@@ -2785,6 +3094,113 @@ if ($('btnCpNewQuote')) $('btnCpNewQuote').onclick = async () => {
   state.customerMemory=null; state.memoryAskedFor=null;
   $('cartName').value = name+' — Quote'; $('cartCustomer').value = name;
   $('cartTotal').textContent='₹ —'; renderCart(); setView('cart'); await ensureProject(); scheduleLivePrice();
+};
+
+// ── Engines & Memory view ────────────────────────────────────────────────
+const engState = { glassOptions:null };
+
+async function initEngines(){
+  try {
+    if (!engState.glassOptions) engState.glassOptions = await api('/api/glass/options');
+    fillGlassThk();
+    const cats = await api('/api/hardware/categories');
+    $('hwCat').innerHTML = (cats.categories||[]).map(c=>`<option>${c}</option>`).join('');
+  } catch(e){}
+  await Promise.all([loadGlassList(), loadHardwareList(), loadEngIntel()]);
+}
+
+function fillGlassThk(){
+  const mk = $('glMakeup').value; const o = engState.glassOptions||{};
+  let opts = [];
+  if (mk==='single') opts = (o.single&&o.single.thicknessesMm)||[4,5,6,8,10,12];
+  else if (mk==='dgu') opts = (o.dgu&&o.dgu.overallMm)||[18,20,22,24,28,30];
+  else opts = (o.laminated&&o.laminated.overallMm)||[11.52,13.52];
+  $('glThk').innerHTML = opts.map(t=>`<option value="${t}">${t} mm</option>`).join('');
+}
+if ($('glMakeup')) $('glMakeup').onchange = fillGlassThk;
+
+async function loadGlassList(){
+  try {
+    const d = await api('/api/glass/library');
+    $('glList').innerHTML = (d.glass||[]).map(g=>`<tr><td>${g.specLine||g.name}</td><td>${g.rate!=null?('₹'+g.rate+'/'+(g.rateUnit||'sqft')):'—'}</td><td><button class="btn ghost sm" data-delg="${g.id}">✕</button></td></tr>`).join('') || '<tr><td colspan="3" class="muted">No glass yet — save one above.</td></tr>';
+    $('glList').querySelectorAll('[data-delg]').forEach(b=>b.onclick=async()=>{ await api('/api/glass/library/'+encodeURIComponent(b.dataset.delg),{method:'DELETE'}); await loadGlassList(); });
+  } catch(e){}
+}
+if ($('btnGlSave')) $('btnGlSave').onclick = async () => {
+  const mk=$('glMakeup').value;
+  const body={ makeup:mk, colour:$('glColour').value, brand:$('glBrand').value, toughened:$('glTuff').value==='true', rate:parseFloat($('glRate').value)||null, rateUnit:$('glUnit').value };
+  const t=parseFloat($('glThk').value)||null;
+  if (mk==='single') body.thicknessMm=t; else body.overallMm=t;
+  try {
+    const r=await api('/api/glass/library',{method:'POST',body});
+    // live preview: compute size+weight+price with 12mm engagement
+    const c=await api('/api/glass/compute',{method:'POST',body:{spec:r.glass, clearWidthMm:650, clearHeightMm:1700, glassRules:{glassInsertion:{sameAllSides:true,engagementMm:12}}, qty:1}});
+    $('glCompute').textContent = `Saved. Sample 650×1700 → ${c.print.sizeMm} mm, ${c.weight.weightKg} kg, ${c.price.amount!=null?('₹'+c.price.amount):'no rate'}`;
+    toast('Glass saved'); await loadGlassList();
+  } catch(e){ toast(e.message); }
+};
+
+async function loadHardwareList(){
+  try {
+    const d = await api('/api/hardware/library');
+    $('hwList').innerHTML = (d.hardware||[]).map(h=>`<tr><td>${h.name}${h.partNumber?(' · '+h.partNumber):''}</td><td>${h.category}</td><td>${h.rate!=null?('₹'+h.rate):'—'}</td><td><button class="btn ghost sm" data-delh="${h.id}">✕</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">No hardware yet.</td></tr>';
+    $('hwList').querySelectorAll('[data-delh]').forEach(b=>b.onclick=async()=>{ await api('/api/hardware/library/'+encodeURIComponent(b.dataset.delh),{method:'DELETE'}); await loadHardwareList(); });
+  } catch(e){}
+}
+if ($('btnHwSave')) $('btnHwSave').onclick = async () => {
+  const name=($('hwName').value||'').trim(); if(!name){toast('Name required');return;}
+  const body={ name, category:$('hwCat').value, brand:$('hwBrand').value, partNumber:$('hwPart').value, unit:$('hwUnit').value||'PC', rate:parseFloat($('hwRate').value)||null, weightKg:parseFloat($('hwWeight').value)||null };
+  try { await api('/api/hardware/library',{method:'POST',body}); toast('Hardware saved'); $('hwName').value=''; await loadHardwareList(); } catch(e){ toast(e.message); }
+};
+
+if ($('btnGsCalc')) $('btnGsCalc').onclick = async () => {
+  const body={ clearWidthMm:parseFloat($('gsW').value)||0, clearHeightMm:parseFloat($('gsH').value)||0,
+    insertion:{ sameAllSides:false, horizontalEngagementMm:parseFloat($('gsHoriz').value)||0, verticalEngagementMm:parseFloat($('gsVert').value)||0, edgeClearanceMm:parseFloat($('gsClr').value)||0 } };
+  try {
+    const r=await api('/api/glass/size',{method:'POST',body});
+    const steps=(r.derivation||[]).map(s=>`${s.step} = ${s.value}`).join('<br>');
+    $('gsOut').innerHTML = `<strong>Glass ${r.glassWidthMm} × ${r.glassHeightMm} mm</strong> · ${r.areaSqft} sqft<br><span style="color:#888">${steps}</span>`;
+  } catch(e){ $('gsOut').textContent=e.message; }
+};
+
+if ($('btnHrRun')) $('btnHrRun').onclick = async () => {
+  const weights=($('hrWeights').value||'').split(',').map(x=>parseFloat(x.trim())).filter(x=>!isNaN(x));
+  const rules=[
+    {hardware:'Handle', per:'shutter', qty:1},
+    {hardware:'Roller', per:'shutter', qty:2},
+    {hardware:'Floor Spring', per:'leaf', qty:1, selectBy:'leafWeight', ranges:[
+      {maxKg:80,item:'fs_80',name:'Floor Spring 80kg'},
+      {maxKg:120,item:'fs_120',name:'Floor Spring 120kg'},
+      {maxKg:150,item:'fs_150',name:'Floor Spring 150kg'}]},
+  ];
+  const body={ rules, context:{ shutterCount:parseFloat($('hrShutters').value)||0, leafCount:parseFloat($('hrLeaves').value)||0 }, leafWeightsKg:weights };
+  try {
+    const r=await api('/api/hardware/rules/apply',{method:'POST',body});
+    $('hrOut').innerHTML = (r.lines||[]).map(l=>`${l.qty} × ${l.name} (${l.unit})`).join('<br>') + '<br><span style="color:#888">'+(r.trace||[]).map(t=>t.picked?('weight-pick: '+t.picked+' for '+JSON.stringify(t.leafWeights)):'').filter(Boolean).join('<br>')+'</span>';
+  } catch(e){ $('hrOut').textContent=e.message; }
+};
+
+async function loadEngIntel(){
+  try {
+    const intel = await api('/api/intelligence');
+    $('engIntelLevel').textContent = `Score ${intel.intelligenceScore}/100 — ${intel.level}`;
+    $('engIntel').innerHTML = (intel.checklist||[]).map(c=>{
+      const dot = c.status==='active'?'🟢':(c.status==='partial'?'🟡':'⚪');
+      return `${dot} <strong>${c.capability}</strong> — ${c.evidence}`;
+    }).join('<br>');
+  } catch(e){ $('engIntel').textContent = e.message; }
+  await loadEngAudit();
+}
+async function loadEngAudit(){
+  try {
+    const a = await api('/api/memory-audit');
+    const c=a.counts||{};
+    $('engAudit').innerHTML = `Audit [${a.verdict}]: eng obs ${c.engineeringObservations}, commercial obs ${c.commercialObservations}, memory ${c.memoryTotal} (${c.memoryApproved} approved), formulas ${c.formulaMemory}, glass lib ${c.glassLibrary}, hardware lib ${c.hardwareLibrary}, KB v${c.currentKbVersion||'—'}.`;
+  } catch(e){ $('engAudit').textContent=e.message; }
+}
+if ($('btnEngAudit')) $('btnEngAudit').onclick = loadEngIntel;
+if ($('btnEngSeed')) $('btnEngSeed').onclick = async () => {
+  try { await api('/api/engineering/seed-formulas',{method:'POST'}); await api('/api/glass/seed',{method:'POST'}); await api('/api/hardware/seed',{method:'POST'}); toast('Defaults preloaded'); await initEngines(); } catch(e){ toast(e.message); }
 };
 
 (async function init(){

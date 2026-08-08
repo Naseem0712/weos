@@ -277,24 +277,53 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
     system_raw = pick("system", "windowSystem")
     system = str(system_raw or "sliding").strip().lower()
     is_bifold = system in ("bifold", "fold", "fold_sliding", "fold_and_sliding")
+    is_casement = system in ("casement", "openable", "opening")
+    is_grid = system == "grid"
+    if is_bifold:
+        resolved_system = "bifold"
+    elif is_casement:
+        resolved_system = "casement"
+    elif is_grid:
+        resolved_system = "grid"
+    else:
+        resolved_system = "sliding"
+
+    grid_spec = pick("grid", "partitionGrid")
+    if not isinstance(grid_spec, Mapping):
+        grid_spec = None
 
     section_sizes = pick("sectionSizes", "sections")
     if not isinstance(section_sizes, Mapping):
         section_sizes = None
 
+    handle_level_raw = pick("handleLevel", "handle_level")
+    try:
+        handle_level = float(handle_level_raw) if handle_level_raw is not None and str(handle_level_raw).strip() != "" else None
+    except (TypeError, ValueError):
+        handle_level = None
+    handle_overrides = pick("handleOverrides", "handle_overrides", "handles")
+    if not isinstance(handle_overrides, Mapping):
+        handle_overrides = None
+
     return {
         "partitions": normalize_partitions(partitions),
-        "mesh": shutter_cfg["mesh"] and not is_bifold,
+        "mesh": shutter_cfg["mesh"] and not is_bifold and not is_casement,
         "trackCount": track_count,
         "glassCount": shutter_cfg["glassCount"],
-        "meshCount": 0 if is_bifold else shutter_cfg["meshCount"],
+        "meshCount": 0 if (is_bifold or is_casement) else shutter_cfg["meshCount"],
         "opening": shutter_cfg["opening"],
         "fixedShutters": shutter_cfg["fixedShutters"],
-        "system": "bifold" if is_bifold else "sliding",
+        "system": resolved_system,
         "foldLeft": _coerce_int(pick("foldLeft", "fold_left")),
         "foldRight": _coerce_int(pick("foldRight", "fold_right")),
         "sectionSizes": section_sizes,
         "handleFinish": pick("handleFinish", "handle_finish"),
+        "handleLevel": handle_level,
+        "handleOverrides": handle_overrides,
+        "handleName": pick("handleName", "handle_name"),
+        "meshName": pick("meshName", "mesh_name"),
+        "powderCoatName": pick("powderCoatName", "powder_coat_name", "powderCoat", "coatingName"),
+        "gridSpec": grid_spec,
         "sectionSeries": line.get("sectionSeries") or (opts or {}).get("sectionSeries"),
         "grid": line.get("grid") or (opts or {}).get("grid") or (opts or {}).get("grille"),
     }

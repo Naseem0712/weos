@@ -85,15 +85,29 @@ def _build_shutters(
     opening: str,
     fixed_set: set[int],
     handle_length: float | None,
-) -> tuple[list[ShutterPanel], list[Rect]]:
-    """Divide the sliding band into exactly-equal glass sashes (+ mesh sashes).
+    system: str = "sliding",
+    handle_level: float = 0.5,
+    handle_overrides: Mapping[Any, Any] | None = None,
+) -> tuple[list[ShutterPanel], list[Rect], list[Rect]]:
+    """Divide the band into exactly-equal glass sashes (+ mesh sashes).
 
     Each sash gets an identical nominal share of the usable width
     (``band_width / glass_count``) so widths sum back to the usable width with no
-    leftover mm. Sashes on the back track overlap their front-track neighbour by
-    the interlock width so the elevation reads as staggered tracks (one back /
-    one forward). Center-opening layouts place handles on the two center-meeting
-    sashes; mesh sashes sit on the frontmost track.
+    leftover mm.
+
+    ``system`` selects behaviour:
+      * ``sliding`` — back-track sashes lap the front-track neighbour by the
+        interlock (front/back stagger); 2-sash windows carry handles on the
+        OUTER vertical stiles (real slider look), others meet at the centre.
+      * ``casement`` — coplanar openable sashes with handles on the centre-meeting
+        stile and hinges on the OPPOSITE (outer) stile.
+
+    Handle vertical position is a shared level (``handle_level`` as a 0..1 fraction
+    of the sash height) so sliding handles line up. ``handle_overrides`` maps a
+    panel index → ``{"side": left|right|none, "x": 0..1, "y": 0..1}`` to move a
+    handle anywhere (casement) or remove/add it on any panel.
+
+    Returns ``(panels, handles, hinges)``.
     """
     fw = float(frame_width)
     iw = float(interlock_width)
@@ -101,22 +115,32 @@ def _build_shutters(
     x0, y0, x1, y1 = area.x0, area.y0, area.x1, area.y1
     band_w = x1 - x0
     band_h = y1 - y0
+    casement = str(system).strip().lower() in ("casement", "openable", "opening")
     # Exact equal nominal boundaries (last boundary pinned to x1 → no rounding drift)
     bounds = [x0 + (band_w * k) / G for k in range(G + 1)]
     bounds[0] = x0
     bounds[-1] = x1
-    cy = (y0 + y1) / 2.0
 
     hlen = float(handle_length) if handle_length and handle_length > 0 else max(min(band_h * 0.16, 300.0), 120.0)
     hlen = min(hlen, band_h * 0.9)
     hw = max(fw * 0.5, 12.0)
     overlap = min(iw, (band_w / G) * 0.35)
+    hlevel = min(max(float(handle_level), 0.04), 0.96)
+
+    overrides: dict[int, Mapping[str, Any]] = {}
+    for k, v in dict(handle_overrides or {}).items():
+        try:
+            overrides[int(k)] = v if isinstance(v, Mapping) else {}
+        except (TypeError, ValueError):
+            continue
 
     center_l = (G - 1) // 2
     center_r = G // 2
     mode = "center" if opening == "center" else "telescopic"
 
     def depth_for(i: int) -> int:
+        if casement:
+            return 1  # coplanar openable sashes
         if mode == "center":
             if G == 2:
                 return 2 if i == 0 else 1
@@ -125,8 +149,42 @@ def _build_shutters(
 
     depths = [(G + 1) if i in fixed_set else depth_for(i) for i in range(G)]
 
+    def default_handle_side(i: int, operable: bool) -> str | None:
+        if not operable:
+            return None
+        if casement:
+            # Handle on the centre-meeting stile (hinge ends up on the outer stile)
+            return "right" if i <= center_l else "left"
+        # Sliding
+        if G == 2:
+            return "left" if i == 0 else "right"  # outer stiles (Image B)
+        if mode == "center":
+            if i == center_l:
+                return "right"
+            if i == center_r:
+                return "left"
+            return "left" if i < center_l else "right"
+        return "left" if i == 0 else "right"
+
+    def make_handle(nom_a: float, nom_b: float, side: str | None, x_frac: float | None, y_frac: float) -> Rect | None:
+        if side == "none":
+            return None
+        yc = y0 + band_h * y_frac
+        if x_frac is not None:
+            xc = nom_a + (nom_b - nom_a) * min(max(x_frac, 0.0), 1.0)
+        elif side == "right":
+            xc = nom_b - fw / 2.0
+        elif side == "left":
+            xc = nom_a + fw / 2.0
+        else:
+            return None
+        return Rect(xc - hw / 2.0, yc - hlen / 2.0, xc + hw / 2.0, yc + hlen / 2.0)
+
     panels: list[ShutterPanel] = []
     handles: list[Rect] = []
+    hinges: list[Rect] = []
+    knuckle_w = max(fw * 0.7, 14.0)
+    knuckle_h = max(band_h * 0.05, 18.0)
 
     for i in range(G):
         nom_x0 = bounds[i]
@@ -134,36 +192,67 @@ def _build_shutters(
         # Front sash (smaller depth) laps OVER a differing-depth neighbour by the
         # interlock; the back sash keeps its nominal edge (hidden behind front).
         xa, xb = nom_x0, nom_x1
-        if i > 0 and depths[i] != depths[i - 1] and depths[i] < depths[i - 1]:
-            xa = nom_x0 - overlap
-        if i < G - 1 and depths[i] != depths[i + 1] and depths[i] < depths[i + 1]:
-            xb = nom_x1 + overlap
+        if not casement:
+            if i > 0 and depths[i] != depths[i - 1] and depths[i] < depths[i - 1]:
+                xa = nom_x0 - overlap
+            if i < G - 1 and depths[i] != depths[i + 1] and depths[i] < depths[i + 1]:
+                xb = nom_x1 + overlap
         outer = Rect(xa, y0, xb, y1)
         glass = outer.inset(fw, fw, fw, fw)
         is_fixed = i in fixed_set
         operable = not is_fixed
 
-        open_dir = 0
-        handle_side: str | None = None
-        if operable:
-            if mode == "center":
-                open_dir = -1 if i <= center_l else 1
-                if i == center_l:
-                    handle_side = "right"
-                elif i == center_r:
-                    handle_side = "left"
-            else:
-                open_dir = 1
-                handle_side = "left" if i == 0 else "right"
+        ov_cfg = overrides.get(i) or {}
+        handle_side = ov_cfg.get("side") if "side" in ov_cfg else default_handle_side(i, operable)
+        x_frac = ov_cfg.get("x")
+        try:
+            x_frac = float(x_frac) if x_frac is not None else None
+        except (TypeError, ValueError):
+            x_frac = None
+        try:
+            y_frac = float(ov_cfg["y"]) if "y" in ov_cfg else hlevel
+        except (TypeError, ValueError):
+            y_frac = hlevel
+        # Sliding handles share the common vertical level (equal on every sash)
+        if not casement:
+            y_frac = hlevel
 
-        handle_rect: Rect | None = None
-        if handle_side:
-            xc = nom_x1 - fw / 2.0 if handle_side == "right" else nom_x0 + fw / 2.0
-            handle_rect = Rect(xc - hw / 2.0, cy - hlen / 2.0, xc + hw / 2.0, cy + hlen / 2.0)
+        handle_rect = make_handle(nom_x0, nom_x1, handle_side, x_frac, y_frac) if handle_side else None
+        if handle_rect is not None:
             handles.append(handle_rect)
 
+        # Open direction: sliding slides toward centre (away from outer handle);
+        # casement swing sign follows the hinge side.
+        if operable:
+            if casement:
+                open_dir = 1 if (i <= center_l) else -1
+            elif G == 2:
+                open_dir = 1 if i == 0 else -1
+            elif mode == "center":
+                open_dir = -1 if i <= center_l else 1
+            else:
+                open_dir = 1
+        else:
+            open_dir = 0
+
+        # Casement hinge is on the OPPOSITE stile from the handle
+        hinge_side: str | None = None
+        if casement and handle_rect is not None:
+            handle_cx = (handle_rect.x0 + handle_rect.x1) / 2.0
+            on_right = handle_cx > (nom_x0 + nom_x1) / 2.0
+            hinge_side = "left" if on_right else "right"
+            hx = nom_x0 + knuckle_w * 0.0 + fw / 2.0 if hinge_side == "left" else nom_x1 - fw / 2.0
+            for t in (0.18, 0.5, 0.82):
+                ky = y0 + band_h * t
+                hinges.append(Rect(hx - knuckle_w / 2.0, ky - knuckle_h / 2.0, hx + knuckle_w / 2.0, ky + knuckle_h / 2.0))
+
         depth = depths[i]
-        track_label = "fix" if is_fixed else ("front" if depth == 1 else "back")
+        if is_fixed:
+            track_label = "fix"
+        elif casement:
+            track_label = "sash"
+        else:
+            track_label = "front" if depth == 1 else "back"
 
         panels.append(
             ShutterPanel(
@@ -175,19 +264,22 @@ def _build_shutters(
                 depth=depth,
                 track_label=track_label,
                 open_dir=open_dir,
-                handle_side=handle_side,
+                handle_side=handle_side if handle_side != "none" else None,
                 handle=handle_rect,
                 nom_x0=nom_x0,
                 nom_x1=nom_x1,
+                hinge_side=hinge_side,
             )
         )
 
-    if mesh_count and mesh_count > 0:
-        mbounds = [x0 + (band_w * k) / mesh_count for k in range(mesh_count + 1)]
-        mbounds[0] = x0
-        mbounds[-1] = x1
+    if mesh_count and mesh_count > 0 and not casement:
+        # Mesh rule: each mesh sash is EXACTLY one sliding-panel wide (band_w / G),
+        # never the full opening. Meshes stack from the left jamb rightward.
+        panel_w = band_w / G
         for j in range(int(mesh_count)):
-            mouter = Rect(mbounds[j], y0, mbounds[j + 1], y1)
+            mx0 = x0 + panel_w * j
+            mx1 = min(mx0 + panel_w, x1)
+            mouter = Rect(mx0, y0, mx1, y1)
             mglass = mouter.inset(fw * 0.6, fw * 0.6, fw * 0.6, fw * 0.6)
             panels.append(
                 ShutterPanel(
@@ -201,11 +293,11 @@ def _build_shutters(
                     open_dir=0,
                     handle_side=None,
                     handle=None,
-                    nom_x0=mbounds[j],
-                    nom_x1=mbounds[j + 1],
+                    nom_x0=mx0,
+                    nom_x1=mx1,
                 )
             )
-    return panels, handles
+    return panels, handles, hinges
 
 
 def _build_bifold_leaves(
@@ -353,6 +445,7 @@ class SlidingLayout:
     hinges: tuple[Rect, ...] = ()
     section_sizes: Mapping[str, float] | None = None
     notes: tuple[str, ...] = ()
+    grid_spec: Mapping[str, Any] | None = None
 
     @property
     def left_shutter_width(self) -> float:
@@ -406,6 +499,7 @@ class SlidingLayout:
             ],
             "sectionSizes": dict(self.section_sizes) if self.section_sizes else None,
             "notes": list(self.notes),
+            "grid": dict(self.grid_spec) if self.grid_spec else None,
             "sliding_width": sliding.width,
             "sliding_height": sliding.height,
             "sliding_x0": sliding.x0,
@@ -493,14 +587,17 @@ def compute_two_track_layout(
     fold_left: int | None = None,
     fold_right: int | None = None,
     section_sizes: Mapping[str, Any] | None = None,
+    handle_level: float | None = None,
+    handle_overrides: Mapping[Any, Any] | None = None,
+    grid: Mapping[str, Any] | None = None,
 ) -> SlidingLayout:
     """Core sliding formulas from profile geometry + optional fix partitions / mesh.
 
     Supports a flexible number of equal-width glass sashes (``glass_count``) plus
     mesh sashes (``mesh_count``), center-opening handle placement, per-sash FIX
-    locking (``fixed_shutters``) and front/back track stacking. When
-    ``system == 'bifold'`` a Fold & Sliding leaf layout is produced instead
-    (``fold_left`` + ``fold_right`` equal leaves) with per-side section sizes.
+    locking (``fixed_shutters``) and front/back track stacking. ``system`` may be
+    ``sliding`` (default), ``casement`` (openable, hinges opposite the handle) or
+    ``bifold`` (Fold & Sliding leaves with per-side section sizes).
     """
     if width <= 0 or height <= 0:
         raise ValueError("width and height must be positive")
@@ -515,6 +612,8 @@ def compute_two_track_layout(
             fold_right=fold_right,
             section_sizes=section_sizes,
         )
+    if sys_kind == "grid":
+        return _compute_grid_layout(width, height, geometry, grid=grid, handle_level=handle_level)
 
     tw = float(geometry["trackWidth"])
     fw = float(geometry["frameWidth"])
@@ -565,8 +664,10 @@ def compute_two_track_layout(
         mode = "center" if g_count % 2 == 0 else "telescopic"
     fixed_set = {int(i) for i in (fixed_shutters or []) if 0 <= int(i) < g_count}
     handle_length = float(geometry["handleLengthMm"]) if geometry.get("handleLengthMm") else None
+    is_casement = sys_kind in ("casement", "openable", "opening")
+    h_level = float(handle_level) if handle_level is not None else 0.5
 
-    shutters, handles = _build_shutters(
+    shutters, handles, hinges = _build_shutters(
         sliding_area,
         frame_width=fw,
         glass_clip=gc,
@@ -576,6 +677,9 @@ def compute_two_track_layout(
         opening=mode,
         fixed_set=fixed_set,
         handle_length=handle_length,
+        system="casement" if is_casement else "sliding",
+        handle_level=h_level,
+        handle_overrides=handle_overrides,
     )
 
     glass_panels = [sp for sp in shutters if sp.role == "glass"]
@@ -654,6 +758,8 @@ def compute_two_track_layout(
         glass_count=g_count,
         mesh_count=m_count,
         opening=mode,
+        system="casement" if is_casement else "sliding",
+        hinges=tuple(hinges),
     )
 
 
@@ -770,6 +876,193 @@ def _compute_bifold_layout(
     )
 
 
+def _norm_sizes(raw: Any, total: float, default_n: int) -> list[float]:
+    """Turn a list of relative/absolute sizes into absolute mm summing to ``total``."""
+    vals: list[float] = []
+    if isinstance(raw, (list, tuple)):
+        for v in raw:
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                f = 0.0
+            vals.append(max(f, 0.0))
+    vals = [v for v in vals if v > 0]
+    if not vals:
+        vals = [1.0] * max(int(default_n), 1)
+    s = sum(vals)
+    if s <= 0:
+        vals = [1.0] * len(vals)
+        s = float(len(vals))
+    return [total * v / s for v in vals]
+
+
+def _compute_grid_layout(
+    width: float,
+    height: float,
+    geometry: Mapping[str, Any],
+    *,
+    grid: Mapping[str, Any] | None,
+    handle_level: float | None = None,
+) -> SlidingLayout:
+    """Partition/grid designer — a non-uniform grid of FIX / SLIDING / OPENABLE cells.
+
+    ``grid`` = ``{"cols": [..], "rows": [..], "cells": [{"r","c","role","glass","mesh","hinge"}]}``.
+    ``cols`` / ``rows`` may be relative ratios or mm (scaled to fill the frame).
+    Every cell is framed, dimensioned and labelled; each renders its role in clean
+    2D (fix lite, sliding sashes + arrows, openable sash + hinges opposite handle).
+    """
+    fw = float(geometry["frameWidth"])
+    gc = float(geometry.get("glassClip") or 0)
+    iw = float(geometry.get("interlockWidth") or fw)
+    W, H = float(width), float(height)
+    grid = grid or {}
+
+    cols = _norm_sizes(grid.get("cols"), W - 2 * fw, 2)
+    rows = _norm_sizes(grid.get("rows"), H - 2 * fw, 1)
+    nc, nr = len(cols), len(rows)
+
+    # Column x-edges (left→right) and row y-edges (top→bottom, model y from bottom)
+    colX = [fw]
+    for w in cols:
+        colX.append(colX[-1] + w)
+    rowTop = [H - fw]
+    for h in rows:
+        rowTop.append(rowTop[-1] - h)
+
+    # Role lookup keyed by (r, c)
+    role_by = {}
+    extra_by = {}
+    for cell in (grid.get("cells") or []):
+        if not isinstance(cell, Mapping):
+            continue
+        try:
+            r, c = int(cell.get("r")), int(cell.get("c"))
+        except (TypeError, ValueError):
+            continue
+        role_by[(r, c)] = str(cell.get("role") or "fix").strip().lower()
+        extra_by[(r, c)] = cell
+
+    hlevel = min(max(float(handle_level) if handle_level is not None else 0.5, 0.08), 0.92)
+    hw = max(fw * 0.5, 12.0)
+
+    cells_render: list[dict[str, Any]] = []
+    shutters: list[ShutterPanel] = []
+    hinges: list[Rect] = []
+    counters = {"fix": 0, "sliding": 0, "openable": 0}
+    prefix = {"fix": "F", "sliding": "S", "openable": "O"}
+    sidx = 0
+
+    for r in range(nr):
+        for c in range(nc):
+            role = role_by.get((r, c), "fix")
+            if role in ("open", "opening", "casement"):
+                role = "openable"
+            if role not in ("fix", "sliding", "openable"):
+                role = "fix"
+            x0, x1 = colX[c], colX[c + 1]
+            y1, y0 = rowTop[r], rowTop[r + 1]
+            cell_rect = Rect(x0, y0, x1, y1)
+            glass_rect = cell_rect.inset(fw, fw, fw, fw)
+            cw, ch = (x1 - x0), (y1 - y0)
+            counters[role] += 1
+            label = f"{prefix[role]}{counters[role]}"
+            cy = (y0 + y1) / 2.0
+            hlen = min(max(ch * 0.18, 90.0), 320.0)
+            extra = extra_by.get((r, c), {})
+
+            cell: dict[str, Any] = {
+                "r": r, "c": c, "role": role, "label": label,
+                "x0": round(x0, 1), "y0": round(y0, 1), "x1": round(x1, 1), "y1": round(y1, 1),
+                "wmm": round(cw, 1), "hmm": round(ch, 1),
+                "glass": [], "sashLines": [], "arrows": [], "hinges": [],
+                "handle": None, "mesh": None, "diagonals": [],
+            }
+
+            if role == "fix":
+                cell["glass"].append({"x0": round(glass_rect.x0, 1), "y0": round(glass_rect.y0, 1), "x1": round(glass_rect.x1, 1), "y1": round(glass_rect.y1, 1)})
+                shutters.append(ShutterPanel(index=sidx, role="glass", operable=False, outer=cell_rect, glass=glass_rect, depth=1, track_label="fix", open_dir=0, nom_x0=x0, nom_x1=x1))
+                sidx += 1
+            elif role == "sliding":
+                g = max(int(extra.get("glass") or 2), 1)
+                bounds = [x0 + (x1 - x0) * k / g for k in range(g + 1)]
+                for i in range(g):
+                    sx0, sx1 = bounds[i], bounds[i + 1]
+                    sash = Rect(sx0, y0, sx1, y1)
+                    sg = sash.inset(fw, fw, fw, fw)
+                    cell["glass"].append({"x0": round(sg.x0, 1), "y0": round(sg.y0, 1), "x1": round(sg.x1, 1), "y1": round(sg.y1, 1)})
+                    shutters.append(ShutterPanel(index=sidx, role="glass", operable=True, outer=sash, glass=sg, depth=1 if i % 2 else 2, track_label="front" if i % 2 else "back", open_dir=1 if i < g / 2 else -1, nom_x0=sx0, nom_x1=sx1))
+                    sidx += 1
+                    if i > 0:
+                        cell["sashLines"].append(round(sx0, 1))
+                    # Arrow toward centre
+                    amid = (sx0 + sx1) / 2.0
+                    if i < g / 2:
+                        cell["arrows"].append({"x0": round(amid - cw / (g * 2) * 0.5, 1), "y0": round(cy, 1), "x1": round(amid + cw / (g * 2) * 0.5, 1), "y1": round(cy, 1)})
+                    else:
+                        cell["arrows"].append({"x0": round(amid + cw / (g * 2) * 0.5, 1), "y0": round(cy, 1), "x1": round(amid - cw / (g * 2) * 0.5, 1), "y1": round(cy, 1)})
+                # Handles on the outer stiles of the two end sashes
+                yc = y0 + ch * hlevel
+                cell["handles"] = [
+                    {"x0": round(x0 + fw / 2.0 - hw / 2, 1), "y0": round(yc - hlen / 2, 1), "x1": round(x0 + fw / 2.0 + hw / 2, 1), "y1": round(yc + hlen / 2, 1), "side": "left"},
+                    {"x0": round(x1 - fw / 2.0 - hw / 2, 1), "y0": round(yc - hlen / 2, 1), "x1": round(x1 - fw / 2.0 + hw / 2, 1), "y1": round(yc + hlen / 2, 1), "side": "right"},
+                ]
+                if int(extra.get("mesh") or 0) > 0:
+                    mw = (x1 - x0) / g  # one sliding-panel width
+                    cell["mesh"] = {"x0": round(x0, 1), "y0": round(y0, 1), "x1": round(x0 + mw, 1), "y1": round(y1, 1)}
+            else:  # openable
+                hinge = str(extra.get("hinge") or "left").strip().lower()
+                if hinge not in ("left", "right"):
+                    hinge = "left"
+                handle_side = "right" if hinge == "left" else "left"
+                sash = cell_rect
+                cell["glass"].append({"x0": round(glass_rect.x0, 1), "y0": round(glass_rect.y0, 1), "x1": round(glass_rect.x1, 1), "y1": round(glass_rect.y1, 1)})
+                shutters.append(ShutterPanel(index=sidx, role="glass", operable=True, outer=sash, glass=glass_rect, depth=1, track_label="sash", open_dir=1, handle_side=handle_side, hinge_side=hinge, nom_x0=x0, nom_x1=x1))
+                sidx += 1
+                yc = y0 + ch * hlevel
+                hx = (x1 - fw / 2.0) if handle_side == "right" else (x0 + fw / 2.0)
+                cell["handles"] = [{"x0": round(hx - hw / 2, 1), "y0": round(yc - hlen / 2, 1), "x1": round(hx + hw / 2, 1), "y1": round(yc + hlen / 2, 1), "side": handle_side}]
+                # Hinge knuckles on the opposite (hinge) stile
+                khx = (x0 + fw / 2.0) if hinge == "left" else (x1 - fw / 2.0)
+                kw = max(fw * 0.7, 14.0)
+                kh = max(ch * 0.05, 18.0)
+                for t in (0.18, 0.5, 0.82):
+                    ky = y0 + ch * t
+                    hr = Rect(khx - kw / 2, ky - kh / 2, khx + kw / 2, ky + kh / 2)
+                    hinges.append(hr)
+                    cell["hinges"].append({"x0": round(hr.x0, 1), "y0": round(hr.y0, 1), "x1": round(hr.x1, 1), "y1": round(hr.y1, 1)})
+                # Openable symbol: two diagonals meeting at the handle-side mid
+                hxm = glass_rect.x1 if handle_side == "right" else glass_rect.x0
+                oxm = glass_rect.x0 if handle_side == "right" else glass_rect.x1
+                cell["diagonals"] = [
+                    [round(oxm, 1), round(glass_rect.y0, 1), round(hxm, 1), round((glass_rect.y0 + glass_rect.y1) / 2, 1)],
+                    [round(oxm, 1), round(glass_rect.y1, 1), round(hxm, 1), round((glass_rect.y0 + glass_rect.y1) / 2, 1)],
+                ]
+
+            cells_render.append(cell)
+
+    grid_spec = {
+        "cols": [round(w, 1) for w in cols],
+        "rows": [round(h, 1) for h in rows],
+        "colX": [round(x, 1) for x in colX],
+        "rowTop": [round(y, 1) for y in rowTop],
+        "cells": cells_render,
+        "frameWidth": round(fw, 1),
+    }
+
+    track = Rect(fw, fw, W - fw, H - fw)
+    first = shutters[0] if shutters else ShutterPanel(index=0, role="glass", operable=False, outer=track, glass=track, depth=1, track_label="fix", open_dir=0)
+    return SlidingLayout(
+        W=W, H=H, track_width=fw, frame_width=fw, interlock_width=iw, overlap=0.0, glass_clip=gc,
+        track=track, interlock_left=track.cx, interlock_right=track.cx, shutter_inset=fw,
+        left_shutter=first.outer, right_shutter=shutters[-1].outer if shutters else track,
+        left_glass=first.glass, right_glass=shutters[-1].glass if shutters else track,
+        left_clip=first.glass, right_clip=shutters[-1].glass if shutters else track,
+        fix_panels=(), mullions=(), mesh=False, track_count=2.0, sliding_area=track,
+        shutters=tuple(shutters), glass_count=sum(1 for s in shutters if s.role == "glass"),
+        mesh_count=0, opening="center", system="grid", hinges=tuple(hinges), grid_spec=grid_spec,
+    )
+
+
 def build_drawing(
     layout: SlidingLayout,
     *,
@@ -786,6 +1079,11 @@ def build_drawing(
         parameters=parameters,
         metadata=L.meta(),
     )
+    if L.system == "grid":
+        # Grid is rendered from metadata['grid'] by dedicated 2D routines in the
+        # SVG/PDF exporters; emit just the outer frame so bbox sizing is correct.
+        model.add_polyline(rect_polyline(Rect(0.0, 0.0, L.W, L.H), closed=True, layer="PROFILES", name="outer_frame"))
+        return model
     _build_profiles(model, L)
     _build_dimensions(model, L, style)
     return model

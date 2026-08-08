@@ -75,6 +75,8 @@ def build_api_response(
     quote = job.quotation.as_dict() if job.quotation else None
     weight = job.weight.as_dict() if job.weight else None
 
+    glass_spec = _resolve_glass_spec(product, glass)
+
     price_block = None
     if include_quote and quote:
         price_block = {
@@ -134,6 +136,7 @@ def build_api_response(
         }
         if weight
         else None,
+        "glassSpec": glass_spec,
         "glass": [
             {
                 "name": g.name,
@@ -143,6 +146,10 @@ def build_api_response(
                 "thicknessMm": g.thickness_mm,
                 "areaM2": round(g.area_m2, 4),
                 "weightKg": round(g.weight_kg, 3),
+                "spec": glass_spec.get("specLine") if glass_spec else None,
+                "colour": glass_spec.get("colour") if glass_spec else None,
+                "toughened": glass_spec.get("toughened") if glass_spec else None,
+                "makeup": glass_spec.get("makeup") if glass_spec else None,
             }
             for g in job.glass
         ],
@@ -187,6 +194,74 @@ def build_api_response(
         response["pdfBase64"] = base64.b64encode(build_quote_pdf_bytes(response)).decode("ascii")
 
     return response
+
+
+def _resolve_glass_spec(product_id: str, glass_id: str | None) -> dict[str, Any] | None:
+    """Resolve a printable glass spec (makeup/colour/brand/toughened) from the
+    product's glass options catalogue, so the full glass makeup prints in quotes.
+    Falls back to parsing the glass id (e.g. ``8mm_toughened``)."""
+    if not glass_id:
+        return None
+    try:
+        from WEOS.factory.glass_catalogue import build_glass_spec
+        from WEOS.factory.product_loader import load_product
+
+        p = load_product(product_id, strict=False)
+    except Exception:
+        p = {}
+    options = ((p.get("glass") or {}).get("options")) or []
+    gnorm = str(glass_id).lower().replace(" ", "_")
+    match = next(
+        (o for o in options if str(o.get("id")) == gnorm or str(o.get("label", "")).lower().replace(" ", "_") == gnorm),
+        None,
+    ) or {}
+
+    # Parse thickness + toughened hint from the id when the option lacks fields.
+    import re as _re
+
+    thk_match = _re.search(r"([\d.]+)\s*mm", gnorm) or _re.search(r"(\d+)", gnorm)
+    thickness = match.get("thicknessMm")
+    if thickness is None and thk_match:
+        try:
+            thickness = float(thk_match.group(1))
+        except ValueError:
+            thickness = None
+    toughened = match.get("toughened")
+    if toughened is None:
+        toughened = ("tough" in gnorm) or ("tuff" in gnorm) or ("tempered" in gnorm)
+    colour = match.get("colour") or ("clear" if "clear" in gnorm else "clear")
+    makeup = match.get("makeup") or ("laminated" if "lam" in gnorm else ("dgu" if "dgu" in gnorm else "single"))
+
+    try:
+        from WEOS.factory.glass_catalogue import build_glass_spec as _build
+
+        spec = _build(
+            makeup=makeup,
+            thickness_mm=thickness,
+            overall_mm=match.get("overallMm"),
+            glass1_mm=match.get("glass1Mm"),
+            glass2_mm=match.get("glass2Mm"),
+            air_gap_mm=match.get("airGapMm"),
+            pvb_mm=match.get("pvbMm"),
+            colour=str(colour),
+            brand=str(match.get("brand") or ""),
+            toughened=bool(toughened),
+            rate=match.get("rate"),
+            rate_unit=str(match.get("rateUnit") or "sqft"),
+            name=match.get("label"),
+        )
+        spec["selectedOptionId"] = gnorm
+        return spec
+    except Exception:
+        return {
+            "id": gnorm,
+            "makeup": makeup,
+            "thicknessMm": thickness,
+            "colour": colour,
+            "toughened": bool(toughened),
+            "toughenedLabel": "Toughened" if toughened else "Non-toughened",
+            "specLine": f"{thickness or '?'}mm {str(colour).title()} {'Toughened' if toughened else 'Non-toughened'}",
+        }
 
 
 def products_catalog() -> list[dict[str, Any]]:

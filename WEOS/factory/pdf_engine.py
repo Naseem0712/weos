@@ -106,7 +106,12 @@ def _customer_reportlab(payload: Mapping[str, Any]) -> bytes:
         y -= 12
         opts = line.get("options") or {}
         c.setFillColorRGB(0.4, 0.4, 0.4)
-        c.drawString(50, y, f"Glass: {opts.get('glass')}  Colour: {opts.get('colour')}  Handle: {opts.get('handle')}")
+        # Print full glass spec (makeup · colour · toughened · brand) when resolved.
+        glass_spec = line.get("glassSpec") or {}
+        first_glass = (line.get("glass") or [{}])[0] if line.get("glass") else {}
+        spec_line = glass_spec.get("specLine") or first_glass.get("spec")
+        glass_text = spec_line or opts.get("glass")
+        c.drawString(50, y, f"Glass: {glass_text}  Colour: {opts.get('colour')}  Handle: {opts.get('handle')}")
         c.setFillColorRGB(0, 0, 0)
         y -= 14
 
@@ -177,7 +182,8 @@ def _factory_reportlab(payload: Mapping[str, Any]) -> bytes:
             if y < 60:
                 c.showPage()
                 y = H - 50
-            c.drawString(40, y, f"{g.get('qty')} pcs  {g.get('width')}×{g.get('height')}×{g.get('thicknessMm')} mm  ({line.get('displayName')})")
+            spec_suffix = f"  [{g.get('spec')}]" if g.get("spec") else ""
+            c.drawString(40, y, f"{g.get('qty')} pcs  {g.get('width')}×{g.get('height')}×{g.get('thicknessMm')} mm  ({line.get('displayName')}){spec_suffix}")
             y -= 11
 
     y -= 8

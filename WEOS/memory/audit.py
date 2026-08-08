@@ -152,7 +152,7 @@ def run_audit() -> dict[str, Any]:
         "howToProve": [
             "POST /api/calculate (or calculate a project) → engineeringObservations increments.",
             "GET /api/engineering/insights → tips derived from those observations.",
-            "GET /api/memory/audit → this report reflects new counts.",
+            "GET /api/memory-audit → this report reflects new counts.",
             "Approve a suggestion (Learning Engine) → memoryApproved increments and Brain consumes it.",
         ],
         "safety": "Read-only audit. Production data and approval gates are never bypassed.",

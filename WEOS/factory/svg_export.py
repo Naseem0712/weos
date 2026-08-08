@@ -210,71 +210,74 @@ def _hollow_plan_band(
 
 
 def _handle_finish_colors(finish: str) -> dict[str, str]:
-    """Palette for the lever handle (silver / black) resembling the reference part."""
+    """2D outline handle palette — line colour only (no solid fill)."""
     if str(finish).lower() in ("black", "black_texture", "matte_black", "dark"):
-        return {
-            "plate": "#3a3f45", "plate_stroke": "#15181c",
-            "lever": "#4c525a", "lever_stroke": "#191c20", "hi": "#6b727b",
-        }
-    return {
-        "plate": "#c9ced4", "plate_stroke": "#7f868e",
-        "lever": "#e4e8ec", "lever_stroke": "#9aa1a9", "hi": "#ffffff",
-    }
+        return {"stroke": "#1c1f24"}
+    return {"stroke": "#6b7178"}
 
 
 def _draw_lever_handle(
     parts: list[str], *, tx, ty, rect: tuple[float, float, float, float],
-    side: str | None, finish: str, k: float,
+    side: str | None, finish: str, k: float, panel_index: Any = None,
 ) -> None:
-    """Lever handle with oval escutcheon (reference-style) at the handle-section centre."""
+    """Clean 2D outline lever handle: oval escutcheon + lever arm (no solid fill).
+
+    Draws a draggable-friendly group tagged with ``data-handle`` so the live
+    preview can attach touch/mouse drag to reposition it.
+    """
     x0, y0, x1, y1 = rect
     cx = (x0 + x1) / 2.0
     cy = (y0 + y1) / 2.0
     pw = (x1 - x0)
     ph = (y1 - y0)
     c = _handle_finish_colors(finish)
-    rx = max(pw * 0.62, 5.0 * k)
+    sw = max(1.3 * k, 1.0)
+    rx = max(pw * 0.60, 5.0 * k)
     ry = max(ph * 0.5, 10.0 * k)
-    # Oval escutcheon plate
-    parts.append(
+    tag = "" if panel_index is None else f' data-handle="{panel_index}"'
+    group = [f'<g class="weos-handle"{tag} style="cursor:grab">']
+    # Oval escutcheon plate (outline)
+    group.append(
         f'<ellipse cx="{tx(cx):.2f}" cy="{ty(cy):.2f}" rx="{rx:.2f}" ry="{ry:.2f}" '
-        f'fill="{c["plate"]}" stroke="{c["plate_stroke"]}" stroke-width="{1.1 * k:.2f}"/>'
+        f'fill="#ffffff" fill-opacity="0.35" stroke="{c["stroke"]}" stroke-width="{sw:.2f}"/>'
     )
-    # Keyhole hint
-    parts.append(
-        f'<circle cx="{tx(cx):.2f}" cy="{ty(cy) + ry * 0.35:.2f}" r="{max(pw * 0.16, 1.6 * k):.2f}" '
-        f'fill="{c["lever_stroke"]}"/>'
+    # Keyhole hint (outline circle)
+    group.append(
+        f'<circle cx="{tx(cx):.2f}" cy="{ty(cy) + ry * 0.32:.2f}" r="{max(pw * 0.16, 1.8 * k):.2f}" '
+        f'fill="none" stroke="{c["stroke"]}" stroke-width="{sw * 0.8:.2f}"/>'
     )
-    # Lever arm — extends into the leaf (away from the stile)
+    # Lever arm — extends into the leaf (away from the stile), outline only
     direction = -1.0 if side == "right" else 1.0
-    arm_len = max(pw * 2.6, 26.0 * k)
-    bar_h = max(pw * 0.55, 5.0 * k)
+    arm_len = max(pw * 2.4, 24.0 * k)
+    bar_h = max(pw * 0.52, 5.0 * k)
     ax0 = cx if direction > 0 else cx - arm_len
     ax1 = cx + arm_len if direction > 0 else cx
     ly = cy - ry * 0.35
-    parts.append(
+    group.append(
         f'<rect x="{tx(ax0):.2f}" y="{ty(ly) - bar_h / 2:.2f}" width="{(ax1 - ax0):.2f}" height="{bar_h:.2f}" '
-        f'rx="{bar_h / 2:.2f}" fill="{c["lever"]}" stroke="{c["lever_stroke"]}" stroke-width="{1.0 * k:.2f}"/>'
+        f'rx="{bar_h / 2:.2f}" fill="none" stroke="{c["stroke"]}" stroke-width="{sw:.2f}"/>'
     )
-    # Pivot knuckle at the plate
-    parts.append(
-        f'<circle cx="{tx(cx):.2f}" cy="{ty(ly):.2f}" r="{bar_h * 0.72:.2f}" '
-        f'fill="{c["plate"]}" stroke="{c["lever_stroke"]}" stroke-width="{1.0 * k:.2f}"/>'
+    # Pivot knuckle (outline)
+    group.append(
+        f'<circle cx="{tx(cx):.2f}" cy="{ty(ly):.2f}" r="{bar_h * 0.7:.2f}" '
+        f'fill="#ffffff" fill-opacity="0.35" stroke="{c["stroke"]}" stroke-width="{sw:.2f}"/>'
     )
+    group.append("</g>")
+    parts.append("".join(group))
 
 
 def _draw_hardware(parts: list[str], *, tx, ty, model: DrawingModel, finish: str, k: float) -> None:
-    """Draw handles (from shutter meta, oriented) and bifold hinge knuckles."""
+    """Draw handles (from shutter meta, oriented) and hinge knuckles — 2D outline."""
     meta = model.metadata or {}
     c = _handle_finish_colors(finish)
-    # Hinge knuckles
+    # Hinge knuckles (outline)
     for h in meta.get("hinges") or []:
         if not isinstance(h, Mapping):
             continue
         x0, y0, x1, y1 = float(h["x0"]), float(h["y0"]), float(h["x1"]), float(h["y1"])
         parts.append(
             f'<rect x="{tx(x0):.2f}" y="{ty(y1):.2f}" width="{(x1 - x0):.2f}" height="{(y1 - y0):.2f}" '
-            f'rx="{(x1 - x0) * 0.35:.2f}" fill="{c["plate"]}" stroke="{c["plate_stroke"]}" stroke-width="{0.9 * k:.2f}"/>'
+            f'rx="{(x1 - x0) * 0.35:.2f}" fill="none" stroke="{c["stroke"]}" stroke-width="{0.9 * k:.2f}"/>'
         )
     # Handles
     for sp in meta.get("shutters") or []:
@@ -286,8 +289,112 @@ def _draw_hardware(parts: list[str], *, tx, ty, model: DrawingModel, finish: str
         _draw_lever_handle(
             parts, tx=tx, ty=ty,
             rect=(float(hd["x0"]), float(hd["y0"]), float(hd["x1"]), float(hd["y1"])),
-            side=sp.get("handleSide"), finish=finish, k=k,
+            side=sp.get("handleSide"), finish=finish, k=k, panel_index=sp.get("index"),
         )
+
+
+def _draw_grid_svg(
+    parts: list[str], *, tx, ty, meta: Mapping[str, Any], k: float, W: float, H: float,
+    glass_fill: str, glass_stroke: str, frame_stroke: str, dim_stroke: str,
+    dim_font: float, label_font: float, finish: str, annotations: bool, sw: float,
+) -> None:
+    """Clean 2D partition-grid: framed cells, per-cell role + hardware, full dims."""
+    grid = meta.get("grid") or {}
+    cells = grid.get("cells") or []
+    role_color = {"fix": "#5a3a10", "sliding": "#0b3d7a", "openable": "#0b6a3d"}
+    role_text = {"fix": "FIX", "sliding": "SLIDING", "openable": "OPENABLE"}
+
+    # Outer frame
+    parts.append(
+        f'<rect x="{tx(0):.2f}" y="{ty(H):.2f}" width="{tx(W)-tx(0):.2f}" height="{ty(0)-ty(H):.2f}" '
+        f'fill="none" stroke="{frame_stroke}" stroke-width="{sw:.2f}"/>'
+    )
+
+    for cell in cells:
+        x0, y0, x1, y1 = float(cell["x0"]), float(cell["y0"]), float(cell["x1"]), float(cell["y1"])
+        role = cell.get("role") or "fix"
+        rc = role_color.get(role, "#0b3d7a")
+        # Cell frame (mullion)
+        parts.append(
+            f'<rect x="{tx(x0):.2f}" y="{ty(y1):.2f}" width="{tx(x1)-tx(x0):.2f}" height="{ty(y0)-ty(y1):.2f}" '
+            f'fill="none" stroke="{frame_stroke}" stroke-width="{sw:.2f}"/>'
+        )
+        # Glass lites
+        for g in cell.get("glass") or []:
+            gx0, gy0, gx1, gy1 = float(g["x0"]), float(g["y0"]), float(g["x1"]), float(g["y1"])
+            parts.append(
+                f'<rect x="{tx(gx0):.2f}" y="{ty(gy1):.2f}" width="{tx(gx1)-tx(gx0):.2f}" height="{ty(gy0)-ty(gy1):.2f}" '
+                f'fill="{glass_fill}" stroke="{glass_stroke}" stroke-width="{sw*0.7:.2f}"/>'
+            )
+        # Sash division lines (sliding)
+        for sx in cell.get("sashLines") or []:
+            parts.append(
+                f'<line x1="{tx(float(sx)):.2f}" y1="{ty(y0):.2f}" x2="{tx(float(sx)):.2f}" y2="{ty(y1):.2f}" '
+                f'stroke="{frame_stroke}" stroke-width="{sw*0.9:.2f}"/>'
+            )
+        # Mesh (one sliding-panel width, dashed green)
+        m = cell.get("mesh")
+        if isinstance(m, Mapping):
+            parts.append(
+                f'<rect x="{tx(float(m["x0"])):.2f}" y="{ty(float(m["y1"])):.2f}" '
+                f'width="{tx(float(m["x1"]))-tx(float(m["x0"])):.2f}" height="{ty(float(m["y0"]))-ty(float(m["y1"])):.2f}" '
+                f'fill="none" stroke="#2a6a4a" stroke-width="{sw*0.7:.2f}" stroke-dasharray="{5*k:.1f},{3*k:.1f}"/>'
+            )
+        # Openable diagonals
+        for d in cell.get("diagonals") or []:
+            parts.append(
+                f'<line x1="{tx(float(d[0])):.2f}" y1="{ty(float(d[1])):.2f}" x2="{tx(float(d[2])):.2f}" y2="{ty(float(d[3])):.2f}" '
+                f'stroke="{rc}" stroke-width="{sw*0.6:.2f}" stroke-dasharray="{4*k:.1f},{3*k:.1f}"/>'
+            )
+        # Arrows (sliding)
+        for a in cell.get("arrows") or []:
+            _arrow(parts, tx=tx, ty=ty, x0=float(a["x0"]), y0=float(a["y0"]), x1=float(a["x1"]), y1=float(a["y1"]))
+        # Hinges (openable) — 2D outline
+        hc = _handle_finish_colors(finish)
+        for hg in cell.get("hinges") or []:
+            parts.append(
+                f'<rect x="{tx(float(hg["x0"])):.2f}" y="{ty(float(hg["y1"])):.2f}" '
+                f'width="{tx(float(hg["x1"]))-tx(float(hg["x0"])):.2f}" height="{ty(float(hg["y0"]))-ty(float(hg["y1"])):.2f}" '
+                f'rx="{(float(hg["x1"])-float(hg["x0"]))*0.35:.2f}" fill="none" stroke="{hc["stroke"]}" stroke-width="{0.9*k:.2f}"/>'
+            )
+        # Handles — 2D lever outline
+        for hd in cell.get("handles") or []:
+            _draw_lever_handle(parts, tx=tx, ty=ty, rect=(float(hd["x0"]), float(hd["y0"]), float(hd["x1"]), float(hd["y1"])), side=hd.get("side"), finish=finish, k=k)
+
+        if annotations:
+            cx = (x0 + x1) / 2.0
+            cy = (y0 + y1) / 2.0
+            chip_w, chip_h = 70 * k, 30 * k
+            parts.append(
+                f'<rect x="{tx(cx)-chip_w/2:.2f}" y="{ty(cy)-chip_h/2:.2f}" width="{chip_w:.2f}" height="{chip_h:.2f}" '
+                f'rx="{3*k:.1f}" fill="#fff" fill-opacity="0.92" stroke="#333" stroke-width="{1.0*k:.2f}"/>'
+            )
+            parts.append(
+                f'<text x="{tx(cx):.2f}" y="{ty(cy)+label_font*0.3:.2f}" text-anchor="middle" '
+                f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font*0.8:.0f}" font-weight="700" fill="#111">{escape(cell.get("label") or "")}</text>'
+            )
+            parts.append(
+                f'<text x="{tx(cx):.2f}" y="{ty(cy)-chip_h*0.9:.2f}" text-anchor="middle" '
+                f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font*0.62:.0f}" font-weight="600" fill="{rc}">{role_text.get(role, role.upper())}</text>'
+            )
+            # Cell size (w × h) under the label
+            parts.append(
+                f'<text x="{tx(cx):.2f}" y="{ty(cy)+chip_h*1.15:.2f}" text-anchor="middle" '
+                f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font*0.55:.0f}" fill="#444">{cell.get("wmm")}×{cell.get("hmm")}</text>'
+            )
+
+    if annotations:
+        colX = grid.get("colX") or [0, W]
+        rowTop = grid.get("rowTop") or [H, 0]
+        # Overall dims
+        _dim_line_v(parts, tx=tx, ty=ty, y0=0.0, y1=H, x=-55.0 * k, text=f"{H:g}", text_x=-82.0 * k, stroke=dim_stroke, font=dim_font)
+        _dim_line_h(parts, tx=tx, ty=ty, x0=0.0, x1=W, y=-95.0 * k, text=f"{W:g}", text_y=-122.0 * k, stroke=dim_stroke, font=dim_font)
+        # Column widths (top)
+        for i in range(len(colX) - 1):
+            _dim_line_h(parts, tx=tx, ty=ty, x0=float(colX[i]), x1=float(colX[i + 1]), y=-42.0 * k, text=f"{float(colX[i+1])-float(colX[i]):g}", text_y=-64.0 * k, stroke=dim_stroke, font=dim_font * 0.8)
+        # Row heights (right)
+        for i in range(len(rowTop) - 1):
+            _dim_line_v(parts, tx=tx, ty=ty, y0=float(rowTop[i + 1]), y1=float(rowTop[i]), x=W + 48.0 * k, text=f"{float(rowTop[i])-float(rowTop[i+1]):g}", text_x=W + 74.0 * k, stroke=dim_stroke, font=dim_font * 0.8)
 
 
 def _draw_plan(
@@ -331,63 +438,78 @@ def _draw_plan(
 
     glass = [s for s in shutters if s.get("role") == "glass"]
     meshes = [s for s in shutters if s.get("role") == "mesh"]
-    depths = sorted({int(s.get("depth") or 1) for s in glass}) or [1]
-    dmin, dmax = min(depths), max(depths)
-    spread = plan_h * 0.26
+    if not glass:
+        return
 
-    def y_for(depth: int) -> float:
-        if dmax == dmin:
-            return y_mid
-        t = (depth - dmin) / (dmax - dmin)  # 0 = front, 1 = back
-        return y_mid - spread * (0.5 - t)   # front sits lower (toward viewer)
-
-    # Track guide lines
-    inset = float(meta.get("shutter_inset") or 0)
-    n_guides = max(len(depths) + (1 if meshes else 0), 2)
-    gspan = band * 1.9
-    for i in range(n_guides):
-        t = i / max(n_guides - 1, 1)
-        dy = -gspan + 2 * gspan * t
+    if system in ("casement", "openable", "opening"):
+        # Openable plan: sash + swing arc toward the hinge stile
+        for s in glass:
+            x0, x1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
+            hinge = s.get("hingeSide") or ("left" if float(s.get("openDir") or 1) >= 0 else "right")
+            _hollow_plan_band(parts, tx=tx, ty=ty, x0=x0, x1=x1, y_bot=y_mid - band * 0.5, y_top=y_mid + band * 0.5, stroke="#173a63", stroke_width=sw)
+            hx = x0 if hinge == "left" else x1
+            parts.append(
+                f'<line x1="{tx(hx):.2f}" y1="{ty(y_mid):.2f}" x2="{tx((x0 + x1) / 2):.2f}" '
+                f'y2="{ty(y_mid + band * 1.3):.2f}" stroke="#8b1e1a" stroke-width="{0.8 * stroke_scale:.2f}"/>'
+            )
         parts.append(
-            f'<line x1="{tx(inset):.2f}" y1="{ty(y_mid + dy):.2f}" x2="{tx(W - inset):.2f}" '
-            f'y2="{ty(y_mid + dy):.2f}" stroke="#bbb" stroke-width="{0.5 * stroke_scale:.2f}"/>'
+            f'<text x="{tx(W / 2):.2f}" y="{ty(y_mid - band * 1.4):.2f}" text-anchor="middle" '
+            f'font-family="Segoe UI, Arial, sans-serif" font-size="{14 * stroke_scale:.0f}" fill="#173a63">OPENABLE · hinge side</text>'
         )
+        return
 
-    # Mesh sashes — frontmost (dashed green)
-    for s in meshes:
-        my = y_for(dmin) - band * 0.9
-        x0, x1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
-        parts.append(
-            f'<rect x="{tx(x0):.2f}" y="{ty(my + band * 0.5):.2f}" width="{(x1 - x0):.2f}" '
-            f'height="{band * 0.5:.2f}" fill="none" stroke="#2a6a4a" '
-            f'stroke-width="{0.85 * stroke_scale:.2f}" stroke-dasharray="{4 * stroke_scale:.1f},{3 * stroke_scale:.1f}"/>'
-        )
-    if meshes:
-        parts.append(
-            f'<text x="{tx(W / 2):.2f}" y="{ty(y_for(dmin) - band * 1.5):.2f}" text-anchor="middle" '
-            f'font-family="Segoe UI, Arial, sans-serif" font-size="{16 * stroke_scale:.0f}" fill="#2a6a4a">MESH</text>'
-        )
+    # --- Sliding: External / Internal track indicator (reference Image B) ---
+    depths = sorted({int(s.get("depth") or 1) for s in glass})
+    dmin = depths[0] if depths else 1
+    ext_y = y_mid + band * 0.55   # external (back) track — drawn higher
+    int_y = y_mid - band * 0.55   # internal (front) track — drawn lower
+    left_x = min(float(s.get("x0") or 0) for s in glass)
 
-    # Glass sashes — draw back (deeper) first so front laps over
-    for s in sorted(glass, key=lambda p: -int(p.get("depth") or 1)):
-        depth = int(s.get("depth") or 1)
-        yy = y_for(depth)
-        x0, x1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
-        is_front = depth == dmin
-        stroke = "#173a63" if is_front else "#555"
-        _hollow_plan_band(
-            parts, tx=tx, ty=ty, x0=x0, x1=x1,
-            y_bot=yy - band * 0.5, y_top=yy + band * 0.5, stroke=stroke, stroke_width=sw,
-        )
-    # Front/back legend
+    # External / Internal labels at the far left
     parts.append(
-        f'<text x="{tx(inset):.2f}" y="{ty(y_for(dmin) - band * 0.85):.2f}" '
-        f'font-family="Segoe UI, Arial, sans-serif" font-size="{14 * stroke_scale:.0f}" fill="#173a63">front</text>'
+        f'<text x="{tx(left_x) - 6 * stroke_scale:.2f}" y="{ty(ext_y) + 4 * stroke_scale:.2f}" text-anchor="end" '
+        f'font-family="Segoe UI, Arial, sans-serif" font-size="{12 * stroke_scale:.0f}" fill="#0b3d7a">External</text>'
     )
-    if dmax != dmin:
+    parts.append(
+        f'<text x="{tx(left_x) - 6 * stroke_scale:.2f}" y="{ty(int_y) + 4 * stroke_scale:.2f}" text-anchor="end" '
+        f'font-family="Segoe UI, Arial, sans-serif" font-size="{12 * stroke_scale:.0f}" fill="#0b3d7a">Internal</text>'
+    )
+
+    # Mesh sash (frontmost/internal) — dashed line
+    for s in meshes:
+        x0, x1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
         parts.append(
-            f'<text x="{tx(inset):.2f}" y="{ty(y_for(dmax) + band * 0.95):.2f}" '
-            f'font-family="Segoe UI, Arial, sans-serif" font-size="{14 * stroke_scale:.0f}" fill="#555">back</text>'
+            f'<line x1="{tx(x0):.2f}" y1="{ty(int_y - band * 0.5):.2f}" x2="{tx(x1):.2f}" y2="{ty(int_y - band * 0.5):.2f}" '
+            f'stroke="#2a6a4a" stroke-width="{2.0 * stroke_scale:.2f}" stroke-dasharray="{4 * stroke_scale:.1f},{3 * stroke_scale:.1f}"/>'
+        )
+
+    # One offset track bar per glass sash: front→internal (dashed), back→external (solid)
+    for pos, s in enumerate(glass):
+        x0, x1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
+        depth = int(s.get("depth") or 1)
+        is_front = depth == dmin
+        yy = int_y if is_front else ext_y
+        dash = f' stroke-dasharray="{5 * stroke_scale:.1f},{3 * stroke_scale:.1f}"' if is_front else ""
+        parts.append(
+            f'<line x1="{tx(x0):.2f}" y1="{ty(yy):.2f}" x2="{tx(x1):.2f}" y2="{ty(yy):.2f}" '
+            f'stroke="#0b3d7a" stroke-width="{3.0 * stroke_scale:.2f}"{dash} stroke-linecap="round"/>'
+        )
+        # End ticks
+        for ex in (x0, x1):
+            parts.append(
+                f'<line x1="{tx(ex):.2f}" y1="{ty(yy) - 4 * stroke_scale:.2f}" x2="{tx(ex):.2f}" '
+                f'y2="{ty(yy) + 4 * stroke_scale:.2f}" stroke="#0b3d7a" stroke-width="{1.4 * stroke_scale:.2f}"/>'
+            )
+        # Circled panel number below
+        cxp = (x0 + x1) / 2.0
+        num_y = y_mid - band * 1.35
+        parts.append(
+            f'<circle cx="{tx(cxp):.2f}" cy="{ty(num_y):.2f}" r="{9 * stroke_scale:.2f}" fill="none" '
+            f'stroke="#0b3d7a" stroke-width="{1.3 * stroke_scale:.2f}"/>'
+        )
+        parts.append(
+            f'<text x="{tx(cxp):.2f}" y="{ty(num_y) + 4 * stroke_scale:.2f}" text-anchor="middle" '
+            f'font-family="Segoe UI, Arial, sans-serif" font-size="{12 * stroke_scale:.0f}" fill="#0b3d7a">{pos + 1}</text>'
         )
 
 
@@ -497,14 +619,42 @@ def render_svg_string(
     label_font = (32.0 if pdf else 26.0) * k
 
     bg = "#ffffff" if pdf else "#f7f6f2"
+    # Compact sash box table for interactive handle drag: "i;x0;x1;y0;y1;nx0;nx1|..."
+    _sh_rows = []
+    for _sp in (model.metadata or {}).get("shutters") or []:
+        if not isinstance(_sp, Mapping) or _sp.get("role") != "glass":
+            continue
+        _sh_rows.append(
+            "{i};{x0:.1f};{x1:.1f};{y0:.1f};{y1:.1f};{nx0:.1f};{nx1:.1f}".format(
+                i=_sp.get("index"), x0=float(_sp.get("x0") or 0), x1=float(_sp.get("x1") or 0),
+                y0=float(_sp.get("y0") or 0), y1=float(_sp.get("y1") or 0),
+                nx0=float(_sp.get("nomX0") or _sp.get("x0") or 0), nx1=float(_sp.get("nomX1") or _sp.get("x1") or 0),
+            )
+        )
+    _sh_data = "|".join(_sh_rows)
     parts: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:.1f}" height="{h:.1f}" '
-        f'viewBox="0 0 {w:.1f} {h:.1f}">',
+        f'viewBox="0 0 {w:.1f} {h:.1f}" data-model-minx="{min_x:.3f}" data-model-maxy="{max_y:.3f}" '
+        f'data-model-system="{escape(str((model.metadata or {}).get("system") or "sliding"))}" '
+        f'data-shutters="{escape(_sh_data)}">',
         f"<title>{escape(model.product_type)} {model.width:g}x{model.height:g}</title>",
         f'<rect width="100%" height="100%" fill="{bg}"/>',
         '<defs><marker id="slideArrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">'
         '<path d="M0,0 L8,4 L0,8 Z" fill="#0b3d7a"/></marker></defs>',
     ]
+
+    # Grid / partition designer — dedicated clean-2D rendering from metadata
+    if str((model.metadata or {}).get("system") or "") == "grid":
+        _meta = model.metadata or {}
+        _finish = str(_meta.get("handle_finish") or "silver")
+        _draw_grid_svg(
+            parts, tx=tx, ty=ty, meta=_meta, k=k, W=float(model.width), H=float(model.height),
+            glass_fill=glass_fill, glass_stroke=glass_stroke, frame_stroke=frame_stroke,
+            dim_stroke=dim_stroke, dim_font=(44.0 if pdf else 36.0) * k,
+            label_font=(32.0 if pdf else 26.0) * k, finish=_finish, annotations=annotations, sw=sw_profile,
+        )
+        parts.append("</svg>")
+        return "\n".join(parts)
 
     # Glass first (filled), then profile outlines on top
     for pl in model.polylines:
@@ -560,12 +710,22 @@ def render_svg_string(
             )
 
     if annotations:
+        import re as _re
+        system = str(meta.get("system") or "sliding")
+        sys_role = {"casement": "OPENABLE", "openable": "OPENABLE", "bifold": "FOLD"}.get(system, "SLIDING")
+        shutters_by_idx = {
+            int(s["index"]): s
+            for s in (meta.get("shutters") or [])
+            if isinstance(s, Mapping) and s.get("index") is not None
+        }
         slide_idx = 0
         fix_idx = 0
         for name, x0, y0, x1, y1 in glasses:
             cx = (x0 + x1) / 2.0
             cy = (y0 + y1) / 2.0
             lname = (name or "").lower()
+            _m = _re.search(r"(\d+)", lname)
+            sp_meta = shutters_by_idx.get(int(_m.group(1))) if _m else None
             if "fix" in lname:
                 fix_idx += 1
                 panel_id = f"F{fix_idx}"
@@ -583,7 +743,7 @@ def render_svg_string(
             else:
                 slide_idx += 1
                 panel_id = f"S{slide_idx}"
-                role = "SLIDING"
+                role = sys_role
                 role_color = "#0b3d7a"
 
             chip_w, chip_h = 80 * k, 36 * k
@@ -604,12 +764,23 @@ def render_svg_string(
                 f"{escape(role)}</text>"
             )
 
+            # Slide-direction arrow (sliding only) — direction from the sash openDir
             if role == "SLIDING" and (x1 - x0) > 40:
-                ay = cy + (y1 - y0) * 0.05
-                if slide_idx == 1:
-                    _arrow(parts, tx=tx, ty=ty, x0=cx - (x1 - x0) * 0.28, y0=ay, x1=cx + (x1 - x0) * 0.22, y1=ay)
+                ay = cy - (y1 - y0) * 0.02
+                od = float(sp_meta.get("openDir") or 0) if sp_meta else 0.0
+                if od == 0:
+                    od = 1.0 if slide_idx % 2 == 1 else -1.0
+                halfw = (x1 - x0)
+                if od > 0:
+                    ax0, ax1 = cx - halfw * 0.26, cx + halfw * 0.24
                 else:
-                    _arrow(parts, tx=tx, ty=ty, x0=cx + (x1 - x0) * 0.28, y0=ay, x1=cx - (x1 - x0) * 0.22, y1=ay)
+                    ax0, ax1 = cx + halfw * 0.26, cx - halfw * 0.24
+                _arrow(parts, tx=tx, ty=ty, x0=ax0, y0=ay, x1=ax1, y1=ay)
+                parts.append(
+                    f'<text x="{tx(cx):.2f}" y="{ty(ay) + label_font * 0.95:.2f}" text-anchor="middle" '
+                    f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font * 0.8:.0f}" '
+                    f'font-weight="700" fill="#0b3d7a">{escape(panel_id)}</text>'
+                )
 
         W = float(model.width)
         H = float(model.height)
@@ -739,6 +910,9 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
             fold_right=lo.get("foldRight"),
             section_sizes=lo.get("sectionSizes"),
             handle_finish=lo.get("handleFinish"),
+            handle_level=lo.get("handleLevel"),
+            handle_overrides=lo.get("handleOverrides"),
+            grid=lo.get("gridSpec"),
         )
         return render_svg_string(
             job.drawing,

@@ -50,6 +50,9 @@ def generate_job(
     fold_right: int | None = None,
     section_sizes: Mapping[str, Any] | None = None,
     handle_finish: str | None = None,
+    handle_level: float | None = None,
+    handle_overrides: Mapping[Any, Any] | None = None,
+    grid: Mapping[str, Any] | None = None,
 ) -> JobResult:
     from WEOS.factory.layout_options import resolve_mesh_track, resolve_shutter_config
 
@@ -78,8 +81,11 @@ def generate_job(
 
     sys_kind = str(system or "sliding").strip().lower()
     is_bifold = sys_kind in ("bifold", "fold", "fold_sliding", "fold_and_sliding")
+    is_grid = sys_kind == "grid"
 
-    if is_bifold:
+    if is_grid:
+        shutter_cfg = {"glassCount": 1, "meshCount": 0, "opening": "center", "fixedShutters": []}
+    elif is_bifold:
         fl = int(fold_left) if fold_left is not None else 2
         fr = int(fold_right) if fold_right is not None else 1
         total_leaves = max(fl + fr, 1)
@@ -111,10 +117,13 @@ def generate_job(
         mesh_count=shutter_cfg["meshCount"],
         opening=shutter_cfg["opening"],
         fixed_shutters=shutter_cfg["fixedShutters"],
-        system="bifold" if is_bifold else "sliding",
+        system="bifold" if is_bifold else sys_kind,
         fold_left=fold_left,
         fold_right=fold_right,
         section_sizes=section_sizes,
+        handle_level=handle_level,
+        handle_overrides=handle_overrides,
+        grid=grid,
     )
     params = geometry_as_engine_dict(product)
     params["track_count"] = float(mesh_res["trackCount"])
