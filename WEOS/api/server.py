@@ -2384,8 +2384,10 @@ def api_engineering_seed_formulas(force: bool = False) -> dict[str, Any]:
 
 
 class MobileLoginBody(BaseModel):
-    mobile: str
+    # OTP-less login by any one of: mobile, quote number, or name. Name is optional.
+    mobile: str | None = None
     name: str | None = None
+    quoteNumber: str | None = None
 
 
 class QuoteBody(BaseModel):
@@ -2446,11 +2448,14 @@ def _db_error() -> HTTPException:
 
 @app.post("/api/auth/login")
 def api_auth_login(body: MobileLoginBody) -> dict[str, Any]:
-    """Mobile-number login (no OTP): valid number → find/create customer account."""
-    from WEOS.db.quote_store import login_by_mobile
+    """OTP-less login by mobile, quote number, OR name (name optional).
+
+    Returns the matched customer + their quotes (cross-device; DB is source of truth).
+    """
+    from WEOS.db.quote_store import login_flexible
 
     try:
-        return login_by_mobile(body.mobile, name=body.name)
+        return login_flexible(mobile=body.mobile, name=body.name, quote_number=body.quoteNumber)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:

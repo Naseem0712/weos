@@ -255,7 +255,7 @@ def draw_model_elevation(
         path.close()
         c.setFillColorRGB(0.88, 0.93, 0.97)  # very light
         c.setStrokeColorRGB(*glass_stroke)
-        c.setLineWidth(0.55)
+        c.setLineWidth(0.35)
         c.drawPath(path, fill=1, stroke=1)
 
     # Closed profile outlines (no fill)
@@ -268,14 +268,14 @@ def draw_model_elevation(
             path.lineTo(px(p.x), py(p.y))
         path.close()
         c.setStrokeColorRGB(*stroke)
-        c.setLineWidth(0.85)
+        c.setLineWidth(0.5)  # sleek profile outline
         c.drawPath(path, fill=0, stroke=1)
 
     for pl in model.polylines:
         if pl.closed or pl.layer == "GLASS" or len(pl.points) < 2:
             continue
         c.setStrokeColorRGB(*stroke)
-        c.setLineWidth(0.7)
+        c.setLineWidth(0.4)
         for a, b in zip(pl.points, pl.points[1:]):
             c.line(px(a.x), py(a.y), px(b.x), py(b.y))
 
@@ -284,10 +284,10 @@ def draw_model_elevation(
         is_il = "interlock" in lname or "meeting" in lname
         if is_il:
             c.setStrokeColorRGB(0.05, 0.28, 0.55)
-            c.setLineWidth(1.05)
+            c.setLineWidth(0.6)
         else:
             c.setStrokeColorRGB(*stroke if seg.layer == "PROFILES" else (0.45, 0.45, 0.45))
-            c.setLineWidth(0.6)
+            c.setLineWidth(0.38)
         c.line(px(seg.start.x), py(seg.start.y), px(seg.end.x), py(seg.end.y))
 
     # Hardware — hinge knuckles + lever handles as clean 2D OUTLINES (no fill)
@@ -541,7 +541,7 @@ def draw_model_elevation(
                 is_front = int(s.get("depth") or 1) == dmin
                 yy = int_y if is_front else ext_y
                 c.setStrokeColorRGB(0.05, 0.24, 0.48)
-                c.setLineWidth(1.6)
+                c.setLineWidth(1.0)
                 if is_front:
                     c.setDash(3, 2)
                 c.line(px(sx0), yy, px(sx1), yy)

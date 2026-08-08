@@ -44,17 +44,24 @@ def build_customer_pdf_bytes(payload: Mapping[str, Any]) -> bytes:
 
 
 def build_factory_pdf_bytes(payload: Mapping[str, Any]) -> bytes:
-    """Factory PDF — prefer Template Designer JSON, fallback to hardcoded layout."""
-    try:
-        from WEOS.factory.template_pdf import render_template_pdf
+    """Factory PDF — a dedicated PRODUCTION package, deliberately distinct from the
+    customer quotation: panel schedule, glass sizes, hardware BOM, cut list, weights
+    and optimization/nesting — and NO customer pricing/margins.
 
-        return render_template_pdf(payload, kind="factory")
+    The rich reportlab factory renderer is used as the primary path so the output is
+    always a proper factory document (never the MAR-QT commercial customer layout).
+    Template JSON is a fallback only.
+    """
+    try:
+        return _factory_reportlab(payload)
     except Exception:
-        _log.exception("factory template PDF failed; falling back to reportlab layout")
+        _log.exception("factory reportlab PDF failed; trying template layout")
         try:
-            return _factory_reportlab(payload)
+            from WEOS.factory.template_pdf import render_template_pdf
+
+            return render_template_pdf(payload, kind="factory")
         except Exception:
-            _log.exception("factory reportlab PDF failed; falling back to minimal text PDF")
+            _log.exception("factory template PDF failed; falling back to minimal text PDF")
             return _minimal_text_pdf("WEOS Factory Package", payload)
 
 
@@ -179,7 +186,37 @@ def _factory_reportlab(payload: Mapping[str, Any]) -> bytes:
         c.setFont("Helvetica", 7)
         c.drawRightString(W - 40, H - 128, "Scan → production")
 
-    y -= 20
+    # Customer/site reference (no pricing) so the shop floor knows the job.
+    cust = payload.get("customer") or payload.get("name")
+    if cust:
+        c.setFont("Helvetica", 9)
+        c.drawString(40, y, f"Job: {str(cust)}")
+        y -= 6
+
+    # Panel schedule — per-line dimensions, qty, section series and weight.
+    y -= 14
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(40, y, "Panel schedule")
+    y -= 14
+    c.setFont("Helvetica", 8)
+    for line in payload.get("lines") or []:
+        if y < 60:
+            c.showPage()
+            y = H - 50
+            c.setFont("Helvetica", 8)
+        w_ = line.get("width")
+        h_ = line.get("height")
+        q_ = line.get("qty")
+        wt = (line.get("weight") or {}).get("totalKg")
+        series = line.get("sectionSeries")
+        seg = f"  · series {series}" if series else ""
+        wtext = f"  · {wt} kg" if wt else ""
+        tc = (line.get("options") or {}).get("trackCount")
+        tctext = f"  · {tc} track" if tc else ""
+        c.drawString(40, y, f"{line.get('displayName')}  {w_}×{h_} mm  ×{q_}{tctext}{seg}{wtext}")
+        y -= 11
+
+    y -= 8
     c.setFont("Helvetica-Bold", 11)
     c.drawString(40, y, "Glass sizes")
     y -= 14
@@ -246,9 +283,27 @@ def _factory_reportlab(payload: Mapping[str, Any]) -> bytes:
             c.drawString(40, y, f"{p.get('qty')} × {p.get('item')}")
             y -= 11
 
+    wsum = (payload.get("combined") or {}).get("weight") or {}
+    if wsum:
+        y -= 12
+        if y < 80:
+            c.showPage()
+            y = H - 50
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(40, y, "Weight summary")
+        y -= 14
+        c.setFont("Helvetica", 8)
+        c.drawString(
+            40,
+            y,
+            f"Aluminium {wsum.get('aluminiumKg', 0)} kg  ·  Glass {wsum.get('glassKg', 0)} kg  ·  "
+            f"Hardware {wsum.get('hardwareKg', 0)} kg  ·  Total {wsum.get('totalKg', 0)} kg",
+        )
+        y -= 11
+
     y -= 16
     c.setFont("Helvetica", 8)
-    c.drawString(40, y, "No marketing content — machine-ready factory data only.")
+    c.drawString(40, y, "No marketing content — machine-ready factory data only. Pricing on customer quotation.")
     c.showPage()
     c.save()
     return buf.getvalue()

@@ -124,7 +124,9 @@ def _build_shutters(
     hlen = float(handle_length) if handle_length and handle_length > 0 else max(min(band_h * 0.16, 300.0), 120.0)
     hlen = min(hlen, band_h * 0.9)
     hw = max(fw * 0.5, 12.0)
-    overlap = min(iw, (band_w / G) * 0.35)
+    # Interlock lap: the front sash laps a FULL stile over the back sash so the two
+    # meeting stiles nest into a single tight interlock band (no mullion-like gap).
+    overlap = min(max(fw, iw), (band_w / G) * 0.45)
     hlevel = min(max(float(handle_level), 0.04), 0.96)
 
     overrides: dict[int, Mapping[str, Any]] = {}
@@ -1145,20 +1147,36 @@ def _build_shutter_profiles(model: DrawingModel, L: SlidingLayout, glass_panels:
     where two same-track sashes meet (e.g. the centre of a center-opening pair).
     """
     n = len(glass_panels)
+    # Determine meeting (interlock) sides from nominal adjacency + depth difference.
+    # A sliding sash that laps a differing-depth neighbour has a SQUARE meeting stile
+    # (no diagonal miter) so the centre reads as a clean interlock, not a mitred joint.
+    by_pos = sorted(glass_panels, key=lambda p: p.nom_x0)
+    pos_of = {id(p): k for k, p in enumerate(by_pos)}
+
+    def meeting_sides(sp: ShutterPanel) -> tuple[bool, bool]:
+        k = pos_of[id(sp)]
+        left_m = k > 0 and by_pos[k - 1].depth != sp.depth
+        right_m = k < len(by_pos) - 1 and by_pos[k + 1].depth != sp.depth
+        return left_m, right_m
+
     # Back (larger depth) first so front sashes overlap on top.
     for sp in sorted(glass_panels, key=lambda p: -p.depth):
         o, g = sp.outer, sp.glass
         fixed = not sp.operable
         prefix = "fix_shutter" if fixed else "shutter"
+        left_m, right_m = meeting_sides(sp)
         model.add_polyline(rect_polyline(o, closed=True, layer="PROFILES", name=f"{prefix}_{sp.index}_outer"))
         glass_name = f"fix_shutter_{sp.index}_glass" if fixed else f"shutter_{sp.index}_glass"
         model.add_polyline(rect_polyline(g, closed=True, layer="GLASS", name=glass_name))
-        for tag, p0, p1 in (
-            ("bl", Point(o.x0, o.y0), Point(g.x0, g.y0)),
-            ("br", Point(o.x1, o.y0), Point(g.x1, g.y0)),
-            ("tr", Point(o.x1, o.y1), Point(g.x1, g.y1)),
-            ("tl", Point(o.x0, o.y1), Point(g.x0, g.y1)),
-        ):
+        miters = (
+            ("bl", Point(o.x0, o.y0), Point(g.x0, g.y0), left_m),
+            ("br", Point(o.x1, o.y0), Point(g.x1, g.y0), right_m),
+            ("tr", Point(o.x1, o.y1), Point(g.x1, g.y1), right_m),
+            ("tl", Point(o.x0, o.y1), Point(g.x0, g.y1), left_m),
+        )
+        for tag, p0, p1, is_meeting in miters:
+            if is_meeting:
+                continue  # square interlock stile — no diagonal miter at the lap
             model.add_segment(Segment(p0, p1, layer="PROFILES", name=f"{prefix}_{sp.index}_miter_{tag}"))
 
     # Draw a meeting line ONLY where two same-track sashes butt together (no stray

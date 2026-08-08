@@ -172,6 +172,13 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
         options["grid"] = grid
     if line.get("sectionSeries"):
         options["sectionSeries"] = line.get("sectionSeries")
+    # User-entered names/labels must thread to the PDF specs (mesh / hardware /
+    # powder-coat colour). Read the merged layout options, then the raw line.
+    _opts_in = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    for _k in ("handleName", "meshName", "powderCoatName", "handleFinish"):
+        _v = lo.get(_k) or line.get(_k) or _opts_in.get(_k)
+        if _v:
+            options[_k] = _v
 
     result_base = {
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],

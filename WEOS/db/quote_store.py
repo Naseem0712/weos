@@ -92,6 +92,82 @@ def login_by_mobile(mobile: str, name: str | None = None) -> dict[str, Any]:
     return {"ok": True, "customer": cust, "quotes": quotes, "quoteCount": len(quotes)}
 
 
+def login_flexible(
+    mobile: str | None = None,
+    name: str | None = None,
+    quote_number: str | None = None,
+) -> dict[str, Any]:
+    """OTP-less login by mobile, quote number, OR name (any one; name optional).
+
+    Resolution priority: quote number → mobile → name.
+    * quote number (or quote id) → its customer (and all that customer's quotes)
+    * mobile → find-or-create customer keyed by mobile (existing behaviour)
+    * name → look up an existing customer by name (never creates a new account)
+    Returns the matched customer + their quotes; the DB is the source of truth.
+    """
+    _ensure_ready()
+    from sqlalchemy import func, select
+
+    from WEOS.db.models import Customer, Quote
+
+    qn = (quote_number or "").strip()
+    mob = (mobile or "").strip()
+    nm = (name or "").strip()
+
+    # 1) Quote number / quote id — the most specific handle.
+    if qn:
+        cust_dict: dict[str, Any] | None = None
+        cust_id: int | None = None
+        fallback_quote: dict[str, Any] | None = None
+        with session_scope() as s:
+            q = s.execute(
+                select(Quote).where((Quote.quote_number == qn) | (Quote.quote_id == qn))
+            ).scalar_one_or_none()
+            if q is None:
+                raise ValueError(f"No quote found for '{qn}'. Check the quote number.")
+            if q.customer_id:
+                cust = s.get(Customer, q.customer_id)
+                if cust is not None:
+                    cust_dict = cust.to_dict()
+                    cust_id = cust.id
+            if cust_id is None:
+                fallback_quote = q.to_dict()
+        if cust_id is not None:
+            quotes = list_quotes(customer_id=cust_id)
+            return {"ok": True, "customer": cust_dict, "quotes": quotes, "quoteCount": len(quotes), "matchedBy": "quote"}
+        return {"ok": True, "customer": None, "quotes": [fallback_quote], "quoteCount": 1, "matchedBy": "quote"}
+
+    # 2) Mobile number — find-or-create (existing OTP-less flow).
+    if mob:
+        res = login_by_mobile(mob, name=nm or None)
+        res["matchedBy"] = "mobile"
+        return res
+
+    # 3) Name only — look up an existing account (exact first, then partial). No create.
+    if nm:
+        cust_dict = None
+        cust_id = None
+        with session_scope() as s:
+            cust = s.execute(
+                select(Customer).where(func.lower(Customer.name) == nm.lower())
+            ).scalar_one_or_none()
+            if cust is None:
+                cust = s.execute(
+                    select(Customer).where(Customer.name.ilike(f"%{nm}%"))
+                ).scalars().first()
+            if cust is not None:
+                cust_dict = cust.to_dict()
+                cust_id = cust.id
+        if cust_id is None:
+            raise ValueError(
+                f"No customer found matching '{nm}'. Try your mobile or quote number."
+            )
+        quotes = list_quotes(customer_id=cust_id)
+        return {"ok": True, "customer": cust_dict, "quotes": quotes, "quoteCount": len(quotes), "matchedBy": "name"}
+
+    raise ValueError("Enter your mobile number, quote number, or name to continue.")
+
+
 def get_customer(customer_id: int) -> dict[str, Any] | None:
     _ensure_ready()
     from WEOS.db.models import Customer

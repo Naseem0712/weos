@@ -41,10 +41,16 @@ def render_template_pdf(
     except Exception:
         pass
 
-    # MAR-QT commercial layout (cover + drawings with W/H callouts + specs)
+    # MAR-QT commercial layout (cover + drawings with W/H callouts + specs).
+    # IMPORTANT: this is a CUSTOMER-facing commercial layout only. It must never
+    # be used for the factory package — otherwise the factory PDF comes out
+    # identical to the customer quotation (the `marqt_factory` template id also
+    # starts with "marqt"). Guard on the resolved kind AND the template's own kind.
+    tkind = str(template.get("kind") or kind).lower()
     layout = str(template.get("layoutStyle") or "").lower()
     block_types = {str(b.get("type") or "") for b in (template.get("blocks") or [])}
-    if layout == "marqt" or "line_items_marqt" in block_types or tid.startswith("marqt"):
+    is_marqt = layout == "marqt" or "line_items_marqt" in block_types or tid.startswith("marqt")
+    if kind != "factory" and tkind != "factory" and is_marqt:
         from WEOS.factory.marqt_pdf import render_marqt_pdf
 
         return render_marqt_pdf(template, payload)

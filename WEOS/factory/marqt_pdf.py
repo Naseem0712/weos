@@ -154,8 +154,11 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
     elif glass:
         lines.append(f"Glazing = {str(glass).replace('_', ' ')}")
     colour = opts.get("colour") or line.get("colour")
-    if colour:
-        lines.append(f"Profile Color = {str(colour).replace('_', ' ').title()}")
+    pc_name = opts.get("powderCoatName") or line.get("powderCoatName")
+    if pc_name and str(pc_name).strip():
+        lines.append(f"Colour / Powder-coat = {pc_name}")
+    elif colour:
+        lines.append(f"Colour / Powder-coat = {str(colour).replace('_', ' ').title()}")
     if section.get("seriesTitle"):
         lines.append(f"Series = {section['seriesTitle']}")
     # Prefer resolved track from layout (mesh may have shifted 2→3)
@@ -182,9 +185,6 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
         lines.append(f"Mesh = {mesh_name or 'Yes'} (track {float(tc or 3):g}, 1 panel wide)")
     elif mesh_name:
         lines.append(f"Mesh = {mesh_name}")
-    pc_name = opts.get("powderCoatName") or line.get("powderCoatName")
-    if pc_name:
-        lines.append(f"Powder Coat = {pc_name}")
     system = str((layout or {}).get("system") or opts.get("system") or "").lower()
     if system == "grid":
         lines.append("Type = Partition grid (per-cell fix/sliding/openable)")

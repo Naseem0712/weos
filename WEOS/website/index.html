@@ -209,9 +209,8 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
       </div>
       <div class="two">
         <div class="panel">
-          <div class="row" style="margin-bottom:.6rem">
+          <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
             <div class="grow"><label class="l">Project name</label><input id="cartName" value="WEOS Project"/></div>
-            <div class="grow"><label class="l">Customer</label><input id="cartCustomer" value="" placeholder="Customer name (rates + memory)"/></div>
             <div><label class="l">PDF Brand</label>
               <select id="pdfBrand">
                 <option value="marqt">MAR-QT Style</option>
@@ -220,9 +219,15 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
               </select>
             </div>
           </div>
+          <div class="row" style="margin-bottom:.6rem;align-items:flex-end;gap:.5rem .7rem;flex-wrap:wrap">
+            <div style="flex-basis:100%;margin-bottom:-.15rem"><span class="l" style="text-transform:uppercase;letter-spacing:.05em;opacity:.7">Project setup — mobile / name identifies the customer</span></div>
+            <div class="grow"><label class="l">Customer mobile</label><input id="projMobile" type="tel" inputmode="tel" placeholder="e.g. 9876543210"/></div>
+            <div class="grow"><label class="l">Customer name (optional)</label><input id="projCustName" placeholder="optional"/></div>
+            <!-- Hidden mirror: keeps rate-memory / save-load / bill-to data flow intact. -->
+            <input id="cartCustomer" type="hidden" value=""/>
+          </div>
           <div class="row">
             <div class="grow"><label class="l">Product</label><select id="lineProduct"></select></div>
-            <div class="grow"><label class="l">Section series (Excel)</label><select id="lineSeries"><option value="">— optional —</option></select></div>
           </div>
           <div class="row" style="margin-top:.5rem">
             <div><label class="l">W (mm)</label><input id="lineW" type="number" value="2050" style="width:90px"/></div>
@@ -248,6 +253,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;cursor:pointer">
               <input id="lineMesh" type="checkbox"/> Apply mesh
             </label>
+            <div id="wrapMeshName" style="display:none"><label class="l">Mesh name</label><input id="lineMeshName" type="text" placeholder="e.g. SS304 mesh" style="width:150px"/></div>
             <div><label class="l">Track</label>
               <select id="lineTrack" style="width:110px">
                 <option value="2" selected>2 track</option>
@@ -303,20 +309,16 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <div class="muted" style="font-size:.72rem;flex-basis:100%;min-width:150px">Widths/heights may be ratios or mm (scaled to fit). Set each cell's role below; sliding & openable get 2D handles, mesh = one panel wide.</div>
             <div id="gridCells" style="flex-basis:100%"></div>
           </div>
-          <div class="row" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
-            <div><label class="l">Handle name</label><input id="lineHandleName" type="text" placeholder="e.g. Ozone lever" style="width:150px"/></div>
-            <div><label class="l">Mesh name</label><input id="lineMeshName" type="text" placeholder="e.g. SS304 mesh" style="width:150px"/></div>
-            <div><label class="l">Powder-coat colour</label><input id="linePowderCoat" type="text" placeholder="e.g. RAL 9005 matt" style="width:170px"/></div>
-          </div>
-          <div class="row" style="margin-top:.5rem">
-            <div class="grow"><label class="l">Colour</label><select id="lineColour"><option value="white">White</option><option value="black_texture" selected>Black Texture</option><option value="wood_oak">Wood Oak</option></select></div>
-            <div class="grow"><label class="l">Handle</label><select id="lineHandle"><option value="standard">Standard</option><option value="premium" selected>Premium</option></select></div>
-            <div><label class="l">Handle finish</label>
-              <select id="lineHandleFinish" style="width:110px">
-                <option value="auto" selected>Auto (colour)</option>
-                <option value="silver">Silver</option>
-                <option value="black">Black</option>
-              </select>
+          <div class="row" style="margin-top:.5rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
+            <div class="grow"><label class="l">Colour / Powder-coat</label>
+              <select id="lineColour"><option value="white">White</option><option value="black_texture" selected>Black Texture</option><option value="wood_oak">Wood Oak</option></select>
+            </div>
+            <div><label class="l">Handle (type · finish · name)</label>
+              <div style="display:flex;gap:.35rem;flex-wrap:wrap">
+                <select id="lineHandle" style="width:95px"><option value="standard">Standard</option><option value="premium" selected>Premium</option></select>
+                <select id="lineHandleFinish" style="width:90px"><option value="auto" selected>Auto</option><option value="silver">Silver</option><option value="black">Black</option></select>
+                <input id="lineHandleName" type="text" placeholder="name (e.g. Ozone lever)" style="width:150px"/>
+              </div>
             </div>
             <div class="grow"><label class="l">Description</label><input id="lineDesc" placeholder="Customer-facing description"/></div>
           </div>
@@ -343,11 +345,11 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             </div>
           </div>
           <div class="row" style="margin-top:.75rem">
-            <button class="btn ghost sm" id="btnUndo">Undo</button>
-            <button class="btn ghost sm" id="btnRedo">Redo</button>
-            <button class="btn ghost sm" id="btnAutosave">Save</button>
-            <button class="btn sm" id="btnCalc">Calculate</button>
-            <label class="btn ghost sm" style="margin:0">Import<input id="importFile" type="file" accept=".csv,.xlsx" hidden/></label>
+            <button class="btn" id="btnCalc" title="Price the whole cart, then download PDFs below">Calculate price</button>
+            <button class="btn ghost sm" id="btnAutosave" title="Save this project">Save</button>
+            <button class="btn ghost sm" id="btnUndo" title="Undo last change">Undo</button>
+            <button class="btn ghost sm" id="btnRedo" title="Redo">Redo</button>
+            <label class="btn ghost sm" style="margin:0" title="Import lines from CSV/Excel">Import<input id="importFile" type="file" accept=".csv,.xlsx" hidden/></label>
             <label class="btn ghost sm" style="margin:0" title="Import DETA windows section catalogue">Sections Excel<input id="sectionsFile" type="file" accept=".xlsx" hidden/></label>
           </div>
           <div style="overflow:auto;margin-top:.8rem">
@@ -362,9 +364,9 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
               <div class="total" id="cartTotal">₹ —</div>
             </div>
             <div class="actions-inline">
-              <a class="btn ghost sm" id="linkQuote" href="#" target="_blank">Quotation JSON</a>
-              <a class="btn ghost sm" id="linkCust" href="#" target="_blank">Customer PDF</a>
-              <a class="btn sec sm" id="linkFact" href="#" target="_blank">Factory PDF</a>
+              <a class="btn sm" id="linkCust" href="#" target="_blank" title="Customer quotation: branding, sizes, specs, pricing, GST, terms.">📄 Customer Quote (PDF)</a>
+              <a class="btn sec sm" id="linkFact" href="#" target="_blank" title="Factory production sheet: panel schedule, glass sizes, hardware BOM, cut list, weights. No customer pricing.">🏭 Factory Sheet (PDF)</a>
+              <a class="btn ghost sm" id="linkQuote" href="#" target="_blank" title="Raw quotation data (JSON) — for integrations.">Quote data</a>
             </div>
           </div>
           <pre class="optbox" id="optBox">Optimization after Calculate</pre>
@@ -1199,8 +1201,21 @@ async function loadProjects() {
 
 async function loadProducts() {
   const data = await api('/api/products');
+  // Product list comes ONLY from the real Product Library (file-backed, user add/edit
+  // via Admin · Product Library). No dummy/sample options are injected here.
   state.products = data.products || [];
-  $('lineProduct').innerHTML = state.products.map(p => `<option value="${p.id}">${p.displayName}${p.manufacturingReady?'':' (catalogue)'}</option>`).join('');
+  const sel = $('lineProduct');
+  if (sel) {
+    // Cart shows only real, manufacturing-ready products from the Product Library.
+    // Stub/placeholder catalogue entries are hidden here (still editable in
+    // Admin · Product Library). Empty library → clear prompt, no dummy options.
+    const ready = state.products.filter(p => p.manufacturingReady);
+    if (!ready.length) {
+      sel.innerHTML = '<option value="" disabled selected>No products yet — add one in Product Library</option>';
+    } else {
+      sel.innerHTML = ready.map(p => `<option value="${p.id}">${p.displayName}</option>`).join('');
+    }
+  }
   try {
     const sec = await api('/api/sections');
     state.series = sec.series || [];
@@ -1384,7 +1399,7 @@ function syncDraftFromLine(ln) {
   if ($('secLeaf')) $('secLeaf').value = ss.leafStile != null ? ss.leafStile : '';
   if ($('lineHandleName')) $('lineHandleName').value = ln.handleName || '';
   if ($('lineMeshName')) $('lineMeshName').value = ln.meshName || '';
-  if ($('linePowderCoat')) $('linePowderCoat').value = ln.powderCoatName || '';
+  applyMeshNameVisibility();
   if (ln.grid && typeof ln.grid === 'object') {
     state.draftGrid = { cols: (ln.grid.cols || [1, 1]).slice(), rows: (ln.grid.rows || [1]).slice(), cells: (ln.grid.cells || []).map(x => ({ ...x })) };
     if ($('gridCols')) $('gridCols').value = state.draftGrid.cols.join(',');
@@ -1435,8 +1450,16 @@ function currentLineDraft() {
     grid: currentGridSpec(),
     handleName: ($('lineHandleName') && $('lineHandleName').value.trim()) || null,
     meshName: ($('lineMeshName') && $('lineMeshName').value.trim()) || null,
-    powderCoatName: ($('linePowderCoat') && $('linePowderCoat').value.trim()) || null,
+    // Powder-coat colour is merged into the single Colour field — use its label.
+    powderCoatName: colourLabel(),
   };
+}
+
+function colourLabel() {
+  const el = $('lineColour');
+  if (!el) return null;
+  const opt = el.options[el.selectedIndex];
+  return (opt && opt.textContent && opt.textContent.trim()) || el.value || null;
 }
 
 function scheduleLivePrice() {
@@ -1725,7 +1748,8 @@ async function openProject(id) {
   state.projectId = doc.projectId;
   state.lines = doc.lines || [];
   $('cartName').value = doc.name || '';
-  $('cartCustomer').value = doc.customer || '';
+  if ($('cartCustomer')) $('cartCustomer').value = doc.customer || '';
+  if ($('projCustName')) $('projCustName').value = doc.customer || '';
   state.memoryAskedFor = null;
   if (doc.lastCalculation?.price) {
     state.lastResult = doc.lastCalculation;
@@ -1816,13 +1840,19 @@ $('sectionsFile').onchange = async (ev) => {
     if (id === 'lineTrack') applyMeshTrackRules();
   });
 });
+function applyMeshNameVisibility() {
+  const on = !!($('lineMesh') && $('lineMesh').checked);
+  const w = $('wrapMeshName'); if (w) w.style.display = on ? '' : 'none';
+}
 if ($('lineMesh')) {
   $('lineMesh').addEventListener('change', () => {
     applyMeshTrackRules();
+    applyMeshNameVisibility();
     refreshPreview();
     scheduleLivePrice();
   });
 }
+applyMeshNameVisibility();
 // Flexible window-config + Fold & Sliding controls
 ['lineSystem','lineFoldPreset','lineGlassShutters','lineMeshShutters','lineFixShutters',
  'lineHandleFinish','lineHandleLevel','lineFoldLeft','lineFoldRight','secTop','secBottom','secJamb','secLeaf'].forEach(id => {
@@ -1839,7 +1869,7 @@ if ($('lineMesh')) {
   el.addEventListener('change', handler);
 });
 // Name inputs → refresh preview (names print in specs; also drive live spec panel)
-['lineHandleName','lineMeshName','linePowderCoat'].forEach(id => {
+['lineHandleName','lineMeshName'].forEach(id => {
   const el = $(id); if (!el) return;
   el.addEventListener('change', () => { refreshPreview(); scheduleLivePrice(); });
 });
@@ -1874,9 +1904,28 @@ if ($('btnAddPart')) {
   };
 }
 renderPartChips();
-if ($('cartCustomer')) {
-  $('cartCustomer').addEventListener('blur', () => maybeAskCustomerMemory());
+// Project-setup customer: mobile / optional name identify the customer for this
+// project. The hidden #cartCustomer mirrors the name (or mobile) so rate-memory,
+// save/load and PDF bill-to keep working without a per-window customer field.
+function syncProjectCustomer(){
+  const nm = ($('projCustName') && $('projCustName').value.trim()) || '';
+  const mob = ($('projMobile') && $('projMobile').value.trim()) || '';
+  const hidden = $('cartCustomer');
+  if (hidden) hidden.value = nm || mob || '';
 }
+['projMobile','projCustName'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('input', syncProjectCustomer);
+  el.addEventListener('change', () => {
+    syncProjectCustomer();
+    scheduleLivePrice();
+    if (id === 'projCustName') maybeAskCustomerMemory();
+  });
+});
+if ($('projCustName')) {
+  $('projCustName').addEventListener('blur', () => maybeAskCustomerMemory());
+}
+syncProjectCustomer();
 if ($('btnAgentRefresh')) $('btnAgentRefresh').onclick = refreshAgent;
 if ($('btnMemoryApply')) $('btnMemoryApply').onclick = () => applyCustomerMemoryFromBanner();
 if ($('btnMemoryDismiss')) $('btnMemoryDismiss').onclick = () => hideMemoryBanner(true);
@@ -1884,7 +1933,10 @@ $('btnNewFromDash').onclick = $('btnNewProj').onclick = async () => {
   state.projectId=null; state.lines=[]; state.lastResult=null;
   state.customerMemory=null; state.memoryAskedFor=null;
   hideMemoryBanner(false);
-  $('cartName').value='New WEOS Project'; $('cartCustomer').value='';
+  $('cartName').value='New WEOS Project';
+  if ($('cartCustomer')) $('cartCustomer').value='';
+  if ($('projCustName')) $('projCustName').value='';
+  if ($('projMobile')) $('projMobile').value='';
   $('cartTotal').textContent='₹ —'; renderCart(); setView('cart'); await ensureProject(); scheduleLivePrice();
 };
 $('btnRefreshProj').onclick = loadProjects;
@@ -3277,13 +3329,21 @@ async function weosRunAgent(){
 }
 
 async function weosLogin(){
-  const mob = ($('weosMobile').value||'').trim();
-  const nm = ($('weosName').value||'').trim();
-  if (!mob){ toast('Enter a mobile number'); return; }
+  // Login by ANY one of: mobile, quote number, or name. Name is optional.
+  // Fall back to the Project-setup mobile/name so the two stay in sync.
+  const mob = ($('weosMobile').value||'').trim() || ($('projMobile') && $('projMobile').value.trim()) || '';
+  const nm = ($('weosName').value||'').trim() || ($('projCustName') && $('projCustName').value.trim()) || '';
+  const qno = ($('weosQuote') && $('weosQuote').value.trim()) || '';
+  if (!mob && !qno && !nm){ toast('Enter a mobile number, quote number, or name'); return; }
   try {
-    const res = await api('/api/auth/login', { method:'POST', body:{ mobile: mob, name: nm||undefined } });
-    window.WEOS_AUTH = res.customer;
-    $('weosWho').textContent = `${res.customer.name||res.customer.mobile} · ${res.quoteCount} cloud quote(s)`;
+    const body = {};
+    if (mob) body.mobile = mob;
+    if (nm) body.name = nm;
+    if (qno) body.quoteNumber = qno;
+    const res = await api('/api/auth/login', { method:'POST', body });
+    window.WEOS_AUTH = res.customer || { mobile: mob, name: nm };
+    const who = res.customer ? (res.customer.name||res.customer.mobile) : (qno || nm || mob);
+    $('weosWho').textContent = `${who} · ${res.quoteCount} cloud quote(s)`;
     $('weosLoginRow').style.display = 'none';
     $('weosAuthed').style.display = 'block';
     weosRenderQuotes(res.quotes);
@@ -3347,8 +3407,9 @@ function weosMountAgentDock(){
     </div>
     <div id="weosBody" style="padding:12px">
       <div id="weosLoginRow">
-        <div style="font-size:12px;color:#475569;margin-bottom:6px">Login with your mobile number (no OTP):</div>
+        <div style="font-size:12px;color:#475569;margin-bottom:6px">Login (no OTP) — use any one: mobile, quote number, or name.</div>
         <input id="weosMobile" placeholder="Mobile number" style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px;box-sizing:border-box">
+        <input id="weosQuote" placeholder="Quote number (e.g. WQ-2026-00001)" style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px;box-sizing:border-box">
         <input id="weosName" placeholder="Name (optional)" style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px;box-sizing:border-box">
         <button id="weosLoginBtn" style="width:100%;padding:7px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer">Login</button>
       </div>

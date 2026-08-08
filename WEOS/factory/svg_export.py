@@ -440,13 +440,13 @@ def _draw_plan(
     shutters = [s for s in (meta.get("shutters") or []) if isinstance(s, Mapping)]
     y_mid = plan_y0 + plan_h / 2.0
     band = plan_h * 0.30
-    sw = 0.95 * stroke_scale
+    sw = 0.6 * stroke_scale
 
     # Outer frame / track box
     parts.append(
         f'<rect x="{tx(0):.2f}" y="{ty(plan_y0 + plan_h):.2f}" width="{tx(W) - tx(0):.2f}" '
         f'height="{ty(plan_y0) - ty(plan_y0 + plan_h):.2f}" fill="none" stroke="#222" '
-        f'stroke-width="{1.15 * stroke_scale:.2f}"/>'
+        f'stroke-width="{0.8 * stroke_scale:.2f}"/>'
     )
     parts.append(
         f'<text x="{tx(W / 2):.2f}" y="{ty(plan_y0 - 14 * stroke_scale):.2f}" text-anchor="middle" '
@@ -516,7 +516,7 @@ def _draw_plan(
         dash = f' stroke-dasharray="{5 * stroke_scale:.1f},{3 * stroke_scale:.1f}"' if is_front else ""
         parts.append(
             f'<line x1="{tx(x0):.2f}" y1="{ty(yy):.2f}" x2="{tx(x1):.2f}" y2="{ty(yy):.2f}" '
-            f'stroke="#0b3d7a" stroke-width="{3.0 * stroke_scale:.2f}"{dash} stroke-linecap="round"/>'
+            f'stroke="#0b3d7a" stroke-width="{1.8 * stroke_scale:.2f}"{dash} stroke-linecap="round"/>'
         )
         # End ticks
         for ex in (x0, x1):
@@ -635,10 +635,11 @@ def render_svg_string(
     glass_fill = "rgba(170, 205, 230, 0.22)" if pdf else "rgba(160, 200, 230, 0.18)"
     glass_stroke = "#2a6fad"
     dim_stroke = "#8b1e1a"
-    sw_profile = (1.45 if pdf else 1.25) * k
-    sw_seg = (1.1 if pdf else 0.95) * k
-    sw_grid = (1.15 if pdf else 0.95) * k
-    sw_interlock = (1.55 if pdf else 1.35) * k
+    # Sleek CAD linework — thin, crisp strokes (not heavy blobs)
+    sw_profile = (0.85 if pdf else 0.75) * k
+    sw_seg = (0.6 if pdf else 0.55) * k
+    sw_grid = (0.55 if pdf else 0.5) * k
+    sw_interlock = (0.95 if pdf else 0.85) * k
     dim_font = (44.0 if pdf else 36.0) * k
     label_font = (32.0 if pdf else 26.0) * k
 
