@@ -125,6 +125,10 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
     if product.get("_stub") or product.get("status") == "stub":
         return apply_selling_to_line_result(_stub_line_result(line, product), line)
 
+    # Thread the FULL window configuration (system / fold / grid / shutter counts /
+    # fix panels / section sizes / handle placement) into the job. Without this,
+    # every line was generated as a default sliding window regardless of the chosen
+    # system, so all types rendered identically in the preview + PDF.
     job = generate_job(
         width,
         height,
@@ -136,6 +140,18 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
         mesh=bool(lo.get("mesh")),
         track_count=lo.get("trackCount"),
         section_series=lo.get("sectionSeries") or line.get("sectionSeries"),
+        glass_count=lo.get("glassCount"),
+        mesh_count=lo.get("meshCount"),
+        opening=lo.get("opening"),
+        fixed_shutters=lo.get("fixShuttersRaw"),
+        system=lo.get("system"),
+        fold_left=lo.get("foldLeft"),
+        fold_right=lo.get("foldRight"),
+        section_sizes=lo.get("sectionSizes"),
+        handle_finish=lo.get("handleFinish"),
+        handle_level=lo.get("handleLevel"),
+        handle_overrides=lo.get("handleOverrides"),
+        grid=lo.get("gridSpec"),
     )
     quote = job.quotation.as_dict() if job.quotation else {}
     weight = job.weight.as_dict() if job.weight else {}
@@ -179,6 +195,32 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
         _v = lo.get(_k) or line.get(_k) or _opts_in.get(_k)
         if _v:
             options[_k] = _v
+
+    # Persist the resolved window configuration onto the result line's options so
+    # the PDF elevation renderer (which re-derives geometry via line_layout_options)
+    # reproduces the SAME window type. Otherwise the PDF re-generation, seeing no
+    # system on the calculated line, would fall back to sliding for every line.
+    options["system"] = lo.get("system") or "sliding"
+    if lo.get("glassCount") is not None:
+        options["glassShutters"] = lo.get("glassCount")
+    if lo.get("meshCount") is not None:
+        options["meshShutters"] = lo.get("meshCount")
+    if lo.get("opening"):
+        options["opening"] = lo.get("opening")
+    if lo.get("fixShuttersRaw") not in (None, ""):
+        options["fixShutters"] = lo.get("fixShuttersRaw")
+    if lo.get("foldLeft") is not None:
+        options["foldLeft"] = lo.get("foldLeft")
+    if lo.get("foldRight") is not None:
+        options["foldRight"] = lo.get("foldRight")
+    if lo.get("sectionSizes"):
+        options["sectionSizes"] = lo.get("sectionSizes")
+    if lo.get("handleLevel") is not None:
+        options["handleLevel"] = lo.get("handleLevel")
+    if lo.get("handleOverrides"):
+        options["handleOverrides"] = lo.get("handleOverrides")
+    if lo.get("gridSpec"):
+        options["grid"] = lo.get("gridSpec")
 
     result_base = {
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],

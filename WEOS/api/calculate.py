@@ -289,6 +289,7 @@ def products_catalog() -> list[dict[str, Any]]:
                     "defaults": pricing.get("defaultOptions") or {},
                     "catalogue": p.get("catalogue") or {},
                     "sectionSeries": p.get("sectionSeries"),
+                    "productType": p.get("productType"),
                     "manufacturingReady": not (p.get("_stub") or p.get("status") == "stub"),
                 }
             )

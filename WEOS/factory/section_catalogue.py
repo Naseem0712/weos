@@ -465,6 +465,17 @@ def import_excel(path: str | Path | None = None, *, sync_library: bool = True) -
             result["library"] = sync_catalogue_to_library()
         except Exception as exc:  # pragma: no cover - defensive
             result["library"] = {"ok": False, "error": str(exc)}
+    # Persist imported catalogue + product folders to the durable DB store so the
+    # Excel import survives Railway redeploys (ephemeral filesystem).
+    try:
+        from WEOS.db.product_store import snapshot_all, snapshot_dir
+
+        snapshot_dir("sections")
+        snapshot_all()
+        result["persisted"] = True
+    except Exception as exc:  # pragma: no cover - best-effort
+        result["persisted"] = False
+        result["persistError"] = str(exc)
     return result
 
 

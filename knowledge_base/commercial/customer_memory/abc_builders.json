@@ -44,7 +44,7 @@
       "saleUnit": "sqft"
     }
   ],
-  "askPrompt": "Is customer ke liye pichli baar jaisi commercial settings apply karni hain?",
+  "askPrompt": "Apply this customer's preferred commercial settings from previous quotations?",
   "askPromptEn": "Apply this customer's preferred commercial settings from previous quotations?",
   "applyPayload": {
     "colour": "black_texture",

@@ -361,7 +361,7 @@ def agent_status() -> dict[str, Any]:
 
 # ── Customer Memory ───────────────────────────────────────────────────────────
 
-ASK_PROMPT_HI = "Is customer ke liye pichli baar jaisi commercial settings apply karni hain?"
+ASK_PROMPT_HI = "Apply this customer's preferred commercial settings from previous quotations?"
 ASK_PROMPT_EN = "Apply this customer's preferred commercial settings from previous quotations?"
 
 

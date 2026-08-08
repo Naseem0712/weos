@@ -43,13 +43,46 @@ _initialised = False
 _last_error: str | None = _SA_IMPORT_ERROR
 _resolved_url: str | None = None
 _backend: str = "unavailable"
+# Which env var (if any) supplied the DATABASE_URL at engine-build time.
+_url_source: str | None = None
+
+# Env vars checked, in priority order, for a Postgres connection string.
+_DB_URL_KEYS = ("DATABASE_URL", "WEOS_DATABASE_URL", "POSTGRES_URL")
+
+
+def _database_url_source() -> tuple[str, str | None]:
+    """Return ``(raw_url, env_key)`` from the current process environment.
+
+    Read live from ``os.environ`` — on Railway the value is only injected at
+    process start, so this reflects exactly what the running process can see.
+    """
+    for key in _DB_URL_KEYS:
+        val = (os.environ.get(key) or "").strip()
+        if val:
+            return val, key
+    return "", None
+
+
+def _require_postgres() -> bool:
+    """When truthy, refuse the sqlite dev fallback (fail loudly instead)."""
+    return (os.environ.get("WEOS_REQUIRE_POSTGRES") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def on_railway() -> bool:
+    return bool(
+        os.environ.get("RAILWAY_ENVIRONMENT")
+        or os.environ.get("RAILWAY_PROJECT_ID")
+        or os.environ.get("RAILWAY_SERVICE_ID")
+    )
 
 
 def _normalise_url(raw: str) -> str:
     """Railway / Heroku hand out ``postgres://`` which SQLAlchemy rejects.
 
-    Normalise to the psycopg2 dialect and add sslmode when talking to a
-    non-local Postgres host (Railway requires TLS).
+    Normalise to the psycopg2 dialect. Handles both ``postgres://`` and
+    ``postgresql://`` (incl. Railway's private ``*.railway.internal`` host).
+    TLS is left to libpq / ``PGSSLMODE`` (Railway's private network does not
+    require sslmode); we no longer silently rewrite it here.
     """
     url = raw.strip()
     if url.startswith("postgres://"):
@@ -60,16 +93,27 @@ def _normalise_url(raw: str) -> str:
 
 
 def resolve_database_url() -> tuple[str, str]:
-    """Return ``(url, backend)`` — Postgres when configured, else sqlite dev fallback."""
-    raw = (
-        os.environ.get("DATABASE_URL")
-        or os.environ.get("WEOS_DATABASE_URL")
-        or os.environ.get("POSTGRES_URL")
-        or ""
-    ).strip()
+    """Return ``(url, backend)``.
+
+    Rule: **if DATABASE_URL (or an alias) is present and non-empty, ALWAYS use
+    Postgres.** sqlite is only ever chosen when no URL is configured. If the
+    Postgres connection later fails, that surfaces as a real error in the health
+    check — we never silently swap a failed Postgres for sqlite.
+    """
+    global _url_source
+    raw, source = _database_url_source()
+    _url_source = source
     if raw:
         url = _normalise_url(raw)
         return url, ("postgresql" if url.startswith("postgresql") else "external")
+
+    # No connection string configured.
+    if _require_postgres():
+        raise RuntimeError(
+            "DATABASE_URL is not set in this process but WEOS_REQUIRE_POSTGRES is on. "
+            "Set DATABASE_URL on the web service (e.g. ${{Postgres.DATABASE_URL}}) and redeploy. "
+            "Refusing the sqlite dev fallback in production."
+        )
 
     # Dev fallback — sqlite file through the SAME abstraction (clearly labelled).
     from WEOS.paths import data_dir
@@ -189,7 +233,12 @@ def db_available() -> bool:
 
 
 def health() -> dict[str, Any]:
-    """Diagnostic snapshot for the admin health endpoint (Part 10)."""
+    """Diagnostic snapshot for the admin health endpoint (Part 10).
+
+    Explains *why* a backend was chosen so a silent sqlite fallback on Railway is
+    obvious: reports whether the process actually sees DATABASE_URL, which env key
+    supplied it, and flags a misconfiguration when Postgres was expected.
+    """
     if _sa is None:
         return {
             "status": "ERROR",
@@ -197,8 +246,16 @@ def health() -> dict[str, Any]:
             "error": _SA_IMPORT_ERROR,
             "detail": "Install SQLAlchemy + psycopg2-binary and set DATABASE_URL.",
         }
+
+    raw, source = _database_url_source()
+    url_present = bool(raw)
+    railway = on_railway()
+
+    # Try to open the engine so we can surface a genuine Postgres connection error
+    # (missing driver, bad host, auth) instead of hiding it.
     connected = db_available()
-    return {
+
+    info: dict[str, Any] = {
         "status": "CONNECTED" if connected else "ERROR",
         "backend": _backend,
         "url": _safe_url(),
@@ -206,4 +263,24 @@ def health() -> dict[str, Any]:
         "error": None if connected else _last_error,
         "isProduction": _backend == "postgresql",
         "devFallback": _backend == "sqlite",
+        # Diagnostics for the sqlite-vs-postgres decision:
+        "databaseUrlPresent": url_present,
+        "databaseUrlSource": source,
+        "onRailway": railway,
+        "requirePostgres": _require_postgres(),
     }
+
+    # Misconfiguration: we fell back to sqlite even though we clearly should be
+    # on Postgres (running on Railway, or an operator forced strict mode).
+    if _backend == "sqlite" and (railway or _require_postgres()) and not url_present:
+        info["status"] = "MISCONFIGURED"
+        info["misconfigured"] = True
+        info["reason"] = (
+            "DATABASE_URL is NOT present in this running process, so WEOS used the "
+            "sqlite dev fallback. On Railway, variables are injected at container "
+            "start — set DATABASE_URL=${{Postgres.DATABASE_URL}} on THIS (web) "
+            "service, remove any stray/empty DATABASE_URL, then trigger a fresh "
+            "redeploy so the new process sees it. Re-check /api/admin/health for "
+            'backend: "postgresql".'
+        )
+    return info

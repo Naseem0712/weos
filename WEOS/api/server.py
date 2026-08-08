@@ -2705,6 +2705,14 @@ def _weos_init_database() -> None:
             _log.warning("WEOS DB not ready: %s", res.get("error"))
     except Exception:
         _log.exception("WEOS DB init failed on startup")
+    # Rehydrate the Product Library from the durable DB store (or seed it from the
+    # shipped files on first run). Keeps imported/edited products across redeploys.
+    try:
+        from WEOS.db.product_store import bootstrap as _product_bootstrap
+
+        _log.info("Product Library store: %s", _product_bootstrap())
+    except Exception:
+        _log.exception("Product Library rehydrate failed on startup")
 
 
 @app.on_event("startup")

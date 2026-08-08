@@ -360,6 +360,35 @@ class QuoteDocument(Base):
         }
 
 
+class LibraryFile(Base):
+    """Durable mirror of Product Library JSON files (products + section catalogue).
+
+    On Railway the container filesystem is ephemeral, so product folders written
+    under ``products_dir()`` are lost on every redeploy. Each JSON file in the
+    library is mirrored here (keyed by its path relative to ``products_dir()``) so
+    the library survives redeploys. On boot the app rehydrates the filesystem from
+    these rows; edits/imports write through to this table.
+    """
+
+    __tablename__ = "library_files"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    rel_path: Mapped[str] = mapped_column(String(400), unique=True, index=True, nullable=False)
+    product_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    kind: Mapped[str] = mapped_column(String(40), default="product")
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "relPath": self.rel_path,
+            "productId": self.product_id,
+            "kind": self.kind,
+            "updatedAt": _iso(self.updated_at),
+        }
+
+
 def _iso(dt: datetime | None) -> str | None:
     if dt is None:
         return None

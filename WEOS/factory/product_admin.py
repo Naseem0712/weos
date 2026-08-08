@@ -149,7 +149,18 @@ def create_product(payload: Mapping[str, Any]) -> dict[str, Any]:
                 "rates": {},
             },
         )
+    _mirror_to_db(pid)
     return get_admin_product(pid)
+
+
+def _mirror_to_db(product_id: str) -> None:
+    """Best-effort write-through of a product folder to the durable DB store."""
+    try:
+        from WEOS.db.product_store import snapshot_product
+
+        snapshot_product(product_id)
+    except Exception:  # pragma: no cover - persistence is best-effort
+        pass
 
 
 def update_product(product_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -208,6 +219,7 @@ def update_product(product_id: str, payload: Mapping[str, Any]) -> dict[str, Any
         if hw:
             _write_json(pdir / "rules" / "hardware.json", hw)
 
+    _mirror_to_db(product_id)
     return get_admin_product(product_id)
 
 
@@ -220,8 +232,15 @@ def delete_product(product_id: str, *, hard: bool = False) -> dict[str, Any]:
         import shutil
 
         shutil.rmtree(pdir)
+        try:
+            from WEOS.db.product_store import delete_product as _db_delete
+
+            _db_delete(product_id)
+        except Exception:  # pragma: no cover
+            pass
         return {"deleted": product_id, "hard": True}
     meta = _read_json(meta_path) if meta_path.is_file() else {"id": product_id}
     meta["status"] = "archived"
     _write_json(meta_path, meta)
+    _mirror_to_db(product_id)
     return {"deleted": product_id, "hard": False, "status": "archived"}
