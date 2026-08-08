@@ -741,6 +741,15 @@ def compute_two_track_layout(
         fix_panels.append(FixPanel("right", right_fix, "fix", outer, glass))
         mullions.append(Rect(slide_x1, slide_y0, track.x1 - right_fix, slide_y1))
 
+    # Casement/openable: a vertical mullion sits BETWEEN adjacent leaves. It is the
+    # member that carries the hinges (jamb side) and the meeting-stile lock. Emit a
+    # thin section on each interior leaf boundary so 2+ door windows read correctly
+    # (both live canvas and PDF draw L.mullions as clean 2D profiles).
+    if is_casement and len(glass_panels) >= 2:
+        for gp in glass_panels[1:]:
+            bx = float(gp.nom_x0)
+            mullions.append(Rect(bx - fw / 2.0, sliding_area.y0, bx + fw / 2.0, sliding_area.y1))
+
     tc = float(track_count) if track_count is not None else float(geometry.get("trackCount") or 2)
     if mesh and tc < 2.5:
         tc = 3.0

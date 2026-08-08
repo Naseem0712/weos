@@ -227,6 +227,14 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <!-- Hidden mirror: keeps rate-memory / save-load / bill-to data flow intact. -->
             <input id="cartCustomer" type="hidden" value=""/>
           </div>
+          <div class="row" style="margin-bottom:.6rem;align-items:flex-end;gap:.5rem .7rem;flex-wrap:wrap">
+            <div class="grow"><label class="l">Customer address (prints on quote)</label><input id="projCustAddress" placeholder="optional"/></div>
+            <div class="grow"><label class="l">Customer GSTIN</label><input id="projCustGst" placeholder="optional"/></div>
+          </div>
+          <div class="row" style="margin-bottom:.6rem;flex-wrap:wrap;gap:.5rem .7rem">
+            <div class="grow" style="flex-basis:100%"><label class="l">Quote description (prints on quote)</label><textarea id="projDescription" rows="2" placeholder="Optional note that prints on the customer quotation" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
+            <div class="grow" style="flex-basis:100%"><label class="l">Terms &amp; Conditions override (optional — defaults from Company Setup)</label><textarea id="projTerms" rows="3" placeholder="Leave blank to use the company default terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
+          </div>
           <div class="row">
             <div class="grow"><label class="l">Product</label><select id="lineProduct"></select></div>
           </div>
@@ -265,7 +273,10 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <div class="muted" id="meshHint" style="font-size:.78rem;flex:1"></div>
           </div>
           <div class="row" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
-            <div><label class="l">System</label>
+            <!-- System is now implied by the selected Product (merged into Product).
+                 The control is kept hidden so its value keeps flowing to
+                 calculate / geometry / PDF, and applySystemUiRules() still works. -->
+            <div id="wrapSystem" style="display:none">
               <select id="lineSystem" style="width:150px">
                 <option value="sliding" selected>Sliding</option>
                 <option value="casement">Casement / Openable</option>
@@ -572,7 +583,10 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           </div>
           <div class="row" style="margin-top:.5rem">
             <div class="grow"><label class="l">PAN</label><input id="coPan"/></div>
-            <div class="grow"><label class="l">Bank details</label><input id="coBank"/></div>
+            <div class="grow"><label class="l">Bank details (prints on quote)</label><input id="coBank" placeholder="Bank · A/c No · IFSC · Branch"/></div>
+          </div>
+          <div class="row" style="margin-top:.5rem">
+            <div class="grow" style="flex-basis:100%"><label class="l">Default Terms &amp; Conditions (prints on every quote unless overridden)</label><textarea id="coTerms" rows="5" placeholder="One term per line…" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem;font:inherit"></textarea></div>
           </div>
           <div class="row" style="margin-top:.7rem;align-items:center">
             <button class="btn" id="btnCoSave">Save company</button>
@@ -1221,6 +1235,7 @@ async function loadProducts() {
       sel.innerHTML = selectable.map(p => `<option value="${p.id}">${p.displayName || p.id}${p.manufacturingReady ? '' : ' (catalogue)'}</option>`).join('');
       if (prev && selectable.some(p => p.id === prev)) sel.value = prev;
     }
+    try { applyProductSystem(); } catch (_) {}
   }
   try {
     const sec = await api('/api/sections');
@@ -1373,6 +1388,33 @@ function applySystemUiRules() {
     const m = preset.split('+');
     if ($('lineFoldLeft')) $('lineFoldLeft').value = m[0];
     if ($('lineFoldRight')) $('lineFoldRight').value = m[1];
+  }
+}
+
+// "System" is merged into "Product": the chosen product implies its window
+// system. Map a product's declared type → geometry system and push it into the
+// hidden #lineSystem so calculate / geometry / PDF still receive it. Products
+// that don't declare a type keep the current system (default sliding).
+function systemForProduct(p) {
+  if (!p) return null;
+  const t = String(p.system || p.windowSystem || p.windowType || p.productType || p.type || '').toLowerCase();
+  if (!t) return null;
+  if (t.includes('casement') || t.includes('openable') || t.includes('opening')) return 'casement';
+  if (t.includes('bifold') || t.includes('fold')) return 'bifold';
+  if (t.includes('grid') || t.includes('partition')) return 'grid';
+  if (t.includes('slid')) return 'sliding';
+  return null; // section_series / unknown → leave current selection
+}
+function applyProductSystem() {
+  const sel = $('lineProduct');
+  const sysEl = $('lineSystem');
+  if (!sel || !sysEl) return;
+  const p = (state.products || []).find(x => x && x.id === sel.value);
+  const sys = systemForProduct(p);
+  if (sys && sysEl.value !== sys) {
+    sysEl.value = sys;
+    state.draftHandleOverrides = {};
+    applySystemUiRules();
   }
 }
 
@@ -1720,13 +1762,27 @@ function updatePdfLinks(){
   $('linkFact').href = `${API_BASE}/api/projects/${id}/factory-pdf`+q;
 }
 
+// Project-setup bill-to + quote text that must persist and print on the quote.
+function projectBillTo() {
+  const val = id => ($(id) && $(id).value.trim()) || '';
+  // Send empty strings (not null) so clearing a field also persists/clears it.
+  return {
+    customerMobile: val('projMobile'),
+    customerAddress: val('projCustAddress'),
+    customerGst: val('projCustGst'),
+    description: ($('projDescription') && $('projDescription').value) || '',
+    terms: ($('projTerms') && $('projTerms').value) || '',
+  };
+}
+
 async function ensureProject() {
   if (state.projectId) return state.projectId;
   const doc = await api('/api/projects', {method:'POST', body:{
     name: $('cartName').value || 'WEOS Project',
     customer: $('cartCustomer').value || '',
     lines: state.lines,
-    status: 'draft'
+    status: 'draft',
+    ...projectBillTo()
   }});
   state.projectId = doc.projectId;
   updatePdfLinks();
@@ -1737,7 +1793,8 @@ async function ensureProject() {
 async function saveProject(silent) {
   await ensureProject();
   const doc = await api('/api/projects/'+state.projectId, {method:'PUT', body:{
-    name: $('cartName').value, customer: $('cartCustomer').value, lines: state.lines
+    name: $('cartName').value, customer: $('cartCustomer').value, lines: state.lines,
+    ...projectBillTo()
   }});
   if (!silent) toast('Saved v'+doc.version);
   updatePdfLinks();
@@ -1756,6 +1813,11 @@ async function openProject(id) {
   $('cartName').value = doc.name || '';
   if ($('cartCustomer')) $('cartCustomer').value = doc.customer || '';
   if ($('projCustName')) $('projCustName').value = doc.customer || '';
+  if ($('projMobile')) $('projMobile').value = doc.customerMobile || '';
+  if ($('projCustAddress')) $('projCustAddress').value = doc.customerAddress || '';
+  if ($('projCustGst')) $('projCustGst').value = doc.customerGst || '';
+  if ($('projDescription')) $('projDescription').value = doc.description || '';
+  if ($('projTerms')) $('projTerms').value = doc.terms || '';
   state.memoryAskedFor = null;
   if (doc.lastCalculation?.price) {
     state.lastResult = doc.lastCalculation;
@@ -1855,8 +1917,9 @@ if ($('adminSectionsFile')) $('adminSectionsFile').onchange = async (ev) => {
 };
 ['lineW','lineH','lineQty','lineColour','lineGlass','lineProduct','lineSeries','lineSaleUnit','lineSellRate','lineHandle','lineDesc','cartCustomer','lineTrack','partSize'].forEach(id => {
   const el = $(id); if (!el) return;
-  el.addEventListener('input', () => { scheduleLivePrice(); if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','partSize'].includes(id)) refreshPreview(); });
+  el.addEventListener('input', () => { if (id === 'lineProduct') applyProductSystem(); scheduleLivePrice(); if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','partSize'].includes(id)) refreshPreview(); });
   el.addEventListener('change', () => {
+    if (id === 'lineProduct') applyProductSystem();
     scheduleLivePrice();
     if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','lineSeries'].includes(id)) refreshPreview();
     if (id === 'cartCustomer') maybeAskCustomerMemory();
@@ -1942,8 +2005,14 @@ function syncProjectCustomer(){
   el.addEventListener('change', () => {
     syncProjectCustomer();
     scheduleLivePrice();
+    if (typeof scheduleSave === 'function') scheduleSave();
     if (id === 'projCustName') maybeAskCustomerMemory();
   });
+});
+// New bill-to + quote-text fields persist via autosave (they print on the quote).
+['projCustAddress','projCustGst','projDescription','projTerms'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('change', () => { if (typeof scheduleSave === 'function') scheduleSave(); });
 });
 if ($('projCustName')) {
   $('projCustName').addEventListener('blur', () => maybeAskCustomerMemory());
@@ -1960,6 +2029,7 @@ $('btnNewFromDash').onclick = $('btnNewProj').onclick = async () => {
   if ($('cartCustomer')) $('cartCustomer').value='';
   if ($('projCustName')) $('projCustName').value='';
   if ($('projMobile')) $('projMobile').value='';
+  ['projCustAddress','projCustGst','projDescription','projTerms'].forEach(id => { if ($(id)) $(id).value=''; });
   $('cartTotal').textContent='₹ —'; renderCart(); setView('cart'); await ensureProject(); scheduleLivePrice();
 };
 $('btnRefreshProj').onclick = loadProjects;
@@ -3027,6 +3097,7 @@ async function initCompany() {
     $('coStateCode').value = c.stateCode || '';
     $('coPan').value = c.pan || '';
     $('coBank').value = c.bankDetails || '';
+    if ($('coTerms')) $('coTerms').value = c.terms || '';
     renderCompanyPreview();
     const img = $('coLogoImg');
     if (img) { img.src = API_BASE+'/api/company/logo?t='+Date.now(); img.onload = () => img.style.display=''; img.onerror = () => img.style.display='none'; }
@@ -3051,6 +3122,7 @@ if ($('btnCoSave')) $('btnCoSave').onclick = async () => {
       website: $('coWebsite').value, phone: $('coPhone').value, email: $('coEmail').value,
       tagline: $('coTagline').value, stateCode: $('coStateCode').value, pan: $('coPan').value,
       bankDetails: $('coBank').value,
+      terms: ($('coTerms') && $('coTerms').value) || '',
     };
     await api('/api/company', {method:'PUT', body});
     toast('Company saved');

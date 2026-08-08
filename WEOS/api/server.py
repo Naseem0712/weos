@@ -200,6 +200,12 @@ class ProjectCreate(BaseModel):
     customer: str = ""
     status: str = "draft"
     lines: list[CartLine] = Field(default_factory=list)
+    # Bill-to (from Project Setup — mobile/name identify the customer) + quote text.
+    customerMobile: str | None = None
+    customerAddress: str | None = None
+    customerGst: str | None = None
+    description: str | None = None
+    terms: str | None = None
 
 
 class ProjectUpdate(BaseModel):
@@ -207,6 +213,11 @@ class ProjectUpdate(BaseModel):
     customer: str | None = None
     status: str | None = None
     lines: list[CartLine] | None = None
+    customerMobile: str | None = None
+    customerAddress: str | None = None
+    customerGst: str | None = None
+    description: str | None = None
+    terms: str | None = None
 
 
 class ProjectCalculateOpts(BaseModel):
@@ -290,6 +301,7 @@ class CompanyBody(BaseModel):
     pan: str | None = None
     bankDetails: str | None = None
     cin: str | None = None
+    terms: str | None = None
 
 
 class CustomerProfileBody(BaseModel):
@@ -619,29 +631,45 @@ def _pdf_response(
     created_at = doc.get("createdAt")
     updated_at = doc.get("updatedAt")
     version = int(doc.get("version") or 1)
+    # Bill-to identity: mobile OR name identifies the customer (name optional).
+    cust_name = (doc.get("customer") or "").strip()
+    cust_mobile = (doc.get("customerMobile") or "").strip()
+    bill_to = cust_name or cust_mobile or "—"
     payload = {
         **result,
         "projectId": project_id,
-        "customer": doc.get("customer"),
+        "customer": bill_to,
         "name": doc.get("name"),
         "brand": brand or doc.get("brand") or "woodenmax",
         "templateId": template_id,
         "createdAt": created_at,
         "updatedAt": updated_at,
         "version": version,
+        # Per-quote description + terms (terms override the company default).
+        "description": doc.get("description"),
         "terms": doc.get("terms"),
         # Absolute base + stable ref so the PDF QR opens the quote from the DB.
         "publicBaseUrl": _public_base_url(request),
         "quoteRef": doc.get("quoteId") or doc.get("quoteNumber") or project_id,
     }
-    # Bill-to details auto-filled from the saved customer profile
+    # Bill-to profile: saved customer profile first, then overlay the Project-Setup
+    # values (mobile/address/GST) so the bill-to prints even without a saved profile.
+    profile: dict[str, Any] = {}
     try:
         from WEOS.factory.customer_store import load_customer_profile
 
-        if doc.get("customer"):
-            payload["customerProfile"] = load_customer_profile(str(doc["customer"]))
+        if cust_name:
+            profile = dict(load_customer_profile(cust_name) or {})
     except Exception:
-        pass
+        profile = {}
+    if cust_mobile and not profile.get("phone"):
+        profile["phone"] = cust_mobile
+    if doc.get("customerAddress") and not profile.get("address"):
+        profile["address"] = doc.get("customerAddress")
+    if doc.get("customerGst") and not profile.get("gstNo"):
+        profile["gstNo"] = doc.get("customerGst")
+    if profile:
+        payload["customerProfile"] = profile
     # Print an "Updated on" date automatically when an old quote is edited
     try:
         from datetime import datetime as _dt
@@ -916,6 +944,10 @@ def api_create_project(body: ProjectCreate) -> dict[str, Any]:
     doc = empty_project(name=body.name, customer=body.customer)
     doc["status"] = body.status or "draft"
     doc["lines"] = [ln.model_dump() for ln in body.lines]
+    for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms"):
+        _val = getattr(body, _fld, None)
+        if _val is not None:
+            doc[_fld] = _val
     return save_project(doc, action="create")
 
 
@@ -941,6 +973,10 @@ def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
         doc["status"] = body.status
     if body.lines is not None:
         doc["lines"] = [ln.model_dump() for ln in body.lines]
+    for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms"):
+        _val = getattr(body, _fld, None)
+        if _val is not None:
+            doc[_fld] = _val
     return save_project(doc, action="update")
 
 

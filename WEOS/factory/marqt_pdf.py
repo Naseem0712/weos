@@ -32,6 +32,28 @@ def _area_sqft(w: float, h: float) -> float:
     return round((w * h) / 1_000_000.0 * 10.7639, 2)
 
 
+# Uniform page margin (all four sides) used across every page.
+MARGIN = 40
+
+
+def _fit_font_size(c, text: str, max_width: float, base: float, *, bold: bool = False, minimum: float = 8.0) -> float:
+    """Largest font size ≤ base whose ``text`` fits within ``max_width`` (never < minimum)."""
+    font = "Helvetica-Bold" if bold else "Helvetica"
+    size = float(base)
+    if not text:
+        return size
+    while size > minimum and c.stringWidth(text, font, size) > max_width:
+        size -= 0.5
+    return size
+
+
+def _draw_fit(c, text: str, x: float, y: float, max_width: float, base: float, *, bold: bool = False, minimum: float = 8.0) -> None:
+    """Draw ``text`` at (x,y), auto-shrinking the font so it never overflows ``max_width``."""
+    size = _fit_font_size(c, text, max_width, base, bold=bold, minimum=minimum)
+    _set_font(c, size, bold=bold)
+    c.drawString(x, y, text)
+
+
 def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: float, *, track_count: int = 2):
     """Fallback schematic only — prefer draw_line_elevation (canvas geometry SVG)."""
     # Outer frame — outline drafting style
@@ -81,30 +103,56 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
     """
     from reportlab.lib.utils import ImageReader
 
-    from WEOS.factory.elevation_pdf import draw_line_model_elevation
-    from WEOS.factory.image_engine import svg_to_png_bytes
+    from WEOS.factory.image_engine import svg_to_png_bytes, svg_to_rl_drawing
     from WEOS.factory.svg_export import elevation_svg_for_line
 
     w = float(line.get("width") or 0)
     h = float(line.get("height") or 0)
 
-    if draw_line_model_elevation(c, line, x, y, box_w, box_h):
-        return True
-
+    # The live canvas is rendered by svg_export.render_svg_string. To guarantee the
+    # PDF matches the canvas 1:1 (same geometry, labels, hinges, mullions, arrows,
+    # grid cell labels, fold L/R leaves), embed that SAME SVG as a VECTOR drawing.
     svg = elevation_svg_for_line(line, style="pdf")
     if not svg:
         prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
         svg = (prev or {}).get("svg")
+
     if svg:
-        png = svg_to_png_bytes(str(svg), scale=1.0)
+        # 1) Vector (crisp, identical to canvas) — preferred.
+        try:
+            drawing = svg_to_rl_drawing(str(svg))
+            if drawing is not None and getattr(drawing, "width", 0) and getattr(drawing, "height", 0):
+                from reportlab.graphics import renderPDF
+
+                dwid, dhei = float(drawing.width), float(drawing.height)
+                scale = min(box_w / dwid, box_h / dhei)
+                dw, dh = dwid * scale, dhei * scale
+                drawing.scale(scale, scale)
+                drawing.width, drawing.height = dw, dh
+                renderPDF.draw(drawing, c, x + (box_w - dw) / 2.0, y + (box_h - dh))
+                return True
+        except Exception:
+            _log.exception("svg vector embed failed; trying raster/model fallback")
+
+        # 2) Raster fallback (still the canvas SVG, just rasterised).
+        png = svg_to_png_bytes(str(svg), scale=2.0)
         if png:
             img = ImageReader(io.BytesIO(png))
             iw, ih = img.getSize()
             if iw > 0 and ih > 0:
                 scale = min(box_w / float(iw), box_h / float(ih))
                 dw, dh = iw * scale, ih * scale
-                c.drawImage(img, x, y + (box_h - dh), width=dw, height=dh, mask="auto")
+                c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh), width=dw, height=dh, mask="auto")
                 return True
+
+    # 3) ReportLab model re-draw (only if the SVG path is unavailable).
+    try:
+        from WEOS.factory.elevation_pdf import draw_line_model_elevation
+
+        if draw_line_model_elevation(c, line, x, y, box_w, box_h):
+            return True
+    except Exception:
+        _log.exception("reportlab model elevation fallback failed")
 
     layout = line.get("layout") if isinstance(line.get("layout"), Mapping) else {}
     panels = list((layout or {}).get("panels") or [])
@@ -254,15 +302,17 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             return 0.0
 
     # —— Cover letter page ——
-    logo_h = _draw_logo(40, H - 34, 150, 46)
-    text_x = 40 + (170 if logo_h else 0)
+    M = MARGIN
+    # Logo — larger header size, aspect preserved, capped to a sensible box.
+    logo_h = _draw_logo(M, H - M, 190, 70)
+    text_x = M + (205 if logo_h else 0)
+    name_avail = (W - M) - text_x  # keep company name inside the right margin
     c.setFillColorRGB(*primary)
-    set_font(c, 16, bold=True)
-    c.drawString(text_x, H - 50, company)
+    _draw_fit(c, company, text_x, H - 52, name_avail, 18, bold=True, minimum=10)
     c.setFillColorRGB(0.3, 0.3, 0.3)
     set_font(c, 9)
-    c.drawString(text_x, H - 66, branding.get("tagline") or "Windows and Doors Quotation")
-    header_extra = H - 80
+    c.drawString(text_x, H - 68, (branding.get("tagline") or "Windows and Doors Quotation")[:90])
+    header_extra = H - 82
     if address:
         set_font(c, 8)
         c.setFillColorRGB(0.35, 0.35, 0.35)
@@ -279,39 +329,44 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         c.setFillColorRGB(0.35, 0.35, 0.35)
         c.drawString(text_x, header_extra, f"GSTIN: {gst}")
         header_extra -= 11
-    y = min(H - 118, header_extra - 8)
+    # Divider under the company header so the cover never reads as "blank".
+    header_bottom = min(H - 108, header_extra - 6, (H - M - logo_h - 8) if logo_h else H - 108)
+    c.setStrokeColorRGB(*primary)
+    c.setLineWidth(1)
+    c.line(M, header_bottom, W - M, header_bottom)
+    y = header_bottom - 20
     c.setFillColorRGB(0, 0, 0)
     set_font(c, 10, bold=True)
-    c.drawString(40, y, "To:")
+    c.drawString(M, y, "To:")
     set_font(c, 10)
-    c.drawString(60, y, str(customer).upper() if customer else "—")
+    c.drawString(M + 22, y, str(customer).upper() if customer and customer != "—" else "—")
     y -= 14
     set_font(c, 8)
     c.setFillColorRGB(0.3, 0.3, 0.3)
     if cust_profile.get("address"):
-        c.drawString(60, y, str(cust_profile["address"])[:110])
+        c.drawString(M + 22, y, str(cust_profile["address"])[:110])
         y -= 11
     cust_contact = " · ".join(
-        x for x in (cust_profile.get("contactPerson"), cust_profile.get("phone"), cust_profile.get("email")) if x
+        str(x) for x in (cust_profile.get("contactPerson"), cust_profile.get("phone"), cust_profile.get("email")) if x
     )
     if cust_contact:
-        c.drawString(60, y, cust_contact[:110])
+        c.drawString(M + 22, y, cust_contact[:110])
         y -= 11
     if cust_profile.get("gstNo"):
-        c.drawString(60, y, f"GSTIN: {cust_profile['gstNo']}")
+        c.drawString(M + 22, y, f"GSTIN: {cust_profile['gstNo']}")
         y -= 11
     c.setFillColorRGB(0, 0, 0)
     y -= 4
     set_font(c, 10)
     if project_name:
-        c.drawString(40, y, f"Project: {project_name}")
+        c.drawString(M, y, f"Project: {project_name}")
         y -= 16
-    c.drawString(40, y, f"Quote No: {qid}    Date: {qdate}")
+    c.drawString(M, y, f"Quote No: {qid}    Date: {qdate}")
     y -= 16
     if updated_on:
         c.setFillColorRGB(*accent)
         set_font(c, 9, bold=True)
-        c.drawString(40, y, f"Updated on: {updated_on}")
+        c.drawString(M, y, f"Updated on: {updated_on}")
         c.setFillColorRGB(0, 0, 0)
         set_font(c, 10)
         y -= 16
@@ -326,6 +381,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             "We thank you for your enquiry and are pleased to offer our windows and doors "
             "as per the enclosed design, specifications and value."
         )
+    text_w = W - 2 * M
     set_font(c, 10)
     for para in cover.split("\n"):
         # wrap
@@ -333,65 +389,97 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         line = ""
         for word in words:
             trial = (line + " " + word).strip()
-            if c.stringWidth(trial, c._fontname, 10) > 515:
-                c.drawString(40, y, line)
+            if c.stringWidth(trial, c._fontname, 10) > text_w:
+                c.drawString(M, y, line)
                 y -= 14
                 line = word
             else:
                 line = trial
         if line:
-            c.drawString(40, y, line)
+            c.drawString(M, y, line)
             y -= 14
         y -= 6
-    y -= 20
+
+    # —— Per-quote Description (optional) ——
+    description = str(payload.get("description") or "").strip()
+    if description:
+        y -= 6
+        c.setFillColorRGB(*primary)
+        set_font(c, 10, bold=True)
+        c.drawString(M, y, "Description")
+        y -= 15
+        c.setFillColorRGB(0, 0, 0)
+        set_font(c, 9)
+        for para in description.split("\n"):
+            words = para.split()
+            line = ""
+            for word in words:
+                trial = (line + " " + word).strip()
+                if c.stringWidth(trial, c._fontname, 9) > text_w:
+                    c.drawString(M, y, line)
+                    y -= 13
+                    line = word
+                else:
+                    line = trial
+            if line:
+                c.drawString(M, y, line)
+                y -= 13
+            y -= 4
+
+    y -= 16
     set_font(c, 9)
-    c.drawString(40, y, "Enclosures:")
+    c.drawString(M, y, "Enclosures:")
     y -= 14
-    c.drawString(50, y, "a) Design / Specifications / Value")
+    c.drawString(M + 10, y, "a) Design / Specifications / Value")
     y -= 12
-    c.drawString(50, y, "b) Terms & Conditions")
+    c.drawString(M + 10, y, "b) Terms & Conditions")
     y -= 30
     if phone or email or address:
         set_font(c, 8)
         c.setFillColorRGB(0.35, 0.35, 0.35)
         if address:
-            c.drawString(40, y, address)
+            c.drawString(M, y, address[:120])
             y -= 12
         contact = " · ".join(x for x in (phone, email) if x)
         if contact:
-            c.drawString(40, y, contact)
+            c.drawString(M, y, contact[:120])
     set_font(c, 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawCentredString(W / 2, 28, f"powered by WEOS — page 1")
+    c.drawString(M, M / 2 + 8, "powered by WEOS — page 1")
     c.showPage()
 
     # —— Line items pages ——
+    # Uniform margins on every side; SPEC/QTY/RATE/AMOUNT columns anchored to them.
+    col_spec = M + 218
+    col_qty = W - 165
+    col_rate = W - 105
+    col_amt = W - M
+
     def header(page_no: int):
         c.setFillColorRGB(*primary)
-        set_font(c, 12, bold=True)
-        c.drawString(36, H - 36, company)
+        _draw_fit(c, company, M, H - M, (col_qty - 40) - M, 12, bold=True, minimum=8)
         set_font(c, 8)
         c.setFillColorRGB(0.25, 0.25, 0.25)
-        c.drawRightString(W - 36, H - 32, f"Quote No. {qid}")
-        c.drawRightString(W - 36, H - 44, f"Quote Date {qdate}")
+        c.drawRightString(W - M, H - (M - 4), f"Quote No. {qid}")
+        c.drawRightString(W - M, H - (M + 8), f"Quote Date {qdate}")
         if updated_on:
             c.setFillColorRGB(*accent)
-            c.drawRightString(W - 36, H - 55, f"Updated {updated_on}")
+            c.drawRightString(W - M, H - (M + 19), f"Updated {updated_on}")
             c.setFillColorRGB(0.25, 0.25, 0.25)
         c.setStrokeColorRGB(*primary)
         c.setLineWidth(1)
-        c.line(36, H - 52, W - 36, H - 52)
+        c.line(M, H - (M + 16), W - M, H - (M + 16))
         # column headers
-        yy = H - 68
+        yy = H - (M + 32)
         c.setFillColorRGB(*primary)
         set_font(c, 8, bold=True)
-        c.drawString(40, yy, "DESIGN")
-        c.drawString(262, yy, "SPECIFICATIONS")
-        c.drawRightString(430, yy, "QTY")
-        c.drawRightString(490, yy, f"RATE ({_rs})")
-        c.drawRightString(W - 40, yy, f"AMOUNT ({_rs})")
+        c.drawString(M, yy, "DESIGN")
+        c.drawString(col_spec, yy, "SPECIFICATIONS")
+        c.drawRightString(col_qty, yy, "QTY")
+        c.drawRightString(col_rate, yy, f"RATE ({_rs})")
+        c.drawRightString(col_amt, yy, f"AMOUNT ({_rs})")
         c.setStrokeColorRGB(0.75, 0.75, 0.75)
-        c.line(36, yy - 6, W - 36, yy - 6)
+        c.line(M, yy - 6, W - M, yy - 6)
         return yy - 18
 
     y = header(2)
@@ -400,14 +488,16 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     total_qty = 0
     grand = 0.0
 
+    # Elevation cell sized so THREE window rows fit per page with clean margins.
+    draw_w, draw_h = 200, 185
+    bottom_limit = M + 30  # keep clear of footer + bottom margin
+
     for idx, line in enumerate(lines):
-        # Design column needs room for annotated elevation + plan (enlarged for clarity)
-        draw_w, draw_h = 210, 250
-        need = max(draw_h + 28, 150)
-        if y < 80 + need:
+        need = draw_h + 24
+        if y < bottom_limit + need:
             set_font(c, 7)
             c.setFillColorRGB(0.5, 0.5, 0.5)
-            c.drawCentredString(W / 2, 28, f"powered by WEOS — page {page_no}")
+            c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
             c.showPage()
             page_no += 1
             y = header(page_no)
@@ -443,9 +533,9 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         # Design column — same geometry SVG as live canvas (not schematic stub)
         c.setFillColorRGB(*accent)
         set_font(c, 9, bold=True)
-        c.drawString(42, y + 4, code)
+        c.drawString(M + 2, y + 4, code)
         try:
-            draw_line_elevation(c, line, 38, y - draw_h, draw_w, draw_h)
+            draw_line_elevation(c, line, M, y - draw_h, draw_w, draw_h)
         except Exception:
             _log.exception("marqt elevation draw failed for line %d; leaving cell blank", idx)
 
@@ -459,29 +549,29 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         set_font(c, 7)
         sy = y
         for s in specs[:18]:
-            c.drawString(262, sy, s[:50])
+            c.drawString(col_spec, sy, s[:50])
             sy -= 9
 
         # Qty / Rate / Amount — currency symbol via Unicode font
         set_font(c, 8)
-        c.drawRightString(430, y, str(qty))
+        c.drawRightString(col_qty, y, str(qty))
         rate_str = f"{float(rate):,.2f}" if rate is not None else "—"
-        c.drawRightString(490, y, rate_str)
+        c.drawRightString(col_rate, y, rate_str)
         set_font(c, 8, bold=True)
-        c.drawRightString(W - 40, y, f"{float(amount):,.2f}")
+        c.drawRightString(col_amt, y, f"{float(amount):,.2f}")
 
         # row separator
         row_bottom = min(sy, y - draw_h - 10)
         c.setStrokeColorRGB(0.85, 0.85, 0.85)
         c.setLineWidth(0.5)
-        c.line(36, row_bottom, W - 36, row_bottom)
+        c.line(M, row_bottom, W - M, row_bottom)
         y = row_bottom - 14
 
     # Totals block
     if y < 140:
         set_font(c, 7)
         c.setFillColorRGB(0.5, 0.5, 0.5)
-        c.drawCentredString(W / 2, 28, f"powered by WEOS — page {page_no}")
+        c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
         c.showPage()
         page_no += 1
         y = header(page_no)
@@ -505,39 +595,44 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     y -= 8
     c.setFillColorRGB(*primary)
     set_font(c, 9, bold=True)
-    c.drawString(40, y, "TOTALS")
+    c.drawString(M, y, "TOTALS")
     y -= 14
     c.setFillColorRGB(0, 0, 0)
     set_font(c, 8)
-    c.drawString(40, y, f"Total Area: {round(total_area, 3)} Sq.Ft.    Windows: {total_qty} Nos")
+    c.drawString(M, y, f"Total Area: {round(total_area, 3)} Sq.Ft.    Windows: {total_qty} Nos")
     y -= 12
-    c.drawString(40, y, f"Basic / Project Value: {money_text(basic_ex)}")
+    c.drawString(M, y, f"Basic / Project Value: {money_text(basic_ex)}")
     y -= 12
-    c.drawString(40, y, f"GST @ {gst_pct:g}%: {money_text(gst_amt)}")
+    c.drawString(M, y, f"GST @ {gst_pct:g}%: {money_text(gst_amt)}")
     y -= 16
     set_font(c, 12, bold=True)
     c.setFillColorRGB(*accent)
-    c.drawString(40, y, "Grand Total")
-    c.drawRightString(W - 40, y, money_text(project))
+    c.drawString(M, y, "Grand Total")
+    c.drawRightString(W - M, y, money_text(project))
     c.setFillColorRGB(0, 0, 0)
 
     set_font(c, 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawCentredString(W / 2, 28, f"powered by WEOS — page {page_no}")
+    c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
     c.showPage()
     page_no += 1
 
     # —— Terms page ——
+    text_w = W - 2 * M
     c.setFillColorRGB(*primary)
     set_font(c, 14, bold=True)
-    c.drawString(40, H - 50, "Terms & Conditions")
-    terms_text = ""
-    for b in template.get("blocks") or []:
-        if b.get("type") == "terms":
-            terms_text = str(b.get("text") or "")
-            break
+    c.drawString(M, H - (M + 14), "Terms & Conditions")
+    # Precedence: per-quote override → template block → Company Setup default → built-in.
+    terms_text = str(payload.get("terms") or "").strip()
     if not terms_text:
-        terms_text = payload.get("terms") or (
+        for b in template.get("blocks") or []:
+            if b.get("type") == "terms":
+                terms_text = str(b.get("text") or "").strip()
+                break
+    if not terms_text:
+        terms_text = str(branding.get("terms") or "").strip()
+    if not terms_text:
+        terms_text = (
             "1. Specs & sizes may differ 7–9 mm after site measurement.\n"
             "2. Pricing Ex-Works unless noted. GST extra as applicable.\n"
             "3. Payment as agreed. Order confirmation required.\n"
@@ -545,7 +640,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             "5. Quotation valid 15 days.\n"
             "6. Warranty: profile manufacturing defects as per policy."
         )
-    y = H - 80
+    y = H - (M + 40)
     c.setFillColorRGB(0, 0, 0)
     set_font(c, 9)
     for para in terms_text.split("\n"):
@@ -553,39 +648,68 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         line = ""
         for word in words:
             trial = (line + " " + word).strip()
-            if c.stringWidth(trial, c._fontname, 9) > 515:
-                c.drawString(40, y, line)
+            if c.stringWidth(trial, c._fontname, 9) > text_w:
+                c.drawString(M, y, line)
                 y -= 13
                 line = word
             else:
                 line = trial
         if line:
-            c.drawString(40, y, line)
+            c.drawString(M, y, line)
             y -= 13
         y -= 4
-        if y < 80:
+        if y < M + 40:
             c.showPage()
             page_no += 1
-            y = H - 50
+            y = H - (M + 10)
+
+    # —— Bank details (from Company Setup) ——
+    bank = str(branding.get("bankDetails") or "").strip()
+    if bank:
+        if y < M + 80:
+            c.showPage()
+            page_no += 1
+            y = H - (M + 10)
+        y -= 18
+        c.setFillColorRGB(*primary)
+        set_font(c, 11, bold=True)
+        c.drawString(M, y, "Bank Details")
+        y -= 15
+        c.setFillColorRGB(0, 0, 0)
+        set_font(c, 9)
+        for para in bank.split("\n"):
+            words = para.split()
+            line = ""
+            for word in words:
+                trial = (line + " " + word).strip()
+                if c.stringWidth(trial, c._fontname, 9) > text_w:
+                    c.drawString(M, y, line)
+                    y -= 13
+                    line = word
+                else:
+                    line = trial
+            if line:
+                c.drawString(M, y, line)
+                y -= 13
 
     y -= 30
     set_font(c, 9)
-    c.drawString(40, y, "For " + company)
+    c.drawString(M, y, "For " + company)
     y -= 50
-    c.drawString(40, y, "Authorized Signatory")
-    c.drawRightString(W - 40, y, "Customer Acceptance")
+    c.drawString(M, y, "Authorized Signatory")
+    c.drawRightString(W - M, y, "Customer Acceptance")
 
     # QR → absolute public URL that fetches this quote from the database when scanned.
     try:
         from WEOS.factory.pdf_qr import draw_quote_qr
 
-        draw_quote_qr(c, payload, x=W / 2 - 32, y=48, size=64, label="Scan to view quote")
+        draw_quote_qr(c, payload, x=M, y=M + 8, size=64, label="Scan to view quote")
     except Exception:
         pass
 
     set_font(c, 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawCentredString(W / 2, 28, f"powered by WEOS — page {page_no}")
+    c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
     c.showPage()
     c.save()
     return buf.getvalue()

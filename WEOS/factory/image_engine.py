@@ -36,6 +36,20 @@ def svg_to_png_bytes(svg: str, *, scale: float = 1.0) -> bytes | None:
     return None
 
 
+def svg_to_rl_drawing(svg: str):
+    """Best-effort SVG → ReportLab vector Drawing (svglib). Returns None if unavailable.
+
+    A vector Drawing lets the PDF embed the EXACT same elevation the live canvas
+    shows (identical geometry, labels, hardware) as crisp vectors — not a raster.
+    """
+    try:
+        from svglib.svglib import svg2rlg
+
+        return svg2rlg(io.BytesIO(svg.encode("utf-8")))
+    except Exception:
+        return None
+
+
 def svg_to_png_data_url(svg: str, *, scale: float = 1.0) -> str | None:
     raw = svg_to_png_bytes(svg, scale=scale)
     if raw is None:

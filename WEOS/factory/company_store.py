@@ -37,6 +37,7 @@ _FIELDS = (
     "pan",
     "bankDetails",
     "cin",
+    "terms",
 )
 
 
@@ -64,6 +65,7 @@ def _empty() -> dict[str, Any]:
         "pan": "",
         "bankDetails": "",
         "cin": "",
+        "terms": "",
         "logoPath": None,
         "logoUrl": None,
         "updatedAt": None,
@@ -159,7 +161,10 @@ def company_branding() -> dict[str, Any]:
     if name:
         branding["companyName"] = name.upper()
         branding["logoText"] = name.upper()
-    for key in ("address", "website", "phone", "email", "tagline", "gstNo", "state", "stateCode", "pan"):
+    for key in (
+        "address", "website", "phone", "email", "tagline", "gstNo",
+        "state", "stateCode", "pan", "bankDetails", "cin", "terms",
+    ):
         val = (doc.get(key) or "").strip()
         if val:
             branding[key] = val
