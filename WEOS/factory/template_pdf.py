@@ -212,13 +212,17 @@ def _render_reportlab(template: Mapping[str, Any], payload: Mapping[str, Any]) -
             c.setFillColorRGB(0, 0, 0)
 
         elif btype == "qr":
-            qid = payload.get("quotationId") or payload.get("projectId") or "WEOS"
-            pid = payload.get("projectId", "")
-            qr_data = f"weos://production/{quote(str(qid), safe='')}?project={quote(str(pid), safe='')}"
-            png = _qr_png(qr_data)
+            # Absolute public URL → opens the quote from the database when scanned.
+            from WEOS.factory.pdf_qr import quote_url
+
+            png = _qr_png(quote_url(payload))
             if png:
                 img = ImageReader(io.BytesIO(png))
                 c.drawImage(img, x, y - h, width=w, height=h, mask="auto")
+                c.setFont("Helvetica", 7)
+                c.setFillColorRGB(0.35, 0.35, 0.35)
+                c.drawCentredString(x + w / 2.0, y - h - 9, "Scan to view quote")
+                c.setFillColorRGB(0, 0, 0)
 
         elif btype == "glass_table":
             c.setFont("Helvetica-Bold", 10)

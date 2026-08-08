@@ -575,6 +575,14 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     c.drawString(40, y, "Authorized Signatory")
     c.drawRightString(W - 40, y, "Customer Acceptance")
 
+    # QR → absolute public URL that fetches this quote from the database when scanned.
+    try:
+        from WEOS.factory.pdf_qr import draw_quote_qr
+
+        draw_quote_qr(c, payload, x=W / 2 - 32, y=48, size=64, label="Scan to view quote")
+    except Exception:
+        pass
+
     set_font(c, 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
     c.drawCentredString(W / 2, 28, f"powered by WEOS — page {page_no}")

@@ -579,7 +579,34 @@ def _pdf_filename(quote_no: Any, customer: Any, project_id: str, kind: str) -> s
     return f"{base}.pdf"
 
 
-def _pdf_response(project_id: str, kind: str, brand: str | None = None, template_id: str | None = None) -> Response:
+def _public_base_url(request: Request | None) -> str:
+    """Absolute base URL for QR/share links. Prefers explicit env, then Railway
+    public domain, then the incoming request base URL (proxy-aware)."""
+    env = (os.environ.get("WEOS_PUBLIC_BASE_URL") or "").strip()
+    if env:
+        return env.rstrip("/")
+    dom = (os.environ.get("RAILWAY_PUBLIC_DOMAIN") or "").strip()
+    if dom:
+        if not dom.startswith("http://") and not dom.startswith("https://"):
+            dom = "https://" + dom
+        return dom.rstrip("/")
+    if request is not None:
+        try:
+            return str(request.base_url).rstrip("/")
+        except Exception:
+            return ""
+    return ""
+
+
+def _pdf_response(
+    project_id: str,
+    kind: str,
+    brand: str | None = None,
+    template_id: str | None = None,
+    *,
+    request: Request | None = None,
+    inline: bool = False,
+) -> Response:
     # load_project raises FileNotFoundError → 404 (handled by the caller).
     doc = load_project(project_id)
     try:
@@ -603,6 +630,9 @@ def _pdf_response(project_id: str, kind: str, brand: str | None = None, template
         "updatedAt": updated_at,
         "version": version,
         "terms": doc.get("terms"),
+        # Absolute base + stable ref so the PDF QR opens the quote from the DB.
+        "publicBaseUrl": _public_base_url(request),
+        "quoteRef": doc.get("quoteId") or doc.get("quoteNumber") or project_id,
     }
     # Bill-to details auto-filled from the saved customer profile
     try:
@@ -646,10 +676,11 @@ def _pdf_response(project_id: str, kind: str, brand: str | None = None, template
         from WEOS.factory.pdf_engine import _minimal_text_pdf
 
         pdf = _minimal_text_pdf(f"WEOS {kind.title()} PDF", payload)
+    disposition = "inline" if inline else "attachment"
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        headers={"Content-Disposition": f'{disposition}; filename="{name}"'},
     )
 
 
@@ -711,14 +742,11 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
         from WEOS.factory.svg_export import layout_summary_for_job
 
         meta = load_product(body.product, strict=False)
-        if meta.get("_stub") or meta.get("status") == "stub":
-            return {
-                "product": body.product,
-                "stub": True,
-                "svg": None,
-                "heroImage": meta.get("heroImage"),
-                "message": "Stub product — catalogue image only",
-            }
+        # Catalogue/imported (stub) products now carry a synthesised renderable
+        # geometry (see product_loader._ensure_renderable), so we draw a real
+        # elevation instead of a placeholder. We only fall back to the catalogue
+        # image if the product genuinely cannot be rendered.
+        is_stub = bool(meta.get("_stub") or meta.get("status") == "stub")
         series_doc = None
         if body.sectionSeries:
             try:
@@ -786,6 +814,17 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             "specifications": meta.get("specifications"),
         }
     except Exception as exc:
+        # A catalogue/stub product that still cannot be drawn falls back to its
+        # image rather than erroring, so the cart preview stays usable.
+        _meta = locals().get("meta")
+        if locals().get("is_stub") and isinstance(_meta, dict):
+            return {
+                "product": body.product,
+                "stub": True,
+                "svg": None,
+                "heroImage": _meta.get("heroImage"),
+                "message": f"Catalogue product — preview unavailable ({exc})",
+            }
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -1063,11 +1102,12 @@ def api_quotation(project_id: str) -> dict[str, Any]:
 @app.get("/api/projects/{project_id}/customer-pdf")
 def api_customer_pdf(
     project_id: str,
+    request: Request,
     brand: str | None = Query(None),
     templateId: str | None = Query(None),
 ) -> Response:
     try:
-        return _pdf_response(project_id, "customer", brand=brand, template_id=templateId)
+        return _pdf_response(project_id, "customer", brand=brand, template_id=templateId, request=request)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -1075,24 +1115,78 @@ def api_customer_pdf(
 @app.get("/api/projects/{project_id}/factory-pdf")
 def api_factory_pdf(
     project_id: str,
+    request: Request,
     brand: str | None = Query(None),
     templateId: str | None = Query(None),
 ) -> Response:
     try:
-        return _pdf_response(project_id, "factory", brand=brand, template_id=templateId)
+        return _pdf_response(project_id, "factory", brand=brand, template_id=templateId, request=request)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 # Back-compat aliases
 @app.get("/api/projects/{project_id}/pdf/customer")
-def api_pdf_customer_alias(project_id: str, brand: str | None = Query(None)) -> Response:
-    return api_customer_pdf(project_id, brand=brand)
+def api_pdf_customer_alias(project_id: str, request: Request, brand: str | None = Query(None)) -> Response:
+    return api_customer_pdf(project_id, request, brand=brand)
 
 
 @app.get("/api/projects/{project_id}/pdf/factory")
-def api_pdf_factory_alias(project_id: str, brand: str | None = Query(None)) -> Response:
-    return api_factory_pdf(project_id, brand=brand)
+def api_pdf_factory_alias(project_id: str, request: Request, brand: str | None = Query(None)) -> Response:
+    return api_factory_pdf(project_id, request, brand=brand)
+
+
+@app.get("/q/{ref}")
+def public_quote(ref: str, request: Request) -> Response:
+    """Public share link encoded in the PDF QR code.
+
+    Resolves the quote from PostgreSQL (by quote number / id) and returns the
+    customer PDF inline so scanning on a phone opens it — surviving redeploys.
+    Falls back to a file-based project when the ref is a project id.
+    """
+    base = _public_base_url(request)
+    try:
+        from WEOS.db.quote_store import get_quote_by_ref
+
+        q = get_quote_by_ref(ref)
+    except Exception:
+        q = None
+    if q:
+        cust = q.get("customer")
+        cust_name = cust.get("name") if isinstance(cust, dict) else cust
+        payload: dict[str, Any] = {
+            "lines": q.get("lines") or [],
+            "price": {"currency": "INR", "total": q.get("grandTotal"), "categoryTotals": {}},
+            "combined": {"grandTotal": q.get("grandTotal")},
+            "projectId": q.get("projectId"),
+            "quotationId": q.get("quoteNumber") or q.get("quoteId"),
+            "quoteRef": q.get("quoteNumber") or q.get("quoteId") or ref,
+            "customer": cust_name,
+            "name": "",
+            "brand": q.get("brand") or "woodenmax",
+            "publicBaseUrl": base,
+        }
+        try:
+            if cust_name:
+                from WEOS.factory.customer_store import load_customer_profile
+
+                payload["customerProfile"] = load_customer_profile(str(cust_name))
+        except Exception:
+            pass
+        try:
+            pdf = build_customer_pdf_bytes(payload)
+            return Response(
+                content=pdf,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'inline; filename="quote_{ref}.pdf"'},
+            )
+        except Exception:
+            _log.exception("public quote PDF build failed for %s", ref)
+    # Fall back to a file-based project id (works while the project file exists).
+    try:
+        return _pdf_response(ref, "customer", request=request, inline=True)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"Quote not found: {ref}") from exc
 
 
 @app.post("/api/projects/import")

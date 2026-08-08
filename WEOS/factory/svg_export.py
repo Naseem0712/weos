@@ -926,11 +926,10 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
     lo = line_layout_options(line)
     try:
         from WEOS.factory.pipeline import generate_job
-        from WEOS.factory.product_loader import load_product
 
-        product_meta = load_product(product, strict=False)
-        if product_meta.get("_stub") or product_meta.get("status") == "stub":
-            return None
+        # Catalogue/imported (stub) products now carry a synthesised renderable
+        # geometry (see product_loader._ensure_renderable), so we draw them too
+        # instead of returning None.
         job = generate_job(
             w,
             h,

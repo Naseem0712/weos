@@ -1208,15 +1208,18 @@ async function loadProducts() {
   state.products = data.products || [];
   const sel = $('lineProduct');
   if (sel) {
-    // Cart shows real Product Library products: manufacturing-ready products AND
-    // imported section-series catalogues (from the DETA windows Excel — these carry
-    // a sectionSeries and price via manual rate). Fake demo stubs (no sectionSeries)
-    // stay hidden. Empty library → clear prompt, no dummy options.
-    const selectable = state.products.filter(p => p.manufacturingReady || p.sectionSeries || p.productType === 'section_series');
+    // Cart shows EVERY product in the unified Product Library (same source as
+    // Admin) — manufacturing-ready products AND imported/catalogue ones. Catalogue
+    // products now render a real preview (synthesised geometry) and price via a
+    // manual rate, so nothing is hidden. Only truly invalid rows (no id) are
+    // skipped. Empty library → clear prompt, no dummy options.
+    const selectable = state.products.filter(p => p && p.id);
     if (!selectable.length) {
       sel.innerHTML = '<option value="" disabled selected>No products yet — add one or Import from Excel in Product Library</option>';
     } else {
-      sel.innerHTML = selectable.map(p => `<option value="${p.id}">${p.displayName}${p.manufacturingReady ? '' : ' (catalogue)'}</option>`).join('');
+      const prev = sel.value;
+      sel.innerHTML = selectable.map(p => `<option value="${p.id}">${p.displayName || p.id}${p.manufacturingReady ? '' : ' (catalogue)'}</option>`).join('');
+      if (prev && selectable.some(p => p.id === prev)) sel.value = prev;
     }
   }
   try {

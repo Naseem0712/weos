@@ -580,11 +580,10 @@ def draw_line_model_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
     lo = line_layout_options(line)
     try:
         from WEOS.factory.pipeline import generate_job
-        from WEOS.factory.product_loader import load_product
 
-        meta = load_product(product, strict=False)
-        if meta.get("_stub") or meta.get("status") == "stub":
-            return False
+        # Catalogue/imported (stub) products now carry a synthesised renderable
+        # geometry (see product_loader._ensure_renderable), so we draw their
+        # elevation in the PDF too.
         job = generate_job(
             w,
             h,

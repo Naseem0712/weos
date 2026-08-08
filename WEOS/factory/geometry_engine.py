@@ -1159,13 +1159,37 @@ def _build_shutter_profiles(model: DrawingModel, L: SlidingLayout, glass_panels:
         right_m = k < len(by_pos) - 1 and by_pos[k + 1].depth != sp.depth
         return left_m, right_m
 
+    def overlapped_sides(sp: ShutterPanel) -> tuple[bool, bool]:
+        """True on a side where a FRONT (smaller-depth) neighbour laps over this
+        sash. That neighbour's continuous outline already reads the interlock, so
+        this (back) sash must NOT draw its own meeting-side stile — doing so creates
+        the double center line + top/bottom cap stubs the user flagged."""
+        k = pos_of[id(sp)]
+        ol = k > 0 and by_pos[k - 1].depth < sp.depth
+        orr = k < len(by_pos) - 1 and by_pos[k + 1].depth < sp.depth
+        return ol, orr
+
     # Back (larger depth) first so front sashes overlap on top.
     for sp in sorted(glass_panels, key=lambda p: -p.depth):
         o, g = sp.outer, sp.glass
         fixed = not sp.operable
         prefix = "fix_shutter" if fixed else "shutter"
         left_m, right_m = meeting_sides(sp)
-        model.add_polyline(rect_polyline(o, closed=True, layer="PROFILES", name=f"{prefix}_{sp.index}_outer"))
+        ol, orr = overlapped_sides(sp)
+        # Outer sash outline. The FRONT sash (not overlapped) is a continuous closed
+        # rectangle. A BACK sash omits the overlapped meeting edge so the front sash's
+        # lap reads the interlock cleanly (no stray center line / cap stubs).
+        oname = f"{prefix}_{sp.index}_outer"
+        if ol and orr:
+            # Deep middle sash lapped on both sides → only its top & bottom rails show.
+            model.add_segment(Segment(Point(o.x0, o.y1), Point(o.x1, o.y1), layer="PROFILES", name=f"{oname}_top"))
+            model.add_segment(Segment(Point(o.x0, o.y0), Point(o.x1, o.y0), layer="PROFILES", name=f"{oname}_bot"))
+        elif orr:
+            model.add_polyline(u_polyline_open_right(o, layer="PROFILES", name=oname))
+        elif ol:
+            model.add_polyline(u_polyline_open_left(o, layer="PROFILES", name=oname))
+        else:
+            model.add_polyline(rect_polyline(o, closed=True, layer="PROFILES", name=oname))
         glass_name = f"fix_shutter_{sp.index}_glass" if fixed else f"shutter_{sp.index}_glass"
         model.add_polyline(rect_polyline(g, closed=True, layer="GLASS", name=glass_name))
         miters = (
@@ -1176,7 +1200,7 @@ def _build_shutter_profiles(model: DrawingModel, L: SlidingLayout, glass_panels:
         )
         for tag, p0, p1, is_meeting in miters:
             if is_meeting:
-                continue  # square interlock stile — no diagonal miter at the lap
+                continue  # square interlock stile — no diagonal miter/stub at the lap
             model.add_segment(Segment(p0, p1, layer="PROFILES", name=f"{prefix}_{sp.index}_miter_{tag}"))
 
     # Draw a meeting line ONLY where two same-track sashes butt together (no stray

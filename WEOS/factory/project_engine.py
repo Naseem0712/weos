@@ -123,7 +123,65 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
     lo = line_layout_options(line)
 
     if product.get("_stub") or product.get("status") == "stub":
-        return apply_selling_to_line_result(_stub_line_result(line, product), line)
+        # Catalogue/imported products price via a manual rate, but they now carry a
+        # synthesised renderable geometry — so draw a real elevation + layout so the
+        # preview and PDF don't fall back to a "Catalogue placeholder".
+        result = _stub_line_result(line, product)
+        try:
+            colour = line.get("colour") or "white"
+            grid = line.get("grid") or (line.get("options") or {}).get("grid")
+            job = generate_job(
+                width,
+                height,
+                product_id,
+                glass=line.get("glass"),
+                colour=line.get("colour"),
+                handle=line.get("handle"),
+                partitions=lo.get("partitions"),
+                mesh=bool(lo.get("mesh")),
+                track_count=lo.get("trackCount"),
+                section_series=lo.get("sectionSeries") or line.get("sectionSeries"),
+                glass_count=lo.get("glassCount"),
+                mesh_count=lo.get("meshCount"),
+                opening=lo.get("opening"),
+                fixed_shutters=lo.get("fixShuttersRaw"),
+                system=lo.get("system"),
+                fold_left=lo.get("foldLeft"),
+                fold_right=lo.get("foldRight"),
+                section_sizes=lo.get("sectionSizes"),
+                handle_finish=lo.get("handleFinish"),
+                handle_level=lo.get("handleLevel"),
+                handle_overrides=lo.get("handleOverrides"),
+                grid=lo.get("gridSpec"),
+            )
+            result["preview"] = {
+                "svg": render_svg_string(
+                    job.drawing,
+                    colour=str(colour).lower().replace(" ", "_"),
+                    annotations=True,
+                    grid=grid,
+                    include_plan=True,
+                )
+            }
+            result["layout"] = layout_summary_for_job(
+                width=width, height=height, layout_meta=job.layout_meta
+            )
+            # Resolve glass so specs don't show "? glass".
+            if job.glass and hasattr(job.glass[0], "as_dict"):
+                result["glass"] = [g.as_dict() for g in job.glass]
+            # Persist resolved config so the PDF re-render reproduces the same type.
+            opts = dict(result.get("options") or {})
+            opts["system"] = lo.get("system") or "sliding"
+            if lo.get("glassCount") is not None:
+                opts["glassShutters"] = lo.get("glassCount")
+            if lo.get("meshCount") is not None:
+                opts["meshShutters"] = lo.get("meshCount")
+            if lo.get("sectionSeries") or line.get("sectionSeries"):
+                opts["sectionSeries"] = lo.get("sectionSeries") or line.get("sectionSeries")
+            result["options"] = opts
+        except Exception as exc:  # keep the manual-rate result even if drawing fails
+            _log.warning("stub preview render failed for %s: %s", product_id, exc)
+        return apply_selling_to_line_result(result, line)
 
     # Thread the FULL window configuration (system / fold / grid / shutter counts /
     # fix panels / section sizes / handle placement) into the job. Without this,

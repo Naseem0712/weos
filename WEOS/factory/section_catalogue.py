@@ -118,6 +118,43 @@ def infer_usage(name: str | None) -> str:
     return "other"
 
 
+def parse_track_count(name: str | None) -> float | None:
+    """Extract the track count from a section name (``2 track`` → 2.0,
+    ``2.5 track`` → 2.5, ``3 track`` → 3.0). Returns None when not a track row."""
+    n = (name or "").lower()
+    if "track" not in n and "trck" not in n:
+        return None
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(?:track|trck)", n)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def parse_glass_options(name: str | None) -> list[str]:
+    """Map glass codes in a section name to availability.
+
+    ``sg`` → single glass; ``dg`` / ``gd`` → DGU (double-glazed unit). A section
+    tagged ``sg, dg`` therefore supports both single and DGU glass.
+    """
+    n = (name or "").lower()
+    opts: list[str] = []
+    # token match so we don't catch letters inside words
+    tokens = set(re.findall(r"[a-z]+", n))
+    if "sg" in tokens:
+        opts.append("single")
+    if "dg" in tokens or "gd" in tokens or "dgu" in tokens:
+        opts.append("dgu")
+    return opts
+
+
+def is_center_opening_only(name: str | None) -> bool:
+    n = (name or "").lower()
+    return "center" in n and ("open" in n or "opning" in n or "opening" in n)
+
+
 def _usage_label(usage: str) -> str:
     return {
         "track": "Track / Outer frame",
@@ -268,6 +305,11 @@ def parse_excel(path: str | Path | None = None) -> dict[str, Any]:
                     else None
                 ),
                 "designNote": design_opt,
+                # Excel data model: track count (2 / 2.5 / 3), glass availability
+                # (sg=single, dg/gd=DGU), and center-opening-only meeting sections.
+                "trackCount": parse_track_count(name),
+                "glassOptions": parse_glass_options(name),
+                "centerOpeningOnly": is_center_opening_only(name),
             }
             current["sections"].append(section)
             if design_opt and design_opt not in current["designOptions"]:
@@ -333,12 +375,51 @@ def _library_catalogue_block(series: Mapping[str, Any]) -> dict[str, Any]:
             "weightKgPerMtr": sec.get("weightKgPerMtr"),
             "standardLength": sec.get("standardLength"),
             "wallThicknessMm": sec.get("wallThicknessMm"),
+            "trackCount": sec.get("trackCount"),
+            "glassOptions": sec.get("glassOptions") or [],
+            "centerOpeningOnly": sec.get("centerOpeningOnly", False),
         }
         for sec in sections
     ]
     # Representative standard length (first non-empty)
     std_len = next((s.get("standardLength") for s in sections if s.get("standardLength")), None)
     depth = next((s.get("sectionDepthMm") for s in sections if s.get("sectionDepthMm")), None)
+
+    # ── Excel data model ────────────────────────────────────────────────────
+    # Track is an OPTION: 2 / 2.5 / 3 track are variants of the SAME series that
+    # only change the outer/track section; the sash/shutter frame is shared.
+    tracks: list[dict[str, Any]] = []
+    for sec in sections:
+        tc = sec.get("trackCount")
+        if tc is None:
+            continue
+        tracks.append(
+            {
+                "count": tc,
+                "name": sec.get("name"),
+                "sectionDepthMm": sec.get("sectionDepthMm"),
+                "widthMm": sec.get("widthMm"),
+                "sectionId": sec.get("id"),
+                # mesh needs 2.5 or 3 track (single 2-track has no room for a mesh sash)
+                "meshCapable": tc >= 2.5,
+            }
+        )
+    tracks.sort(key=lambda t: t["count"])
+    track_counts = [t["count"] for t in tracks]
+
+    # Shared sash / shutter frame (same across all tracks).
+    shared_sash = next((s for s in sections if s.get("usage") == "sash"), None)
+
+    # Glass types available anywhere in the series (sg=single, dg/gd=DGU).
+    glass_types: list[str] = []
+    for sec in sections:
+        for g in sec.get("glassOptions") or []:
+            if g not in glass_types:
+                glass_types.append(g)
+
+    mesh_min_track = next((t["count"] for t in tracks if t.get("meshCapable")), None)
+    default_track = track_counts[0] if track_counts else None
+
     return {
         "sectionSeries": series.get("id"),
         "saleUnit": "sqft",
@@ -348,6 +429,34 @@ def _library_catalogue_block(series: Mapping[str, Any]) -> dict[str, Any]:
         "weightKgPerMtr": next((s.get("weightKgPerMtr") for s in sections if s.get("weightKgPerMtr")), None),
         "profiles": profiles,
         "designOptions": list(series.get("designOptions") or []),
+        # Editable Excel data model → round-trips through the product store.
+        "tracks": tracks,
+        "trackOptions": track_counts,
+        "trackCount": default_track,
+        "sharedSash": (
+            {
+                "name": shared_sash.get("name"),
+                "widthMm": shared_sash.get("widthMm"),
+                "sectionDepthMm": shared_sash.get("sectionDepthMm"),
+                "glassOptions": shared_sash.get("glassOptions") or [],
+            }
+            if shared_sash
+            else None
+        ),
+        "glassTypes": glass_types,
+        "compatibility": {
+            "trackOptions": track_counts,
+            "meshMinTrack": mesh_min_track,
+            "glassTypes": glass_types,
+            "notes": [
+                n
+                for n in [
+                    ("Mesh requires 2.5 or 3 track" if mesh_min_track else None),
+                    ("sg = single glass; dg/gd = DGU (double-glazed)" if glass_types else None),
+                ]
+                if n
+            ],
+        },
         "source": "excel_section_catalogue",
     }
 
@@ -378,6 +487,8 @@ def sync_catalogue_to_library() -> dict[str, Any]:
             specs = specs_summary_for_series(sid)
         except Exception:
             specs = {}
+        _tracks = catalogue_block.get("trackOptions") or []
+        _glass = catalogue_block.get("glassTypes") or []
         spec_fields = {
             "profileSeries": series.get("title"),
             "sectionSizeMm": catalogue_block.get("sizeMm"),
@@ -386,6 +497,12 @@ def sync_catalogue_to_library() -> dict[str, Any]:
             "track": specs.get("track"),
             "sash": specs.get("sash"),
             "interlock": specs.get("interlock"),
+            "trackOptions": (", ".join(f"{t:g} track" for t in _tracks) if _tracks else None),
+            "glassTypes": (
+                ", ".join({"single": "Single glass", "dgu": "DGU"}.get(g, g) for g in _glass)
+                if _glass
+                else None
+            ),
         }
         spec_fields = {k: v for k, v in spec_fields.items() if v is not None}
 

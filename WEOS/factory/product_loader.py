@@ -162,9 +162,91 @@ def load_product(product_id: str | Path | None = None, *, strict: bool = True) -
             raise ValueError(f"Product {pid} missing/invalid sections: {', '.join(missing)}")
     doc["_stub"] = is_stub
 
+    # Catalogue / imported products carry no engineering rules, so the geometry
+    # engine cannot draw them and the UI falls back to a "Catalogue placeholder".
+    # Give them a RENDERABLE definition: borrow the default product's engineering
+    # rules and override the frame/interlock/track widths with the imported section
+    # sizes. Pricing stays manual (``_stub`` remains True) — this only enables the
+    # elevation drawing + glass resolution.
+    if pid != DEFAULT_PRODUCT_ID:
+        _ensure_renderable(doc)
+
     doc["_path"] = str(pdir)
     doc["_product_dir"] = str(pdir)
     return copy.deepcopy(doc)
+
+
+_GEOM_KEYS = ("trackWidth", "frameWidth", "interlockWidth", "overlap", "glassClip", "trackCount", "shutterCount")
+
+
+def _has_renderable_geometry(doc: Mapping[str, Any]) -> bool:
+    g = doc.get("geometry")
+    return isinstance(g, Mapping) and all(k in g for k in _GEOM_KEYS)
+
+
+def _catalogue_width(profiles: Any, usages: tuple[str, ...]) -> float | None:
+    """First profile whose usage matches → its face width (or section depth)."""
+    if not isinstance(profiles, (list, tuple)):
+        return None
+    for p in profiles:
+        if not isinstance(p, Mapping):
+            continue
+        u = str(p.get("usage") or "").lower()
+        if any(k in u for k in usages):
+            for key in ("widthMm", "sectionDepthMm"):
+                try:
+                    v = float(p.get(key))
+                except (TypeError, ValueError):
+                    v = 0.0
+                if v > 0:
+                    return v
+    return None
+
+
+def _ensure_renderable(doc: dict[str, Any]) -> None:
+    """Fill missing engineering sections so the geometry engine can draw a
+    catalogue/imported product. Mutates ``doc`` in place. Best-effort/no-raise."""
+    if _has_renderable_geometry(doc):
+        return
+    try:
+        base = load_product(DEFAULT_PRODUCT_ID, strict=False)
+    except Exception:
+        return
+    # Borrow any engineering section the catalogue product lacks (keep its own
+    # identity, catalogue block, specifications and stub quotation).
+    for sec in ("glass", "dimensioning", "weight", "hardware", "brush", "trackRail", "cutList", "bomExtras"):
+        if not doc.get(sec):
+            doc[sec] = copy.deepcopy(base.get(sec))
+    base_geom = dict(base.get("geometry") or {})
+    cat = doc.get("catalogue") if isinstance(doc.get("catalogue"), Mapping) else {}
+    profiles = cat.get("profiles") if isinstance(cat, Mapping) else None
+    geom = dict(base_geom)
+    fw = _catalogue_width(profiles, ("sash", "shutter"))
+    iw = _catalogue_width(profiles, ("interlock", "meeting"))
+    tw = _catalogue_width(profiles, ("track", "frame"))
+    if fw:
+        geom["frameWidth"] = fw
+    if iw:
+        geom["interlockWidth"] = iw
+    if tw:
+        geom["trackWidth"] = tw
+    # Track count from the product/catalogue if present.
+    try:
+        tc = float(cat.get("trackCount") or geom.get("trackCount") or 2)
+        geom["trackCount"] = tc
+    except (TypeError, ValueError):
+        pass
+    # Sanitise so geometry_engine invariants hold (0 <= overlap < trackWidth, etc.).
+    try:
+        tw_v = float(geom.get("trackWidth") or base_geom.get("trackWidth") or 40)
+        ov_v = float(geom.get("overlap") or base_geom.get("overlap") or 18)
+        geom["overlap"] = max(0.0, min(ov_v, tw_v * 0.9))
+        geom.setdefault("glassClip", float(base_geom.get("glassClip") or 6))
+        geom.setdefault("shutterCount", float(base_geom.get("shutterCount") or 2))
+    except (TypeError, ValueError):
+        pass
+    doc["geometry"] = geom
+    doc["_synthesizedGeometry"] = True
 
 
 def load_profile(profile_id: str | Path | None = None, *, strict: bool = True) -> dict[str, Any]:

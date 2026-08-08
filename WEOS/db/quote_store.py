@@ -328,6 +328,35 @@ def get_quote(quote_id: str) -> dict[str, Any]:
         return _get_quote_obj(s, quote_id).to_dict(include_children=True)
 
 
+def get_quote_by_ref(ref: str) -> dict[str, Any] | None:
+    """Resolve a quote for a public share link. Tries, in order: quote_id,
+    quote_number, then project_id (most recent). Returns None when not found or
+    when the DB is unavailable (so callers can fall back to file projects)."""
+    ref = (ref or "").strip()
+    if not ref:
+        return None
+    try:
+        _ensure_ready()
+    except Exception:
+        return None
+    from sqlalchemy import select
+
+    from WEOS.db.models import Quote
+
+    try:
+        with session_scope() as s:
+            q = s.execute(
+                select(Quote).where((Quote.quote_id == ref) | (Quote.quote_number == ref))
+            ).scalars().first()
+            if q is None:
+                q = s.execute(
+                    select(Quote).where(Quote.project_id == ref).order_by(Quote.id.desc())
+                ).scalars().first()
+            return q.to_dict(include_children=True) if q is not None else None
+    except Exception:
+        return None
+
+
 def list_quotes(
     *,
     customer_id: int | None = None,
