@@ -1,0 +1,65 @@
+{
+  "id": "fx_glass_laminated_weight",
+  "memoryType": "formula",
+  "name": "Laminated glass weight (glass + PVB)",
+  "category": "glass",
+  "expression": "widthMm * heightMm / 1e6 * ((glass1Mm + glass2Mm) * densityKgPerM3 / 1000 + pvbMm * pvbDensityKgPerM3 / 1000) * qty",
+  "variables": [
+    "widthMm",
+    "heightMm",
+    "glass1Mm",
+    "glass2Mm",
+    "pvbMm",
+    "densityKgPerM3",
+    "pvbDensityKgPerM3",
+    "qty"
+  ],
+  "steps": [],
+  "outputName": "glass_laminated",
+  "unit": "kg",
+  "formulaVersion": 1,
+  "description": "Laminated glass = two glass leaves + PVB interlayer; 11.52 = 5+0.52+5 style makeups.",
+  "compatibleSeries": [],
+  "compatibleProducts": [],
+  "approvalDate": "2026-08-08T16:54:57.158760+00:00",
+  "history": [
+    {
+      "formulaVersion": 1,
+      "expression": "widthMm * heightMm / 1e6 * ((glass1Mm + glass2Mm) * densityKgPerM3 / 1000 + pvbMm * pvbDensityKgPerM3 / 1000) * qty",
+      "variables": [
+        "widthMm",
+        "heightMm",
+        "glass1Mm",
+        "glass2Mm",
+        "pvbMm",
+        "densityKgPerM3",
+        "pvbDensityKgPerM3",
+        "qty"
+      ],
+      "approved_at": "2026-08-08T16:54:57.158760+00:00",
+      "approved_by": "system_default",
+      "reason": "admin_approve"
+    }
+  ],
+  "source": "baseline_engineering_default",
+  "status": "approved",
+  "revision": 1,
+  "created_at": null,
+  "updated_at": "2026-08-08T16:54:57.158760+00:00",
+  "approved_at": "2026-08-08T16:54:57.158760+00:00",
+  "approved_by": "system_default",
+  "kb_version": null,
+  "sourceKind": "baseline",
+  "confidence": 95,
+  "priority": 60,
+  "usedInProjects": 0,
+  "lastUsed": null,
+  "tags": [],
+  "relationships": {},
+  "defaults": {
+    "densityKgPerM3": 2500.0,
+    "pvbDensityKgPerM3": 1070.0,
+    "pvbMm": 0.76,
+    "qty": 1
+  }
+}

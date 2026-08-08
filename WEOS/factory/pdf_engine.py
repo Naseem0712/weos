@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import io
+import logging
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import quote
+
+_log = logging.getLogger("weos.pdf_engine")
 
 
 def export_pdf_bytes(builder_name: str, payload: Mapping[str, Any]) -> bytes:
@@ -32,9 +35,11 @@ def build_customer_pdf_bytes(payload: Mapping[str, Any]) -> bytes:
 
         return render_template_pdf(payload, kind="customer")
     except Exception:
+        _log.exception("customer template PDF failed; falling back to reportlab layout")
         try:
             return _customer_reportlab(payload)
         except Exception:
+            _log.exception("customer reportlab PDF failed; falling back to minimal text PDF")
             return _minimal_text_pdf("WEOS Customer Quotation", payload)
 
 
@@ -45,9 +50,11 @@ def build_factory_pdf_bytes(payload: Mapping[str, Any]) -> bytes:
 
         return render_template_pdf(payload, kind="factory")
     except Exception:
+        _log.exception("factory template PDF failed; falling back to reportlab layout")
         try:
             return _factory_reportlab(payload)
         except Exception:
+            _log.exception("factory reportlab PDF failed; falling back to minimal text PDF")
             return _minimal_text_pdf("WEOS Factory Package", payload)
 
 

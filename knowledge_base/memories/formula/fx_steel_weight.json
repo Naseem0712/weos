@@ -1,0 +1,60 @@
+{
+  "id": "fx_steel_weight",
+  "memoryType": "formula",
+  "name": "Iron / steel plate weight",
+  "category": "weight",
+  "expression": "thicknessMm * widthMm * heightMm * densityKgPerM3 / 1e9 * (1 + wastePercent/100) * qty",
+  "variables": [
+    "thicknessMm",
+    "widthMm",
+    "heightMm",
+    "densityKgPerM3",
+    "wastePercent",
+    "qty"
+  ],
+  "steps": [],
+  "outputName": "iron_steel",
+  "unit": "kg",
+  "formulaVersion": 1,
+  "description": "Steel/iron plate weight from dimensions × density, with waste.",
+  "compatibleSeries": [],
+  "compatibleProducts": [],
+  "approvalDate": "2026-08-08T16:54:57.022147+00:00",
+  "history": [
+    {
+      "formulaVersion": 1,
+      "expression": "thicknessMm * widthMm * heightMm * densityKgPerM3 / 1e9 * (1 + wastePercent/100) * qty",
+      "variables": [
+        "thicknessMm",
+        "widthMm",
+        "heightMm",
+        "densityKgPerM3",
+        "wastePercent",
+        "qty"
+      ],
+      "approved_at": "2026-08-08T16:54:57.022147+00:00",
+      "approved_by": "system_default",
+      "reason": "admin_approve"
+    }
+  ],
+  "source": "baseline_engineering_default",
+  "status": "approved",
+  "revision": 1,
+  "created_at": null,
+  "updated_at": "2026-08-08T16:54:57.022147+00:00",
+  "approved_at": "2026-08-08T16:54:57.022147+00:00",
+  "approved_by": "system_default",
+  "kb_version": null,
+  "sourceKind": "baseline",
+  "confidence": 95,
+  "priority": 60,
+  "usedInProjects": 0,
+  "lastUsed": null,
+  "tags": [],
+  "relationships": {},
+  "defaults": {
+    "densityKgPerM3": 7850.0,
+    "wastePercent": 5.0,
+    "qty": 1
+  }
+}

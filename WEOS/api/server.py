@@ -6,14 +6,15 @@ Engines are never duplicated — always call factory pipeline.
 
 from __future__ import annotations
 
+import logging
 import os
 import platform
 import sys
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -52,6 +53,10 @@ from WEOS.paths import PACKAGE_ROOT, WORKSPACE_ROOT, data_dir, website_dir
 
 WEBSITE_DIR = website_dir()
 
+_log = logging.getLogger("weos.api")
+if _log.level == logging.NOTSET:
+    _log.setLevel(logging.INFO)
+
 app = FastAPI(
     title="WEOS API",
     description="WEOS — Design • Calculate • Manufacture • Quote",
@@ -65,6 +70,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def _weos_unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
+    """Log the full traceback for any unhandled error so production 500s on
+    Railway are diagnosable (uvicorn shows this in the deploy logs)."""
+    _log.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error", "path": request.url.path},
+    )
 
 
 class CalculateRequest(BaseModel):
@@ -544,8 +560,15 @@ class DefaultsSuggestBody(BaseModel):
 
 
 def _pdf_response(project_id: str, kind: str, brand: str | None = None, template_id: str | None = None) -> Response:
+    # load_project raises FileNotFoundError → 404 (handled by the caller).
     doc = load_project(project_id)
-    result = calculate_project(doc, optimize=True)
+    try:
+        result = calculate_project(doc, optimize=True)
+    except Exception:
+        # Never 500 the export because a calculation edge-case failed — log the
+        # real traceback and still produce a (header-only) PDF for the customer.
+        _log.exception("calculate_project failed for %s during %s PDF export", project_id, kind)
+        result = {"lines": [], "combined": {}, "price": {}}
     created_at = doc.get("createdAt")
     updated_at = doc.get("updatedAt")
     version = int(doc.get("version") or 1)
@@ -589,12 +612,21 @@ def _pdf_response(project_id: str, kind: str, brand: str | None = None, template
             payload["updatedOn"] = updated_fmt
     except Exception:
         pass
-    if kind == "factory":
-        pdf = build_factory_pdf_bytes(payload)
-        name = f"{project_id}_factory.pdf"
-    else:
-        pdf = build_customer_pdf_bytes(payload)
-        name = f"{project_id}_quotation.pdf"
+    try:
+        if kind == "factory":
+            pdf = build_factory_pdf_bytes(payload)
+            name = f"{project_id}_factory.pdf"
+        else:
+            pdf = build_customer_pdf_bytes(payload)
+            name = f"{project_id}_quotation.pdf"
+    except Exception:
+        # build_*_pdf_bytes already degrade internally; this is a final belt-and-
+        # suspenders guard so a PDF is ALWAYS returned instead of a bare 500.
+        _log.exception("PDF build failed for %s (%s); returning minimal PDF", project_id, kind)
+        from WEOS.factory.pdf_engine import _minimal_text_pdf
+
+        pdf = _minimal_text_pdf(f"WEOS {kind.title()} PDF", payload)
+        name = f"{project_id}_{kind}.pdf"
     return Response(
         content=pdf,
         media_type="application/pdf",
@@ -2126,7 +2158,13 @@ def api_template_preview_pdf(body: TemplatePreviewRequest) -> Response:
     else:
         sample["templateId"] = f"{body.brand}_{body.kind}"
 
-    pdf = render_template_pdf(sample, kind=body.kind, brand=body.brand, template_id=sample.get("templateId"))
+    try:
+        pdf = render_template_pdf(sample, kind=body.kind, brand=body.brand, template_id=sample.get("templateId"))
+    except Exception:
+        _log.exception("template preview render failed (brand=%s kind=%s)", body.brand, body.kind)
+        from WEOS.factory.pdf_engine import _minimal_text_pdf
+
+        pdf = _minimal_text_pdf("WEOS Template Preview", sample)
     return Response(
         content=pdf,
         media_type="application/pdf",

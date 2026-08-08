@@ -1,0 +1,32 @@
+{
+  "id": "learn_smoke_upgrade_9ba18dbf",
+  "memoryType": "learning",
+  "observationType": "smoke_upgrade",
+  "summary": "smoke test observation",
+  "evidence": {
+    "count": 1,
+    "total": 1
+  },
+  "suggestion": "verify roundtrip",
+  "frequency": 1.0,
+  "targetMemoryType": "",
+  "targetPayload": {},
+  "adminDecision": null,
+  "resultingKbVersion": null,
+  "domain": "engineering",
+  "status": "pending_approval",
+  "revision": 1,
+  "created_at": null,
+  "updated_at": "2026-08-08T16:54:56.928322+00:00",
+  "approved_at": null,
+  "approved_by": null,
+  "kb_version": null,
+  "source": {},
+  "sourceKind": "",
+  "confidence": null,
+  "priority": 50,
+  "usedInProjects": 0,
+  "lastUsed": null,
+  "tags": [],
+  "relationships": {}
+}

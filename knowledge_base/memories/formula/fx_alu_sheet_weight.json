@@ -1,0 +1,60 @@
+{
+  "id": "fx_alu_sheet_weight",
+  "memoryType": "formula",
+  "name": "Aluminium sheet weight",
+  "category": "weight",
+  "expression": "thicknessMm * widthMm * heightMm * densityKgPerM3 / 1e9 * (1 + wastePercent/100) * qty",
+  "variables": [
+    "thicknessMm",
+    "widthMm",
+    "heightMm",
+    "densityKgPerM3",
+    "wastePercent",
+    "qty"
+  ],
+  "steps": [],
+  "outputName": "aluminium_sheet",
+  "unit": "kg",
+  "formulaVersion": 1,
+  "description": "Sheet weight (kg) from thickness × area × Al density, with waste allowance.",
+  "compatibleSeries": [],
+  "compatibleProducts": [],
+  "approvalDate": "2026-08-08T16:54:56.967990+00:00",
+  "history": [
+    {
+      "formulaVersion": 1,
+      "expression": "thicknessMm * widthMm * heightMm * densityKgPerM3 / 1e9 * (1 + wastePercent/100) * qty",
+      "variables": [
+        "thicknessMm",
+        "widthMm",
+        "heightMm",
+        "densityKgPerM3",
+        "wastePercent",
+        "qty"
+      ],
+      "approved_at": "2026-08-08T16:54:56.967990+00:00",
+      "approved_by": "system_default",
+      "reason": "admin_approve"
+    }
+  ],
+  "source": "baseline_engineering_default",
+  "status": "approved",
+  "revision": 1,
+  "created_at": null,
+  "updated_at": "2026-08-08T16:54:56.967480+00:00",
+  "approved_at": "2026-08-08T16:54:56.967480+00:00",
+  "approved_by": "system_default",
+  "kb_version": null,
+  "sourceKind": "baseline",
+  "confidence": 95,
+  "priority": 60,
+  "usedInProjects": 0,
+  "lastUsed": null,
+  "tags": [],
+  "relationships": {},
+  "defaults": {
+    "densityKgPerM3": 2700.0,
+    "wastePercent": 5.0,
+    "qty": 1
+  }
+}

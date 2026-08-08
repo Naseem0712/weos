@@ -1,0 +1,55 @@
+{
+  "id": "fx_alu_section_weight",
+  "memoryType": "formula",
+  "name": "Aluminium section / profile weight",
+  "category": "weight",
+  "expression": "(lengthMm / 1000) * weightPerMeterKg * (1 + wastePercent/100) * qty",
+  "variables": [
+    "lengthMm",
+    "weightPerMeterKg",
+    "wastePercent",
+    "qty"
+  ],
+  "steps": [],
+  "outputName": "aluminium_section",
+  "unit": "kg",
+  "formulaVersion": 1,
+  "description": "Extrusion weight from cut length × kg/m, with cutting waste.",
+  "compatibleSeries": [],
+  "compatibleProducts": [],
+  "approvalDate": "2026-08-08T16:54:56.987214+00:00",
+  "history": [
+    {
+      "formulaVersion": 1,
+      "expression": "(lengthMm / 1000) * weightPerMeterKg * (1 + wastePercent/100) * qty",
+      "variables": [
+        "lengthMm",
+        "weightPerMeterKg",
+        "wastePercent",
+        "qty"
+      ],
+      "approved_at": "2026-08-08T16:54:56.987214+00:00",
+      "approved_by": "system_default",
+      "reason": "admin_approve"
+    }
+  ],
+  "source": "baseline_engineering_default",
+  "status": "approved",
+  "revision": 1,
+  "created_at": null,
+  "updated_at": "2026-08-08T16:54:56.987214+00:00",
+  "approved_at": "2026-08-08T16:54:56.987214+00:00",
+  "approved_by": "system_default",
+  "kb_version": null,
+  "sourceKind": "baseline",
+  "confidence": 95,
+  "priority": 60,
+  "usedInProjects": 0,
+  "lastUsed": null,
+  "tags": [],
+  "relationships": {},
+  "defaults": {
+    "wastePercent": 8.0,
+    "qty": 1
+  }
+}

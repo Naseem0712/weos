@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "seeded": [
+    "fx_alu_sheet_weight",
+    "fx_alu_section_weight",
+    "fx_steel_weight",
+    "fx_glass_weight",
+    "fx_glass_weight_waste",
+    "fx_glass_dgu_weight",
+    "fx_glass_laminated_weight",
+    "fx_acp_weight",
+    "fx_sheet_generic_weight"
+  ],
+  "count": 9,
+  "message": "Baseline weight formulas preloaded into Formula Memory (approved defaults, editable + versionable)."
+}
