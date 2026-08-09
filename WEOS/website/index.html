@@ -10,7 +10,7 @@
   --bg:#e8e3d8; --ink:#141410; --muted:#5c584f; --panel:rgba(255,252,247,.94);
   --line:rgba(20,20,16,.12); --green:#0a5a48; --green2:#147a62; --copper:#b45324;
   --card:#fffdf9; --shadow:0 10px 40px rgba(20,20,16,.06); --radius:14px;
-  --nav:72px; --side:340px;
+  --nav:72px; --logo-w:310px; --side:calc(var(--logo-w) + 24px);
 }
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;font-family:"DM Sans",system-ui,sans-serif;color:var(--ink);
@@ -22,15 +22,19 @@ a{color:inherit}
 @media(max-width:900px){.app{grid-template-columns:1fr}.side{position:fixed;inset:0 auto 0 0;transform:translateX(-105%);z-index:40;transition:.25s}
 .side.open{transform:none}.burger{display:inline-flex!important}}
 .side{background:linear-gradient(165deg,#e4f1ff 0%,#e6f7ee 48%,#fdf5d8 100%);color:#1b2a25;
-  padding:1.1rem .9rem;display:flex;flex-direction:column;gap:.35rem;border-right:1px solid rgba(20,60,50,.12)}
-/* Brand logo: the WEOS mark ships on a solid black background, so it sits on a
-   matching dark brand plate (rounded, subtle border/shadow) that blends into
-   the rail instead of reading as an ugly black box. The tagline is baked into
-   the image, so no separate caption is rendered. */
-.brand{margin:.1rem .3rem 1rem;display:flex;justify-content:center}
-.brand img{display:block;width:310px;height:135px;max-width:100%;object-fit:contain;padding:4px 6px;
+  width:var(--side);max-width:100%;padding:.55rem .5rem .75rem;display:flex;flex-direction:column;gap:.2rem;border-right:1px solid rgba(20,60,50,.12);overflow-x:hidden}
+/* Brand logo: width drives the sidebar. Tagline is baked into the image. */
+.brand{margin:0 0 .15rem;padding:0;display:flex;justify-content:center;align-items:center}
+.brand img{display:block;width:var(--logo-w);height:auto;aspect-ratio:310/135;max-width:100%;object-fit:contain;padding:0;
   filter:drop-shadow(0 1px 2px rgba(0,0,0,.28))}
-@media(max-width:900px){.brand img{width:280px;height:120px}}
+@media(max-width:900px){.side{width:min(var(--side),92vw)}.brand img{width:min(var(--logo-w),100%)}}
+.weos-agent-fab{position:fixed;right:16px;bottom:16px;z-index:9999;width:58px;height:58px;border-radius:14px;
+  background:#0f172a;border:1px solid #334155;box-shadow:0 8px 24px rgba(0,0,0,.22);display:none;
+  align-items:center;justify-content:center;cursor:pointer;padding:7px}
+.weos-agent-fab img{width:100%;height:100%;object-fit:contain;border-radius:8px;display:block}
+.weos-agent-fab:hover{filter:brightness(1.08)}
+.setup-summary{display:flex;flex-wrap:wrap;gap:.5rem .75rem;align-items:center;margin-bottom:.65rem;
+  padding:.55rem .7rem;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.7);font-size:.88rem}
 .rail-tools{margin:.45rem 0 .55rem;padding:.45rem .5rem;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.72)}
 .rail-tools .rt-head{display:flex;align-items:center;justify-content:space-between;gap:.4rem;margin-bottom:.35rem}
 .rail-tools .rt-shapes{display:flex;flex-wrap:wrap;gap:.25rem}
@@ -158,6 +162,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
       <img id="brandLogo" src="/api/company/logo?v=5" alt="WEOS" onerror="this.onerror=null;this.src='/static/weos-logo.png?v=5'"/>
     </div>
     <button class="navbtn active" data-view="dashboard">Dashboard</button>
+    <button class="navbtn" data-view="setup">Project Setup</button>
     <button class="navbtn" data-view="projects">Saved Projects</button>
     <button class="navbtn" data-view="cart">Window Cart</button>
     <button class="navbtn" data-view="library">Product Library</button>
@@ -218,6 +223,48 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
       </div>
     </section>
 
+    <!-- PROJECT SETUP (customer / quote print details — once per project, editable anytime) -->
+    <section id="view-setup" class="grid hidden">
+      <div class="panel">
+        <p class="muted" style="margin:0 0 .85rem">Set customer and quote print details once. Window Cart stays product-only; at export you can pick which setup prints on the PDF.</p>
+        <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
+          <div class="grow"><label class="l">Project name</label><input id="cartName" value="WEOS Project"/></div>
+          <div><label class="l">PDF Brand</label>
+            <select id="pdfBrand">
+              <option value="marqt">MAR-QT Style</option>
+              <option value="woodenmax">WoodenMax</option>
+              <option value="allkraft">AllKraft</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" style="margin-bottom:.6rem;align-items:flex-end;gap:.5rem .7rem;flex-wrap:wrap">
+          <div style="flex-basis:100%;margin-bottom:-.15rem"><span class="l" style="text-transform:uppercase;letter-spacing:.05em;opacity:.7">Customer — mobile / name identifies the bill-to</span></div>
+          <div class="grow"><label class="l">Customer mobile</label><input id="projMobile" type="tel" inputmode="tel" placeholder="e.g. 9876543210"/></div>
+          <div class="grow"><label class="l">Customer name (optional)</label><input id="projCustName" placeholder="optional"/></div>
+          <!-- Hidden mirror: keeps rate-memory / save-load / bill-to data flow intact. -->
+          <input id="cartCustomer" type="hidden" value=""/>
+        </div>
+        <div class="row" style="margin-bottom:.6rem;align-items:flex-end;gap:.5rem .7rem;flex-wrap:wrap">
+          <div class="grow"><label class="l">Customer address (prints on quote)</label><input id="projCustAddress" placeholder="optional"/></div>
+          <div class="grow"><label class="l">Customer GSTIN</label><input id="projCustGst" placeholder="optional"/></div>
+        </div>
+        <div class="row" style="margin-bottom:.6rem;flex-wrap:wrap;gap:.5rem .7rem">
+          <div class="grow" style="flex-basis:100%"><label class="l">Quote description (prints on quote)</label><textarea id="projDescription" rows="2" placeholder="Optional note that prints on the customer quotation" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
+          <div class="grow" style="flex-basis:100%"><label class="l">Terms &amp; Conditions override (optional — defaults from Company Setup)</label><textarea id="projTerms" rows="3" placeholder="Leave blank to use the company default terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
+        </div>
+        <div class="row" style="margin-top:.35rem;gap:.5rem;flex-wrap:wrap">
+          <button class="btn" id="btnSaveSetup" type="button">Save project setup</button>
+          <button class="btn sec" id="btnSetupToCart" type="button">Continue to Window Cart</button>
+          <button class="btn ghost sm" id="btnSetupLoadList" type="button">Refresh saved setups</button>
+        </div>
+        <div style="margin-top:1rem">
+          <label class="l">Saved setups (open to edit)</label>
+          <div style="overflow:auto;margin-top:.35rem"><table><thead><tr><th>ID</th><th>Name</th><th>Customer</th><th></th></tr></thead><tbody id="setupListBody"></tbody></table></div>
+        </div>
+        <div class="err" id="setupErr"></div>
+      </div>
+    </section>
+
     <!-- CART -->
     <section id="view-cart" class="grid hidden">
       <div id="memoryBanner" class="memory-banner" role="status">
@@ -230,30 +277,10 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
       </div>
       <div class="two">
         <div class="panel">
-          <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
-            <div class="grow"><label class="l">Project name</label><input id="cartName" value="WEOS Project"/></div>
-            <div><label class="l">PDF Brand</label>
-              <select id="pdfBrand">
-                <option value="marqt">MAR-QT Style</option>
-                <option value="woodenmax">WoodenMax</option>
-                <option value="allkraft">AllKraft</option>
-              </select>
-            </div>
-          </div>
-          <div class="row" style="margin-bottom:.6rem;align-items:flex-end;gap:.5rem .7rem;flex-wrap:wrap">
-            <div style="flex-basis:100%;margin-bottom:-.15rem"><span class="l" style="text-transform:uppercase;letter-spacing:.05em;opacity:.7">Project setup — mobile / name identifies the customer</span></div>
-            <div class="grow"><label class="l">Customer mobile</label><input id="projMobile" type="tel" inputmode="tel" placeholder="e.g. 9876543210"/></div>
-            <div class="grow"><label class="l">Customer name (optional)</label><input id="projCustName" placeholder="optional"/></div>
-            <!-- Hidden mirror: keeps rate-memory / save-load / bill-to data flow intact. -->
-            <input id="cartCustomer" type="hidden" value=""/>
-          </div>
-          <div class="row" style="margin-bottom:.6rem;align-items:flex-end;gap:.5rem .7rem;flex-wrap:wrap">
-            <div class="grow"><label class="l">Customer address (prints on quote)</label><input id="projCustAddress" placeholder="optional"/></div>
-            <div class="grow"><label class="l">Customer GSTIN</label><input id="projCustGst" placeholder="optional"/></div>
-          </div>
-          <div class="row" style="margin-bottom:.6rem;flex-wrap:wrap;gap:.5rem .7rem">
-            <div class="grow" style="flex-basis:100%"><label class="l">Quote description (prints on quote)</label><textarea id="projDescription" rows="2" placeholder="Optional note that prints on the customer quotation" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
-            <div class="grow" style="flex-basis:100%"><label class="l">Terms &amp; Conditions override (optional — defaults from Company Setup)</label><textarea id="projTerms" rows="3" placeholder="Leave blank to use the company default terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
+          <div class="setup-summary" id="setupSummaryBar">
+            <span class="muted">Active setup</span>
+            <strong id="setupSummaryText">No setup yet</strong>
+            <button class="btn ghost sm" id="btnEditSetup" type="button">Edit Project Setup</button>
           </div>
           <div class="row">
             <div class="grow"><label class="l">Product</label><select id="lineProduct"></select></div>
@@ -390,15 +417,20 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
               <tbody id="cartBody"></tbody>
             </table>
           </div>
-          <div class="row" style="margin-top:.8rem;justify-content:space-between;align-items:flex-end">
+          <div class="row" style="margin-top:.8rem;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:.6rem">
             <div>
               <div class="muted" id="cartMeta">0 lines</div>
               <div class="total" id="cartTotal">₹ —</div>
             </div>
-            <div class="actions-inline">
-              <a class="btn sm" id="linkCust" href="#" target="_blank" title="Customer quotation: branding, sizes, specs, pricing, GST, terms.">📄 Customer Quote (PDF)</a>
-              <a class="btn sec sm" id="linkFact" href="#" target="_blank" title="Factory production sheet: panel schedule, glass sizes, hardware BOM, cut list, weights. No customer pricing.">🏭 Factory Sheet (PDF)</a>
-              <a class="btn ghost sm" id="linkQuote" href="#" target="_blank" title="Raw quotation data (JSON) — for integrations.">Quote data</a>
+            <div style="display:flex;flex-direction:column;gap:.4rem;align-items:flex-end;min-width:min(100%,280px)">
+              <div style="width:100%"><label class="l">Quote print setup (customer details on PDF)</label>
+                <select id="exportSetupSelect" title="Choose which project setup’s bill-to / terms print on the quote"></select>
+              </div>
+              <div class="actions-inline">
+                <a class="btn sm" id="linkCust" href="#" target="_blank" title="Customer quotation: branding, sizes, specs, pricing, GST, terms.">📄 Customer Quote (PDF)</a>
+                <a class="btn sec sm" id="linkFact" href="#" target="_blank" title="Factory production sheet: panel schedule, glass sizes, hardware BOM, cut list, weights. No customer pricing.">🏭 Factory Sheet (PDF)</a>
+                <a class="btn ghost sm" id="linkQuote" href="#" target="_blank" title="Raw quotation data (JSON) — for integrations.">Quote data</a>
+              </div>
             </div>
           </div>
           <pre class="optbox" id="optBox">Optimization after Calculate</pre>
@@ -1237,13 +1269,14 @@ async function api(path, opts={}) {
 function setView(v) {
   state.view = v;
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view===v));
-  ['dashboard','projects','cart','library','product','admin','customers','company','learning','formulas','templates','engines'].forEach(id => {
+  ['dashboard','setup','projects','cart','library','product','admin','customers','company','learning','formulas','templates','engines'].forEach(id => {
     const el = $('view-'+id); if (el) el.classList.toggle('hidden', id!==v);
   });
   const titles = {
     dashboard:['Dashboard','Active work across factory & quotations'],
+    setup:['Project Setup','Customer, brand, quote text — once per project, editable anytime'],
     projects:['Saved Projects','Search, filter, duplicate, archive — versions kept'],
-    cart:['Window Cart','Unlimited lines · live preview · instant totals'],
+    cart:['Window Cart','Products & design only · pick print setup at export'],
     library:['Product Library','Digital catalogue + manufacturing source of truth'],
     product:['Product Details','Specs from Product JSON only'],
     admin:['Admin · Product Library','Every product editable — catalogue, materials, formulas, rules'],
@@ -1258,9 +1291,10 @@ function setView(v) {
   $('subtitle').textContent = titles[v][1];
   $('side').classList.remove('open');
   if (v==='dashboard') loadDashboard();
+  if (v==='setup') { refreshSetupSummary(); loadSetupList(); }
   if (v==='projects') loadProjects();
   if (v==='library') renderLibrary();
-  if (v==='cart') { renderCart(); refreshPreview(); }
+  if (v==='cart') { renderCart(); refreshPreview(); refreshSetupSummary(); refreshExportSetupSelect(); }
   if (v==='admin') initAdmin();
   if (v==='customers') initCustomers();
   if (v==='company') initCompany();
@@ -1936,6 +1970,94 @@ function updatePdfLinks(){
   $('linkFact').href = `${API_BASE}/api/projects/${id}/factory-pdf`+q;
 }
 
+function refreshSetupSummary(){
+  const name = ($('cartName') && $('cartName').value.trim()) || '';
+  const cust = ($('projCustName') && $('projCustName').value.trim())
+    || ($('projMobile') && $('projMobile').value.trim()) || '';
+  const bits = [name, cust].filter(Boolean);
+  const el = $('setupSummaryText');
+  if (el) el.textContent = bits.length ? bits.join(' · ') : 'No setup yet — open Project Setup';
+  if ($('projPill') && state.projectId) {
+    const label = bits[0] || state.projectId;
+    $('projPill').textContent = state.projectId + (bits.length ? ' · ' + label : '');
+  }
+}
+
+async function loadSetupList(){
+  const body = $('setupListBody'); if (!body) return;
+  try {
+    const data = await api('/api/projects?sort=updatedAt&order=desc');
+    body.innerHTML = (data.projects||[]).map(p => `
+      <tr>
+        <td>${p.projectId}</td><td>${p.name||''}</td><td>${p.customer||''}</td>
+        <td><button class="btn ghost sm" data-setup-open="${p.projectId}">Edit</button></td>
+      </tr>`).join('') || '<tr><td colspan="4" class="muted">No saved projects yet</td></tr>';
+    body.querySelectorAll('[data-setup-open]').forEach(b => {
+      b.onclick = async () => { await openProject(b.dataset.setupOpen); setView('setup'); };
+    });
+  } catch(e) {
+    body.innerHTML = `<tr><td colspan="4" class="err">${e.message}</td></tr>`;
+  }
+}
+
+async function refreshExportSetupSelect(){
+  const sel = $('exportSetupSelect'); if (!sel) return;
+  const prev = sel.value;
+  try {
+    const data = await api('/api/projects?sort=updatedAt&order=desc');
+    const projects = data.projects || [];
+    if (!projects.length) {
+      sel.innerHTML = '<option value="">No saved setups</option>';
+      return;
+    }
+    sel.innerHTML = projects.map(p => {
+      const who = p.customer || p.customerMobile || '';
+      const label = `${p.name||p.projectId}${who ? ' — '+who : ''}`;
+      const mark = (p.projectId === state.projectId) ? ' (current)' : '';
+      return `<option value="${p.projectId}">${label}${mark}</option>`;
+    }).join('');
+    if (prev && projects.some(p => p.projectId === prev)) sel.value = prev;
+    else if (state.projectId && projects.some(p => p.projectId === state.projectId)) sel.value = state.projectId;
+  } catch(e) {
+    sel.innerHTML = `<option value="">${e.message}</option>`;
+  }
+}
+
+/** Copy bill-to / quote-text from a setup project onto the active cart project (for PDF print). */
+async function applySetupFromProject(setupId){
+  if (!setupId) return false;
+  const doc = await api('/api/projects/'+setupId);
+  // Always take bill-to / quote text from the chosen setup.
+  if ($('projCustName')) $('projCustName').value = doc.customer || '';
+  if ($('projMobile')) $('projMobile').value = doc.customerMobile || '';
+  if ($('projCustAddress')) $('projCustAddress').value = doc.customerAddress || '';
+  if ($('projCustGst')) $('projCustGst').value = doc.customerGst || '';
+  if ($('projDescription')) $('projDescription').value = doc.description || '';
+  if ($('projTerms')) $('projTerms').value = doc.terms || '';
+  // Only sync project name when applying the active project's own saved setup.
+  if (setupId === state.projectId && $('cartName')) $('cartName').value = doc.name || $('cartName').value;
+  syncProjectCustomer();
+  refreshSetupSummary();
+  if (state.projectId) {
+    // Persist bill-to onto the *active* cart project so PDF endpoints read the selected details.
+    await api('/api/projects/'+state.projectId, {method:'PUT', body:{
+      name: ($('cartName') && $('cartName').value) || undefined,
+      customer: ($('cartCustomer') && $('cartCustomer').value) || '',
+      lines: state.lines,
+      ...projectBillTo()
+    }});
+  }
+  updatePdfLinks();
+  return true;
+}
+
+async function ensureExportSetupApplied(){
+  const sel = $('exportSetupSelect');
+  if (!sel || !sel.value) return;
+  // Always re-apply selected setup onto current project before PDF so print matches the dropdown.
+  await applySetupFromProject(sel.value);
+}
+
 // Project-setup bill-to + quote text that must persist and print on the quote.
 function projectBillTo() {
   const val = id => ($(id) && $(id).value.trim()) || '';
@@ -1972,6 +2094,7 @@ async function saveProject(silent) {
   }});
   if (!silent) toast('Saved v'+doc.version);
   updatePdfLinks();
+  refreshSetupSummary();
   return doc;
 }
 
@@ -1999,6 +2122,7 @@ async function openProject(id) {
     $('optBox').textContent = JSON.stringify(doc.lastCalculation.optimization || {}, null, 2);
   }
   renderCart(); refreshPreview(); updatePdfLinks();
+  refreshSetupSummary();
   toast('Loaded '+id);
   maybeAskCustomerMemory();
 }
@@ -2380,18 +2504,23 @@ function syncProjectCustomer(){
 }
 ['projMobile','projCustName'].forEach(id => {
   const el = $(id); if (!el) return;
-  el.addEventListener('input', syncProjectCustomer);
+  el.addEventListener('input', () => { syncProjectCustomer(); refreshSetupSummary(); });
   el.addEventListener('change', () => {
     syncProjectCustomer();
+    refreshSetupSummary();
     scheduleLivePrice();
     if (typeof scheduleSave === 'function') scheduleSave();
     if (id === 'projCustName') maybeAskCustomerMemory();
   });
 });
 // New bill-to + quote-text fields persist via autosave (they print on the quote).
-['projCustAddress','projCustGst','projDescription','projTerms'].forEach(id => {
+['projCustAddress','projCustGst','projDescription','projTerms','cartName'].forEach(id => {
   const el = $(id); if (!el) return;
-  el.addEventListener('change', () => { if (typeof scheduleSave === 'function') scheduleSave(); });
+  el.addEventListener('input', () => { if (id === 'cartName') refreshSetupSummary(); });
+  el.addEventListener('change', () => {
+    refreshSetupSummary();
+    if (typeof scheduleSave === 'function') scheduleSave();
+  });
 });
 if ($('projCustName')) {
   $('projCustName').addEventListener('blur', () => maybeAskCustomerMemory());
@@ -2409,8 +2538,45 @@ $('btnNewFromDash').onclick = $('btnNewProj').onclick = async () => {
   if ($('projCustName')) $('projCustName').value='';
   if ($('projMobile')) $('projMobile').value='';
   ['projCustAddress','projCustGst','projDescription','projTerms'].forEach(id => { if ($(id)) $(id).value=''; });
-  $('cartTotal').textContent='₹ —'; renderCart(); setView('cart'); await ensureProject(); scheduleLivePrice();
+  $('cartTotal').textContent='₹ —'; renderCart();
+  refreshSetupSummary();
+  setView('setup'); await ensureProject(); scheduleLivePrice();
 };
+if ($('btnSaveSetup')) $('btnSaveSetup').onclick = async () => {
+  try {
+    syncProjectCustomer();
+    await saveProject(false);
+    if ($('setupErr')) $('setupErr').textContent = '';
+    await loadSetupList();
+    await refreshExportSetupSelect();
+  } catch(e) { if ($('setupErr')) $('setupErr').textContent = e.message; toast(e.message); }
+};
+if ($('btnSetupToCart')) $('btnSetupToCart').onclick = async () => {
+  try {
+    syncProjectCustomer();
+    await saveProject(true);
+    setView('cart');
+  } catch(e) { toast(e.message); }
+};
+if ($('btnSetupLoadList')) $('btnSetupLoadList').onclick = loadSetupList;
+if ($('btnEditSetup')) $('btnEditSetup').onclick = () => setView('setup');
+['linkCust','linkFact'].forEach(id => {
+  const a = $(id); if (!a) return;
+  a.addEventListener('click', async (e) => {
+    if (!state.projectId) { e.preventDefault(); toast('Save / calculate a project first'); return; }
+    e.preventDefault();
+    try {
+      await ensureExportSetupApplied();
+      updatePdfLinks();
+      window.open(a.href, '_blank');
+    } catch(err) { toast(err.message || String(err)); }
+  });
+});
+if ($('exportSetupSelect')) {
+  $('exportSetupSelect').onchange = () => {
+    /* Selection is applied when Customer/Factory PDF is opened — avoids mutating mid-edit. */
+  };
+}
 $('btnRefreshProj').onclick = loadProjects;
 $('projSearch').oninput = () => { clearTimeout(state._ps); state._ps=setTimeout(loadProjects,250); };
 $('projStatus').onchange = $('projSort').onchange = loadProjects;
@@ -3815,8 +3981,12 @@ if ($('btnCpNewQuote')) $('btnCpNewQuote').onclick = async () => {
   if (!name) { $('cpErr').textContent = 'Save customer first'; return; }
   state.projectId=null; state.lines=[]; state.lastResult=null;
   state.customerMemory=null; state.memoryAskedFor=null;
-  $('cartName').value = name+' — Quote'; $('cartCustomer').value = name;
-  $('cartTotal').textContent='₹ —'; renderCart(); setView('cart'); await ensureProject(); scheduleLivePrice();
+  $('cartName').value = name+' — Quote';
+  if ($('cartCustomer')) $('cartCustomer').value = name;
+  if ($('projCustName')) $('projCustName').value = name;
+  syncProjectCustomer();
+  refreshSetupSummary();
+  $('cartTotal').textContent='₹ —'; renderCart(); setView('setup'); await ensureProject(); scheduleLivePrice();
 };
 
 // ── Engines & Memory view ────────────────────────────────────────────────
@@ -4067,14 +4237,47 @@ async function weosFinalize(){
 }
 
 function weosMountAgentDock(){
-  if ($('weosAgentDock')) return;
+  if ($('weosAgentDock') || $('weosAgentFab')) return;
+  const AGENT_MIN_KEY = 'weos_agent_minimized';
+  const logoSrc = '/static/weos-logo.png?v=5';
+  const isMinimized = () => {
+    const v = localStorage.getItem(AGENT_MIN_KEY);
+    // First visit: stay minimized so the dock does not cover the quote UI.
+    if (v === null) return true;
+    return v === '1';
+  };
+  const setMinimized = (min) => {
+    try { localStorage.setItem(AGENT_MIN_KEY, min ? '1' : '0'); } catch(_){}
+    applyUi();
+  };
+  const applyUi = () => {
+    const min = isMinimized();
+    const dock = $('weosAgentDock');
+    const fab = $('weosAgentFab');
+    if (dock) dock.style.display = min ? 'none' : 'block';
+    if (fab) fab.style.display = min ? 'flex' : 'none';
+  };
+
+  const fab = document.createElement('button');
+  fab.id = 'weosAgentFab';
+  fab.type = 'button';
+  fab.className = 'weos-agent-fab';
+  fab.title = 'Open WEOS Agent';
+  fab.setAttribute('aria-label', 'Open WEOS Agent');
+  fab.innerHTML = `<img src="${logoSrc}" alt="WEOS" onerror="this.onerror=null;this.src='/api/company/logo?v=5'"/>`;
+  fab.onclick = () => setMinimized(false);
+  document.body.appendChild(fab);
+
   const dock = document.createElement('div');
   dock.id = 'weosAgentDock';
-  dock.style.cssText = 'position:fixed;right:16px;bottom:16px;width:340px;max-height:78vh;overflow:auto;background:#f8fafc;border:1px solid #cbd5e1;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);z-index:9999;font-family:inherit';
+  dock.style.cssText = 'position:fixed;right:16px;bottom:16px;width:340px;max-height:78vh;overflow:auto;background:#f8fafc;border:1px solid #cbd5e1;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);z-index:9999;font-family:inherit;display:none';
   dock.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#0f172a;color:#fff;border-radius:12px 12px 0 0">
-      <strong style="font-size:14px">🤖 WEOS Agent</strong>
-      <button id="weosToggle" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:16px">–</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#0f172a;color:#fff;border-radius:12px 12px 0 0;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0">
+        <img src="${logoSrc}" alt="" width="28" height="28" style="border-radius:6px;object-fit:contain;background:#111;flex-shrink:0" onerror="this.onerror=null;this.src='/api/company/logo?v=5'"/>
+        <strong style="font-size:14px">WEOS Agent</strong>
+      </div>
+      <button id="weosToggle" title="Minimize" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:18px;line-height:1;padding:2px 6px">–</button>
     </div>
     <div id="weosBody" style="padding:12px">
       <div id="weosLoginRow">
@@ -4103,7 +4306,8 @@ function weosMountAgentDock(){
   $('weosSaveBtn').onclick = weosSaveQuote;
   $('weosRunBtn').onclick = weosRunAgent;
   $('weosFinBtn').onclick = weosFinalize;
-  $('weosToggle').onclick = () => { const b = $('weosBody'); b.style.display = b.style.display==='none' ? 'block' : 'none'; };
+  $('weosToggle').onclick = () => setMinimized(true);
+  applyUi();
 }
 
 // ── Engine (backend) connection status ──────────────────────────────────────

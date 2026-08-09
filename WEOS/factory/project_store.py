@@ -152,6 +152,7 @@ def list_projects(
                 "projectId": d.get("projectId", p.stem),
                 "name": d.get("name"),
                 "customer": d.get("customer"),
+                "customerMobile": d.get("customerMobile"),
                 "status": st,
                 "updatedAt": d.get("updatedAt"),
                 "createdAt": d.get("createdAt"),
