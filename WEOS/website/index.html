@@ -22,8 +22,24 @@ a{color:inherit}
 @media(max-width:900px){.app{grid-template-columns:1fr}.side{position:fixed;inset:0 auto 0 0;transform:translateX(-105%);z-index:40;transition:.25s}
 .side.open{transform:none}.burger{display:inline-flex!important}}
 .side{background:#12140f;color:#e8efe9;padding:1.1rem .9rem;display:flex;flex-direction:column;gap:.35rem}
-.brand{font-family:Fraunces,serif;font-size:1.55rem;margin:.2rem .4rem .1rem}
-.tag{font-size:.72rem;color:#9bb0a4;margin:0 .4rem 1rem}
+/* Brand logo: an auto-contrast plate that "pops out" of the header divider,
+   lifting upward with a soft shadow so the multicolor transparent-PNG mark
+   always reads clearly on the dark rail. --brand-plate is set by JS
+   (applyBrandContrast) to the opposite of the surrounding background. */
+.brand{position:relative;text-align:center;margin:.15rem .2rem 1.15rem;padding:.5rem .2rem 1.05rem}
+.brand::after{content:"";position:absolute;left:.35rem;right:.35rem;bottom:.5rem;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,transparent,rgba(140,200,180,.6),transparent);
+  box-shadow:0 0 12px rgba(20,120,98,.4)}
+.brand-plate{position:relative;z-index:2;display:inline-block;
+  background:var(--brand-plate,linear-gradient(180deg,#ffffff,#eaf1ee));
+  border:1px solid var(--brand-plate-border,rgba(255,255,255,.65));
+  border-radius:16px;padding:.5rem .7rem;transform:translateY(-7px);
+  box-shadow:0 16px 28px rgba(0,0,0,.5),0 5px 10px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.85);
+  animation:brandPop .5s cubic-bezier(.2,.8,.25,1) both}
+.brand-plate img{display:block;max-width:150px;max-height:58px;object-fit:contain}
+@keyframes brandPop{from{opacity:0;transform:translateY(2px) scale(.95)}to{opacity:1;transform:translateY(-7px) scale(1)}}
+@media(max-width:900px){.brand-plate img{max-width:130px;max-height:50px}}
+.tag{font-size:.72rem;color:#9bb0a4;margin:0 .4rem 1rem;text-align:center}
 .navbtn{border:0;background:transparent;color:#d7e4dc;text-align:left;padding:.65rem .75rem;border-radius:10px;cursor:pointer;width:100%}
 .navbtn:hover,.navbtn.active{background:rgba(255,255,255,.08);color:#fff}
 .main{min-width:0;padding:1rem 1.1rem 2.5rem}
@@ -135,7 +151,9 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 <body>
 <div class="app">
   <aside class="side" id="side">
-    <div class="brand"><img id="brandLogo" src="/api/company/logo" alt="WEOS" style="max-width:150px;max-height:60px;object-fit:contain;display:block" onerror="this.onerror=null;this.src='/static/weos-logo.png'"/></div>
+    <div class="brand">
+      <span class="brand-plate"><img id="brandLogo" src="/api/company/logo?v=2" alt="WEOS" onerror="this.onerror=null;this.src='/static/weos-logo.png?v=2'"/></span>
+    </div>
     <p class="tag">Design • Calculate • Manufacture • Quote</p>
     <button class="navbtn active" data-view="dashboard">Dashboard</button>
     <button class="navbtn" data-view="projects">Saved Projects</button>
@@ -2021,6 +2039,30 @@ if ($('btnRailToggle')) $('btnRailToggle').onclick = () => {
 };
 if ($('btnRailCalc')) $('btnRailCalc').onclick = railingCalc;
 if ($('btnRailAdd')) $('btnRailAdd').onclick = railingAdd;
+
+/* Auto opposite/contrast backing for the brand logo: sample the sidebar bg
+   luminance and set a light plate on a dark rail (or a dark plate on a light
+   one) so the multicolor transparent logo always stays clearly visible. */
+function applyBrandContrast(){
+  try {
+    const side = document.querySelector('.side');
+    const root = document.documentElement;
+    if (!side) return;
+    const bg = getComputedStyle(side).backgroundColor || 'rgb(18,20,15)';
+    const m = (bg.match(/\d+(\.\d+)?/g) || [18,20,15]).map(Number);
+    const [r,g,b] = m;
+    const lum = (0.2126*r + 0.7152*g + 0.0722*b) / 255;
+    if (lum < 0.5) {
+      root.style.setProperty('--brand-plate', 'linear-gradient(180deg,#ffffff,#eaf1ee)');
+      root.style.setProperty('--brand-plate-border', 'rgba(255,255,255,.7)');
+    } else {
+      root.style.setProperty('--brand-plate', 'linear-gradient(180deg,#1b2430,#0e1620)');
+      root.style.setProperty('--brand-plate-border', 'rgba(0,0,0,.45)');
+    }
+  } catch (e) {}
+}
+applyBrandContrast();
+window.addEventListener('load', applyBrandContrast);
 $('btnUndo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/undo',{method:'POST'}); state.lines=d.lines||[]; renderCart(); toast('Undo'); };
 $('btnRedo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/redo',{method:'POST'}); state.lines=d.lines||[]; renderCart(); toast('Redo'); };
 $('importFile').onchange = async (ev) => {
