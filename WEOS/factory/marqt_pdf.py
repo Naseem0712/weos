@@ -328,7 +328,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     # —— Cover letter page ——
     M = MARGIN
     # Logo — larger header size, aspect preserved, capped to a sensible box.
-    logo_h = _draw_logo(M, H - M, 190, 70)
+    logo_h = _draw_logo(M, H - M, 210, 74)
     text_x = M + (205 if logo_h else 0)
     name_avail = (W - M) - text_x  # keep company name inside the right margin
     c.setFillColorRGB(*primary)
