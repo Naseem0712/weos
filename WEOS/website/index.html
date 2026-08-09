@@ -10,7 +10,7 @@
   --bg:#e8e3d8; --ink:#141410; --muted:#5c584f; --panel:rgba(255,252,247,.94);
   --line:rgba(20,20,16,.12); --green:#0a5a48; --green2:#147a62; --copper:#b45324;
   --card:#fffdf9; --shadow:0 10px 40px rgba(20,20,16,.06); --radius:14px;
-  --nav:72px; --side:242px;
+  --nav:72px; --side:340px;
 }
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;font-family:"DM Sans",system-ui,sans-serif;color:var(--ink);
@@ -28,9 +28,20 @@ a{color:inherit}
    the rail instead of reading as an ugly black box. The tagline is baked into
    the image, so no separate caption is rendered. */
 .brand{margin:.1rem .3rem 1rem;display:flex;justify-content:center}
-.brand img{display:block;width:208px;height:70px;object-fit:contain;padding:8px 14px;
+.brand img{display:block;width:310px;height:135px;max-width:100%;object-fit:contain;padding:4px 6px;
   filter:drop-shadow(0 1px 2px rgba(0,0,0,.28))}
-@media(max-width:900px){.brand img{width:188px;height:62px}}
+@media(max-width:900px){.brand img{width:280px;height:120px}}
+.rail-tools{margin:.45rem 0 .55rem;padding:.45rem .5rem;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.72)}
+.rail-tools .rt-head{display:flex;align-items:center;justify-content:space-between;gap:.4rem;margin-bottom:.35rem}
+.rail-tools .rt-shapes{display:flex;flex-wrap:wrap;gap:.25rem}
+.rail-tools .rt-shapes button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:.22rem .45rem;font-size:.72rem;cursor:pointer;line-height:1.2}
+.rail-tools .rt-shapes button.active{background:var(--green);color:#fff;border-color:var(--green)}
+.rail-tools .rt-row{display:flex;flex-wrap:wrap;gap:.35rem .5rem;align-items:flex-end;margin-top:.3rem}
+.rail-tools .rt-row input,.rail-tools .rt-row select{padding:.3rem .4rem;font-size:.78rem;border-radius:7px}
+.rail-tools .rt-seg{font-size:.72rem;width:100%;margin-top:.25rem}
+.rail-tools .rt-seg textarea{width:100%;min-height:42px;font-size:.75rem;padding:.35rem;border:1px solid var(--line);border-radius:7px;resize:vertical}
+.rail-tools .rt-bom{font-size:.72rem;color:var(--muted);margin-top:.35rem;max-height:110px;overflow:auto}
+.rail-tools.collapsed .rt-body{display:none}
 .navbtn{border:0;background:transparent;color:#1f2d28;font-weight:500;text-align:left;padding:.65rem .75rem;border-radius:10px;cursor:pointer;width:100%}
 .navbtn:hover{background:rgba(10,90,72,.10);color:#0a5a48}
 .navbtn.active{background:rgba(10,90,72,.16);color:#084a3b;font-weight:600}
@@ -144,7 +155,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 <div class="app">
   <aside class="side" id="side">
     <div class="brand">
-      <img id="brandLogo" src="/api/company/logo?v=4" alt="WEOS" onerror="this.onerror=null;this.src='/static/weos-logo.png?v=4'"/>
+      <img id="brandLogo" src="/api/company/logo?v=5" alt="WEOS" onerror="this.onerror=null;this.src='/static/weos-logo.png?v=5'"/>
     </div>
     <button class="navbtn active" data-view="dashboard">Dashboard</button>
     <button class="navbtn" data-view="projects">Saved Projects</button>
@@ -373,55 +384,6 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <label class="btn ghost sm" style="margin:0" title="Import lines from CSV/Excel">Import<input id="importFile" type="file" accept=".csv,.xlsx" hidden/></label>
             <label class="btn ghost sm" style="margin:0" title="Import DETA windows section catalogue">Sections Excel<input id="sectionsFile" type="file" accept=".xlsx" hidden/></label>
           </div>
-          <div class="panel" style="margin-top:.8rem;border:1px dashed var(--line)">
-            <div class="row" style="justify-content:space-between;align-items:center">
-              <strong>Railing designer <span class="muted" style="font-weight:400;font-size:.78rem">— balcony railings, glass panels + blocks/anchors, per-RFT/RMT rate</span></strong>
-              <button class="btn ghost sm" type="button" id="btnRailToggle">Open</button>
-            </div>
-            <div id="railingBody" style="display:none;margin-top:.6rem">
-              <div class="row" style="flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
-                <div><label class="l">Length (ft)</label><input id="rLenFt" type="number" step="0.01" value="10" style="width:90px"/></div>
-                <div><label class="l">Height (ft)</label><input id="rHtFt" type="number" step="0.01" value="2" style="width:90px"/></div>
-                <div><label class="l">Glass panels</label><input id="rPanels" type="number" min="1" value="2" style="width:80px"/></div>
-                <div><label class="l">Gap (mm)</label><input id="rGap" type="number" value="12" style="width:70px"/></div>
-                <label class="chk" style="display:flex;align-items:center;gap:.3rem;margin-bottom:.35rem"><input type="checkbox" id="rWallL" checked/> Wall left</label>
-                <label class="chk" style="display:flex;align-items:center;gap:.3rem;margin-bottom:.35rem"><input type="checkbox" id="rWallR" checked/> Wall right</label>
-                <label class="chk" style="display:flex;align-items:center;gap:.3rem;margin-bottom:.35rem"><input type="checkbox" id="rHandrail"/> Handrail</label>
-              </div>
-              <div class="row" style="flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end;margin-top:.4rem">
-                <div><label class="l">Blocks / glass (1–4)</label><input id="rBlocks" type="number" min="0" max="4" value="3" style="width:90px"/></div>
-                <div><label class="l">Pillar type</label><select id="rPillar" style="width:110px"><option value="block">Alu block</option><option value="ss">SS pillar</option></select></div>
-                <div><label class="l">Anchors / pillar (1–2)</label><input id="rAnchPer" type="number" min="1" max="2" value="2" style="width:110px"/></div>
-                <div><label class="l">Sale unit</label><select id="rSaleUnit" style="width:110px"><option value="rft">Per RFT</option><option value="rmt">Per RMT</option></select></div>
-              </div>
-              <p class="muted" style="font-size:.76rem;margin:.5rem 0 .2rem">Rates</p>
-              <div class="row" style="flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
-                <div><label class="l">Glass /sqft</label><input id="rRGlass" type="number" value="200" style="width:90px"/></div>
-                <div><label class="l">Block /pc</label><input id="rRBlock" type="number" value="100" style="width:90px"/></div>
-                <div><label class="l">Anchor /pc</label><input id="rRAnchor" type="number" value="50" style="width:90px"/></div>
-                <div><label class="l">Bottom rail /unit</label><input id="rRBrail" type="number" value="0" style="width:110px"/></div>
-                <div><label class="l">Bottom rail wt/unit</label><input id="rWBrail" type="number" step="0.01" value="0" style="width:120px"/></div>
-                <div><label class="l">Handrail /unit</label><input id="rRHrail" type="number" value="0" style="width:100px"/></div>
-                <div><label class="l">Handrail wt/unit</label><input id="rWHrail" type="number" step="0.01" value="0" style="width:110px"/></div>
-                <div><label class="l">Wall connector /pc</label><input id="rRWall" type="number" value="0" style="width:120px"/></div>
-              </div>
-              <div class="row" style="flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end;margin-top:.4rem">
-                <div class="grow"><label class="l">Extra cost name</label><input id="rExtraName" placeholder="e.g. transport"/></div>
-                <div><label class="l">Extra amount</label><input id="rExtraAmt" type="number" step="0.01" value="0" style="width:110px"/></div>
-                <div><label class="l">Manual rate /unit (override)</label><input id="rManual" type="number" step="0.01" placeholder="auto" style="width:150px"/></div>
-                <div><label class="l">Qty</label><input id="rQty" type="number" min="1" value="1" style="width:70px"/></div>
-              </div>
-              <div class="row" style="margin-top:.6rem">
-                <button class="btn sm" type="button" id="btnRailCalc">Calculate &amp; preview</button>
-                <button class="btn sec sm" type="button" id="btnRailAdd">Add railing to cart</button>
-              </div>
-              <div class="two" style="margin-top:.6rem;align-items:start">
-                <div id="railingPreview" style="border:1px solid var(--line);border-radius:10px;padding:.4rem;min-height:120px;background:#fff"></div>
-                <div id="railingBreakdown" class="muted" style="font-size:.8rem"></div>
-              </div>
-              <div class="err" id="railingErr" style="margin-top:.4rem"></div>
-            </div>
-          </div>
           <div style="overflow:auto;margin-top:.8rem">
             <table>
               <thead><tr><th>#</th><th>Product</th><th>Size</th><th>Qty</th><th>Options</th><th></th></tr></thead>
@@ -445,6 +407,92 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
         <div class="panel">
           <strong>Live Preview</strong>
           <p class="muted" id="previewLabel" style="margin:.25rem 0 .6rem">Select or add a line</p>
+          <div id="railTools" class="rail-tools hidden">
+            <div class="rt-head">
+              <strong style="font-size:.82rem">Railing tools</strong>
+              <div class="row" style="gap:.3rem;margin:0">
+                <button class="btn ghost sm" type="button" id="btnRailCollapse" title="Collapse">▾</button>
+                <button class="btn sm" type="button" id="btnRailCalc">Update</button>
+                <button class="btn sec sm" type="button" id="btnRailAdd">Add</button>
+              </div>
+            </div>
+            <div class="rt-body" id="railToolsBody">
+              <div class="rt-shapes" id="railShapeBtns">
+                <button type="button" data-shape="straight" class="active">Straight</button>
+                <button type="button" data-shape="L">L</button>
+                <button type="button" data-shape="U">U</button>
+                <button type="button" data-shape="polyline">Poly</button>
+                <button type="button" data-shape="arch">Arch</button>
+                <button type="button" data-shape="staircase">Stairs</button>
+              </div>
+              <div class="rt-row">
+                <div><label class="l">Len ft</label><input id="rLenFt" type="number" step="0.01" value="10" style="width:64px"/></div>
+                <div><label class="l">Ht ft</label><input id="rHtFt" type="number" step="0.01" value="2" style="width:56px"/></div>
+                <div><label class="l">Panels</label><input id="rPanels" type="number" min="1" value="2" style="width:48px"/></div>
+                <div><label class="l">Blocks/G</label><input id="rBlocks" type="number" min="0" max="4" value="3" style="width:48px"/></div>
+                <div><label class="l">Pillar</label><select id="rPillar" style="width:78px"><option value="block">Block</option><option value="ss">SS</option></select></div>
+                <div><label class="l">Anch/p</label><input id="rAnchPer" type="number" min="1" max="2" value="2" style="width:44px"/></div>
+                <div><label class="l">Unit</label><select id="rSaleUnit" style="width:64px"><option value="rft">RFT</option><option value="rmt">RMT</option></select></div>
+              </div>
+              <div class="rt-row">
+                <label class="chk" style="display:flex;align-items:center;gap:.25rem;font-size:.75rem"><input type="checkbox" id="rWallL" checked/> Wall start</label>
+                <label class="chk" style="display:flex;align-items:center;gap:.25rem;font-size:.75rem"><input type="checkbox" id="rWallR" checked/> Wall end</label>
+                <label class="chk" style="display:flex;align-items:center;gap:.25rem;font-size:.75rem"><input type="checkbox" id="rHandrail"/> Handrail</label>
+                <div><label class="l">Gap</label><input id="rGap" type="number" value="12" style="width:48px"/></div>
+                <div><label class="l">Qty</label><input id="rQty" type="number" min="1" value="1" style="width:44px"/></div>
+              </div>
+              <div class="rt-row" id="railShapeExtras">
+                <div id="wrapRailLegs"><label class="l">Legs A/B/C mm</label>
+                  <div style="display:flex;gap:.25rem">
+                    <input id="rLegA" type="number" placeholder="A" style="width:70px"/>
+                    <input id="rLegB" type="number" placeholder="B" style="width:70px"/>
+                    <input id="rLegC" type="number" placeholder="C" style="width:70px"/>
+                  </div>
+                </div>
+                <div id="wrapRailArch" style="display:none"><label class="l">Arch span / rise mm</label>
+                  <div style="display:flex;gap:.25rem">
+                    <input id="rArchSpan" type="number" value="4000" style="width:80px"/>
+                    <input id="rArchRise" type="number" value="1400" style="width:70px"/>
+                  </div>
+                </div>
+                <div id="wrapRailStair" style="display:none"><label class="l">Steps · rise · run · stud</label>
+                  <div style="display:flex;gap:.25rem;flex-wrap:wrap">
+                    <input id="rSteps" type="number" value="12" min="1" style="width:52px" title="steps"/>
+                    <input id="rRise" type="number" value="150" style="width:56px" title="rise mm"/>
+                    <input id="rRun" type="number" value="250" style="width:56px" title="run mm"/>
+                    <select id="rStud" style="width:64px"><option value="38">38</option><option value="50">50</option></select>
+                  </div>
+                </div>
+              </div>
+              <div class="rt-seg" id="wrapRailSegs" style="display:none">
+                <label class="l">Segments mm (comma) · optional turns after each (e.g. 6694,6585,1900,4567,6835)</label>
+                <textarea id="rSegments" placeholder="6694,6585,1900,4567,6835"></textarea>
+                <div class="rt-row" style="margin-top:.2rem">
+                  <button class="btn ghost sm" type="button" id="btnRailPresetJog" title="Wall-to-wall jog sketch">Preset jog</button>
+                  <button class="btn ghost sm" type="button" id="btnRailPresetStep" title="Stepped path sketch">Preset stepped</button>
+                </div>
+              </div>
+              <div class="rt-row">
+                <div><label class="l">Glass/sft</label><input id="rRGlass" type="number" value="200" style="width:58px"/></div>
+                <div><label class="l">Block</label><input id="rRBlock" type="number" value="100" style="width:52px"/></div>
+                <div><label class="l">Anchor</label><input id="rRAnchor" type="number" value="50" style="width:52px"/></div>
+                <div><label class="l">Bend</label><input id="rRBend" type="number" value="0" style="width:52px"/></div>
+                <div><label class="l">180°</label><input id="rR180" type="number" value="0" style="width:52px"/></div>
+                <div><label class="l">Endcap</label><input id="rREnd" type="number" value="0" style="width:52px"/></div>
+                <div><label class="l">Stud</label><input id="rRStud" type="number" value="0" style="width:52px"/></div>
+                <div><label class="l">B.rail</label><input id="rRBrail" type="number" value="0" style="width:52px"/></div>
+                <div><label class="l">H.rail</label><input id="rRHrail" type="number" value="0" style="width:52px"/></div>
+                <div><label class="l">Wall conn</label><input id="rRWall" type="number" value="0" style="width:58px"/></div>
+                <input id="rWBrail" type="hidden" value="0"/>
+                <input id="rWHrail" type="hidden" value="0"/>
+                <input id="rExtraName" type="hidden" value=""/>
+                <input id="rExtraAmt" type="hidden" value="0"/>
+                <input id="rManual" type="hidden" value=""/>
+              </div>
+              <div class="rt-bom" id="railingBreakdown"></div>
+              <div class="err" id="railingErr" style="margin-top:.2rem;font-size:.75rem"></div>
+            </div>
+          </div>
           <div class="preview" id="livePreview"><span class="muted">SVG / hero</span></div>
           <div class="specs" id="lineSpecs" style="margin-top:.8rem"></div>
         </div>
@@ -1157,6 +1205,9 @@ const state = {
   builderBundle: null,
   customerMemory: null,
   memoryAskedFor: null,
+  railShape: 'straight',
+  railingMode: false,
+  railing: null,
 };
 const $ = (id) => document.getElementById(id);
 const toast = (m) => { const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); };
@@ -1304,6 +1355,9 @@ async function loadProducts() {
     // manual rate, so nothing is hidden. Only truly invalid rows (no id) are
     // skipped. Empty library → clear prompt, no dummy options.
     const selectable = state.products.filter(p => p && p.id);
+    if (!selectable.some(p => productLooksLikeRailing(p) || String(p.id).toLowerCase() === 'railing')) {
+      selectable.push({ id: 'railing', displayName: 'Railing (designer)', category: 'Railings', manufacturingReady: true });
+    }
     if (!selectable.length) {
       sel.innerHTML = '<option value="" disabled selected>No products yet — add one or Import from Excel in Product Library</option>';
     } else {
@@ -1486,6 +1540,18 @@ function applyProductSystem() {
   const sysEl = $('lineSystem');
   if (!sel || !sysEl) return;
   const p = (state.products || []).find(x => x && x.id === sel.value);
+  if (productLooksLikeRailing(p) || String(sel.value).toLowerCase().includes('rail')) {
+    state.railingMode = true;
+    showRailTools(true);
+    railingCalc();
+    return;
+  }
+  // Leaving railing product → hide tools unless a railing cart line stays selected
+  const ln = state.lines[state.selectedLine];
+  if (!(ln && (ln.product === 'railing' || (ln.options && ln.options.railing)))) {
+    state.railingMode = false;
+    showRailTools(false);
+  }
   const sys = systemForProduct(p);
   if (sys && sysEl.value !== sys) {
     sysEl.value = sys;
@@ -1706,6 +1772,8 @@ function renderCart() {
       if ($('lineDesc')) $('lineDesc').value = ln.description || '';
       if ($('lineSeries')) $('lineSeries').value = ln.sectionSeries || '';
       syncDraftFromLine(ln);
+      if (ln.options && ln.options.railing) populateRailTools(ln.options.railing);
+      else if (String(ln.product||'').toLowerCase().includes('rail')) { state.railingMode = true; }
     }
     renderCart(); refreshPreview(); scheduleLivePrice();
   });
@@ -1776,21 +1844,25 @@ function initHandleDrag() {
 }
 
 async function refreshPreview() {
-  // Railing lines are NOT windows — render the railing 2D drawing, never generate_job.
-  const selLn = state.lines[state.selectedLine];
-  const railCfg = selLn && (selLn.product === 'railing' || (selLn.options && selLn.options.railing))
-    ? (selLn.options && selLn.options.railing) || {} : null;
-  if (railCfg) {
+  // Railing mode: shared livePreview shows railing 2D drawing (never window geometry).
+  if (isRailingMode()) {
     try {
-      const res = await api('/api/railing/quote', { method:'POST', body: railCfg });
+      // Prefer live tools config so the shared canvas updates while designing.
+      const cfg = railingConfig();
+      const res = await api('/api/railing/quote', { method:'POST', body: cfg });
       const q = res.quote || {};
-      $('previewLabel').textContent = `Railing · ${q.panelCount} panels · ${q.glassAreaSqft} sft`;
+      state.railing = { cfg, quote: q };
+      $('previewLabel').textContent = `Railing · ${q.shape || 'straight'} · ${q.panelCount || 0} panels · ${q.lengthMm || 0} mm`;
       $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
+      renderRailingBom(q);
+      showRailTools(true);
     } catch (e) {
       $('livePreview').innerHTML = '<span class="muted">Railing preview failed</span>';
+      if ($('railingErr')) $('railingErr').textContent = e.message || String(e);
     }
     return;
   }
+  showRailTools(false);
   const draft = currentLineDraft();
   const ln = state.lines[state.selectedLine] ? { ...state.lines[state.selectedLine], ...draft } : draft;
   const bits = [`${ln.product}`, `${ln.width}×${ln.height}`];
@@ -1978,47 +2050,147 @@ $('btnSaveRate').onclick = async () => {
 $('btnCalc').onclick = calculate;
 $('btnAutosave').onclick = () => saveProject(false);
 
-/* ── Railing designer + calculator ── */
+/* ── Railing designer (compact tools on shared Live Preview canvas) ── */
+function productLooksLikeRailing(p) {
+  if (!p) return false;
+  const id = String(p.id || '').toLowerCase();
+  const cat = String(p.category || '').toLowerCase();
+  const typ = String(p.productType || '').toLowerCase();
+  const name = String(p.displayName || '').toLowerCase();
+  return id.includes('rail') || cat.includes('rail') || typ.includes('rail') || name.includes('rail');
+}
+function isRailingMode() {
+  if (state.railingMode) return true;
+  const sel = $('lineProduct');
+  const pid = sel ? sel.value : '';
+  if (pid === 'railing' || String(pid).toLowerCase().includes('rail')) return true;
+  const p = (state.products || []).find(x => x && x.id === pid);
+  if (productLooksLikeRailing(p)) return true;
+  const ln = state.lines[state.selectedLine];
+  if (ln && (ln.product === 'railing' || (ln.options && ln.options.railing))) return true;
+  return false;
+}
+function showRailTools(on) {
+  const el = $('railTools');
+  if (!el) return;
+  el.classList.toggle('hidden', !on);
+  if (on) syncRailShapeUi();
+}
+function syncRailShapeUi() {
+  const shape = state.railShape || 'straight';
+  document.querySelectorAll('#railShapeBtns [data-shape]').forEach(b => {
+    b.classList.toggle('active', b.dataset.shape === shape);
+  });
+  const poly = shape === 'polyline';
+  const arch = shape === 'arch';
+  const stair = shape === 'staircase';
+  const legs = shape === 'L' || shape === 'U';
+  if ($('wrapRailSegs')) $('wrapRailSegs').style.display = poly ? '' : 'none';
+  if ($('wrapRailArch')) $('wrapRailArch').style.display = arch ? '' : 'none';
+  if ($('wrapRailStair')) $('wrapRailStair').style.display = stair ? '' : 'none';
+  if ($('wrapRailLegs')) $('wrapRailLegs').style.display = legs ? '' : 'none';
+}
+function populateRailTools(cfg) {
+  if (!cfg || typeof cfg !== 'object') return;
+  state.railingMode = true;
+  state.railShape = cfg.shape || 'straight';
+  const set = (id, v) => { if ($(id) && v != null && v !== '') $(id).value = v; };
+  set('rLenFt', cfg.lengthFt); set('rHtFt', cfg.heightFt);
+  set('rPanels', cfg.panels); set('rBlocks', cfg.blocksPerGlass);
+  set('rGap', cfg.gapMm); set('rPillar', cfg.pillarType);
+  set('rAnchPer', cfg.anchorsPerPillar); set('rSaleUnit', cfg.saleUnit);
+  if ($('rWallL')) $('rWallL').checked = !!(cfg.wallStart != null ? cfg.wallStart : cfg.wallLeft);
+  if ($('rWallR')) $('rWallR').checked = !!(cfg.wallEnd != null ? cfg.wallEnd : cfg.wallRight);
+  if ($('rHandrail')) $('rHandrail').checked = !!cfg.handrail;
+  set('rLegA', cfg.legAMm); set('rLegB', cfg.legBMm); set('rLegC', cfg.legCMm);
+  set('rArchSpan', cfg.archSpanMm); set('rArchRise', cfg.archRiseMm);
+  set('rSteps', cfg.stairSteps); set('rRise', cfg.stairRiseMm); set('rRun', cfg.stairRunMm);
+  set('rStud', cfg.studSizeMm);
+  if (Array.isArray(cfg.segments) && $('rSegments')) {
+    $('rSegments').value = cfg.segments.map(s => s.lengthMm || s).join(',');
+  }
+  const r = cfg.rates || {};
+  set('rRGlass', r.glassPerSqft); set('rRBlock', r.blockPerPc); set('rRAnchor', r.anchorPerPc);
+  set('rRBend', r.modularBendPerPc); set('rR180', r.connector180PerPc); set('rREnd', r.endCapPerPc);
+  set('rRStud', r.studPerPc); set('rRBrail', r.bottomRailPerUnit); set('rRHrail', r.handrailPerUnit);
+  set('rRWall', r.wallConnectorPerPc);
+  syncRailShapeUi();
+  showRailTools(true);
+}
+function parseSegmentList(text) {
+  const nums = String(text || '').split(/[,;\s]+/).map(s => parseFloat(s)).filter(n => n > 0);
+  return nums.map((lengthMm, i) => ({ lengthMm, turnDeg: i < nums.length - 1 ? 90 : 0 }));
+}
 function railingConfig(){
   const num = (id,d)=>{ const el=$(id); const v=el?el.value:''; return v===''?d:+v; };
-  return {
+  const shape = state.railShape || 'straight';
+  const cfg = {
+    shape,
     lengthFt: num('rLenFt',0), heightFt: num('rHtFt',0),
     panels: num('rPanels',1),
     gapMm: num('rGap',12), wallGapMm: num('rGap',12),
     wallLeft: $('rWallL') ? $('rWallL').checked : true,
     wallRight: $('rWallR') ? $('rWallR').checked : true,
+    wallStart: $('rWallL') ? $('rWallL').checked : true,
+    wallEnd: $('rWallR') ? $('rWallR').checked : true,
     handrail: $('rHandrail') ? $('rHandrail').checked : false,
     blocksPerGlass: num('rBlocks',0),
     pillarType: ($('rPillar')&&$('rPillar').value)||'block',
     anchorsPerPillar: num('rAnchPer',1),
     saleUnit: ($('rSaleUnit')&&$('rSaleUnit').value)||'rft',
+    legAMm: num('rLegA',0) || undefined,
+    legBMm: num('rLegB',0) || undefined,
+    legCMm: num('rLegC',0) || undefined,
+    archSpanMm: num('rArchSpan',0) || undefined,
+    archRiseMm: num('rArchRise',0) || undefined,
+    stairSteps: num('rSteps',12),
+    stairRiseMm: num('rRise',150),
+    stairRunMm: num('rRun',250),
+    studSizeMm: num('rStud',38),
     rates: {
       glassPerSqft: num('rRGlass',0), blockPerPc: num('rRBlock',0), anchorPerPc: num('rRAnchor',0),
       bottomRailPerUnit: num('rRBrail',0), bottomRailWeightPerUnit: num('rWBrail',0),
       handrailPerUnit: num('rRHrail',0), handrailWeightPerUnit: num('rWHrail',0),
       wallConnectorPerPc: num('rRWall',0),
+      modularBendPerPc: num('rRBend',0), connector180PerPc: num('rR180',0),
+      endCapPerPc: num('rREnd',0), studPerPc: num('rRStud',0),
     },
     extras: (num('rExtraAmt',0) > 0) ? [{ name: ($('rExtraName')&&$('rExtraName').value)||'Extra', amount: num('rExtraAmt',0) }] : [],
     manualRatePerUnit: ($('rManual')&&$('rManual').value!=='') ? +$('rManual').value : null,
   };
+  if (shape === 'polyline') {
+    const segs = parseSegmentList($('rSegments') && $('rSegments').value);
+    if (segs.length) cfg.segments = segs;
+  }
+  if (shape === 'arch' && cfg.archSpanMm) cfg.lengthMm = cfg.archSpanMm;
+  return cfg;
+}
+function renderRailingBom(q){
+  if (!$('railingBreakdown')) return;
+  const money0 = (n)=>'₹'+Number(n||0).toLocaleString('en-IN');
+  const hw = `bends ${q.bendCount||0} · 180° ${q.connector180Count||0} · caps ${q.endCapCount||0}`;
+  const stair = (q.shape === 'staircase')
+    ? ` · stairs pillars ${q.stairPillars||0} · studs ${q.stairStuds||0} (${q.studSizeMm||38}mm)`
+    : '';
+  const rows = (q.items||[]).map(it=>`<tr><td>${it.label}</td><td style="text-align:right">${it.qty} ${it.unit}</td><td style="text-align:right">${money0(it.amount)}</td></tr>`).join('');
+  $('railingBreakdown').innerHTML = `
+    <div>${q.shape||'straight'} · ${q.lengthMm} mm · ${hw}${stair}</div>
+    <div>Pillars ${q.pillarCount} · anchors ${q.anchorCount} · glass ${q.glassAreaSqft||0} sft</div>
+    <table class="mat-table" style="margin-top:.2rem;font-size:.7rem"><tbody>${rows}</tbody></table>
+    <div><b>${money0(q.total)}</b> · ${money0(q.perUnitRate)}/${String(q.saleUnit||'rft').toUpperCase()} → sell ${money0(q.sellingTotal)}</div>`;
 }
 async function railingCalc(){
   if ($('railingErr')) $('railingErr').textContent='';
   try {
+    state.railingMode = true;
+    showRailTools(true);
     const cfg = railingConfig();
     const res = await api('/api/railing/quote', { method:'POST', body: cfg });
     state.railing = { cfg, quote: res.quote };
-    if ($('railingPreview')) $('railingPreview').innerHTML = res.svg || '';
     const q = res.quote || {};
-    const money0 = (n)=>'₹'+Number(n||0).toLocaleString('en-IN');
-    const rows = (q.items||[]).map(it=>`<tr><td>${it.label}</td><td style="text-align:right">${it.qty} ${it.unit}</td><td style="text-align:right">${money0(it.rate)}</td><td style="text-align:right">${money0(it.amount)}</td></tr>`).join('');
-    const extras = (q.extras||[]).map(e=>`<tr><td>${e.name}</td><td></td><td></td><td style="text-align:right">${money0(e.amount)}</td></tr>`).join('');
-    if ($('railingBreakdown')) $('railingBreakdown').innerHTML = `
-      <div>Panels: ${q.panelCount} · widths ${(q.panelWidthsIn||[]).join(' / ')} in · glass <b>${q.glassAreaSqft} sft</b></div>
-      <div>Pillars ${q.pillarCount} · anchors ${q.anchorCount} (base ${q.baseAnchorCount||0})</div>
-      <table class="mat-table" style="margin-top:.3rem"><thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>${rows}${extras}</tbody></table>
-      <div style="margin-top:.35rem"><b>Total ${money0(q.total)}</b> · per ${String(q.saleUnit||'rft').toUpperCase()} <b>${money0(q.perUnitRate)}</b> · width ${q.widthUnit} ${String(q.saleUnit||'rft').toUpperCase()}</div>
-      <div>Selling: ${money0(q.sellingPerUnit)}/${String(q.saleUnit||'rft').toUpperCase()} → <b>${money0(q.sellingTotal)}</b></div>`;
+    $('previewLabel').textContent = `Railing · ${q.shape || 'straight'} · ${q.lengthMm || 0} mm · ${q.panelCount || 0} panels`;
+    $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
+    renderRailingBom(q);
     return res;
   } catch(e){ if ($('railingErr')) $('railingErr').textContent = e.message; }
 }
@@ -2027,24 +2199,61 @@ async function railingAdd(){
   if (!res || !state.railing) return;
   const { cfg, quote:q } = state.railing;
   const qty = ($('rQty') && +$('rQty').value) || 1;
+  const railProd = (($('lineProduct') && $('lineProduct').value) || 'railing');
   state.lines.push({
-    product:'railing', displayName:'Railing',
+    product: productLooksLikeRailing((state.products||[]).find(x=>x&&x.id===railProd)) ? railProd : 'railing',
+    displayName:'Railing',
     width: q.lengthMm, height: q.heightMm, qty,
     saleUnit: q.saleUnit, sellingRate: q.sellingPerUnit,
-    description: `Railing · ${q.panelCount} panels · ${q.glassAreaSqft} sft`,
+    description: `Railing · ${q.shape||'straight'} · ${q.lengthMm} mm · bends ${q.bendCount||0}`,
     options: { railing: cfg, railingQuote: q },
   });
   state.selectedLine = state.lines.length-1;
+  state.railingMode = true;
   renderCart(); scheduleSave(); refreshPreview(); toast('Railing added to cart');
 }
-if ($('btnRailToggle')) $('btnRailToggle').onclick = () => {
-  const b=$('railingBody'); const open = b.style.display==='none';
-  b.style.display = open ? '' : 'none';
-  $('btnRailToggle').textContent = open ? 'Close' : 'Open';
-  if (open && !state.railing) railingCalc();
+function applyRailingModeFromProduct() {
+  const on = isRailingMode();
+  state.railingMode = on || state.railingMode;
+  showRailTools(on || state.railingMode);
+  if (on || state.railingMode) railingCalc();
+}
+if ($('btnRailCollapse')) $('btnRailCollapse').onclick = () => {
+  const el = $('railTools'); if (!el) return;
+  el.classList.toggle('collapsed');
+  $('btnRailCollapse').textContent = el.classList.contains('collapsed') ? '▸' : '▾';
 };
 if ($('btnRailCalc')) $('btnRailCalc').onclick = railingCalc;
 if ($('btnRailAdd')) $('btnRailAdd').onclick = railingAdd;
+document.querySelectorAll('#railShapeBtns [data-shape]').forEach(btn => {
+  btn.onclick = () => {
+    state.railShape = btn.dataset.shape;
+    state.railingMode = true;
+    if (state.railShape !== 'straight' && $('rHandrail')) $('rHandrail').checked = true;
+    syncRailShapeUi();
+    railingCalc();
+  };
+});
+if ($('btnRailPresetJog')) $('btnRailPresetJog').onclick = () => {
+  state.railShape = 'polyline'; state.railingMode = true;
+  if ($('rSegments')) $('rSegments').value = '6694,6585,1900,4567,6835';
+  if ($('rHandrail')) $('rHandrail').checked = true;
+  syncRailShapeUi(); railingCalc();
+};
+if ($('btnRailPresetStep')) $('btnRailPresetStep').onclick = () => {
+  state.railShape = 'polyline'; state.railingMode = true;
+  if ($('rSegments')) $('rSegments').value = '6865,11500,5100,4700,5100,11700';
+  if ($('rHandrail')) $('rHandrail').checked = true;
+  syncRailShapeUi(); railingCalc();
+};
+['rLenFt','rHtFt','rPanels','rBlocks','rGap','rWallL','rWallR','rHandrail','rPillar','rAnchPer','rSaleUnit',
+ 'rLegA','rLegB','rLegC','rArchSpan','rArchRise','rSteps','rRise','rRun','rStud','rSegments',
+ 'rRGlass','rRBlock','rRAnchor','rRBend','rR180','rREnd','rRStud','rRBrail','rRHrail','rRWall'].forEach(id => {
+  const el = $(id); if (!el) return;
+  const go = () => { if (isRailingMode() || state.railingMode) railingCalc(); };
+  el.addEventListener('change', go);
+  el.addEventListener('input', () => { clearTimeout(state._railT); state._railT = setTimeout(go, 280); });
+});
 $('btnUndo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/undo',{method:'POST'}); state.lines=d.lines||[]; renderCart(); toast('Undo'); };
 $('btnRedo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/redo',{method:'POST'}); state.lines=d.lines||[]; renderCart(); toast('Redo'); };
 $('importFile').onchange = async (ev) => {

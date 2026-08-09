@@ -250,6 +250,7 @@ class PreviewRequest(BaseModel):
     powderCoatName: str | None = None
     sectionSeries: str | None = None
     grid: Any = None
+    railing: dict[str, Any] | None = None
 
 
 class FormulaPreviewRequest(BaseModel):
@@ -784,11 +785,14 @@ def api_railing_quote(body: dict[str, Any]) -> dict[str, Any]:
 def api_preview(body: PreviewRequest) -> dict[str, Any]:
     """Fast SVG preview for live cart — uses geometry engine only path via generate_job."""
     # Railing is not a window — never route it through generate_job.
-    if str(getattr(body, "product", "") or "").lower() == "railing":
+    prod = str(getattr(body, "product", "") or "").lower()
+    rail_cfg = getattr(body, "railing", None)
+    if prod in ("railing", "railings_stub", "glass_railings") or isinstance(rail_cfg, dict):
         from WEOS.factory.railing_engine import compute_railing, railing_svg
 
-        q = compute_railing({})
-        return {"svg": railing_svg({}, quote=q), "system": "railing", "railing": q}
+        cfg = dict(rail_cfg or {})
+        q = compute_railing(cfg)
+        return {"svg": railing_svg(cfg, quote=q), "system": "railing", "railing": q}
     try:
         from WEOS.factory.layout_options import resolve_mesh_track
         from WEOS.factory.product_loader import load_product
