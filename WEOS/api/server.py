@@ -283,6 +283,7 @@ class ProductAdminBody(BaseModel):
     catalogue: dict[str, Any] | None = None
     sectionSeries: str | None = None
     linkedProductId: str | None = None
+    setup: dict[str, Any] | None = None
     syncHardware: bool = True
     bumpVersion: bool = True
     manualRatePerOpening: float | None = None
@@ -759,6 +760,24 @@ def api_product_detail(product_id: str) -> dict[str, Any]:
         return get_product_detail(product_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/railing/quote")
+def api_railing_quote(body: dict[str, Any]) -> dict[str, Any]:
+    """Railing calculator + 2D designer preview.
+
+    Accepts a railing config (length/height/panels/blocks/anchors/rates/extras/
+    manual rate) and returns the full pricing breakdown plus a clean 2D SVG
+    elevation. Pure/stateless — the cart persists the config in the quote line.
+    """
+    try:
+        from WEOS.factory.railing_engine import compute_railing, railing_svg
+
+        quote = compute_railing(body or {})
+        svg = railing_svg(body or {}, quote=quote)
+        return {"quote": quote, "svg": svg}
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=400, detail=f"railing quote failed: {exc}") from exc
 
 
 @app.post("/api/preview")

@@ -109,6 +109,67 @@ def _error_line_result(line: Mapping[str, Any], error: str = "") -> dict[str, An
     }
 
 
+def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
+    """Price a railing line from its own designer config (no window geometry).
+
+    Uses :func:`railing_engine.compute_railing` for the cost breakdown and the
+    2D SVG. The customer price is the railing ``sellingTotal`` (per-unit rate ×
+    width, or the user's manual rate override) × qty.
+    """
+    from WEOS.factory.railing_engine import compute_railing, railing_svg
+
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    cfg = (opts or {}).get("railing") if isinstance(opts, Mapping) else {}
+    cfg = cfg if isinstance(cfg, Mapping) else {}
+    q = compute_railing(cfg)
+    qty = int(line.get("qty") or line.get("quantity") or 1)
+    unit_total = float(q.get("sellingTotal") or 0.0)
+    subtotal = round(unit_total * qty, 2)
+
+    glass_pieces = [
+        {"qty": 1, "width": round(w, 1), "height": round(float(q.get("heightMm") or 0), 1),
+         "thicknessMm": float(cfg.get("glassThicknessMm") or 12), "spec": "railing glass"}
+        for w in (q.get("panelWidthsMm") or [])
+    ]
+    bom = [
+        {"name": it.get("label"), "qty": it.get("qty"), "unit": it.get("unit"),
+         "rate": it.get("rate"), "amount": it.get("amount")}
+        for it in (q.get("items") or [])
+    ]
+    return {
+        "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
+        "product": "railing",
+        "displayName": line.get("displayName") or "Railing",
+        "category": "Railing",
+        "status": "railing",
+        "width": float(line.get("width") or q.get("lengthMm") or 0),
+        "height": float(line.get("height") or q.get("heightMm") or 0),
+        "qty": qty,
+        "railing": q,
+        "options": dict(opts) if isinstance(opts, Mapping) else {},
+        "glass": glass_pieces,
+        "hardware": [],
+        "materials": [],
+        "brush": {"totalMeters": 0, "pieces": []},
+        "trackRail": [],
+        "cutList": [],
+        "bom": bom,
+        "weight": {"aluminiumKg": 0, "glassKg": 0, "hardwareKg": 0, "totalKg": 0},
+        "price": {
+            "currency": "INR",
+            "unitRate": float(q.get("sellingPerUnit") or 0.0),
+            "unitTotal": round(unit_total, 2),
+            "subtotal": subtotal,
+            "markupPercent": 0,
+            "gstPercent": 0,
+            "total": subtotal,
+            "saleUnit": q.get("saleUnit"),
+        },
+        "preview": {"svg": railing_svg(cfg, quote=q)},
+        "note": "Railing — priced from the railing designer (cost ÷ width = per-unit rate; user rate override applies).",
+    }
+
+
 def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
     """Calculate one cart line (product × size × qty × options)."""
     from WEOS.factory.live_pricing import apply_selling_to_line_result
@@ -116,6 +177,14 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
     from WEOS.factory.layout_options import line_layout_options
 
     product_id = str(line.get("product") or line.get("productId") or "29mm_sliding")
+    # Railing lines are self-priced from their designer config.
+    _opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    if product_id.lower() == "railing" or (isinstance(_opts, Mapping) and isinstance(_opts.get("railing"), Mapping)):
+        try:
+            return _railing_line_result(line)
+        except Exception as exc:  # pragma: no cover - keep the quote rendering
+            _log.exception("railing line calc failed: %s", exc)
+            return _error_line_result(line, f"railing calc failed: {exc}")
     product = load_product(product_id, strict=False)
     qty = int(line.get("qty") or line.get("quantity") or 1)
     width = float(line.get("width", 0))

@@ -109,6 +109,30 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
     w = float(line.get("width") or 0)
     h = float(line.get("height") or 0)
 
+    # Railing lines carry their own 2D designer geometry — render that SVG as a
+    # crisp vector (identical to the live railing designer).
+    opts_r = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    rail_cfg = (opts_r or {}).get("railing")
+    if str(line.get("product") or "").lower() == "railing" or isinstance(rail_cfg, Mapping):
+        try:
+            from WEOS.factory.image_engine import svg_to_rl_drawing
+            from WEOS.factory.railing_engine import railing_svg
+
+            svg = railing_svg(rail_cfg or {})
+            drawing = svg_to_rl_drawing(str(svg))
+            if drawing is not None and getattr(drawing, "width", 0) and getattr(drawing, "height", 0):
+                from reportlab.graphics import renderPDF
+
+                dwid, dhei = float(drawing.width), float(drawing.height)
+                scale = min(box_w / dwid, box_h / dhei)
+                dw, dh = dwid * scale, dhei * scale
+                drawing.scale(scale, scale)
+                drawing.width, drawing.height = dw, dh
+                renderPDF.draw(drawing, c, x + (box_w - dw) / 2.0, y + (box_h - dh))
+                return True
+        except Exception:
+            _log.exception("railing elevation render failed; continuing with window path")
+
     # The live canvas is rendered by svg_export.render_svg_string. To guarantee the
     # PDF matches the canvas 1:1 (same geometry, labels, hinges, mullions, arrows,
     # grid cell labels, fold L/R leaves), embed that SAME SVG as a VECTOR drawing.

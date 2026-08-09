@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from WEOS.paths import data_dir
+from WEOS.paths import data_dir, website_dir
 
 _LOGO_EXT = {
     "image/png": ".png",
@@ -125,14 +125,26 @@ def save_logo(raw: bytes, filename: str | None = None, content_type: str | None 
     return doc
 
 
+def default_logo_file() -> Path | None:
+    """The bundled WEOS brand logo shipped in the website dir (served at
+    /static/weos-logo.png). Used as the default app + PDF logo when the company
+    has not uploaded their own."""
+    for cand in (website_dir() / "weos-logo.png", website_dir() / "weos-logo.svg"):
+        if cand.is_file():
+            return cand
+    return None
+
+
 def logo_file() -> Path | None:
+    """Effective logo: the company's uploaded logo when present, else the bundled
+    WEOS default. Company upload always overrides the default."""
     doc = load_company()
     p = doc.get("logoPath")
     if p and Path(p).is_file():
         return Path(p)
     for cand in company_dir().glob("logo.*"):
         return cand
-    return None
+    return default_logo_file()
 
 
 def logo_data_url() -> str | None:

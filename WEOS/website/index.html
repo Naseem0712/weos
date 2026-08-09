@@ -135,7 +135,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 <body>
 <div class="app">
   <aside class="side" id="side">
-    <div class="brand">WEOS</div>
+    <div class="brand"><img id="brandLogo" src="/api/company/logo" alt="WEOS" style="max-width:150px;max-height:60px;object-fit:contain;display:block" onerror="this.onerror=null;this.src='/static/weos-logo.png'"/></div>
     <p class="tag">Design • Calculate • Manufacture • Quote</p>
     <button class="navbtn active" data-view="dashboard">Dashboard</button>
     <button class="navbtn" data-view="projects">Saved Projects</button>
@@ -364,6 +364,55 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <label class="btn ghost sm" style="margin:0" title="Import lines from CSV/Excel">Import<input id="importFile" type="file" accept=".csv,.xlsx" hidden/></label>
             <label class="btn ghost sm" style="margin:0" title="Import DETA windows section catalogue">Sections Excel<input id="sectionsFile" type="file" accept=".xlsx" hidden/></label>
           </div>
+          <div class="panel" style="margin-top:.8rem;border:1px dashed var(--line)">
+            <div class="row" style="justify-content:space-between;align-items:center">
+              <strong>Railing designer <span class="muted" style="font-weight:400;font-size:.78rem">— balcony railings, glass panels + blocks/anchors, per-RFT/RMT rate</span></strong>
+              <button class="btn ghost sm" type="button" id="btnRailToggle">Open</button>
+            </div>
+            <div id="railingBody" style="display:none;margin-top:.6rem">
+              <div class="row" style="flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
+                <div><label class="l">Length (ft)</label><input id="rLenFt" type="number" step="0.01" value="10" style="width:90px"/></div>
+                <div><label class="l">Height (ft)</label><input id="rHtFt" type="number" step="0.01" value="2" style="width:90px"/></div>
+                <div><label class="l">Glass panels</label><input id="rPanels" type="number" min="1" value="2" style="width:80px"/></div>
+                <div><label class="l">Gap (mm)</label><input id="rGap" type="number" value="12" style="width:70px"/></div>
+                <label class="chk" style="display:flex;align-items:center;gap:.3rem;margin-bottom:.35rem"><input type="checkbox" id="rWallL" checked/> Wall left</label>
+                <label class="chk" style="display:flex;align-items:center;gap:.3rem;margin-bottom:.35rem"><input type="checkbox" id="rWallR" checked/> Wall right</label>
+                <label class="chk" style="display:flex;align-items:center;gap:.3rem;margin-bottom:.35rem"><input type="checkbox" id="rHandrail"/> Handrail</label>
+              </div>
+              <div class="row" style="flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end;margin-top:.4rem">
+                <div><label class="l">Blocks / glass (1–4)</label><input id="rBlocks" type="number" min="0" max="4" value="3" style="width:90px"/></div>
+                <div><label class="l">Pillar type</label><select id="rPillar" style="width:110px"><option value="block">Alu block</option><option value="ss">SS pillar</option></select></div>
+                <div><label class="l">Anchors / pillar (1–2)</label><input id="rAnchPer" type="number" min="1" max="2" value="2" style="width:110px"/></div>
+                <div><label class="l">Sale unit</label><select id="rSaleUnit" style="width:110px"><option value="rft">Per RFT</option><option value="rmt">Per RMT</option></select></div>
+              </div>
+              <p class="muted" style="font-size:.76rem;margin:.5rem 0 .2rem">Rates</p>
+              <div class="row" style="flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
+                <div><label class="l">Glass /sqft</label><input id="rRGlass" type="number" value="200" style="width:90px"/></div>
+                <div><label class="l">Block /pc</label><input id="rRBlock" type="number" value="100" style="width:90px"/></div>
+                <div><label class="l">Anchor /pc</label><input id="rRAnchor" type="number" value="50" style="width:90px"/></div>
+                <div><label class="l">Bottom rail /unit</label><input id="rRBrail" type="number" value="0" style="width:110px"/></div>
+                <div><label class="l">Bottom rail wt/unit</label><input id="rWBrail" type="number" step="0.01" value="0" style="width:120px"/></div>
+                <div><label class="l">Handrail /unit</label><input id="rRHrail" type="number" value="0" style="width:100px"/></div>
+                <div><label class="l">Handrail wt/unit</label><input id="rWHrail" type="number" step="0.01" value="0" style="width:110px"/></div>
+                <div><label class="l">Wall connector /pc</label><input id="rRWall" type="number" value="0" style="width:120px"/></div>
+              </div>
+              <div class="row" style="flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end;margin-top:.4rem">
+                <div class="grow"><label class="l">Extra cost name</label><input id="rExtraName" placeholder="e.g. transport"/></div>
+                <div><label class="l">Extra amount</label><input id="rExtraAmt" type="number" step="0.01" value="0" style="width:110px"/></div>
+                <div><label class="l">Manual rate /unit (override)</label><input id="rManual" type="number" step="0.01" placeholder="auto" style="width:150px"/></div>
+                <div><label class="l">Qty</label><input id="rQty" type="number" min="1" value="1" style="width:70px"/></div>
+              </div>
+              <div class="row" style="margin-top:.6rem">
+                <button class="btn sm" type="button" id="btnRailCalc">Calculate &amp; preview</button>
+                <button class="btn sec sm" type="button" id="btnRailAdd">Add railing to cart</button>
+              </div>
+              <div class="two" style="margin-top:.6rem;align-items:start">
+                <div id="railingPreview" style="border:1px solid var(--line);border-radius:10px;padding:.4rem;min-height:120px;background:#fff"></div>
+                <div id="railingBreakdown" class="muted" style="font-size:.8rem"></div>
+              </div>
+              <div class="err" id="railingErr" style="margin-top:.4rem"></div>
+            </div>
+          </div>
           <div style="overflow:auto;margin-top:.8rem">
             <table>
               <thead><tr><th>#</th><th>Product</th><th>Size</th><th>Qty</th><th>Options</th><th></th></tr></thead>
@@ -454,6 +503,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
         </div>
         <div class="tabs" id="adminTabs">
           <button class="tab active" data-tab="meta">Catalogue</button>
+          <button class="tab" data-tab="setup">Series Setup</button>
           <button class="tab" data-tab="materials">Materials + Formulas</button>
           <button class="tab" data-tab="rules">Rules</button>
         </div>
@@ -498,6 +548,23 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           </div>
           <label class="l" style="margin-top:.5rem">Profiles (JSON list — name, usage, sectionDepthMm, widthMm, weightKgPerMtr, standardLength)</label>
           <textarea id="adCatProfiles" style="width:100%;min-height:130px;font-family:ui-monospace,monospace;font-size:.75rem;border:1px solid var(--line);border-radius:10px;padding:.6rem"></textarea>
+        </div>
+        <div id="admin-setup" class="hidden">
+          <div class="row" style="align-items:flex-end">
+            <div><label class="l">Product type (defines the setup form)</label>
+              <select id="setupType" style="width:220px">
+                <option value="sliding">Sliding series</option>
+                <option value="casement">Casement / Openable</option>
+                <option value="telescopic">Telescopic sliding</option>
+                <option value="style">Style / Slide doors</option>
+              </select>
+            </div>
+            <div class="grow"><label class="l">Standard length(s) mm (comma)</label><input id="setupStdLen" placeholder="e.g. 5850 or 2400,3000"/></div>
+            <label class="chk" style="display:flex;align-items:center;gap:.35rem;margin-bottom:.35rem"><input type="checkbox" id="setupImported"/> Imported material</label>
+          </div>
+          <p class="muted" style="font-size:.78rem;margin:.4rem 0 .2rem">Fill the sections (dimensions · weight kg/m · standard length) and hardware (brand · rate · qty per shutter/leaf/config). Saved into this product and used for section sizes, BOM, glass &amp; weight.</p>
+          <div id="setupBody" style="margin-top:.4rem"></div>
+          <div class="muted" id="setupDerived" style="font-size:.75rem;margin-top:.6rem"></div>
         </div>
         <div id="admin-materials" class="hidden">
           <div class="row" style="margin-bottom:.5rem">
@@ -1416,6 +1483,17 @@ function applyProductSystem() {
     state.draftHandleOverrides = {};
     applySystemUiRules();
   }
+  // Series-setup defaults: prefill section sizes from the product's derived
+  // sectionSizes (from Product Library · Series Setup) when the cart fields are
+  // empty, so the live geometry uses the registered series' frame widths.
+  const sizes = p && p.catalogue && p.catalogue.sectionSizes;
+  if (sizes && typeof sizes === 'object') {
+    const map = { secTop: 'topRail', secBottom: 'bottomRail', secJamb: 'leftJamb', secLeaf: 'leafStile' };
+    for (const id in map) {
+      const el = $(id);
+      if (el && (el.value === '' || el.value == null) && sizes[map[id]]) el.value = sizes[map[id]];
+    }
+  }
 }
 
 function currentSectionSizes() {
@@ -1875,6 +1953,74 @@ $('btnSaveRate').onclick = async () => {
 };
 $('btnCalc').onclick = calculate;
 $('btnAutosave').onclick = () => saveProject(false);
+
+/* ── Railing designer + calculator ── */
+function railingConfig(){
+  const num = (id,d)=>{ const el=$(id); const v=el?el.value:''; return v===''?d:+v; };
+  return {
+    lengthFt: num('rLenFt',0), heightFt: num('rHtFt',0),
+    panels: num('rPanels',1),
+    gapMm: num('rGap',12), wallGapMm: num('rGap',12),
+    wallLeft: $('rWallL') ? $('rWallL').checked : true,
+    wallRight: $('rWallR') ? $('rWallR').checked : true,
+    handrail: $('rHandrail') ? $('rHandrail').checked : false,
+    blocksPerGlass: num('rBlocks',0),
+    pillarType: ($('rPillar')&&$('rPillar').value)||'block',
+    anchorsPerPillar: num('rAnchPer',1),
+    saleUnit: ($('rSaleUnit')&&$('rSaleUnit').value)||'rft',
+    rates: {
+      glassPerSqft: num('rRGlass',0), blockPerPc: num('rRBlock',0), anchorPerPc: num('rRAnchor',0),
+      bottomRailPerUnit: num('rRBrail',0), bottomRailWeightPerUnit: num('rWBrail',0),
+      handrailPerUnit: num('rRHrail',0), handrailWeightPerUnit: num('rWHrail',0),
+      wallConnectorPerPc: num('rRWall',0),
+    },
+    extras: (num('rExtraAmt',0) > 0) ? [{ name: ($('rExtraName')&&$('rExtraName').value)||'Extra', amount: num('rExtraAmt',0) }] : [],
+    manualRatePerUnit: ($('rManual')&&$('rManual').value!=='') ? +$('rManual').value : null,
+  };
+}
+async function railingCalc(){
+  if ($('railingErr')) $('railingErr').textContent='';
+  try {
+    const cfg = railingConfig();
+    const res = await api('/api/railing/quote', { method:'POST', body: cfg });
+    state.railing = { cfg, quote: res.quote };
+    if ($('railingPreview')) $('railingPreview').innerHTML = res.svg || '';
+    const q = res.quote || {};
+    const money0 = (n)=>'₹'+Number(n||0).toLocaleString('en-IN');
+    const rows = (q.items||[]).map(it=>`<tr><td>${it.label}</td><td style="text-align:right">${it.qty} ${it.unit}</td><td style="text-align:right">${money0(it.rate)}</td><td style="text-align:right">${money0(it.amount)}</td></tr>`).join('');
+    const extras = (q.extras||[]).map(e=>`<tr><td>${e.name}</td><td></td><td></td><td style="text-align:right">${money0(e.amount)}</td></tr>`).join('');
+    if ($('railingBreakdown')) $('railingBreakdown').innerHTML = `
+      <div>Panels: ${q.panelCount} · widths ${(q.panelWidthsIn||[]).join(' / ')} in · glass <b>${q.glassAreaSqft} sft</b></div>
+      <div>Pillars ${q.pillarCount} · anchors ${q.anchorCount} (base ${q.baseAnchorCount||0})</div>
+      <table class="mat-table" style="margin-top:.3rem"><thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>${rows}${extras}</tbody></table>
+      <div style="margin-top:.35rem"><b>Total ${money0(q.total)}</b> · per ${String(q.saleUnit||'rft').toUpperCase()} <b>${money0(q.perUnitRate)}</b> · width ${q.widthUnit} ${String(q.saleUnit||'rft').toUpperCase()}</div>
+      <div>Selling: ${money0(q.sellingPerUnit)}/${String(q.saleUnit||'rft').toUpperCase()} → <b>${money0(q.sellingTotal)}</b></div>`;
+    return res;
+  } catch(e){ if ($('railingErr')) $('railingErr').textContent = e.message; }
+}
+async function railingAdd(){
+  const res = await railingCalc();
+  if (!res || !state.railing) return;
+  const { cfg, quote:q } = state.railing;
+  const qty = ($('rQty') && +$('rQty').value) || 1;
+  state.lines.push({
+    product:'railing', displayName:'Railing',
+    width: q.lengthMm, height: q.heightMm, qty,
+    saleUnit: q.saleUnit, sellingRate: q.sellingPerUnit,
+    description: `Railing · ${q.panelCount} panels · ${q.glassAreaSqft} sft`,
+    options: { railing: cfg, railingQuote: q },
+  });
+  state.selectedLine = state.lines.length-1;
+  renderCart(); scheduleSave(); toast('Railing added to cart');
+}
+if ($('btnRailToggle')) $('btnRailToggle').onclick = () => {
+  const b=$('railingBody'); const open = b.style.display==='none';
+  b.style.display = open ? '' : 'none';
+  $('btnRailToggle').textContent = open ? 'Close' : 'Open';
+  if (open && !state.railing) railingCalc();
+};
+if ($('btnRailCalc')) $('btnRailCalc').onclick = railingCalc;
+if ($('btnRailAdd')) $('btnRailAdd').onclick = railingAdd;
 $('btnUndo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/undo',{method:'POST'}); state.lines=d.lines||[]; renderCart(); toast('Undo'); };
 $('btnRedo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/redo',{method:'POST'}); state.lines=d.lines||[]; renderCart(); toast('Redo'); };
 $('importFile').onchange = async (ev) => {
@@ -2097,6 +2243,15 @@ async function loadAdminProduct(id) {
   if ($('adCatStdLen')) $('adCatStdLen').value = cat.standardLength || '';
   if ($('adSectionSeries')) $('adSectionSeries').value = p.sectionSeries || cat.sectionSeries || '';
   if ($('adCatProfiles')) $('adCatProfiles').value = JSON.stringify(cat.profiles || [], null, 2);
+  // Series setup — load structured setup (round-trips through the product store)
+  const setup = (p.setup && typeof p.setup === 'object') ? JSON.parse(JSON.stringify(p.setup)) : {};
+  const stype = setup.type || ({ 'casement':'casement','telescopic_sliding':'telescopic','style_slide_door':'style' }[p.productType] || 'sliding');
+  state.setup = ensureSetupShape(setup, stype);
+  if ($('setupType')) $('setupType').value = stype;
+  if ($('setupImported')) $('setupImported').checked = !!setup.imported;
+  if ($('setupStdLen')) $('setupStdLen').value = (Array.isArray(setup.standardLengths) && setup.standardLengths.length) ? setup.standardLengths.join(',') : (SETUP_STD_DEFAULTS[stype]||'');
+  const setupTab = document.querySelector('#adminTabs .tab[data-tab="setup"]');
+  if (setupTab && setupTab.classList.contains('active')) renderSetup();
   renderMaterials();
 }
 function renderMaterials() {
@@ -2118,10 +2273,187 @@ function renderMaterials() {
   });
   $('matBody').querySelectorAll('[data-mdel]').forEach(b => b.onclick = () => { state.materials.splice(+b.dataset.mdel,1); renderMaterials(); });
 }
+
+/* ── Series Setup (per-type structured tables) ── */
+const SETUP_STD_DEFAULTS = { sliding:'5850', casement:'5850', telescopic:'3000', style:'2400,3000' };
+// Section + hardware column definitions (shared, keeps every type consistent).
+const SEC_COLS = [
+  {k:'name',t:'Section name',w:130},{k:'use',t:'Use / position',w:120},
+  {k:'wMm',t:'W mm',n:1,w:64},{k:'hMm',t:'H/Depth mm',n:1,w:74},{k:'wallMm',t:'Wall mm',n:1,w:64},
+  {k:'weightKgPerM',t:'Wt kg/m',n:1,w:70},{k:'stdLengthMm',t:'Std len mm',n:1,w:78},
+];
+const HW_COLS = [
+  {k:'name',t:'Hardware',w:130},{k:'brand',t:'Brand',w:100},{k:'unit',t:'Unit',w:56},
+  {k:'rate',t:'Rate',n:1,w:64},{k:'qtyPer',t:'Qty per',n:1,w:64},
+  {k:'basis',t:'Per',sel:['shutter','leaf','door','window','config','pair','meter'],w:88},{k:'notes',t:'Notes',w:120},
+];
+function blankSection(name,use){ return {name:name||'',use:use||'',wMm:null,hMm:null,wallMm:null,weightKgPerM:null,stdLengthMm:null,side:'',glassType:'',notes:''}; }
+function blankHardware(name){ return {name:name||'',brand:'',unit:'PC',rate:0,qtyPer:1,basis:'shutter',sizes:[],config:'',notes:''}; }
+function ensureSetupShape(s, type){
+  s = s && typeof s==='object' ? s : {};
+  s.type = type;
+  s.sliding = s.sliding || {};
+  s.sliding.outerTrack = s.sliding.outerTrack || {sameAllSides:true};
+  s.sliding.shutters = s.sliding.shutters || {sameAllSides:true};
+  s.sliding.mesh = s.sliding.mesh || {compatible:false,sameAsShutter:true,sections:[]};
+  s.sliding.hardware = s.sliding.hardware || [];
+  s.casement = s.casement || {glass:{},hardware:[]};
+  s.casement.glass = s.casement.glass || {};
+  s.casement.hardware = s.casement.hardware || [];
+  s.telescopic = s.telescopic || {};
+  s.telescopic.hardwareSets = s.telescopic.hardwareSets || {};
+  ['1+1','1+2','1+3','1+4','1+5'].forEach(c => { s.telescopic.hardwareSets[c] = s.telescopic.hardwareSets[c] || []; });
+  s.telescopic.jointConnectorGI = s.telescopic.jointConnectorGI || blankHardware('Joint connector (GI)');
+  s.style = s.style || {};
+  s.style.floorSpring = s.style.floorSpring || blankHardware('Floor spring');
+  s.style.pivotDoor = s.style.pivotDoor || blankHardware('Pivot door');
+  s.style.hardware = s.style.hardware || [];
+  return s;
+}
+function secObj(path){ // get-or-create a single section object at state.setup[path...]
+  let o = state.setup; const parts = path.split('.');
+  for (let i=0;i<parts.length-1;i++){ o[parts[i]] = o[parts[i]]||{}; o = o[parts[i]]; }
+  const last = parts[parts.length-1];
+  if (!o[last] || typeof o[last]!=='object') o[last] = blankSection();
+  return o[last];
+}
+function setupTable(cols, rows, onchange, opts){
+  opts = opts||{};
+  const head = cols.map(c=>`<th>${c.t}</th>`).join('') + (opts.noDel?'':'<th></th>');
+  const body = (rows||[]).map((r,i)=>{
+    const tds = cols.map(c=>{
+      if (c.sel) return `<td><select data-i="${i}" data-k="${c.k}" style="width:${c.w||90}px">${c.sel.map(o=>`<option ${String(r[c.k]||'')===o?'selected':''}>${o}</option>`).join('')}</select></td>`;
+      return `<td><input data-i="${i}" data-k="${c.k}" ${c.n?'type="number" step="0.01"':''} value="${r[c.k]==null?'':r[c.k]}" style="width:${c.w||90}px"/></td>`;
+    }).join('');
+    return `<tr>${tds}${opts.noDel?'':`<td><button class="btn ghost sm" data-del="${i}">Del</button></td>`}</tr>`;
+  }).join('');
+  return `<table class="mat-table" style="margin:.2rem 0 .3rem"><thead><tr>${head}</tr></thead><tbody>${body||`<tr><td colspan="${cols.length+1}" class="muted">—</td></tr>`}</tbody></table>`;
+}
+function wireTable(el, cols, rows, rerender){
+  el.querySelectorAll('input[data-i],select[data-i]').forEach(inp=>{
+    inp.onchange = () => { const i=+inp.dataset.i,k=inp.dataset.k; const col=cols.find(c=>c.k===k);
+      rows[i][k] = col&&col.n ? (inp.value===''?null:+inp.value) : inp.value; updateSetupDerived(); };
+  });
+  el.querySelectorAll('[data-del]').forEach(b=> b.onclick = () => { rows.splice(+b.dataset.del,1); rerender(); });
+}
+function singleSectionCard(title, path){
+  const s = secObj(path);
+  return `<div class="card" style="padding:.5rem"><strong style="font-size:.8rem">${title}</strong>
+    <div data-sec="${path}">${setupTable(SEC_COLS,[s],null,{noDel:true})}</div></div>`;
+}
+function listCard(title, rows, tableId, addLabel){
+  return `<div class="card" style="padding:.5rem"><div class="row" style="justify-content:space-between"><strong style="font-size:.8rem">${title}</strong>
+    <button class="btn ghost sm" data-add="${tableId}">${addLabel||'Add row'}</button></div>
+    <div data-list="${tableId}"></div></div>`;
+}
+function renderSetup(){
+  const type = ($('setupType')&&$('setupType').value) || 'sliding';
+  state.setup = ensureSetupShape(state.setup||{}, type);
+  const box = $('setupBody'); if (!box) return;
+  let html = '';
+  if (type==='sliding'){
+    const ot = state.setup.sliding.outerTrack, sh = state.setup.sliding.shutters, mesh = state.setup.sliding.mesh;
+    html += `<h4 style="margin:.4rem 0 .2rem">Outer track</h4>
+      <label class="chk" style="font-size:.78rem"><input type="checkbox" data-flag="sliding.outerTrack.sameAllSides" ${ot.sameAllSides?'checked':''}/> Same section on all sides</label>
+      <div class="two">${singleSectionCard('Top track','sliding.outerTrack.top')}${singleSectionCard('Bottom track','sliding.outerTrack.bottom')}</div>
+      <div class="two">${singleSectionCard('Vertical tracks','sliding.outerTrack.verticals')}${singleSectionCard('Bottom track rails','sliding.outerTrack.bottomRails')}</div>
+      <h4 style="margin:.6rem 0 .2rem">Shutters</h4>
+      <label class="chk" style="font-size:.78rem"><input type="checkbox" data-flag="sliding.shutters.sameAllSides" ${sh.sameAllSides?'checked':''}/> Same section on all sides</label>
+      <div class="two">${singleSectionCard('Top rail','sliding.shutters.top')}${singleSectionCard('Bottom rail','sliding.shutters.bottom')}</div>
+      <div class="two">${singleSectionCard('Handle-side stile','sliding.shutters.handleSide')}${singleSectionCard('Interlock-side stile','sliding.shutters.interlockSide')}</div>
+      <h4 style="margin:.6rem 0 .2rem">Mesh <span class="muted" style="font-weight:400;font-size:.75rem">(mesh-compatible tracks only)</span></h4>
+      <label class="chk" style="font-size:.78rem"><input type="checkbox" data-flag="sliding.mesh.compatible" ${mesh.compatible?'checked':''}/> Mesh compatible</label>
+      <label class="chk" style="font-size:.78rem;margin-left:.8rem"><input type="checkbox" data-flag="sliding.mesh.sameAsShutter" ${mesh.sameAsShutter?'checked':''}/> Mesh uses same section as shutter</label>
+      ${listCard('Mesh sections (if different)', mesh.sections, 'sliding.mesh.sections','Add mesh section')}
+      <h4 style="margin:.6rem 0 .2rem">Hardware · rate · qty per 1 shutter</h4>
+      ${listCard('Rollers, connectors, PVC angles, interlock connectors/caps, lock guide, lock, handles', state.setup.sliding.hardware, 'sliding.hardware','Add hardware')}`;
+  } else if (type==='casement'){
+    const g = state.setup.casement.glass;
+    html += `<h4 style="margin:.4rem 0 .2rem">Outer frame</h4>${singleSectionCard('Outer frame','casement.outerFrame')}
+      ${singleSectionCard('Shutter section','casement.shutter')}
+      <h4 style="margin:.6rem 0 .2rem">Glass clip (differs sg vs dg)</h4>
+      <div class="row"><div><label class="l">Single (sg) clip mm</label><input data-num="casement.glass.sgClip" type="number" step="0.1" value="${g.sgClip==null?'':g.sgClip}" style="width:120px"/></div>
+      <div><label class="l">DGU (dg) clip mm</label><input data-num="casement.glass.dgClip" type="number" step="0.1" value="${g.dgClip==null?'':g.dgClip}" style="width:120px"/></div></div>
+      <h4 style="margin:.6rem 0 .2rem">Hardware · brand · rate · qty</h4>
+      ${listCard('Interlock/outer connectors, hinges, friction stay (sizes), shutter holder, door closer, stopper', state.setup.casement.hardware, 'casement.hardware','Add hardware')}`;
+  } else if (type==='telescopic'){
+    const t = state.setup.telescopic;
+    html += `<p class="muted" style="font-size:.76rem">Order: vertical first → its top &amp; bottom → joint connectors (GI) → top track. Std length 3&nbsp;mtr; common size 16×45. Doors overlap adjacent vertical (like sliding interlock).</p>
+      <h4 style="margin:.4rem 0 .2rem">Vertical &amp; its sections</h4>
+      <div class="two">${singleSectionCard('Vertical','telescopic.vertical')}${singleSectionCard('Top track','telescopic.topTrack')}</div>
+      <div class="two">${singleSectionCard('Vertical — top','telescopic.verticalTop')}${singleSectionCard('Vertical — bottom','telescopic.verticalBottom')}</div>
+      <div class="row" style="margin:.3rem 0"><div><label class="l">Common size</label><input data-str="telescopic.commonSize" value="${t.commonSize||'16x45'}" style="width:110px"/></div>
+        <div><label class="l">Max config</label><input data-str="telescopic.maxConfig" value="${t.maxConfig||'1+1'}" style="width:90px"/></div>
+        <label class="chk" style="display:flex;align-items:center;gap:.35rem;margin-bottom:.35rem"><input type="checkbox" data-flag="telescopic.overlapAdjacent" ${t.overlapAdjacent?'checked':''}/> Overlap adjacent vertical</label>
+        <label class="chk" style="display:flex;align-items:center;gap:.35rem;margin-bottom:.35rem"><input type="checkbox" data-flag="telescopic.synchro2plus2" ${t.synchro2plus2?'checked':''}/> 2+2 synchro (center opening)</label></div>
+      <h4 style="margin:.4rem 0 .2rem">Joint connector (GI)</h4>
+      <div data-hwsingle="telescopic.jointConnectorGI">${setupTable(HW_COLS,[t.jointConnectorGI],null,{noDel:true})}</div>
+      <h4 style="margin:.6rem 0 .2rem">Hardware sets per config <span class="muted" style="font-weight:400;font-size:.74rem">(first “1” = FIX, rest slide)</span></h4>`;
+    ['1+1','1+2','1+3','1+4','1+5'].forEach(cfg => {
+      html += listCard('Set '+cfg, t.hardwareSets[cfg], 'telescopic.hardwareSets.'+cfg, 'Add to '+cfg);
+    });
+  } else if (type==='style'){
+    const st = state.setup.style;
+    html += `<p class="muted" style="font-size:.76rem">Imported. Std length 2.4 &amp; 3 mtr. Uses casement hardware + floor spring / pivot door options.</p>
+      <div class="two">${singleSectionCard('Outer frame','style.outerFrame')}${singleSectionCard('Inner door vertical','style.innerDoorVertical')}</div>
+      <div class="two">${singleSectionCard('Top section','style.top')}${singleSectionCard('Bottom section','style.bottom')}</div>
+      <label class="chk" style="font-size:.78rem"><input type="checkbox" data-flag="style.usesCasementHardware" ${st.usesCasementHardware?'checked':''}/> Uses casement hardware</label>
+      <h4 style="margin:.5rem 0 .2rem">Floor spring</h4><div data-hwsingle="style.floorSpring">${setupTable(HW_COLS,[st.floorSpring],null,{noDel:true})}</div>
+      <h4 style="margin:.5rem 0 .2rem">Pivot door</h4><div data-hwsingle="style.pivotDoor">${setupTable(HW_COLS,[st.pivotDoor],null,{noDel:true})}</div>
+      <h4 style="margin:.5rem 0 .2rem">Additional hardware</h4>${listCard('Extra hardware', st.hardware, 'style.hardware','Add hardware')}`;
+  }
+  box.innerHTML = html;
+  wireSetup(box);
+  updateSetupDerived();
+}
+function getByPath(path){ return path.split('.').reduce((o,k)=> (o&&o[k]!=null)?o[k]:undefined, state.setup); }
+function setByPath(path,val){ const parts=path.split('.'); let o=state.setup; for(let i=0;i<parts.length-1;i++){o[parts[i]]=o[parts[i]]||{};o=o[parts[i]];} o[parts[parts.length-1]]=val; }
+function wireSetup(box){
+  box.querySelectorAll('[data-flag]').forEach(cb=> cb.onchange = () => { setByPath(cb.dataset.flag, cb.checked); });
+  box.querySelectorAll('[data-num]').forEach(inp=> inp.onchange = () => { setByPath(inp.dataset.num, inp.value===''?null:+inp.value); updateSetupDerived(); });
+  box.querySelectorAll('[data-str]').forEach(inp=> inp.onchange = () => { setByPath(inp.dataset.str, inp.value); });
+  // single-section cards
+  box.querySelectorAll('[data-sec]').forEach(el=>{ const sec=secObj(el.dataset.sec); wireTable(el,SEC_COLS,[sec],renderSetup); });
+  // single-hardware cards
+  box.querySelectorAll('[data-hwsingle]').forEach(el=>{ const hw=getByPath(el.dataset.hwsingle)||blankHardware(); setByPath(el.dataset.hwsingle,hw); wireTable(el,HW_COLS,[hw],renderSetup); });
+  // list cards (sections or hardware)
+  box.querySelectorAll('[data-list]').forEach(el=>{
+    const path=el.dataset.list; const rows=getByPath(path)||[]; setByPath(path,rows);
+    const isMesh = path.endsWith('.sections');
+    const cols = isMesh ? SEC_COLS : HW_COLS;
+    el.innerHTML = setupTable(cols, rows, null, {});
+    wireTable(el, cols, rows, renderSetup);
+  });
+  box.querySelectorAll('[data-add]').forEach(b=> b.onclick = () => {
+    const path=b.dataset.add; const rows=getByPath(path)||[]; setByPath(path,rows);
+    rows.push(path.endsWith('.sections') ? blankSection() : blankHardware());
+    renderSetup();
+  });
+}
+function updateSetupDerived(){
+  const el=$('setupDerived'); if(!el||!state.setup) return;
+  const t=state.setup.type;
+  const face=(s)=> (s&&(s.wMm||s.wallMm))||0;
+  let sizes={};
+  if(t==='sliding'){const ot=state.setup.sliding.outerTrack,sh=state.setup.sliding.shutters;
+    sizes={topRail:face(ot.top),bottomRail:face(ot.bottom),jamb:face(ot.verticals),leafStile:face(sh.interlockSide)||face(sh.handleSide)};}
+  else if(t==='casement'){const c=state.setup.casement;const fw=face(c.outerFrame);sizes={frame:fw,leafStile:face(c.shutter)||fw};}
+  else if(t==='telescopic'){const x=state.setup.telescopic;sizes={topRail:face(x.verticalTop)||face(x.topTrack),bottomRail:face(x.verticalBottom),jamb:face(x.vertical)};}
+  else if(t==='style'){const x=state.setup.style;sizes={topRail:face(x.top),bottomRail:face(x.bottom),jamb:face(x.outerFrame),leafStile:face(x.innerDoorVertical)};}
+  const parts=Object.entries(sizes).filter(([,v])=>v).map(([k,v])=>`${k} ${v}mm`);
+  el.textContent = parts.length ? ('Derived section sizes → '+parts.join(' · ')) : 'Fill section W (mm) to derive geometry frame sizes.';
+}
 document.querySelectorAll('#adminTabs .tab').forEach(t => t.onclick = () => {
   document.querySelectorAll('#adminTabs .tab').forEach(x => x.classList.toggle('active', x===t));
-  ['meta','materials','rules'].forEach(id => $('admin-'+id).classList.toggle('hidden', id!==t.dataset.tab));
+  ['meta','setup','materials','rules'].forEach(id => $('admin-'+id).classList.toggle('hidden', id!==t.dataset.tab));
+  if (t.dataset.tab === 'setup') renderSetup();
 });
+if ($('setupType')) $('setupType').onchange = () => {
+  const t = $('setupType').value;
+  state.setup = ensureSetupShape(state.setup||{}, t);
+  if ($('setupStdLen') && !$('setupStdLen').value) $('setupStdLen').value = SETUP_STD_DEFAULTS[t] || '';
+  renderSetup();
+};
 $('btnAdminLoad').onclick = () => loadAdminProduct($('adminProdSelect').value);
 $('btnAddMat').onclick = () => {
   state.materials.push({id:'mat_'+Date.now(), name:'New material', category:'hardware', unit:'PC', quantityFormula:'1', unitRate:0});
@@ -2156,6 +2488,16 @@ $('btnAdminSave').onclick = async () => {
       sectionSeries: $('adSectionSeries').value || null,
       profiles,
     };
+    // Assemble the series setup (structured, per-type) for persistence.
+    let setup = undefined;
+    if (state.setup) {
+      const stype = ($('setupType') && $('setupType').value) || state.setup.type || 'sliding';
+      state.setup = ensureSetupShape(state.setup, stype);
+      state.setup.imported = !!($('setupImported') && $('setupImported').checked);
+      const std = (($('setupStdLen') && $('setupStdLen').value) || '').split(',').map(s=>+s.trim()).filter(n=>!isNaN(n)&&n>0);
+      state.setup.standardLengths = std;
+      setup = state.setup;
+    }
     const body = {
       displayName: $('adName').value,
       category: $('adCat').value,
@@ -2169,6 +2511,7 @@ $('btnAdminSave').onclick = async () => {
       materials: state.materials,
       catalogue,
       sectionSeries: $('adSectionSeries').value || undefined,
+      setup,
       rules,
       syncHardware: true,
     };

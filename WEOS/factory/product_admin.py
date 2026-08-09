@@ -19,8 +19,20 @@ _META_KEYS = {
     "description", "tagline", "warranty", "heroImage", "gallery", "sectionDrawings",
     "specifications", "materials", "formulas", "pdfLayout", "brand", "engineeringRules",
     "glassRules", "hardwareRules", "weightRules", "pricingRules",
-    "catalogue", "sectionSeries", "linkedProductId",
+    "catalogue", "sectionSeries", "linkedProductId", "setup",
 }
+
+
+def _normalize_setup_field(raw: Any) -> dict[str, Any]:
+    """Clean + enrich a series setup blob (safe on None/partial input)."""
+    if not raw:
+        return {}
+    try:
+        from WEOS.factory.product_setup import normalize_setup
+
+        return normalize_setup(raw)
+    except Exception:  # pragma: no cover - never block a save on setup issues
+        return dict(raw) if isinstance(raw, Mapping) else {}
 
 
 def _slug(value: str) -> str:
@@ -85,6 +97,7 @@ def get_admin_product(product_id: str) -> dict[str, Any]:
         "catalogue": meta.get("catalogue") or {},
         "sectionSeries": meta.get("sectionSeries"),
         "linkedProductId": meta.get("linkedProductId"),
+        "setup": meta.get("setup") or {},
         "materialUnits": list(MATERIAL_UNITS),
         "rules": {
             "geometry": doc.get("geometry"),
@@ -132,6 +145,7 @@ def create_product(payload: Mapping[str, Any]) -> dict[str, Any]:
         "pdfLayout": dict(payload.get("pdfLayout") or {"customer": "woodenmax_customer", "factory": "woodenmax_factory"}),
         "brand": payload.get("brand") or "woodenmax",
         "catalogue": dict(payload.get("catalogue") or {}),
+        "setup": _normalize_setup_field(payload.get("setup")),
     }
     _write_json(target / "product.json", meta)
 
@@ -172,10 +186,32 @@ def update_product(product_id: str, payload: Mapping[str, Any]) -> dict[str, Any
         "displayName", "productType", "category", "units", "version", "status",
         "description", "tagline", "warranty", "heroImage", "gallery", "sectionDrawings",
         "specifications", "materials", "formulas", "pdfLayout", "brand",
-        "catalogue", "sectionSeries", "linkedProductId",
+        "catalogue", "sectionSeries", "linkedProductId", "setup",
     ):
         if key in payload:
             meta[key] = copy.deepcopy(payload[key])
+
+    # Series setup → normalise, then let it drive product type + default section
+    # sizes so the setup actually flows into geometry / BOM / weight.
+    if "setup" in payload:
+        setup = _normalize_setup_field(payload.get("setup"))
+        meta["setup"] = setup
+        if setup:
+            try:
+                from WEOS.factory.product_setup import TYPE_TO_PRODUCT_TYPE
+
+                stype = str(setup.get("type") or "").lower()
+                if stype and not payload.get("productType"):
+                    meta["productType"] = TYPE_TO_PRODUCT_TYPE.get(stype, stype)
+                sizes = (setup.get("derived") or {}).get("sectionSizes") or {}
+                if sizes:
+                    cat = meta.get("catalogue")
+                    if not isinstance(cat, dict):
+                        cat = {}
+                    cat["sectionSizes"] = sizes  # setup is source of truth
+                    meta["catalogue"] = cat
+            except Exception:  # pragma: no cover
+                pass
 
     # Validate material formulas
     issues: list[str] = []
