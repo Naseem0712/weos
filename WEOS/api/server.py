@@ -783,6 +783,12 @@ def api_railing_quote(body: dict[str, Any]) -> dict[str, Any]:
 @app.post("/api/preview")
 def api_preview(body: PreviewRequest) -> dict[str, Any]:
     """Fast SVG preview for live cart — uses geometry engine only path via generate_job."""
+    # Railing is not a window — never route it through generate_job.
+    if str(getattr(body, "product", "") or "").lower() == "railing":
+        from WEOS.factory.railing_engine import compute_railing, railing_svg
+
+        q = compute_railing({})
+        return {"svg": railing_svg({}, quote=q), "system": "railing", "railing": q}
     try:
         from WEOS.factory.layout_options import resolve_mesh_track
         from WEOS.factory.product_loader import load_product

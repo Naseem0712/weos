@@ -21,18 +21,19 @@ a{color:inherit}
 .app{display:grid;grid-template-columns:var(--side) 1fr;min-height:100vh}
 @media(max-width:900px){.app{grid-template-columns:1fr}.side{position:fixed;inset:0 auto 0 0;transform:translateX(-105%);z-index:40;transition:.25s}
 .side.open{transform:none}.burger{display:inline-flex!important}}
-.side{background:#12140f;color:#e8efe9;padding:1.1rem .9rem;display:flex;flex-direction:column;gap:.35rem}
+.side{background:linear-gradient(165deg,#e4f1ff 0%,#e6f7ee 48%,#fdf5d8 100%);color:#1b2a25;
+  padding:1.1rem .9rem;display:flex;flex-direction:column;gap:.35rem;border-right:1px solid rgba(20,60,50,.12)}
 /* Brand logo: the WEOS mark ships on a solid black background, so it sits on a
    matching dark brand plate (rounded, subtle border/shadow) that blends into
    the rail instead of reading as an ugly black box. The tagline is baked into
    the image, so no separate caption is rendered. */
 .brand{margin:.1rem .3rem 1rem;display:flex;justify-content:center}
-.brand img{display:block;width:206px;height:70px;object-fit:contain;
-  background:#000;border-radius:12px;padding:10px 16px;
-  border:1px solid rgba(255,255,255,.06);box-shadow:0 4px 14px rgba(0,0,0,.35)}
-@media(max-width:900px){.brand img{width:186px;height:62px}}
-.navbtn{border:0;background:transparent;color:#d7e4dc;text-align:left;padding:.65rem .75rem;border-radius:10px;cursor:pointer;width:100%}
-.navbtn:hover,.navbtn.active{background:rgba(255,255,255,.08);color:#fff}
+.brand img{display:block;width:208px;height:70px;object-fit:contain;padding:8px 14px;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.28))}
+@media(max-width:900px){.brand img{width:188px;height:62px}}
+.navbtn{border:0;background:transparent;color:#1f2d28;font-weight:500;text-align:left;padding:.65rem .75rem;border-radius:10px;cursor:pointer;width:100%}
+.navbtn:hover{background:rgba(10,90,72,.10);color:#0a5a48}
+.navbtn.active{background:rgba(10,90,72,.16);color:#084a3b;font-weight:600}
 .main{min-width:0;padding:1rem 1.1rem 2.5rem}
 .top{display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap}
 .burger{display:none;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:.45rem .65rem;cursor:pointer}
@@ -143,7 +144,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 <div class="app">
   <aside class="side" id="side">
     <div class="brand">
-      <img id="brandLogo" src="/api/company/logo?v=3" alt="WEOS" onerror="this.onerror=null;this.src='/static/weos-logo.png?v=3'"/>
+      <img id="brandLogo" src="/api/company/logo?v=4" alt="WEOS" onerror="this.onerror=null;this.src='/static/weos-logo.png?v=4'"/>
     </div>
     <button class="navbtn active" data-view="dashboard">Dashboard</button>
     <button class="navbtn" data-view="projects">Saved Projects</button>
@@ -1775,6 +1776,21 @@ function initHandleDrag() {
 }
 
 async function refreshPreview() {
+  // Railing lines are NOT windows — render the railing 2D drawing, never generate_job.
+  const selLn = state.lines[state.selectedLine];
+  const railCfg = selLn && (selLn.product === 'railing' || (selLn.options && selLn.options.railing))
+    ? (selLn.options && selLn.options.railing) || {} : null;
+  if (railCfg) {
+    try {
+      const res = await api('/api/railing/quote', { method:'POST', body: railCfg });
+      const q = res.quote || {};
+      $('previewLabel').textContent = `Railing · ${q.panelCount} panels · ${q.glassAreaSqft} sft`;
+      $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
+    } catch (e) {
+      $('livePreview').innerHTML = '<span class="muted">Railing preview failed</span>';
+    }
+    return;
+  }
   const draft = currentLineDraft();
   const ln = state.lines[state.selectedLine] ? { ...state.lines[state.selectedLine], ...draft } : draft;
   const bits = [`${ln.product}`, `${ln.width}×${ln.height}`];
@@ -2019,7 +2035,7 @@ async function railingAdd(){
     options: { railing: cfg, railingQuote: q },
   });
   state.selectedLine = state.lines.length-1;
-  renderCart(); scheduleSave(); toast('Railing added to cart');
+  renderCart(); scheduleSave(); refreshPreview(); toast('Railing added to cart');
 }
 if ($('btnRailToggle')) $('btnRailToggle').onclick = () => {
   const b=$('railingBody'); const open = b.style.display==='none';
