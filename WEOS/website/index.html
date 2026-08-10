@@ -44,7 +44,12 @@ a{color:inherit}
 .rail-tools .rt-row input,.rail-tools .rt-row select{padding:.3rem .4rem;font-size:.78rem;border-radius:7px}
 .rail-tools .rt-seg{font-size:.72rem;width:100%;margin-top:.25rem}
 .rail-tools .rt-seg textarea{width:100%;min-height:42px;font-size:.75rem;padding:.35rem;border:1px solid var(--line);border-radius:7px;resize:vertical}
-.rail-tools .rt-bom{font-size:.72rem;color:var(--muted);margin-top:.35rem;max-height:110px;overflow:auto}
+.rail-tools .rt-bom{font-size:.72rem;color:var(--muted);margin-top:.35rem;max-height:220px;overflow:auto}
+.rail-tools .rt-panel-preview{font-size:.7rem;margin-top:.3rem;padding:.3rem .4rem;background:rgba(47,109,176,.06);border-radius:7px;border:1px dashed var(--line)}
+.rail-tools .rt-internal{margin-top:.35rem;padding:.35rem .4rem;border:1px solid var(--line);border-radius:8px;background:#fafbfc}
+.rail-tools .rt-internal table{width:100%;border-collapse:collapse}
+.rail-tools .rt-internal td{padding:.12rem .2rem;border-bottom:1px solid #eee}
+.rail-tools .rt-warn{color:#8c1f18;font-size:.72rem;margin-top:.2rem}
 .rail-tools.collapsed .rt-body{display:none}
 .navbtn{border:0;background:transparent;color:#1f2d28;font-weight:500;text-align:left;padding:.65rem .75rem;border-radius:10px;cursor:pointer;width:100%}
 .navbtn:hover{background:rgba(10,90,72,.10);color:#0a5a48}
@@ -487,13 +492,35 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                     <input id="rArchRise" type="number" value="1400" style="width:70px"/>
                   </div>
                 </div>
-                <div id="wrapRailStair" style="display:none"><label class="l">Steps · rise · run · stud</label>
-                  <div style="display:flex;gap:.25rem;flex-wrap:wrap">
-                    <input id="rSteps" type="number" value="12" min="1" style="width:52px" title="steps"/>
-                    <input id="rRise" type="number" value="150" style="width:56px" title="rise mm"/>
-                    <input id="rRun" type="number" value="250" style="width:56px" title="run mm"/>
-                    <select id="rStud" style="width:64px"><option value="38">38</option><option value="50">50</option></select>
+                <div id="wrapRailStair" style="display:none">
+                  <label class="l">Stairs · steps · riser · tread · floor ht · glass ht · stud</label>
+                  <div style="display:flex;gap:.25rem;flex-wrap:wrap;align-items:flex-end">
+                    <div><label class="l">Steps</label><input id="rSteps" type="number" value="14" min="0" style="width:52px" title="0 = derive from floor÷riser"/></div>
+                    <div><label class="l">Riser mm</label><input id="rRise" type="number" value="180" style="width:56px"/></div>
+                    <div><label class="l">Tread mm</label><input id="rRun" type="number" value="305" style="width:56px"/></div>
+                    <div><label class="l">Floor mm</label><input id="rFloorH" type="number" value="2500" style="width:64px" title="Floor-to-floor; flags mismatch vs steps×riser"/></div>
+                    <div><label class="l">Glass ht</label><input id="rGlassH" type="number" value="900" style="width:56px"/></div>
+                    <div><label class="l">Stud</label><select id="rStud" style="width:64px"><option value="38">38</option><option value="50">50</option></select></div>
                   </div>
+                  <div class="rt-row" style="margin-top:.25rem">
+                    <div><label class="l">Sheet W</label><input id="rSheetW" type="number" value="3660" style="width:64px"/></div>
+                    <div><label class="l">Sheet H</label><input id="rSheetH" type="number" value="2440" style="width:64px"/></div>
+                    <div><label class="l">Est waste%</label><input id="rWastePct" type="number" value="10" step="0.1" style="width:56px" title="Only if nesting unavailable"/></div>
+                    <div><label class="l">Basis</label>
+                      <select id="rBasis" style="width:110px">
+                        <option value="sloping_rft">Slope RFT</option>
+                        <option value="horizontal_rft">Horiz RFT</option>
+                        <option value="sloping_rmt">Slope RMT</option>
+                        <option value="horizontal_rmt">Horiz RMT</option>
+                      </select>
+                    </div>
+                    <div><label class="l">Overhead%</label><input id="rOverhead" type="number" value="10" step="0.1" style="width:56px"/></div>
+                    <div><label class="l">Markup%</label><input id="rMarkup" type="number" value="15" step="0.1" style="width:56px"/></div>
+                    <div><label class="l">Install</label><input id="rInstall" type="number" value="0" style="width:56px"/></div>
+                    <div><label class="l">Transport</label><input id="rTransport" type="number" value="0" style="width:56px"/></div>
+                  </div>
+                  <div id="rPanelPreview" class="rt-panel-preview">Panel sizes update live with panel count</div>
+                  <div id="rRiseWarn" class="rt-warn" style="display:none"></div>
                 </div>
               </div>
               <div class="rt-seg" id="wrapRailSegs" style="display:none">
@@ -2230,6 +2257,11 @@ function populateRailTools(cfg) {
   set('rArchSpan', cfg.archSpanMm); set('rArchRise', cfg.archRiseMm);
   set('rSteps', cfg.stairSteps); set('rRise', cfg.stairRiseMm); set('rRun', cfg.stairRunMm);
   set('rStud', cfg.studSizeMm);
+  set('rFloorH', cfg.floorHeightMm); set('rGlassH', cfg.glassHeightMm || cfg.heightMm);
+  set('rSheetW', cfg.sheetWidthMm); set('rSheetH', cfg.sheetHeightMm);
+  set('rWastePct', cfg.estimatedWastagePercent); set('rBasis', cfg.measurementBasis);
+  set('rOverhead', cfg.overheadPercent); set('rMarkup', cfg.markupPercent);
+  set('rInstall', cfg.installation); set('rTransport', cfg.transport);
   if (Array.isArray(cfg.segments) && $('rSegments')) {
     $('rSegments').value = cfg.segments.map(s => s.lengthMm || s).join(',');
   }
@@ -2267,10 +2299,21 @@ function railingConfig(){
     legCMm: num('rLegC',0) || undefined,
     archSpanMm: num('rArchSpan',0) || undefined,
     archRiseMm: num('rArchRise',0) || undefined,
-    stairSteps: num('rSteps',12),
-    stairRiseMm: num('rRise',150),
-    stairRunMm: num('rRun',250),
+    stairSteps: num('rSteps',0),
+    stairRiseMm: num('rRise',180),
+    stairRunMm: num('rRun',305),
+    floorHeightMm: num('rFloorH',0) || undefined,
+    glassHeightMm: num('rGlassH',0) || undefined,
     studSizeMm: num('rStud',38),
+    sheetWidthMm: num('rSheetW',3660),
+    sheetHeightMm: num('rSheetH',2440),
+    estimatedWastagePercent: num('rWastePct',10),
+    measurementBasis: ($('rBasis')&&$('rBasis').value) || 'sloping_rft',
+    overheadPercent: num('rOverhead',0),
+    markupPercent: num('rMarkup',0),
+    installation: num('rInstall',0),
+    transport: num('rTransport',0),
+    stairGlass: true,
     rates: {
       glassPerSqft: num('rRGlass',0), blockPerPc: num('rRBlock',0), anchorPerPc: num('rRAnchor',0),
       bottomRailPerUnit: num('rRBrail',0), bottomRailWeightPerUnit: num('rWBrail',0),
@@ -2287,21 +2330,73 @@ function railingConfig(){
     if (segs.length) cfg.segments = segs;
   }
   if (shape === 'arch' && cfg.archSpanMm) cfg.lengthMm = cfg.archSpanMm;
+  if (shape === 'staircase' && cfg.glassHeightMm) {
+    cfg.heightMm = cfg.glassHeightMm;
+  }
   return cfg;
 }
 function renderRailingBom(q){
   if (!$('railingBreakdown')) return;
-  const money0 = (n)=>'₹'+Number(n||0).toLocaleString('en-IN');
+  const money0 = (n)=>'₹'+Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2});
   const hw = `bends ${q.bendCount||0} · 180° ${q.connector180Count||0} · caps ${q.endCapCount||0}`;
+  const sg = q.stairGeometry || {};
   const stair = (q.shape === 'staircase')
-    ? ` · stairs pillars ${q.stairPillars||0} · studs ${q.stairStuds||0} (${q.studSizeMm||38}mm)`
+    ? ` · stairs pillars ${q.stairPillars||0} · studs ${q.stairStuds||0} (${q.studSizeMm||38}mm) · angle ${sg.stairAngleDeg||'—'}° / ${sg.complementaryAngleDeg||'—'}°`
     : '';
   const rows = (q.items||[]).map(it=>`<tr><td>${it.label}</td><td style="text-align:right">${it.qty} ${it.unit}</td><td style="text-align:right">${money0(it.amount)}</td></tr>`).join('');
+  const inn = q.internal || {};
+  const com = q.commercial || {};
+  const internalRows = q.shape === 'staircase' || inn.directCost != null ? `
+    <div class="rt-internal">
+      <div style="font-weight:600;margin-bottom:.15rem">Internal calculator</div>
+      <table><tbody>
+        <tr><td>1 Net glass area</td><td style="text-align:right">${inn.netGlassAreaSqFt ?? q.netGlassAreaSqFt ?? '—'} sft</td></tr>
+        <tr><td>2 Wastage area</td><td style="text-align:right">${inn.wastageAreaSqFt ?? q.wastageAreaSqFt ?? '—'} sft (${inn.wastagePercent ?? q.wastagePercent ?? '—'}%)</td></tr>
+        <tr><td>3 Purchased / cutting</td><td style="text-align:right">${inn.purchasedGlassAreaSqFt ?? q.purchasedGlassAreaSqFt ?? '—'} sft · ${inn.nestingMethod||''}</td></tr>
+        <tr><td>4 Glass material cost</td><td style="text-align:right">${money0(inn.glassMaterialCost)}</td></tr>
+        <tr><td>5 Total direct cost</td><td style="text-align:right">${money0(inn.directCost)}</td></tr>
+        <tr><td>6 Overhead (${inn.overheadPercent||0}%)</td><td style="text-align:right">${money0(inn.overheadCost)}</td></tr>
+        <tr><td>7 Profit / markup (${inn.markupPercent||0}%)</td><td style="text-align:right">${money0(inn.profitMarkup)}</td></tr>
+        <tr><td>8 Selling rate / RFT</td><td style="text-align:right">${money0(inn.sellingRatePerRFT || com.sellingRatePerRFT)}</td></tr>
+        <tr><td>9 Selling rate / RMT</td><td style="text-align:right">${money0(inn.sellingRatePerRMT || com.sellingRatePerRMT)}</td></tr>
+        <tr><td>Before profit /RFT · /RMT</td><td style="text-align:right">${money0(inn.costPerRFTBeforeProfit)} · ${money0(inn.costPerRMTBeforeProfit)}</td></tr>
+      </tbody></table>
+      <div style="margin-top:.25rem"><b>Customer quote rate:</b> ${money0(q.sellingPerUnit)} / ${(q.saleUnit||'rft').toUpperCase()}
+        · total ${money0(q.sellingTotal)} <span class="muted">(commercial only)</span></div>
+    </div>` : '';
   $('railingBreakdown').innerHTML = `
     <div>${q.shape||'straight'} · ${q.lengthMm} mm · ${hw}${stair}</div>
-    <div>Pillars ${q.pillarCount} · anchors ${q.anchorCount} · glass ${q.glassAreaSqft||0} sft</div>
+    <div>Pillars ${q.pillarCount} · anchors ${q.anchorCount} · glass net ${q.netGlassAreaSqFt||q.glassAreaSqft||0} sft</div>
     <table class="mat-table" style="margin-top:.2rem;font-size:.7rem"><tbody>${rows}</tbody></table>
-    <div><b>${money0(q.total)}</b> · ${money0(q.perUnitRate)}/${String(q.saleUnit||'rft').toUpperCase()} → sell ${money0(q.sellingTotal)}</div>`;
+    ${internalRows || `<div><b>${money0(q.total)}</b> · ${money0(q.perUnitRate)}/${String(q.saleUnit||'rft').toUpperCase()} → sell ${money0(q.sellingTotal)}</div>`}`;
+
+  // Live panel size preview
+  const prev = $('rPanelPreview');
+  if (prev) {
+    const panels = q.glassPanels || [];
+    if (q.shape === 'staircase' && panels.length) {
+      prev.innerHTML = panels.map(p => {
+        const w = p.panelWidthHorizontal ?? p.panelWidthHorizontal;
+        return `<span style="display:inline-block;margin:.1rem .35rem .1rem 0"><b>G${p.index}</b> ${Number(w).toFixed(0)}×${Number(p.leftGlassHeight||0).toFixed(0)} mm`
+          + ` · ${(p.netGlassAreaSqFt||0)} sft`
+          + ` · cut ${p.bottomCutAngleVsHorizontal ?? p.bottomCutAngle ?? '—'}° / ${p.bottomCutAngleVsVertical ?? '—'}°</span>`;
+      }).join('');
+    } else if (panels.length) {
+      prev.innerHTML = panels.map(p => `<span style="margin-right:.4rem"><b>G${p.index}</b> ${Number(p.panelWidthHorizontal||0).toFixed(0)} mm</span>`).join('');
+    } else {
+      prev.textContent = 'Panel sizes update live with panel count';
+    }
+  }
+  const warn = $('rRiseWarn');
+  if (warn) {
+    if (sg.riseMismatch) {
+      warn.style.display = '';
+      warn.textContent = sg.riseMismatchMessage || 'Calculated rise ≠ floor height';
+    } else {
+      warn.style.display = 'none';
+      warn.textContent = '';
+    }
+  }
 }
 async function railingCalc(){
   if ($('railingErr')) $('railingErr').textContent='';
@@ -2329,8 +2424,8 @@ async function railingAdd(){
     displayName:'Railing',
     width: q.lengthMm, height: q.heightMm, qty,
     saleUnit: q.saleUnit, sellingRate: q.sellingPerUnit,
-    description: `Railing · ${q.shape||'straight'} · ${q.lengthMm} mm · bends ${q.bendCount||0}`,
-    options: { railing: cfg, railingQuote: q },
+    description: `Railing · ${q.shape||'straight'} · ${q.lengthMm} mm · ${q.panelCount||0} panels · ${q.sellingPerUnit}/${String(q.saleUnit||'rft').toUpperCase()}`,
+    options: { railing: cfg, railingQuote: q, commercialOnly: q.commercial || { sellingRatePerUnit: q.sellingPerUnit, saleUnit: q.saleUnit } },
   });
   state.selectedLine = state.lines.length-1;
   state.railingMode = true;
@@ -2372,6 +2467,7 @@ if ($('btnRailPresetStep')) $('btnRailPresetStep').onclick = () => {
 };
 ['rLenFt','rHtFt','rPanels','rBlocks','rGap','rWallL','rWallR','rHandrail','rPillar','rAnchPer','rSaleUnit',
  'rLegA','rLegB','rLegC','rArchSpan','rArchRise','rSteps','rRise','rRun','rStud','rSegments',
+ 'rFloorH','rGlassH','rSheetW','rSheetH','rWastePct','rBasis','rOverhead','rMarkup','rInstall','rTransport',
  'rRGlass','rRBlock','rRAnchor','rRBend','rR180','rREnd','rRStud','rRBrail','rRHrail','rRWall'].forEach(id => {
   const el = $(id); if (!el) return;
   const go = () => { if (isRailingMode() || state.railingMode) railingCalc(); };

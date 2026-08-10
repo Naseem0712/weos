@@ -10,6 +10,9 @@ with fabricator hardware rules:
   continuous rail where no pillar/block
 * staircase: every 3 steps → side-mounted pillar/block; opposite the 3rd step →
   dual 38/50 mm SS studs with 1 anchor each
+* staircase glass: trapezoid/parallelogram panels (100 mm edge inset, 12 mm gaps),
+  dual cut-angle display, Level-2 sheet nesting wastage (Level-1 % fallback),
+  full internal cost cascade vs customer commercial rate only
 
 Glass panels keep the classic 12 mm gap / wall-gap model on each run segment.
 Per-RFT / per-RMT selling rate is preserved.
@@ -24,12 +27,19 @@ from xml.sax.saxutils import escape
 MM_PER_FT = 304.8
 MM_PER_IN = 25.4
 MM_PER_M = 1000.0
-SQMM_PER_SQFT = MM_PER_FT * MM_PER_FT
+# Explicit conversion used by fabricator costing (304.8²).
+SQMM_PER_SQFT = 92903.04
 SQMM_PER_SQM = MM_PER_M * MM_PER_M
+RFT_PER_RMT = 3.28084
 
 # Default stock length before a handrail needs a 180° join connector.
 DEFAULT_HANDRAIL_MAX_MM = 6000.0
 PILLAR_EDGE_MM = 100.0
+GLASS_EDGE_INSET_MM = 100.0
+DEFAULT_GLASS_GAP_MM = 12.0
+DEFAULT_SHEET_W_MM = 3660.0
+DEFAULT_SHEET_H_MM = 2440.0
+FLOOR_RISE_TOL_MM = 1.0
 
 
 def _f(value: Any, default: float = 0.0) -> float:
@@ -149,17 +159,16 @@ def _preset_segments(shape: str, cfg: Mapping[str, Any]) -> list[dict[str, Any]]
         span = _f(cfg.get("archSpanMm"), L or 4000.0)
         return [{"lengthMm": span, "turnDeg": 0, "kind": "arch"}]
     if shape == "staircase":
-        steps = max(_i(cfg.get("stairSteps"), 0), 0)
-        rise = _f(cfg.get("stairRiseMm"), 150.0)
-        run = _f(cfg.get("stairRunMm"), 250.0)
-        if steps <= 0:
-            total_rise = _f(cfg.get("stairTotalRiseMm"), _height_mm(cfg) or 2700.0)
-            if rise <= 0:
-                rise = 150.0
-            steps = max(int(round(total_rise / rise)), 1)
-        hyp = math.hypot(run, rise) * steps
-        return [{"lengthMm": hyp, "turnDeg": 0, "kind": "staircase", "steps": steps,
-                 "riseMm": rise, "runMm": run}]
+        sg = compute_stair_geometry(cfg)
+        return [{
+            "lengthMm": _f(sg["totalSlopeLengthMm"]),
+            "turnDeg": 0,
+            "kind": "staircase",
+            "steps": sg["steps"],
+            "riseMm": sg["riserMm"],
+            "runMm": sg["treadMm"],
+            "horizontalRunMm": sg["totalHorizontalRunMm"],
+        }]
     # straight
     return [{"lengthMm": L or 0.0, "turnDeg": 0}]
 
@@ -217,41 +226,384 @@ def _handrail_connectors(length_mm: float, max_mm: float) -> int:
     return max(pieces - 1, 0)
 
 
+def _measurement_basis(cfg: Mapping[str, Any]) -> str:
+    raw = str(cfg.get("measurementBasis") or cfg.get("saleBasis") or cfg.get("saleUnit") or "sloping_rft").strip().lower()
+    aliases = {
+        "rft": "sloping_rft", "rmt": "sloping_rmt",
+        "horizontal rft": "horizontal_rft", "horizontal_rft": "horizontal_rft", "hrft": "horizontal_rft",
+        "sloping rft": "sloping_rft", "sloping_rft": "sloping_rft", "srft": "sloping_rft",
+        "horizontal rmt": "horizontal_rmt", "horizontal_rmt": "horizontal_rmt", "hrmt": "horizontal_rmt",
+        "sloping rmt": "sloping_rmt", "sloping_rmt": "sloping_rmt", "srmt": "sloping_rmt",
+    }
+    return aliases.get(raw, raw if raw in (
+        "horizontal_rft", "sloping_rft", "horizontal_rmt", "sloping_rmt",
+    ) else "sloping_rft")
+
+
+def compute_stair_geometry(cfg: Mapping[str, Any]) -> dict[str, Any]:
+    """Stair run geometry + floor-height mismatch flag.
+
+    Inputs: riser, tread, optional steps, optional floor height.
+    If steps omitted but riser + floor height given → derive steps from floor/riser.
+    """
+    riser = _f(cfg.get("stairRiseMm") or cfg.get("riserMm") or cfg.get("riser"), 150.0)
+    tread = _f(cfg.get("stairRunMm") or cfg.get("treadMm") or cfg.get("tread"), 250.0)
+    if riser <= 0:
+        riser = 150.0
+    if tread <= 0:
+        tread = 250.0
+
+    floor_h = _f(
+        cfg.get("floorHeightMm") or cfg.get("stairTotalRiseMm") or cfg.get("floorHeight"),
+        0.0,
+    )
+    if floor_h <= 0 and cfg.get("floorHeightM") not in (None, ""):
+        floor_h = _f(cfg.get("floorHeightM")) * MM_PER_M
+    if floor_h <= 0 and cfg.get("floorHeightFt") not in (None, ""):
+        floor_h = _f(cfg.get("floorHeightFt")) * MM_PER_FT
+
+    steps_in = cfg.get("stairSteps")
+    if steps_in in (None, "") and cfg.get("steps") not in (None, ""):
+        steps_in = cfg.get("steps")
+    steps = _i(steps_in, 0)
+    steps_derived = False
+    if steps <= 0:
+        if floor_h > 0 and riser > 0:
+            steps = max(int(round(floor_h / riser)), 1)
+            steps_derived = True
+        else:
+            steps = 12
+
+    stair_angle_rad = math.atan(riser / tread)
+    stair_angle_deg = stair_angle_rad * 180.0 / math.pi
+    step_slope = math.hypot(riser, tread)
+    total_rise = steps * riser
+    total_run = steps * tread
+    total_slope = steps * step_slope
+    rise_mismatch = False
+    rise_delta = 0.0
+    if floor_h > 0:
+        rise_delta = total_rise - floor_h
+        rise_mismatch = abs(rise_delta) > FLOOR_RISE_TOL_MM
+
+    return {
+        "steps": steps,
+        "stepsDerived": steps_derived,
+        "riserMm": round(riser, 3),
+        "treadMm": round(tread, 3),
+        "floorHeightMm": round(floor_h, 3) if floor_h > 0 else None,
+        "stairAngleDeg": round(stair_angle_deg, 4),
+        "stairAngleRad": stair_angle_rad,
+        "complementaryAngleDeg": round(90.0 - stair_angle_deg, 4),
+        "stepSlopeLengthMm": round(step_slope, 3),
+        "totalRiseMm": round(total_rise, 3),
+        "totalHorizontalRunMm": round(total_run, 3),
+        "totalSlopeLengthMm": round(total_slope, 3),
+        "calculatedRiseMm": round(total_rise, 3),
+        "riseMismatch": rise_mismatch,
+        "riseDeltaMm": round(rise_delta, 3),
+        "riseMismatchMessage": (
+            f"Calculated rise {total_rise:.1f} mm ≠ floor height {floor_h:.1f} mm "
+            f"(Δ {rise_delta:+.1f} mm)"
+            if rise_mismatch else None
+        ),
+    }
+
+
+def compute_stair_glass_panels(
+    cfg: Mapping[str, Any],
+    geo: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Per-panel trapezoid / parallelogram glass along the stair horizontal run.
+
+    Glass inset 100 mm from both edges; 12 mm gaps between panels.
+    When top/bottom follow the slope at constant vertical glass height, net area =
+    horizontalPanelWidth × glassVerticalHeight (NOT × sloping length).
+    """
+    geo = geo or compute_stair_geometry(cfg)
+    total_run = _f(geo.get("totalHorizontalRunMm"))
+    angle = _f(geo.get("stairAngleDeg"))
+    comp = _f(geo.get("complementaryAngleDeg"), 90.0 - angle)
+    glass_h = _f(cfg.get("glassHeightMm") or cfg.get("heightMm"), 0.0)
+    if glass_h <= 0:
+        glass_h = _height_mm(cfg) or 900.0
+    n = max(_i(cfg.get("panels") or cfg.get("glassPanels"), 1), 1)
+    gap = _f(cfg.get("gapMm"), DEFAULT_GLASS_GAP_MM)
+    edge = _f(cfg.get("glassEdgeInsetMm"), GLASS_EDGE_INSET_MM)
+    edge = min(edge, total_run / 2.0) if total_run > 0 else edge
+    usable = max(total_run - 2.0 * edge, 0.0)
+    gaps_total = gap * max(n - 1, 0)
+    glass_total = max(usable - gaps_total, 0.0)
+    each_h = glass_total / n if n else 0.0
+
+    # Optional landing rectangle after the slope (horizontal).
+    landing = _f(cfg.get("stairLandingMm") or cfg.get("landingMm"), 0.0)
+    landing_panels = max(_i(cfg.get("landingPanels"), 1 if landing > 0 else 0), 0)
+
+    panels: list[dict[str, Any]] = []
+    cursor = edge
+    for i in range(n):
+        start = cursor
+        end = start + each_h
+        # Constant vertical height + slope-parallel cuts → parallelogram.
+        left_h = glass_h
+        right_h = glass_h
+        net_sqmm = ((left_h + right_h) / 2.0) * each_h
+        panels.append({
+            "index": i + 1,
+            "kind": "slope",
+            "panelStartHorizontalPosition": round(start, 2),
+            "panelEndHorizontalPosition": round(end, 2),
+            "panelWidthHorizontal": round(each_h, 2),
+            "panelSlopeLengthMm": round(each_h / max(math.cos(math.radians(angle)), 1e-9), 2),
+            "leftGlassHeight": round(left_h, 2),
+            "rightGlassHeight": round(right_h, 2),
+            "bottomCutAngle": round(angle, 4),
+            "topCutAngle": round(angle, 4),
+            "bottomCutAngleVsHorizontal": round(angle, 4),
+            "topCutAngleVsHorizontal": round(angle, 4),
+            "bottomCutAngleVsVertical": round(comp, 4),
+            "topCutAngleVsVertical": round(comp, 4),
+            "netGlassAreaSqMm": round(net_sqmm, 2),
+            "netGlassAreaSqFt": round(net_sqmm / SQMM_PER_SQFT, 4),
+            "netGlassAreaSqM": round(net_sqmm / SQMM_PER_SQM, 6),
+            "bboxWidthMm": round(each_h, 2),
+            "bboxHeightMm": round(max(left_h, right_h), 2),
+        })
+        cursor = end + gap
+
+    if landing > 0 and landing_panels > 0:
+        land_gap = gap * max(landing_panels - 1, 0)
+        land_each = max(landing - land_gap, 0.0) / landing_panels
+        lx = total_run + edge  # start after slope run (visual offset)
+        for j in range(landing_panels):
+            start = lx + j * (land_each + gap)
+            end = start + land_each
+            net_sqmm = glass_h * land_each
+            panels.append({
+                "index": n + j + 1,
+                "kind": "landing",
+                "panelStartHorizontalPosition": round(start, 2),
+                "panelEndHorizontalPosition": round(end, 2),
+                "panelWidthHorizontal": round(land_each, 2),
+                "panelSlopeLengthMm": round(land_each, 2),
+                "leftGlassHeight": round(glass_h, 2),
+                "rightGlassHeight": round(glass_h, 2),
+                "bottomCutAngle": 0.0,
+                "topCutAngle": 0.0,
+                "bottomCutAngleVsHorizontal": 0.0,
+                "topCutAngleVsHorizontal": 0.0,
+                "bottomCutAngleVsVertical": 90.0,
+                "topCutAngleVsVertical": 90.0,
+                "netGlassAreaSqMm": round(net_sqmm, 2),
+                "netGlassAreaSqFt": round(net_sqmm / SQMM_PER_SQFT, 4),
+                "netGlassAreaSqM": round(net_sqmm / SQMM_PER_SQM, 6),
+                "bboxWidthMm": round(land_each, 2),
+                "bboxHeightMm": round(glass_h, 2),
+            })
+    return panels
+
+
+def nest_railing_glass(
+    panels: list[Mapping[str, Any]],
+    *,
+    sheet_w: float,
+    sheet_h: float,
+    estimated_wastage_pct: float | None = None,
+    gap_mm: float = 5.0,
+) -> dict[str, Any]:
+    """Level-2 sheet nesting; Level-1 % fallback when nesting unavailable.
+
+    wastagePercent = ((purchased − net) / net) × 100  (relative to net glass).
+    """
+    net_sqmm = sum(_f(p.get("netGlassAreaSqMm")) for p in panels)
+    net_sqft = net_sqmm / SQMM_PER_SQFT if net_sqmm else 0.0
+
+    pieces = []
+    for p in panels:
+        w = _f(p.get("bboxWidthMm") or p.get("panelWidthHorizontal"))
+        h = _f(p.get("bboxHeightMm") or max(_f(p.get("leftGlassHeight")), _f(p.get("rightGlassHeight"))))
+        if w > 0 and h > 0:
+            pieces.append({
+                "widthMm": w,
+                "heightMm": h,
+                "label": f"G{p.get('index', '?')}",
+                "qty": 1,
+            })
+
+    nesting: dict[str, Any] | None = None
+    nesting_ok = False
+    sheets_needed = 0
+    purchased_sqmm = 0.0
+    method = "estimated_pct"
+
+    if pieces and sheet_w > 0 and sheet_h > 0:
+        try:
+            from WEOS.factory.optimize_engine import GlassPiece, nest_glass_shelf
+
+            gp = [
+                GlassPiece(width_mm=_f(x["widthMm"]), height_mm=_f(x["heightMm"]),
+                           label=str(x.get("label") or ""), qty=1)
+                for x in pieces
+            ]
+            # Try both sheet orientations; keep lower purchased area.
+            candidates: list[dict[str, Any]] = []
+            for sw, sh in ((sheet_w, sheet_h), (sheet_h, sheet_w)):
+                try:
+                    candidates.append(nest_glass_shelf(gp, sheet_w=sw, sheet_h=sh, gap_mm=gap_mm, allow_rotate=True))
+                except Exception:
+                    continue
+            if candidates:
+                best = min(
+                    candidates,
+                    key=lambda c: (_f(c.get("totalSheetAreaMm2"), 1e18), _f(c.get("wastePercent"), 1e9)),
+                )
+                nesting = best
+                nesting_ok = True
+                method = "sheet_nesting"
+                sheets_needed = _i(best.get("sheetsNeeded"), 0)
+                purchased_sqmm = _f(best.get("totalSheetAreaMm2"))
+        except Exception as exc:
+            nesting = {"error": str(exc), "algorithm": "unavailable"}
+
+    if not nesting_ok:
+        pct = _f(estimated_wastage_pct, 10.0) if estimated_wastage_pct is not None else 10.0
+        purchased_sqmm = net_sqmm * (1.0 + pct / 100.0) if net_sqmm else 0.0
+        method = "estimated_pct"
+        nesting = {
+            "algorithm": "estimated_pct",
+            "estimatedWastagePercent": pct,
+            "note": "Sheet nesting unavailable or panels do not fit — using configurable % wastage only.",
+        }
+
+    purchased_sqft = purchased_sqmm / SQMM_PER_SQFT if purchased_sqmm else 0.0
+    unused_sqmm = max(purchased_sqmm - net_sqmm, 0.0)
+    wastage_pct = ((purchased_sqmm - net_sqmm) / net_sqmm * 100.0) if net_sqmm > 0 else 0.0
+
+    return {
+        "method": method,
+        "nestingAvailable": nesting_ok,
+        "netGlassAreaSqMm": round(net_sqmm, 2),
+        "netGlassAreaSqFt": round(net_sqft, 4),
+        "netGlassAreaSqM": round(net_sqmm / SQMM_PER_SQM, 6) if net_sqmm else 0.0,
+        "purchasedGlassAreaSqMm": round(purchased_sqmm, 2),
+        "purchasedGlassAreaSqFt": round(purchased_sqft, 4),
+        "purchasedGlassAreaSqM": round(purchased_sqmm / SQMM_PER_SQM, 6) if purchased_sqmm else 0.0,
+        "wastageAreaSqMm": round(unused_sqmm, 2),
+        "wastageAreaSqFt": round(unused_sqmm / SQMM_PER_SQFT, 4) if unused_sqmm else 0.0,
+        "wastagePercent": round(wastage_pct, 3),
+        "sheetsNeeded": sheets_needed,
+        "sheetWidthMm": sheet_w,
+        "sheetHeightMm": sheet_h,
+        "nesting": nesting,
+    }
+
+
+def compute_railing_cost_cascade(
+    *,
+    net_glass_sqft: float,
+    purchased_glass_sqft: float,
+    glass_rate: float,
+    hardware_cost: float,
+    profile_cost: float,
+    installation: float,
+    transport: float,
+    other_cost: float,
+    overhead_pct: float,
+    markup_pct: float,
+    commercial_rft: float,
+    commercial_rmt: float,
+) -> dict[str, Any]:
+    """Full internal cost cascade — wastage is explicit, not hidden in the rate."""
+    glass_material = purchased_glass_sqft * glass_rate
+    direct = glass_material + hardware_cost + profile_cost + installation + transport + other_cost
+    overhead = direct * (overhead_pct / 100.0)
+    before_profit = direct + overhead
+    selling = before_profit * (1.0 + markup_pct / 100.0)
+    profit = selling - before_profit
+
+    def _per(length: float, amount: float) -> float:
+        return round(amount / length, 4) if length > 0 else 0.0
+
+    return {
+        "netGlassAreaSqFt": round(net_glass_sqft, 4),
+        "purchasedGlassAreaSqFt": round(purchased_glass_sqft, 4),
+        "wastageAreaSqFt": round(max(purchased_glass_sqft - net_glass_sqft, 0.0), 4),
+        "glassMaterialCost": round(glass_material, 2),
+        "hardwareCost": round(hardware_cost, 2),
+        "profileCost": round(profile_cost, 2),
+        "installationCost": round(installation, 2),
+        "transportCost": round(transport, 2),
+        "otherCost": round(other_cost, 2),
+        "directCost": round(direct, 2),
+        "overheadPercent": overhead_pct,
+        "overheadCost": round(overhead, 2),
+        "totalBeforeProfit": round(before_profit, 2),
+        "markupPercent": markup_pct,
+        "profitAmount": round(profit, 2),
+        "sellingPrice": round(selling, 2),
+        "costPerRFTBeforeProfit": _per(commercial_rft, before_profit),
+        "costPerRMTBeforeProfit": _per(commercial_rmt, before_profit),
+        "sellingRatePerRFT": _per(commercial_rft, selling),
+        "sellingRatePerRMT": _per(commercial_rmt, selling),
+        "commercialRailingLengthRFT": round(commercial_rft, 4),
+        "commercialRailingLengthRMT": round(commercial_rmt, 4),
+    }
+
+
 def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     """Compute quantities, BOM, per-RFT/RMT rate, and geometry for any shape."""
     cfg = dict(cfg or {})
     shape = _shape(cfg)
     height_mm = _height_mm(cfg)
-    if shape == "staircase" and height_mm <= 0:
-        height_mm = _f(cfg.get("stairRiseMm"), 150.0) * max(_i(cfg.get("stairSteps"), 12), 1)
+    glass_height_mm = _f(cfg.get("glassHeightMm"), height_mm)
+    if glass_height_mm <= 0:
+        glass_height_mm = height_mm
+
+    stair_geo: dict[str, Any] | None = None
+    stair_panels: list[dict[str, Any]] = []
+    if shape == "staircase":
+        stair_geo = compute_stair_geometry(cfg)
+        if glass_height_mm <= 0:
+            glass_height_mm = 900.0
+        if height_mm <= 0:
+            height_mm = glass_height_mm
+        cfg = {
+            **cfg,
+            "stairSteps": stair_geo["steps"],
+            "stairRiseMm": stair_geo["riserMm"],
+            "stairRunMm": stair_geo["treadMm"],
+            "glassHeightMm": glass_height_mm,
+            "heightMm": height_mm if height_mm > 0 else glass_height_mm,
+        }
+        stair_panels = compute_stair_glass_panels(cfg, stair_geo)
 
     segments = _preset_segments(shape, cfg)
     total_length_mm = sum(_f(s.get("lengthMm")) for s in segments)
     if shape == "arch":
-        # Arc length ≈ π·r for semicircle, or chord-based approx with rise.
         span = _f(segments[0].get("lengthMm")) if segments else _length_mm(cfg)
         rise = _f(cfg.get("archRiseMm"), span * 0.35 if span else 1000.0)
         if rise > 0 and span > 0:
-            # Circular arc through chord span and rise.
             r = (rise / 2.0) + (span ** 2) / (8.0 * rise)
             theta = 2.0 * math.asin(min(1.0, (span / 2.0) / max(r, 1e-6)))
             total_length_mm = r * theta
             segments = [{"lengthMm": total_length_mm, "turnDeg": 0, "kind": "arch",
                          "spanMm": span, "riseMm": rise, "radiusMm": r}]
 
-    gap = _f(cfg.get("gapMm"), 12.0)
-    wall_gap = _f(cfg.get("wallGapMm"), 12.0)
+    gap = _f(cfg.get("gapMm"), DEFAULT_GLASS_GAP_MM)
+    wall_gap = _f(cfg.get("wallGapMm"), DEFAULT_GLASS_GAP_MM)
     wall_start = bool(cfg.get("wallStart", cfg.get("wallLeft", True)))
     wall_end = bool(cfg.get("wallEnd", cfg.get("wallRight", True)))
-    sale_unit = str(cfg.get("saleUnit") or "rft").lower()
-    if sale_unit not in ("rft", "rmt"):
-        sale_unit = "rft"
+    basis = _measurement_basis(cfg)
+    sale_unit = "rmt" if basis.endswith("rmt") else "rft"
+    if str(cfg.get("saleUnit") or "").lower() in ("rft", "rmt") and not cfg.get("measurementBasis"):
+        sale_unit = str(cfg.get("saleUnit")).lower()
 
     rates = dict(cfg.get("rates") or {})
-    r_glass = _f(rates.get("glassPerSqft"), 200.0)
+    r_glass = _f(rates.get("glassPerSqft") or cfg.get("glassRatePerSqft"), 200.0)
     r_block = _f(rates.get("blockPerPc"), 100.0)
     r_anchor = _f(rates.get("anchorPerPc"), 50.0)
-    r_brail = _f(rates.get("bottomRailPerUnit"))
+    r_brail = _f(rates.get("bottomRailPerUnit") or cfg.get("profileCostPerUnit"))
     w_brail = _f(rates.get("bottomRailWeightPerUnit"))
     r_hrail = _f(rates.get("handrailPerUnit"))
     w_hrail = _f(rates.get("handrailWeightPerUnit"))
@@ -261,7 +613,7 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     r_endcap = _f(rates.get("endCapPerPc"), 0.0)
     r_stud = _f(rates.get("studPerPc"), 0.0)
 
-    panels_cfg = max(_i(cfg.get("panels"), 1), 1)
+    panels_cfg = max(_i(cfg.get("panels") or cfg.get("glassPanels"), 1), 1)
     blocks_per_glass = max(_i(cfg.get("blocksPerGlass"), 0), 0)
     pillar_edge = _f(cfg.get("pillarEdgeMm"), PILLAR_EDGE_MM)
     handrail_on = bool(cfg.get("handrail", shape != "straight"))
@@ -277,57 +629,75 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     pillar_count = 0
     pillar_positions_plan: list[dict[str, Any]] = []
 
-    n_seg = len(segments)
-    for si, seg in enumerate(segments):
-        L = _f(seg.get("lengthMm"))
-        # Walls only at path ends for multi-segment (middle corners use bends).
-        w_left = wall_start if si == 0 else False
-        w_right = wall_end if si == n_seg - 1 else False
-        # Distribute panels across segments proportionally for multi-run.
-        if n_seg == 1:
-            seg_panels = panels_cfg
-            seg_explicit = explicit_list
-        else:
-            share = L / total_length_mm if total_length_mm else 0
-            seg_panels = max(1, int(round(panels_cfg * share))) if panels_cfg else 1
-            seg_explicit = None
-        widths = _panel_widths_for_run(
-            L, panels=seg_panels, gap=gap, wall_gap=wall_gap,
-            wall_left=w_left, wall_right=w_right, explicit=seg_explicit,
-        )
-        all_panel_widths.extend(widths)
-        # Pillars: blocks_per_glass × panels, or equal-space with 100 mm edges.
-        if blocks_per_glass > 0:
-            n_pillars = blocks_per_glass * len(widths)
-        elif continuous_rail:
-            n_pillars = 0
-        else:
-            n_pillars = max(_i(cfg.get("pillarsPerSegment"), 0), 0)
-        positions = _pillar_positions_along(L, n_pillars, edge_mm=pillar_edge)
-        pillar_count += len(positions)
-        for px in positions:
-            pillar_positions_plan.append({"segment": si, "sMm": round(px, 1)})
+    if shape == "staircase" and stair_panels:
+        all_panel_widths = [_f(p.get("panelWidthHorizontal")) for p in stair_panels]
+        L = total_length_mm
         run_details.append({
-            "index": si,
+            "index": 0,
             "lengthMm": round(L, 1),
-            "turnDeg": _f(seg.get("turnDeg")),
-            "kind": seg.get("kind") or "straight",
-            "panelWidthsMm": [round(w, 1) for w in widths],
-            "pillarPositionsMm": [round(p, 1) for p in positions],
-            "wallStart": w_left,
-            "wallEnd": w_right,
-            "continuousRail": n_pillars == 0,
+            "turnDeg": 0.0,
+            "kind": "staircase",
+            "panelWidthsMm": [round(w, 1) for w in all_panel_widths],
+            "pillarPositionsMm": [],
+            "wallStart": wall_start,
+            "wallEnd": wall_end,
+            "continuousRail": False,
+            "glassPanels": stair_panels,
         })
+    else:
+        n_seg = len(segments)
+        for si, seg in enumerate(segments):
+            L = _f(seg.get("lengthMm"))
+            w_left = wall_start if si == 0 else False
+            w_right = wall_end if si == n_seg - 1 else False
+            if n_seg == 1:
+                seg_panels = panels_cfg
+                seg_explicit = explicit_list
+            else:
+                share = L / total_length_mm if total_length_mm else 0
+                seg_panels = max(1, int(round(panels_cfg * share))) if panels_cfg else 1
+                seg_explicit = None
+            widths = _panel_widths_for_run(
+                L, panels=seg_panels, gap=gap, wall_gap=wall_gap,
+                wall_left=w_left, wall_right=w_right, explicit=seg_explicit,
+            )
+            all_panel_widths.extend(widths)
+            if blocks_per_glass > 0:
+                n_pillars = blocks_per_glass * len(widths)
+            elif continuous_rail:
+                n_pillars = 0
+            else:
+                n_pillars = max(_i(cfg.get("pillarsPerSegment"), 0), 0)
+            positions = _pillar_positions_along(L, n_pillars, edge_mm=pillar_edge)
+            pillar_count += len(positions)
+            for px in positions:
+                pillar_positions_plan.append({"segment": si, "sMm": round(px, 1)})
+            run_details.append({
+                "index": si,
+                "lengthMm": round(L, 1),
+                "turnDeg": _f(seg.get("turnDeg")),
+                "kind": seg.get("kind") or "straight",
+                "panelWidthsMm": [round(w, 1) for w in widths],
+                "pillarPositionsMm": [round(p, 1) for p in positions],
+                "wallStart": w_left,
+                "wallEnd": w_right,
+                "continuousRail": n_pillars == 0,
+            })
 
     panel_count = len(all_panel_widths)
     panel_widths_in = [round(w / MM_PER_IN, 2) for w in all_panel_widths]
-    glass_area_sqmm = sum(w * height_mm for w in all_panel_widths)
+
+    if shape == "staircase" and stair_panels:
+        glass_area_sqmm = sum(_f(p.get("netGlassAreaSqMm")) for p in stair_panels)
+        glass_h_for_area = glass_height_mm
+    else:
+        glass_h_for_area = glass_height_mm if glass_height_mm > 0 else height_mm
+        glass_area_sqmm = sum(w * glass_h_for_area for w in all_panel_widths)
     glass_area_sqft = glass_area_sqmm / SQMM_PER_SQFT
     glass_area_sqm = glass_area_sqmm / SQMM_PER_SQM
 
     # ── corner / join hardware ──────────────────────────────────────────────
     bend_count = sum(1 for s in segments[:-1] if abs(_f(s.get("turnDeg"))) > 1e-6)
-    # Arch uses no modular bends (continuous curve).
     if shape == "arch":
         bend_count = 0
 
@@ -345,31 +715,72 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
 
     wall_connectors = (1 if wall_start else 0) + (1 if wall_end else 0)
 
-    # ── staircase studs ─────────────────────────────────────────────────────
+    # ── staircase studs (side-mounted, every 3 steps, dual SS) ───────────────
     stair_pillars = 0
     stair_studs = 0
     stair_stud_anchors = 0
+    stud_stations: list[dict[str, Any]] = []
     stud_size = _i(cfg.get("studSizeMm"), 38)
     if stud_size not in (38, 50):
         stud_size = 38
-    if shape == "staircase":
-        steps = max(_i(cfg.get("stairSteps"), _i(segments[0].get("steps") if segments else 0, 12)), 1)
-        # Every 3 steps → one side-mounted pillar/block
+    if shape == "staircase" and stair_geo:
+        steps = int(stair_geo["steps"])
         stair_pillars = steps // 3
-        # Opposite the 3rd step (and every 3rd): dual SS studs, 1 anchor each
         dual_stations = steps // 3
         stair_studs = dual_stations * 2
-        stair_stud_anchors = stair_studs  # 1 anchor per stud
+        stair_stud_anchors = stair_studs
         pillar_count = stair_pillars
-        # Glass along hypotenuse — keep panel math from above
         bend_count = 0
         connector_180 = _handrail_connectors(total_length_mm, handrail_max) if handrail_on else 0
+        tread = _f(stair_geo["treadMm"])
+        riser = _f(stair_geo["riserMm"])
+        for n in range(3, steps + 1, 3):
+            stud_stations.append({
+                "step": n,
+                "horizontalMm": round(tread * n, 2),
+                "riseMm": round(riser * n, 2),
+                "studs": 2,
+                "anchors": 2,
+                "edgeInsetMm": GLASS_EDGE_INSET_MM,
+            })
 
     anchors_per_pillar = min(max(_i(cfg.get("anchorsPerPillar"), 1), 1), 2) if pillar_count else 0
     pillar_anchors = pillar_count * anchors_per_pillar
-    length_rft = total_length_mm / MM_PER_FT if total_length_mm else 0.0
-    length_rmt = total_length_mm / MM_PER_M if total_length_mm else 0.0
-    width_unit = length_rft if sale_unit == "rft" else length_rmt
+
+    # Commercial lengths (measurement basis)
+    horiz_mm = _f(stair_geo.get("totalHorizontalRunMm")) if stair_geo else total_length_mm
+    slope_mm = _f(stair_geo.get("totalSlopeLengthMm")) if stair_geo else total_length_mm
+    # Allow explicit stair railing length override
+    override_len = _f(cfg.get("stairRailingLengthMm") or cfg.get("railingLengthMm"), 0.0)
+    if override_len > 0:
+        if "horizontal" in basis:
+            horiz_mm = override_len
+        else:
+            slope_mm = override_len
+
+    horiz_rft = horiz_mm / MM_PER_FT if horiz_mm else 0.0
+    slope_rft = slope_mm / MM_PER_FT if slope_mm else 0.0
+    horiz_rmt = horiz_mm / MM_PER_M if horiz_mm else 0.0
+    slope_rmt = slope_mm / MM_PER_M if slope_mm else 0.0
+
+    if basis == "horizontal_rft":
+        commercial_rft, commercial_rmt = horiz_rft, horiz_rft / RFT_PER_RMT
+        length_rft, length_rmt = horiz_rft, horiz_rmt
+        total_length_mm = horiz_mm
+    elif basis == "horizontal_rmt":
+        commercial_rmt, commercial_rft = horiz_rmt, horiz_rmt * RFT_PER_RMT
+        length_rft, length_rmt = horiz_rft, horiz_rmt
+        total_length_mm = horiz_mm
+    elif basis == "sloping_rmt":
+        commercial_rmt, commercial_rft = slope_rmt, slope_rmt * RFT_PER_RMT
+        length_rft, length_rmt = slope_rft, slope_rmt
+        total_length_mm = slope_mm
+    else:  # sloping_rft
+        commercial_rft, commercial_rmt = slope_rft, slope_rft / RFT_PER_RMT
+        length_rft, length_rmt = slope_rft, slope_rmt
+        total_length_mm = slope_mm
+
+    width_unit = commercial_rmt if sale_unit == "rmt" else commercial_rft
 
     anchors_per_rft = _f(cfg.get("anchorsPerRft"), 0.0)
     include_base = bool(cfg.get("includeBaseAnchors", False))
@@ -388,10 +799,39 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
             row["weightKg"] = round(weight, 3)
         items.append(row)
 
-    if glass_area_sqft > 0 and shape != "staircase":
-        add("glass", "Glass", round(glass_area_sqft, 3), "sqft", r_glass)
-    elif glass_area_sqft > 0 and shape == "staircase" and bool(cfg.get("stairGlass", False)):
-        add("glass", "Glass", round(glass_area_sqft, 3), "sqft", r_glass)
+    # ── nesting wastage (Level 2) / estimated % (Level 1) ────────────────────
+    sheet_w = _f(cfg.get("sheetWidthMm") or cfg.get("standardGlassSheetWidthMm"), DEFAULT_SHEET_W_MM)
+    sheet_h = _f(cfg.get("sheetHeightMm") or cfg.get("standardGlassSheetHeightMm"), DEFAULT_SHEET_H_MM)
+    est_waste = cfg.get("estimatedWastagePercent")
+    if est_waste in (None, ""):
+        est_waste = cfg.get("wastagePercent")
+    nest_panels: list[dict[str, Any]]
+    if shape == "staircase" and stair_panels:
+        nest_panels = stair_panels
+    else:
+        nest_panels = [{
+            "index": i + 1,
+            "netGlassAreaSqMm": w * glass_h_for_area,
+            "panelWidthHorizontal": w,
+            "bboxWidthMm": w,
+            "bboxHeightMm": glass_h_for_area,
+            "leftGlassHeight": glass_h_for_area,
+            "rightGlassHeight": glass_h_for_area,
+        } for i, w in enumerate(all_panel_widths) if w > 0 and glass_h_for_area > 0]
+
+    glass_nest = nest_railing_glass(
+        nest_panels,
+        sheet_w=sheet_w,
+        sheet_h=sheet_h,
+        estimated_wastage_pct=_f(est_waste, 10.0) if est_waste is not None else None,
+    )
+    purchased_sqft = _f(glass_nest.get("purchasedGlassAreaSqFt"))
+    net_sqft = _f(glass_nest.get("netGlassAreaSqFt"), glass_area_sqft)
+
+    # BOM glass line uses purchased area when nesting/estimate available
+    include_stair_glass = shape != "staircase" or bool(cfg.get("stairGlass", True))
+    if net_sqft > 0 and include_stair_glass:
+        add("glass", "Glass (purchased / cutting area)", round(purchased_sqft or net_sqft, 3), "sqft", r_glass)
 
     if pillar_count:
         label = f"Blocks / pillars ({cfg.get('pillarType') or 'block'})"
@@ -399,7 +839,7 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
             label = f"Side-mount pillars (every 3 steps · {cfg.get('pillarType') or 'block'})"
         add("blocks", label, pillar_count, "pc", r_block)
     if stair_studs:
-        add("studs", f"SS studs {stud_size} mm (dual @ 3rd steps)", stair_studs, "pc", r_stud or r_block)
+        add("studs", f"SS studs {stud_size} mm (dual @ every 3rd step)", stair_studs, "pc", r_stud or r_block)
     if anchor_count:
         add("anchors", "Anchor bolts", anchor_count, "pc", r_anchor)
     if r_brail and total_length_mm:
@@ -429,41 +869,153 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         extras_total += amt
 
     items_total = sum(float(it["amount"]) for it in items)
-    total = round(items_total + extras_total, 2)
-    per_unit_rate = round(total / width_unit, 2) if width_unit else 0.0
+    # Hardware / profile split for cascade (exclude glass line)
+    hardware_cost = sum(
+        float(it["amount"]) for it in items
+        if it.get("key") in ("blocks", "studs", "anchors", "modularBend", "connector180", "endCap", "wallConnector")
+    )
+    profile_cost = sum(
+        float(it["amount"]) for it in items if it.get("key") in ("bottomRail", "handrail")
+    )
+    # Allow lump-sum overrides from UI
+    hw_override = cfg.get("hardwareCost")
+    if hw_override not in (None, ""):
+        hardware_cost = _f(hw_override)
+    prof_override = cfg.get("profileCost")
+    if prof_override not in (None, ""):
+        profile_cost = _f(prof_override)
+    installation = _f(cfg.get("installation") or cfg.get("installationCost") or rates.get("installation"), 0.0)
+    transport = _f(cfg.get("transport") or cfg.get("transportCost") or rates.get("transport"), 0.0)
+    other_cost = extras_total + _f(cfg.get("otherCost"), 0.0)
+    overhead_pct = _f(cfg.get("overheadPercent") or rates.get("overheadPercent"), 0.0)
+    markup_pct = _f(cfg.get("markupPercent") or cfg.get("profitPercent") or rates.get("markupPercent"), 0.0)
+
+    cost = compute_railing_cost_cascade(
+        net_glass_sqft=net_sqft,
+        purchased_glass_sqft=purchased_sqft or net_sqft,
+        glass_rate=r_glass,
+        hardware_cost=hardware_cost,
+        profile_cost=profile_cost,
+        installation=installation,
+        transport=transport,
+        other_cost=other_cost,
+        overhead_pct=overhead_pct,
+        markup_pct=markup_pct,
+        commercial_rft=commercial_rft,
+        commercial_rmt=commercial_rmt,
+    )
+
+    # Prefer cascade selling when overhead/markup path is active or staircase (full engine).
+    use_cascade = bool(
+        overhead_pct or markup_pct or installation or transport
+        or cfg.get("hardwareCost") not in (None, "")
+        or shape == "staircase"
+    )
+    total = round(cost["sellingPrice"] if use_cascade else (items_total + extras_total), 2)
+    per_unit_rate = (
+        cost["sellingRatePerRFT"] if sale_unit == "rft" else cost["sellingRatePerRMT"]
+    ) if use_cascade else (round((items_total + extras_total) / width_unit, 2) if width_unit else 0.0)
     manual = cfg.get("manualRatePerUnit")
     manual_rate = _f(manual) if manual not in (None, "") else None
     selling_per_unit = manual_rate if manual_rate is not None else per_unit_rate
     selling_total = round(selling_per_unit * width_unit, 2) if width_unit else round(total, 2)
 
+    # Customer-facing commercial (only final rate) vs internal breakdown
+    commercial = {
+        "saleUnit": sale_unit,
+        "measurementBasis": basis,
+        "sellingRatePerUnit": round(selling_per_unit, 4),
+        "sellingTotal": selling_total,
+        "sellingRatePerRFT": cost["sellingRatePerRFT"] if manual_rate is None else (
+            round(selling_total / commercial_rft, 4) if commercial_rft else 0.0
+        ),
+        "sellingRatePerRMT": cost["sellingRatePerRMT"] if manual_rate is None else (
+            round(selling_total / commercial_rmt, 4) if commercial_rmt else 0.0
+        ),
+    }
+    internal = {
+        "netGlassAreaSqFt": cost["netGlassAreaSqFt"],
+        "wastageAreaSqFt": cost["wastageAreaSqFt"],
+        "purchasedGlassAreaSqFt": cost["purchasedGlassAreaSqFt"],
+        "wastagePercent": glass_nest.get("wastagePercent"),
+        "nestingMethod": glass_nest.get("method"),
+        "glassMaterialCost": cost["glassMaterialCost"],
+        "directCost": cost["directCost"],
+        "overheadCost": cost["overheadCost"],
+        "overheadPercent": overhead_pct,
+        "profitMarkup": cost["profitAmount"],
+        "markupPercent": markup_pct,
+        "totalBeforeProfit": cost["totalBeforeProfit"],
+        "sellingPrice": cost["sellingPrice"],
+        "costPerRFTBeforeProfit": cost["costPerRFTBeforeProfit"],
+        "costPerRMTBeforeProfit": cost["costPerRMTBeforeProfit"],
+        "sellingRatePerRFT": cost["sellingRatePerRFT"],
+        "sellingRatePerRMT": cost["sellingRatePerRMT"],
+        "cutAngles": {
+            "stairAngleDeg": (stair_geo or {}).get("stairAngleDeg"),
+            "complementaryAngleDeg": (stair_geo or {}).get("complementaryAngleDeg"),
+            "note": "Bottom/top vs horizontal = stairAngle; vs vertical edge = 90 − stairAngle",
+        },
+    }
+
     geometry = _railing_geometry(
-        shape=shape, height_mm=height_mm, segments=segments, run_details=run_details,
+        shape=shape, height_mm=height_mm if height_mm > 0 else glass_height_mm,
+        segments=segments, run_details=run_details,
         gap=gap, wall_gap=wall_gap, wall_start=wall_start, wall_end=wall_end,
         handrail=handrail_on, bend_count=bend_count, end_caps=end_caps,
         connector_180=connector_180, cfg=cfg,
+        stair_geo=stair_geo, stair_panels=stair_panels, stud_stations=stud_stations,
+        glass_height_mm=glass_height_mm,
     )
 
     return {
         "shape": shape,
-        "lengthMm": round(total_length_mm, 2), "heightMm": round(height_mm, 2),
+        "lengthMm": round(total_length_mm, 2), "heightMm": round(height_mm if height_mm > 0 else glass_height_mm, 2),
+        "glassHeightMm": round(glass_height_mm, 2),
+        "glassThicknessMm": _f(cfg.get("glassThicknessMm"), 12.0),
         "lengthRft": round(length_rft, 3), "lengthRmt": round(length_rmt, 3),
-        "saleUnit": sale_unit, "widthUnit": round(width_unit, 3),
+        "saleUnit": sale_unit, "measurementBasis": basis, "widthUnit": round(width_unit, 3),
+        "commercialRailingLengthRFT": round(commercial_rft, 4),
+        "commercialRailingLengthRMT": round(commercial_rmt, 4),
         "panelCount": panel_count, "gapMm": gap, "wallGapMm": wall_gap,
         "panelWidthsMm": [round(w, 1) for w in all_panel_widths],
         "panelWidthsIn": panel_widths_in,
-        "glassAreaSqft": round(glass_area_sqft, 3), "glassAreaSqm": round(glass_area_sqm, 4),
+        "glassPanels": stair_panels if stair_panels else [
+            {
+                "index": i + 1,
+                "panelWidthHorizontal": round(w, 2),
+                "leftGlassHeight": round(glass_h_for_area, 2),
+                "rightGlassHeight": round(glass_h_for_area, 2),
+                "netGlassAreaSqFt": round(w * glass_h_for_area / SQMM_PER_SQFT, 4),
+            }
+            for i, w in enumerate(all_panel_widths)
+        ],
+        "glassAreaSqft": round(net_sqft, 4),
+        "glassAreaSqm": round(net_sqft * SQMM_PER_SQFT / SQMM_PER_SQM, 6),
+        "netGlassAreaSqFt": round(net_sqft, 4),
+        "purchasedGlassAreaSqFt": round(purchased_sqft, 4),
+        "wastageAreaSqFt": round(_f(glass_nest.get("wastageAreaSqFt")), 4),
+        "wastagePercent": glass_nest.get("wastagePercent"),
+        "glassNesting": glass_nest,
         "pillarCount": pillar_count, "anchorsPerPillar": anchors_per_pillar,
         "anchorCount": anchor_count, "baseAnchorCount": base_anchors,
         "handrail": handrail_on, "wallConnectors": wall_connectors,
         "bendCount": bend_count, "connector180Count": connector_180, "endCapCount": end_caps,
         "stairPillars": stair_pillars, "stairStuds": stair_studs,
         "stairStudAnchors": stair_stud_anchors, "studSizeMm": stud_size,
+        "studStations": stud_stations,
+        "stairGeometry": stair_geo,
         "segments": run_details,
         "continuousRailSegments": sum(1 for r in run_details if r.get("continuousRail")),
         "items": items, "extras": extras, "extrasTotal": round(extras_total, 2),
-        "total": total, "perUnitRate": per_unit_rate,
+        "costCascade": cost,
+        "internal": internal,
+        "commercial": commercial,
+        "total": total, "perUnitRate": round(float(per_unit_rate), 4),
         "manualRatePerUnit": manual_rate,
-        "sellingPerUnit": round(selling_per_unit, 2), "sellingTotal": selling_total,
+        "sellingPerUnit": round(float(selling_per_unit), 4), "sellingTotal": selling_total,
+        "sellingRatePerRFT": commercial["sellingRatePerRFT"],
+        "sellingRatePerRMT": commercial["sellingRatePerRMT"],
         "geometry": geometry,
     }
 
@@ -475,12 +1027,18 @@ def _railing_geometry(
     run_details: list[dict[str, Any]], gap: float, wall_gap: float,
     wall_start: bool, wall_end: bool, handrail: bool,
     bend_count: int, end_caps: int, connector_180: int, cfg: Mapping[str, Any],
+    stair_geo: Mapping[str, Any] | None = None,
+    stair_panels: list[dict[str, Any]] | None = None,
+    stud_stations: list[dict[str, Any]] | None = None,
+    glass_height_mm: float = 0.0,
 ) -> dict[str, Any]:
     pts = _polyline_points(segments, start_heading_deg=_f(cfg.get("startHeadingDeg"), 90.0))
     rail_h = max(min(height_mm * 0.06, 60.0), 25.0) if height_mm else 40.0
+    sg = dict(stair_geo or {})
     return {
         "shape": shape,
         "heightMm": round(height_mm, 1),
+        "glassHeightMm": round(glass_height_mm or height_mm, 1),
         "railH": round(rail_h, 1),
         "handrail": handrail,
         "wallStart": wall_start, "wallEnd": wall_end,
@@ -488,16 +1046,21 @@ def _railing_geometry(
         "bendCount": bend_count, "endCapCount": end_caps, "connector180Count": connector_180,
         "points": [{"x": round(x, 1), "y": round(y, 1)} for x, y in pts],
         "segments": run_details,
-        "stairSteps": _i(cfg.get("stairSteps"), _i(segments[0].get("steps") if segments else 0, 0)),
-        "stairRiseMm": _f(cfg.get("stairRiseMm"), _f(segments[0].get("riseMm") if segments else 0, 150)),
-        "stairRunMm": _f(cfg.get("stairRunMm"), _f(segments[0].get("runMm") if segments else 0, 250)),
+        "stairSteps": _i(sg.get("steps"), _i(cfg.get("stairSteps"), _i(segments[0].get("steps") if segments else 0, 0))),
+        "stairRiseMm": _f(sg.get("riserMm"), _f(cfg.get("stairRiseMm"), _f(segments[0].get("riseMm") if segments else 0, 150))),
+        "stairRunMm": _f(sg.get("treadMm"), _f(cfg.get("stairRunMm"), _f(segments[0].get("runMm") if segments else 0, 250))),
+        "stairAngleDeg": _f(sg.get("stairAngleDeg")),
+        "complementaryAngleDeg": _f(sg.get("complementaryAngleDeg")),
+        "riseMismatch": bool(sg.get("riseMismatch")),
+        "riseMismatchMessage": sg.get("riseMismatchMessage"),
+        "glassPanels": list(stair_panels or []),
+        "studStations": list(stud_stations or []),
         "studSizeMm": _i(cfg.get("studSizeMm"), 38),
         "archSpanMm": _f(segments[0].get("spanMm") if segments else 0, 0),
         "archRiseMm": _f(segments[0].get("riseMm") if segments else 0, 0),
         "archRadiusMm": _f(segments[0].get("radiusMm") if segments else 0, 0),
-        # Straight elevation helpers (compat)
         "lengthMm": round(sum(_f(s.get("lengthMm")) for s in segments), 1),
-        "panels": [],
+        "panels": list(stair_panels or []),
         "blocks": [],
     }
 
@@ -724,17 +1287,22 @@ def _svg_arch_plan(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
 
 
 def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
+    """Side-view stair railing: trapezoid glass panels + dual studs every 3 steps."""
     steps = max(_i(g.get("stairSteps"), 12), 1)
     rise = _f(g.get("stairRiseMm"), 150.0)
     run = _f(g.get("stairRunMm"), 250.0)
     total_w = run * steps
     total_h = rise * steps
-    rail_h = _f(q.get("heightMm"), 900.0)  # guard height above nosing — use as offset
-    # Draw stair profile + railing parallel above nosings
-    guard = min(max(rail_h, 600.0), 1200.0) if rail_h > 200 else 900.0
-    pad = max(total_w, total_h + guard) * 0.12 + 120.0
+    glass_h = _f(g.get("glassHeightMm") or q.get("glassHeightMm") or q.get("heightMm"), 900.0)
+    guard = min(max(glass_h, 600.0), 1400.0) if glass_h > 50 else 900.0
+    angle = _f(g.get("stairAngleDeg"))
+    if angle <= 0 and run > 0:
+        angle = math.degrees(math.atan(rise / run))
+    comp = _f(g.get("complementaryAngleDeg"), 90.0 - angle)
+    panels = list(g.get("glassPanels") or g.get("panels") or q.get("glassPanels") or [])
+    pad = max(total_w, total_h + guard) * 0.12 + 140.0
     vb_w = total_w + pad * 2
-    vb_h = total_h + guard + pad * 2
+    vb_h = total_h + guard + pad * 2.2
     ox, oy = pad, pad + total_h + guard
 
     def X(mx: float) -> float:
@@ -743,9 +1311,17 @@ def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
     def Y(my: float) -> float:
         return oy - my
 
+    def nosing_y_at(x_h: float) -> float:
+        """Stair nosing elevation at horizontal position (sawtooth top envelope ≈ slope)."""
+        if run <= 0:
+            return 0.0
+        # Continuous slope line through nosings for glass baseline.
+        return (rise / run) * x_h
+
     sw = max(total_w, total_h) / 500.0
     stroke, dim, rail_c, stud_c = "#14181c", "#8c1f18", "#2f6db0", "#0a5a48"
-    fs = max(vb_w, vb_h) * 0.015
+    glass, glass_stroke = "#dceaf6", "#2f6db0"
+    fs = max(vb_w, vb_h) * 0.014
     p: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb_w:.1f} {vb_h:.1f}" font-family="Segoe UI, Arial, sans-serif">',
         f'<rect x="0" y="0" width="{vb_w:.1f}" height="{vb_h:.1f}" fill="#ffffff"/>',
@@ -753,48 +1329,110 @@ def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
     # Stair polyline
     sx = sy = 0.0
     d_steps = [f'M{X(0):.1f},{Y(0):.1f}']
-    for i in range(steps):
+    for _step in range(steps):
         sx += run
         d_steps.append(f'L{X(sx):.1f},{Y(sy):.1f}')
         sy += rise
         d_steps.append(f'L{X(sx):.1f},{Y(sy):.1f}')
     p.append(f'<path d="{" ".join(d_steps)}" fill="none" stroke="{stroke}" stroke-width="{sw*1.2:.2f}"/>')
 
-    # Handrail parallel (offset by guard along normal ≈ vertical for drawing clarity)
-    hx = hy = 0.0
-    d_rail = [f'M{X(0):.1f},{Y(guard):.1f}']
-    for i in range(steps):
-        hx += run
-        d_rail.append(f'L{X(hx):.1f},{Y(hy + guard):.1f}')
-        hy += rise
-        d_rail.append(f'L{X(hx):.1f},{Y(hy + guard):.1f}')
-    p.append(f'<path d="{" ".join(d_rail)}" fill="none" stroke="{rail_c}" stroke-width="{sw*2:.2f}" stroke-linecap="round"/>')
+    # Trapezoidal / parallelogram glass panels (vertical edges, slope-parallel top/bottom)
+    if not panels:
+        # Fallback equal split with 100 mm edge inset + 12 mm gaps
+        n = max(_i(q.get("panelCount"), 3), 1)
+        edge = GLASS_EDGE_INSET_MM
+        gap = _f(g.get("gap"), DEFAULT_GLASS_GAP_MM)
+        usable = max(total_w - 2 * edge, 0.0)
+        each = max(usable - gap * max(n - 1, 0), 0.0) / n
+        cursor = edge
+        for i in range(n):
+            panels.append({
+                "index": i + 1,
+                "panelStartHorizontalPosition": cursor,
+                "panelEndHorizontalPosition": cursor + each,
+                "leftGlassHeight": guard,
+                "rightGlassHeight": guard,
+            })
+            cursor += each + gap
+
+    for panel in panels:
+        if str(panel.get("kind") or "slope") == "landing":
+            continue  # landing drawn as rectangle at top if present
+        x0 = _f(panel.get("panelStartHorizontalPosition"))
+        x1 = _f(panel.get("panelEndHorizontalPosition"))
+        if x1 <= x0:
+            continue
+        hl = _f(panel.get("leftGlassHeight"), guard)
+        hr = _f(panel.get("rightGlassHeight"), guard)
+        y0 = nosing_y_at(x0)
+        y1 = nosing_y_at(x1)
+        # Bottom-left, bottom-right, top-right, top-left (plumb sides)
+        pts = [
+            (X(x0), Y(y0)),
+            (X(x1), Y(y1)),
+            (X(x1), Y(y1 + hr)),
+            (X(x0), Y(y0 + hl)),
+        ]
+        poly = " ".join(f"{a:.1f},{b:.1f}" for a, b in pts)
+        p.append(f'<polygon points="{poly}" fill="{glass}" fill-opacity="0.85" stroke="{glass_stroke}" stroke-width="{sw*0.85:.2f}"/>')
+        mx = (x0 + x1) / 2
+        my = nosing_y_at(mx) + (hl + hr) / 4
+        label = f'G{panel.get("index", "")} { (x1-x0):.0f}×{max(hl,hr):.0f}'
+        p.append(f'<text x="{X(mx):.1f}" y="{Y(my):.1f}" text-anchor="middle" font-size="{fs*0.85:.1f}" fill="#173a63">{escape(label)}</text>')
+
+    # Landing rectangular panels (horizontal after run)
+    for panel in panels:
+        if str(panel.get("kind")) != "landing":
+            continue
+        x0 = _f(panel.get("panelStartHorizontalPosition"))
+        x1 = _f(panel.get("panelEndHorizontalPosition"))
+        # Map landing start onto top of stair (after total_w)
+        lx0 = total_w + (x0 - total_w) if x0 >= total_w else total_w
+        w = max(x1 - x0, 0.0)
+        hl = _f(panel.get("leftGlassHeight"), guard)
+        p.append(
+            f'<rect x="{X(lx0):.1f}" y="{Y(total_h + hl):.1f}" width="{w:.1f}" height="{hl:.1f}" '
+            f'fill="{glass}" fill-opacity="0.85" stroke="{glass_stroke}" stroke-width="{sw*0.85:.2f}"/>'
+        )
+
+    # Top rail along slope
+    p.append(
+        f'<line x1="{X(0):.1f}" y1="{Y(guard):.1f}" x2="{X(total_w):.1f}" y2="{Y(total_h + guard):.1f}" '
+        f'stroke="{rail_c}" stroke-width="{sw*2:.2f}" stroke-linecap="round"/>'
+    )
 
     stud_size = _i(g.get("studSizeMm"), 38)
-    # Every 3rd step: side pillar + dual studs opposite
-    for n in range(3, steps + 1, 3):
-        # Position at nosing after n-th rise
-        px = run * n
-        py = rise * n
-        # Side-mount pillar (filled tick on lower side of rail)
+    stations = g.get("studStations") or []
+    if not stations:
+        for n in range(3, steps + 1, 3):
+            stations.append({"step": n, "horizontalMm": run * n, "riseMm": rise * n})
+    for st in stations:
+        px = _f(st.get("horizontalMm"), run * _i(st.get("step"), 0))
+        py = _f(st.get("riseMm"), nosing_y_at(px))
         p.append(f'<line x1="{X(px):.1f}" y1="{Y(py):.1f}" x2="{X(px):.1f}" y2="{Y(py+guard):.1f}" '
-                 f'stroke="{stroke}" stroke-width="{sw*1.6:.2f}"/>')
-        p.append(f'<rect x="{X(px)-sw*4:.1f}" y="{Y(py+guard*0.15)-sw*4:.1f}" width="{sw*8:.1f}" height="{sw*8:.1f}" '
-                 f'fill="#fff" stroke="{stroke}" stroke-width="{sw*0.7:.2f}"/>')
-        # Dual studs opposite
-        off = run * 0.35
-        for k, sign in enumerate((-1, 1)):
-            sx2 = px + sign * off * 0.15
-            p.append(f'<circle cx="{X(sx2):.1f}" cy="{Y(py + guard * 0.55):.1f}" r="{max(stud_size*0.15, sw*2.5):.1f}" '
-                     f'fill="#e7f3ee" stroke="{stud_c}" stroke-width="{sw*0.7:.2f}"/>')
-        p.append(f'<text x="{X(px)+fs*0.4:.1f}" y="{Y(py+guard*0.55):.1f}" font-size="{fs*0.7:.1f}" fill="{stud_c}">'
+                 f'stroke="{stroke}" stroke-width="{sw*1.5:.2f}"/>')
+        # Dual studs (upper + lower) — side-mounted pairs opposite the step
+        for frac in (0.35, 0.65):
+            cy = py + guard * frac
+            p.append(f'<circle cx="{X(px):.1f}" cy="{Y(cy):.1f}" r="{max(stud_size*0.18, sw*2.8):.1f}" '
+                     f'fill="#e7f3ee" stroke="{stud_c}" stroke-width="{sw*0.75:.2f}"/>')
+        p.append(f'<text x="{X(px)+fs*0.45:.1f}" y="{Y(py+guard*0.5):.1f}" font-size="{fs*0.7:.1f}" fill="{stud_c}">'
                  f'{stud_size}×2</text>')
 
-    _dim_h(p, X(0), X(total_w), Y(0) + fs * 2.0, f'run {run:.0f} × {steps} = {total_w:.0f}', dim, sw, fs)
+    _dim_h(p, X(0), X(total_w), Y(0) + fs * 2.0, f'tread {run:.0f} × {steps} = {total_w:.0f} run', dim, sw, fs)
     _dim_v(p, Y(0), Y(total_h), X(0) - fs * 1.4, f'rise {total_h:.0f}', dim, sw, fs)
-    summ = (f'Staircase railing · {steps} steps · pillars {q.get("stairPillars", 0)} · '
-            f'studs {q.get("stairStuds", 0)} · anchors {q.get("anchorCount", 0)}')
-    p.append(f'<text x="{ox:.1f}" y="{fs*1.3:.1f}" font-size="{fs:.1f}" fill="#111">{escape(summ)}</text>')
+    mismatch = ""
+    if g.get("riseMismatch") or (q.get("stairGeometry") or {}).get("riseMismatch"):
+        msg = g.get("riseMismatchMessage") or (q.get("stairGeometry") or {}).get("riseMismatchMessage") or "rise ≠ floor height"
+        mismatch = f' · ⚠ {msg}'
+    summ = (f'Staircase railing · {steps} steps · {len(panels)} panels · '
+            f'angle {angle:.2f}° / complement {comp:.2f}° · '
+            f'pillars {q.get("stairPillars", 0)} · studs {q.get("stairStuds", 0)}')
+    p.append(f'<text x="{ox:.1f}" y="{fs*1.25:.1f}" font-size="{fs:.1f}" fill="#111">{escape(summ)}</text>')
+    p.append(f'<text x="{ox:.1f}" y="{fs*2.35:.1f}" font-size="{fs*0.85:.1f}" fill="#555">'
+             f'net {q.get("netGlassAreaSqFt") or q.get("glassAreaSqft")} sft · '
+             f'purchased {q.get("purchasedGlassAreaSqFt")} sft · '
+             f'wastage {q.get("wastagePercent")}%{escape(mismatch)}</text>')
     p.append('</svg>')
     return "".join(p)
 
