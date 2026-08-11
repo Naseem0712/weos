@@ -1,0 +1,38 @@
+{
+  "id": "learn_railing_formula_vars",
+  "memoryType": "learning",
+  "observationType": "formula",
+  "summary": "Railing material qty formulas: RFT → LengthRft (aliases Length, ActualLength, WidthRft, ActualLengthRft). RM → LengthRm. SQFT → AreaSqft. PC → 1. LengthRft is the commercial run length in feet from cart width (L/U = sum of spans). Prefer LengthRft over runningFeet for continuous bottom/hand rail (runningFeet is window perimeter).",
+  "evidence": {
+    "product": "Glass Railings",
+    "defaults": {
+      "RFT": "LengthRft",
+      "RM": "LengthRm",
+      "SQFT": "AreaSqft",
+      "SQM": "AreaSqm",
+      "PC": "1"
+    },
+    "aliasesAccepted": [
+      "Length",
+      "ActualLength",
+      "WidthRft",
+      "ActualLengthRft",
+      "RailingLength",
+      "W",
+      "width"
+    ],
+    "tip": "Admin Materials + Formulas: pick unit RFT → qty auto-fills LengthRft. Cost = LengthRft × rate."
+  },
+  "suggestion": "When an admin asks how to price continuous bottom rail / handrail per RFT, tell them: set Unit=RFT and Qty formula=LengthRft (Length or ActualLength also work). Do not use runningFeet for railings.",
+  "frequency": 1.0,
+  "targetMemoryType": "formula",
+  "targetPayload": {
+    "topic": "railing_quantity_formulas",
+    "preferred": "LengthRft"
+  },
+  "adminDecision": "approved",
+  "domain": "engineering",
+  "source": "system_default",
+  "confidence": 95,
+  "priority": 80
+}

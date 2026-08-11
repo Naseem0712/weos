@@ -15,6 +15,42 @@ from typing import Any, Mapping
 # Canonical material units (every material may use a different unit)
 MATERIAL_UNITS = ("PC", "KG", "RFT", "RM", "SQFT", "SQM", "BOX", "PAIR", "SET")
 
+# Default qty formula when admin picks a unit (Materials + Formulas auto-fill)
+DEFAULT_QTY_FORMULA_BY_UNIT: dict[str, str] = {
+    "PC": "1",
+    "KG": "1",
+    "RFT": "LengthRft",
+    "RM": "LengthRm",
+    "SQFT": "AreaSqft",
+    "SQM": "AreaSqm",
+    "BOX": "1",
+    "PAIR": "1",
+    "SET": "1",
+}
+
+# Admin cheat-sheet (Materials editor + Formula Builder + Agent tip)
+FORMULA_VARIABLE_HELP: tuple[dict[str, str], ...] = (
+    {"name": "LengthRft", "for": "RFT", "desc": "Railing / line run length in feet (from cart width; L/U = sum of spans)"},
+    {"name": "LengthRm", "for": "RM", "desc": "Same run length in metres"},
+    {"name": "LengthMm", "for": "mm", "desc": "Same run length in millimetres"},
+    {"name": "WidthRft", "for": "RFT", "desc": "Alias of LengthRft — cart Width converted to feet"},
+    {"name": "ActualLengthRft", "for": "RFT", "desc": "Alias of LengthRft (commercial railing length)"},
+    {"name": "RailingLength", "for": "RFT", "desc": "Alias of LengthRft"},
+    {"name": "Length", "for": "RFT", "desc": "Alias of LengthRft — use for continuous bottom/top rail"},
+    {"name": "ActualLength", "for": "RFT", "desc": "Alias of LengthRft — accepted for older formulas"},
+    {"name": "Width", "for": "mm", "desc": "Cart / opening width in mm (same as width / W)"},
+    {"name": "Height", "for": "mm", "desc": "Cart / opening height in mm (same as height / H)"},
+    {"name": "Qty", "for": "PC", "desc": "Line quantity (same as qty)"},
+    {"name": "AreaSqft", "for": "SQFT", "desc": "Opening area in sq.ft (width × height)"},
+    {"name": "AreaSqm", "for": "SQM", "desc": "Opening area in m²"},
+    {"name": "runningFeet", "for": "RFT", "desc": "Window frame perimeter in feet (NOT railing run — prefer LengthRft for rails)"},
+    {"name": "runningMeters", "for": "RM", "desc": "Window frame perimeter in metres"},
+    {"name": "glassArea", "for": "SQM", "desc": "Glass area m² (from shutters when known)"},
+    {"name": "glassAreaSqft", "for": "SQFT", "desc": "Glass area sq.ft"},
+    {"name": "shutterCount", "for": "PC", "desc": "Number of glass shutters / leaves"},
+    {"name": "trackCount", "for": "PC", "desc": "Number of tracks"},
+)
+
 # Variables available in Formula Builder previews / validation
 FORMULA_VARIABLES = (
     "width",
@@ -22,6 +58,26 @@ FORMULA_VARIABLES = (
     "qty",
     "W",
     "H",
+    "Width",
+    "Height",
+    "Qty",
+    "LengthMm",
+    "LengthRft",
+    "LengthRm",
+    "WidthRft",
+    "WidthRm",
+    "ActualLengthMm",
+    "ActualLengthRft",
+    "ActualLengthRm",
+    "ActualLength",
+    "Length",
+    "RailingLength",
+    "RailingLengthRft",
+    "RailingLengthRm",
+    "commercialRailingLengthRFT",
+    "commercialRailingLengthRMT",
+    "AreaSqft",
+    "AreaSqm",
     "trackWidth",
     "frameWidth",
     "interlockWidth",
@@ -217,7 +273,12 @@ def build_context(
     qty: float = 1.0,
     extras: Mapping[str, float] | None = None,
 ) -> dict[str, float]:
-    """Build safe numeric context for formula evaluation from line + geometry."""
+    """Build safe numeric context for formula evaluation from line + geometry.
+
+    For railings, ``width`` is the run length in mm (sum of L/U spans when the
+    designer provides commercial length via extras). RFT materials should use
+    ``LengthRft`` (aliases: ``Length``, ``ActualLength``, ``WidthRft``).
+    """
     g = {k: float(v) for k, v in geometry.items() if isinstance(v, (int, float))}
     w = float(width)
     h = float(height)
@@ -227,12 +288,64 @@ def build_context(
     running_m = perimeter_mm / 1000.0
     running_ft = perimeter_mm / 304.8
 
+    # Run length: cart width (mm) unless railing quote supplies commercial length.
+    ex0 = {k: float(v) for k, v in (extras or {}).items() if isinstance(v, (int, float))}
+    length_mm = w
+    for key in (
+        "commercialLengthMm",
+        "railingLengthMm",
+        "totalLengthMm",
+        "lengthMm",
+        "LengthMm",
+        "ActualLengthMm",
+    ):
+        if key in ex0 and ex0[key] > 0:
+            length_mm = ex0[key]
+            break
+    if "commercialRailingLengthRFT" in ex0 and ex0["commercialRailingLengthRFT"] > 0:
+        length_rft = ex0["commercialRailingLengthRFT"]
+        length_rm = (
+            ex0["commercialRailingLengthRMT"]
+            if ex0.get("commercialRailingLengthRMT", 0) > 0
+            else length_rft / 3.28084
+        )
+        length_mm = length_rft * 304.8
+    elif "commercialRailingLengthRMT" in ex0 and ex0["commercialRailingLengthRMT"] > 0:
+        length_rm = ex0["commercialRailingLengthRMT"]
+        length_rft = length_rm * 3.28084
+        length_mm = length_rm * 1000.0
+    else:
+        length_rft = length_mm / 304.8
+        length_rm = length_mm / 1000.0
+
     aliases: dict[str, float] = {
         "width": w,
         "height": h,
         "qty": float(qty),
         "W": w,
         "H": h,
+        "Width": w,
+        "Height": h,
+        "Qty": float(qty),
+        # Linear run (railing continuous rail / handrail) — prefer these for RFT/RM
+        "LengthMm": length_mm,
+        "LengthRft": length_rft,
+        "LengthRm": length_rm,
+        "WidthRft": length_rft,
+        "WidthRm": length_rm,
+        "ActualLengthMm": length_mm,
+        "ActualLengthRft": length_rft,
+        "ActualLengthRm": length_rm,
+        # Admin-friendly aliases (qty formula returns feet for RFT materials)
+        "ActualLength": length_rft,
+        "Length": length_rft,
+        "RailingLength": length_rft,
+        "RailingLengthRft": length_rft,
+        "RailingLengthRm": length_rm,
+        "commercialRailingLengthRFT": length_rft,
+        "commercialRailingLengthRMT": length_rm,
+        "AreaSqft": area_sqft,
+        "AreaSqm": area_sqm,
         "trackWidth": float(g["trackWidth"]) if "trackWidth" in g else 0.0,
         "frameWidth": float(g["frameWidth"]) if "frameWidth" in g else 0.0,
         "interlockWidth": float(g["interlockWidth"]) if "interlockWidth" in g else 0.0,
@@ -250,7 +363,36 @@ def build_context(
     }
     aliases["shutterInset"] = aliases["trackWidth"] - aliases["overlap"]
     if extras:
-        aliases.update({k: float(v) for k, v in extras.items()})
+        # Extras win for explicit keys, but do not wipe Length* aliases unless provided.
+        for k, v in extras.items():
+            try:
+                aliases[k] = float(v)
+            except (TypeError, ValueError):
+                continue
+        # Re-sync Length aliases if commercial RFT was injected after the first pass
+        if "commercialRailingLengthRFT" in aliases and aliases["commercialRailingLengthRFT"] > 0:
+            lr = aliases["commercialRailingLengthRFT"]
+            lm = (
+                aliases["commercialRailingLengthRMT"]
+                if aliases.get("commercialRailingLengthRMT", 0) > 0
+                else lr / 3.28084
+            )
+            for name, val in (
+                ("LengthRft", lr),
+                ("LengthRm", lm),
+                ("LengthMm", lr * 304.8),
+                ("WidthRft", lr),
+                ("WidthRm", lm),
+                ("ActualLength", lr),
+                ("ActualLengthRft", lr),
+                ("ActualLengthRm", lm),
+                ("ActualLengthMm", lr * 304.8),
+                ("Length", lr),
+                ("RailingLength", lr),
+                ("RailingLengthRft", lr),
+                ("RailingLengthRm", lm),
+            ):
+                aliases[name] = val
     if "leftGlassWidth" in aliases and "rightGlassWidth" in aliases and "glassHeight" in aliases:
         ga = (
             (aliases["leftGlassWidth"] + aliases["rightGlassWidth"])
@@ -293,3 +435,8 @@ def normalize_unit(unit: str | None) -> str:
         "KGS": "KG",
     }
     return aliases.get(raw, raw if raw in MATERIAL_UNITS else raw)
+
+
+def default_qty_formula_for_unit(unit: str | None) -> str:
+    """Suggested quantityFormula when admin selects a material unit."""
+    return DEFAULT_QTY_FORMULA_BY_UNIT.get(normalize_unit(unit), "1")

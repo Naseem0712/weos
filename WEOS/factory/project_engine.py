@@ -251,6 +251,49 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
          "color": it.get("color"), "grade": it.get("grade"), "sizeMm": it.get("sizeMm")}
         for it in (q.get("items") or [])
     ]
+    # Product Library materials[] — LengthRft / ActualLength evaluate to commercial run length
+    lib_materials: list[dict[str, Any]] = []
+    product_id = str(line.get("product") or line.get("productId") or "railings_stub")
+    try:
+        from WEOS.factory.formula import build_context
+        from WEOS.factory.materials_engine import compute_materials
+        from WEOS.factory.product_loader import load_product
+
+        product = load_product(product_id, strict=False)
+        mats = product.get("materials") or []
+        if mats:
+            length_mm = float(q.get("lengthMm") or line.get("width") or 0)
+            height_mm = float(q.get("heightMm") or q.get("glassHeightMm") or line.get("height") or 0)
+            extras = {
+                "commercialRailingLengthRFT": float(
+                    q.get("commercialRailingLengthRFT") or q.get("lengthRft") or 0
+                ),
+                "commercialRailingLengthRMT": float(
+                    q.get("commercialRailingLengthRMT") or q.get("lengthRmt") or 0
+                ),
+                "railingLengthMm": length_mm,
+                "commercialLengthMm": length_mm,
+            }
+            ctx = build_context(length_mm, height_mm, {}, qty=1.0, extras=extras)
+            computed = compute_materials(mats, ctx, line_qty=float(qty))
+            for m in computed:
+                row = {
+                    "name": m.description,
+                    "category": m.category,
+                    "qty": m.quantity,
+                    "unit": m.unit,
+                    "rate": m.unit_rate,
+                    "amount": round(float(m.quantity or 0) * float(m.unit_rate or 0), 2)
+                    if m.unit_rate is not None
+                    else None,
+                    "source": "product_library",
+                }
+                lib_materials.append(row)
+                bom.append(row)
+    except Exception:
+        _log.exception("railing product-library materials failed for %s", product_id)
+        lib_materials = []
+
     ptype = railing_product_type_for_line({**dict(line), "options": {**(opts_in or {}), "railing": cfg}, "railing": q})
     # Persist cfg + fresh quote so PDF draw_line_elevation / _spec_lines never lose the design.
     # Strip window layout keys so specs never mix Track / Fold / Panels S1 Sliding.
@@ -274,7 +317,7 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
     }
     return {
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
-        "product": "railing",
+        "product": product_id,
         "productType": ptype,
         "displayName": line.get("displayName") or ("Staircase railing" if ptype == "staircase_railing" else "Railing"),
         "category": "Railings",
@@ -294,7 +337,7 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
         "options": opts_out,
         "glass": glass_pieces,
         "hardware": [],
-        "materials": [],
+        "materials": lib_materials,
         "brush": {"totalMeters": 0, "pieces": []},
         "trackRail": [],
         "cutList": [],

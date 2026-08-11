@@ -1,12 +1,12 @@
 ﻿{
   "id": "railings_stub",
   "displayName": "Glass Railings",
-  "productType": "railings_stub",
+  "productType": "railing",
   "category": "Railings",
   "units": "mm",
-  "version": 0,
+  "version": 1,
   "status": "stub",
-  "description": "Catalogue entry — manufacturing engines coming soon. Manual rate for quotations.",
+  "description": "Catalogue entry — railing designer engines live. Materials use LengthRft for continuous rail RFT × rate.",
   "tagline": "Glass Railings catalogue",
   "warranty": "1 year (demo)",
   "heroImage": "/static/products/placeholder.svg",
@@ -22,6 +22,56 @@
     "hardwareBrand": "TBD",
     "hardwareFinish": "TBD",
     "defaultGlass": "As specified",
-    "openingDirection": "TBD"
-  }
+    "openingDirection": "TBD",
+    "saleUnit": "rft"
+  },
+  "formulas": {
+    "railRft": "LengthRft",
+    "railRm": "LengthRm",
+    "areaSqft": "AreaSqft"
+  },
+  "materials": [
+    {
+      "id": "bottom_rail_45x100",
+      "name": "Bottom Rail 45X100MM Continue",
+      "category": "Rail Aluminium",
+      "unit": "RFT",
+      "quantityFormula": "LengthRft",
+      "unitRate": 860,
+      "remarks": "Continuous bottom rail — qty = commercial run length in feet"
+    },
+    {
+      "id": "handrail_same_color",
+      "name": "Handrail Same Color",
+      "category": "Handrail",
+      "unit": "RFT",
+      "quantityFormula": "LengthRft",
+      "unitRate": 220,
+      "remarks": "Aliases Length / ActualLength also accepted"
+    },
+    {
+      "id": "conn_180",
+      "name": "180 Degree connector",
+      "category": "connectors",
+      "unit": "PC",
+      "quantityFormula": "1",
+      "unitRate": 150
+    },
+    {
+      "id": "wall_connector",
+      "name": "Wall Connector",
+      "category": "hardware",
+      "unit": "PC",
+      "quantityFormula": "1",
+      "unitRate": 180
+    },
+    {
+      "id": "lock_keeper",
+      "name": "Lock / keeper set",
+      "category": "Hardware",
+      "unit": "PC",
+      "quantityFormula": "1",
+      "unitRate": 220
+    }
+  ]
 }

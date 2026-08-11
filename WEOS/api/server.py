@@ -20,7 +20,14 @@ from pydantic import BaseModel, Field
 
 from WEOS import TAGLINE, __version__
 from WEOS.api.calculate import build_api_response, get_product_detail, products_catalog
-from WEOS.factory.formula import FORMULA_VARIABLES, MATERIAL_UNITS, preview_formula, validate_formula
+from WEOS.factory.formula import (
+    DEFAULT_QTY_FORMULA_BY_UNIT,
+    FORMULA_VARIABLE_HELP,
+    FORMULA_VARIABLES,
+    MATERIAL_UNITS,
+    preview_formula,
+    validate_formula,
+)
 from WEOS.factory.import_engine import import_bytes
 from WEOS.factory.pdf_engine import build_customer_pdf_bytes, build_factory_pdf_bytes
 from WEOS.factory.product_admin import create_product, delete_product, get_admin_product, update_product
@@ -1355,6 +1362,8 @@ def api_admin_meta() -> dict[str, Any]:
     return {
         "materialUnits": list(MATERIAL_UNITS),
         "formulaVariables": list(FORMULA_VARIABLES),
+        "formulaVariableHelp": [dict(h) for h in FORMULA_VARIABLE_HELP],
+        "defaultQtyFormulaByUnit": dict(DEFAULT_QTY_FORMULA_BY_UNIT),
         "productTypes": [{"id": k, "label": lab} for k, lab in PRODUCT_TYPE_CHOICES],
         "brands": list(BRANDS),
         "templateKinds": ["customer", "factory"],

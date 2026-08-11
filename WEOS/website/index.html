@@ -859,7 +859,10 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           <div class="row" style="margin-bottom:.5rem">
             <button class="btn sm" id="btnAddMat">Add material</button>
             <span class="muted" style="font-size:.8rem">Units: PC · KG · RFT · RM · SQFT · SQM · BOX · PAIR · SET</span>
+            <button class="btn ghost sm" id="btnMatHelp" type="button" title="Show formula variables">Formula help</button>
           </div>
+          <div id="matHelpBox" class="hidden" style="margin-bottom:.6rem;padding:.55rem .7rem;border:1px solid var(--line);border-radius:10px;background:#f7faf8;font-size:.78rem;line-height:1.45"></div>
+          <p class="muted" style="font-size:.78rem;margin:0 0 .45rem">Changing <strong>Unit</strong> auto-fills Qty formula when it is empty or still a previous default (RFT → <code>LengthRft</code>, RM → <code>LengthRm</code>, SQFT → <code>AreaSqft</code>, PC → <code>1</code>). Continuous bottom/hand rail: use RFT + <code>LengthRft</code> (aliases <code>Length</code>, <code>ActualLength</code> also work).</p>
           <div style="overflow:auto">
             <table class="mat-table"><thead><tr><th>Name</th><th>Category</th><th>Unit</th><th>Qty formula</th><th>Rate</th><th></th></tr></thead>
             <tbody id="matBody"></tbody></table>
@@ -1242,6 +1245,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <button class="btn ghost sm" data-ex="shutterCount">Handle → Shutter Count</button>
             <button class="btn ghost sm" data-ex="glassArea">Glass → Glass Area</button>
             <button class="btn ghost sm" data-ex="runningFeet">Profile → Running Foot</button>
+            <button class="btn ghost sm" data-ex="LengthRft">Rail → LengthRft</button>
             <button class="btn ghost sm" data-ex="runningMeters * weightPerMeter">Weight → L × kg/m</button>
           </div>
         </div>
@@ -3448,23 +3452,61 @@ async function loadAdminProduct(id) {
 }
 function renderMaterials() {
   const units = (state.adminMeta && state.adminMeta.materialUnits) || ['PC','KG','RFT','RM','SQFT','SQM','BOX','PAIR','SET'];
+  const defaults = (state.adminMeta && state.adminMeta.defaultQtyFormulaByUnit) || {
+    PC:'1', KG:'1', RFT:'LengthRft', RM:'LengthRm', SQFT:'AreaSqft', SQM:'AreaSqm', BOX:'1', PAIR:'1', SET:'1'
+  };
+  const defaultSet = new Set(Object.values(defaults).concat(['1','Length','ActualLength','runningFeet','runningMeters','glassArea','areaSqft','areaSqm']));
   $('matBody').innerHTML = state.materials.map((m,i) => `
     <tr>
       <td><input data-m="${i}" data-k="name" value="${m.name||''}"/></td>
       <td><input data-m="${i}" data-k="category" value="${m.category||'hardware'}" style="width:90px"/></td>
       <td><select data-m="${i}" data-k="unit">${units.map(u=>`<option ${u===(m.unit||'PC')?'selected':''}>${u}</option>`).join('')}</select></td>
-      <td><input data-m="${i}" data-k="quantityFormula" value="${m.quantityFormula||'1'}" style="min-width:140px;font-family:ui-monospace,monospace"/></td>
+      <td><input data-m="${i}" data-k="quantityFormula" value="${m.quantityFormula||'1'}" style="min-width:140px;font-family:ui-monospace,monospace" placeholder="${defaults[m.unit||'PC']||'1'}"/></td>
       <td><input data-m="${i}" data-k="unitRate" type="number" value="${m.unitRate??0}" style="width:80px"/></td>
       <td><button class="btn ghost sm" data-mdel="${i}">Del</button></td>
     </tr>`).join('') || '<tr><td colspan="6" class="muted">No materials — click Add material</td></tr>';
   $('matBody').querySelectorAll('input[data-m],select[data-m]').forEach(el => {
     el.onchange = () => {
       const i = +el.dataset.m, k = el.dataset.k;
+      const prevUnit = state.materials[i].unit || 'PC';
+      const prevFx = String(state.materials[i].quantityFormula || '1').trim();
       state.materials[i][k] = k === 'unitRate' ? +el.value : el.value;
+      if (k === 'unit') {
+        const next = defaults[el.value] || '1';
+        const prevDefault = defaults[prevUnit] || '1';
+        // Auto-fill when empty or still a known default / common alias (do not overwrite custom formulas)
+        if (!prevFx || defaultSet.has(prevFx) || prevFx === prevDefault) {
+          state.materials[i].quantityFormula = next;
+          const fxEl = $('matBody').querySelector(`input[data-m="${i}"][data-k="quantityFormula"]`);
+          if (fxEl) fxEl.value = next;
+        }
+      }
     };
   });
   $('matBody').querySelectorAll('[data-mdel]').forEach(b => b.onclick = () => { state.materials.splice(+b.dataset.mdel,1); renderMaterials(); });
 }
+function renderMatHelp() {
+  const box = $('matHelpBox');
+  if (!box) return;
+  const help = (state.adminMeta && state.adminMeta.formulaVariableHelp) || [];
+  const defaults = (state.adminMeta && state.adminMeta.defaultQtyFormulaByUnit) || {};
+  const rows = help.map(h => `<tr><td style="font-family:ui-monospace,monospace;white-space:nowrap">${h.name}</td><td>${h.for||''}</td><td>${h.desc||''}</td></tr>`).join('');
+  const auto = Object.entries(defaults).map(([u,f]) => `<code>${u}</code>→<code>${f}</code>`).join(' · ');
+  box.innerHTML = `
+    <strong style="font-size:.82rem">Qty formula variables (cheat-sheet)</strong>
+    <p style="margin:.25rem 0 .4rem">Unit auto-fill: ${auto || 'RFT→LengthRft · RM→LengthRm · SQFT→AreaSqft · PC→1'}</p>
+    <div style="max-height:220px;overflow:auto">
+      <table class="mat-table"><thead><tr><th>Variable</th><th>Typical unit</th><th>Meaning</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="muted">Load Admin meta to see variables</td></tr>'}</tbody></table>
+    </div>
+    <p class="muted" style="margin:.35rem 0 0;font-size:.72rem">Glass Railings continuous rail: Unit <b>RFT</b>, Qty formula <code>LengthRft</code> (or <code>Length</code> / <code>ActualLength</code>). Cost = qty × rate.</p>`;
+}
+if ($('btnMatHelp')) $('btnMatHelp').onclick = () => {
+  const box = $('matHelpBox');
+  if (!box) return;
+  const show = box.classList.contains('hidden');
+  box.classList.toggle('hidden', !show);
+  if (show) renderMatHelp();
+};
 
 /* ── Series Setup (per-type structured tables) ── */
 const SETUP_STD_DEFAULTS = { sliding:'5850', casement:'5850', telescopic:'3000', style:'2400,3000' };
@@ -3660,7 +3702,11 @@ if ($('adProductType')) $('adProductType').onchange = () => {
 };
 $('btnAdminLoad').onclick = () => loadAdminProduct($('adminProdSelect').value);
 $('btnAddMat').onclick = () => {
-  state.materials.push({id:'mat_'+Date.now(), name:'New material', category:'hardware', unit:'PC', quantityFormula:'1', unitRate:0});
+  const defaults = (state.adminMeta && state.adminMeta.defaultQtyFormulaByUnit) || {};
+  state.materials.push({
+    id:'mat_'+Date.now(), name:'New material', category:'hardware', unit:'PC',
+    quantityFormula: defaults.PC || '1', unitRate:0
+  });
   renderMaterials();
 };
 $('btnAdminNew').onclick = async () => {
