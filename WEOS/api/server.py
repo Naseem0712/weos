@@ -251,6 +251,8 @@ class PreviewRequest(BaseModel):
     sectionSeries: str | None = None
     grid: Any = None
     railing: dict[str, Any] | None = None
+    productType: str | None = None
+    category: str | None = None
 
 
 class FormulaPreviewRequest(BaseModel):
@@ -544,6 +546,28 @@ class GlassSizeBody(BaseModel):
     label: str = "glass"
 
 
+class RailingMaterialBody(BaseModel):
+    model_config = {"extra": "allow"}
+
+    id: str | None = None
+    name: str
+    category: str = "block"
+    sizeMm: str = ""
+    widthMm: float | None = None
+    heightMm: float | None = None
+    thicknessMm: float | None = None
+    diameterMm: float | None = None
+    color: str = "natural"
+    grade: str = ""
+    mountType: str = "none"
+    unit: str = "pc"
+    rate: float | None = None
+    weightKgPerUnit: float | None = None
+    brand: str = ""
+    remarks: str = ""
+    status: str = "active"
+
+
 class HardwareItemBody(BaseModel):
     model_config = {"extra": "allow"}
 
@@ -785,12 +809,27 @@ def api_railing_quote(body: dict[str, Any]) -> dict[str, Any]:
 def api_preview(body: PreviewRequest) -> dict[str, Any]:
     """Fast SVG preview for live cart — uses geometry engine only path via generate_job."""
     # Railing is not a window — never route it through generate_job.
+    from WEOS.factory.line_kind import is_railing_product_type, product_world
+
     prod = str(getattr(body, "product", "") or "").lower()
     rail_cfg = getattr(body, "railing", None)
-    if prod in ("railing", "railings_stub", "glass_railings") or isinstance(rail_cfg, dict):
+    world = product_world(
+        getattr(body, "productType", None),
+        category=getattr(body, "category", None),
+        product_id=prod,
+    )
+    if (
+        world in ("railing", "staircase_railing")
+        or is_railing_product_type(getattr(body, "productType", None))
+        or prod in ("railing", "railings_stub", "glass_railings")
+        or "railing" in prod
+        or isinstance(rail_cfg, dict)
+    ):
         from WEOS.factory.railing_engine import compute_railing, railing_svg
 
         cfg = dict(rail_cfg or {})
+        if not cfg.get("shape") and world == "staircase_railing":
+            cfg["shape"] = "staircase"
         q = compute_railing(cfg)
         return {"svg": railing_svg(cfg, quote=q), "system": "railing", "railing": q}
     try:
@@ -1295,9 +1334,12 @@ async def api_project_import(project_id: str, file: UploadFile = File(...)) -> d
 
 @app.get("/api/admin/meta")
 def api_admin_meta() -> dict[str, Any]:
+    from WEOS.factory.line_kind import PRODUCT_TYPE_CHOICES
+
     return {
         "materialUnits": list(MATERIAL_UNITS),
         "formulaVariables": list(FORMULA_VARIABLES),
+        "productTypes": [{"id": k, "label": lab} for k, lab in PRODUCT_TYPE_CHOICES],
         "brands": list(BRANDS),
         "templateKinds": ["customer", "factory"],
         "blockTypes": [
@@ -2498,6 +2540,50 @@ def api_hardware_rules_apply(body: HardwareRulesApplyBody) -> dict[str, Any]:
     from WEOS.factory.hardware_catalogue import apply_hardware_rules
 
     return apply_hardware_rules(body.rules, body.context, leaf_weights_kg=body.leafWeightsKg)
+
+
+# ── Railing materials gallery ────────────────────────────────────────────────
+
+@app.get("/api/railing/materials/options")
+def api_railing_materials_options() -> dict[str, Any]:
+    from WEOS.factory.railing_materials import category_options
+
+    return category_options()
+
+
+@app.get("/api/railing/materials")
+def api_railing_materials_list(category: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.railing_materials import list_materials, seed_default_materials
+
+    items = list_materials(category=category)
+    if not items:
+        seed_default_materials()
+        items = list_materials(category=category)
+    return {"materials": items, "count": len(items)}
+
+
+@app.post("/api/railing/materials")
+def api_railing_materials_save(body: RailingMaterialBody) -> dict[str, Any]:
+    from WEOS.factory.railing_materials import save_material
+
+    return {"ok": True, "material": save_material(body.model_dump(exclude_none=True))}
+
+
+@app.delete("/api/railing/materials/{material_id}")
+def api_railing_materials_delete(material_id: str) -> dict[str, Any]:
+    from WEOS.factory.railing_materials import delete_material
+
+    try:
+        return delete_material(material_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/railing/materials/seed")
+def api_railing_materials_seed(force: bool = False) -> dict[str, Any]:
+    from WEOS.factory.railing_materials import seed_default_materials
+
+    return seed_default_materials(force=force)
 
 
 # ── Memory audit + Intelligence (Part 5) ─────────────────────────────────────

@@ -97,15 +97,9 @@ def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: flo
 
 def _line_is_railing(line: Mapping[str, Any]) -> bool:
     """Detect railing designer lines even when product id varies."""
-    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
-    if isinstance(opts, Mapping) and isinstance(opts.get("railing"), Mapping):
-        return True
-    if str(line.get("status") or "").lower() == "railing":
-        return True
-    if isinstance(line.get("railing"), Mapping):
-        return True
-    pid = str(line.get("product") or "").lower()
-    return pid in ("railing", "railings_stub", "glass_railings") or "railing" in pid
+    from WEOS.factory.line_kind import is_railing_cart_line
+
+    return is_railing_cart_line(line)
 
 
 def _railing_cfg_and_quote(line: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:

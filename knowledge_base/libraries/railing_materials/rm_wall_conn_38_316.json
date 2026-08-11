@@ -1,0 +1,20 @@
+{
+  "id": "rm_wall_conn_38_316",
+  "name": "Wall connector Ø38",
+  "category": "wall_connector",
+  "sizeMm": "Ø38",
+  "widthMm": null,
+  "heightMm": null,
+  "thicknessMm": null,
+  "diameterMm": 38.0,
+  "color": "4753",
+  "grade": "316",
+  "mountType": "none",
+  "unit": "pc",
+  "rate": 120.0,
+  "weightKgPerUnit": null,
+  "brand": "",
+  "remarks": "",
+  "status": "active",
+  "updatedAt": "2026-08-10T00:00:00+00:00"
+}

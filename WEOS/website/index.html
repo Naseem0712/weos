@@ -295,6 +295,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           <div class="row">
             <div class="grow"><label class="l">Product</label><select id="lineProduct"></select></div>
           </div>
+          <div id="windowCartTools">
           <div class="row" style="margin-top:.5rem">
             <div><label class="l">W (mm)</label><input id="lineW" type="number" value="2050" style="width:90px"/></div>
             <div><label class="l">H (mm)</label><input id="lineH" type="number" value="1970" style="width:90px"/></div>
@@ -392,6 +393,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             </div>
             <div class="grow"><label class="l">Description</label><input id="lineDesc" placeholder="Customer-facing description"/></div>
           </div>
+          </div><!-- /#windowCartTools — hidden when product world is railing -->
           <div class="livebox" id="livePriceBox">
             <div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.06em">Live amount</div>
             <div class="big" id="liveCost">₹ —</div>
@@ -748,6 +750,22 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
         <div id="admin-meta">
           <div class="row">
             <div class="grow"><label class="l">Display name</label><input id="adName"/></div>
+            <div><label class="l">Product type <span style="color:#b33">*</span></label>
+              <select id="adProductType" style="width:200px" required>
+                <option value="">— select type —</option>
+                <option value="railing">Railing</option>
+                <option value="staircase_railing">Staircase railing</option>
+                <option value="windows">Windows</option>
+                <option value="door">Door</option>
+                <option value="casements">Casements</option>
+                <option value="pergolas">Pergolas</option>
+                <option value="synchron">Synchron (sync telescopic / 2+2)</option>
+                <option value="telescopic">Telescopic</option>
+                <option value="fold">Fold &amp; sliding</option>
+                <option value="sliding">Sliding</option>
+                <option value="style">Style / slide door</option>
+              </select>
+            </div>
             <div><label class="l">Category</label><input id="adCat" style="width:140px"/></div>
             <div><label class="l">Status</label><select id="adStatus"><option>active</option><option>stub</option><option>archived</option></select></div>
             <div><label class="l">Brand</label><select id="adBrand"><option value="woodenmax">WoodenMax</option><option value="allkraft">AllKraft</option></select></div>
@@ -789,12 +807,14 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
         </div>
         <div id="admin-setup" class="hidden">
           <div class="row" style="align-items:flex-end">
-            <div><label class="l">Product type (defines the setup form)</label>
+            <div><label class="l">Series setup form (window systems)</label>
               <select id="setupType" style="width:220px">
                 <option value="sliding">Sliding series</option>
                 <option value="casement">Casement / Openable</option>
                 <option value="telescopic">Telescopic sliding</option>
                 <option value="style">Style / Slide doors</option>
+                <option value="fold">Fold &amp; sliding</option>
+                <option value="synchron">Synchron / 2+2 sync</option>
               </select>
             </div>
             <div class="grow"><label class="l">Standard length(s) mm (comma)</label><input id="setupStdLen" placeholder="e.g. 5850 or 2400,3000"/></div>
@@ -1579,7 +1599,7 @@ async function loadProducts() {
     // skipped. Empty library → clear prompt, no dummy options.
     const selectable = state.products.filter(p => p && p.id);
     if (!selectable.some(p => productLooksLikeRailing(p) || String(p.id).toLowerCase() === 'railing')) {
-      selectable.push({ id: 'railing', displayName: 'Railing (designer)', category: 'Railings', manufacturingReady: true });
+      selectable.push({ id: 'railing', displayName: 'Railing (designer)', category: 'Railings', productType: 'railing', manufacturingReady: true });
     }
     if (!selectable.length) {
       sel.innerHTML = '<option value="" disabled selected>No products yet — add one or Import from Excel in Product Library</option>';
@@ -1750,44 +1770,79 @@ function applySystemUiRules(opts) {
 // system. Map a product's declared type → geometry system and push it into the
 // hidden #lineSystem so calculate / geometry / PDF still receive it. Products
 // that don't declare a type keep the current system (default sliding).
+const PRODUCT_TYPE_CATEGORY = {
+  railing: 'Railings', staircase_railing: 'Railings', windows: 'Windows', door: 'Doors',
+  casements: 'Windows', pergolas: 'Pergolas', synchron: 'Windows', telescopic: 'Windows',
+  fold: 'Windows', sliding: 'Windows', style: 'Doors',
+};
 function systemForProduct(p) {
   if (!p) return null;
   const t = String(p.system || p.windowSystem || p.windowType || p.productType || p.type || '').toLowerCase();
   if (!t) return null;
+  if (t.includes('rail')) return null; // railing world — no window system
   if (t.includes('casement') || t.includes('openable') || t.includes('opening')) return 'casement';
   if (t.includes('bifold') || t.includes('fold')) return 'bifold';
   if (t.includes('grid') || t.includes('partition')) return 'grid';
-  if (t.includes('slid')) return 'sliding';
+  if (t.includes('slid') || t.includes('tele') || t.includes('sync') || t === 'windows' || t === 'door') return 'sliding';
   return null; // section_series / unknown → leave current selection
 }
-function applyProductSystem() {
+function selectedProductMeta() {
   const sel = $('lineProduct');
-  const sysEl = $('lineSystem');
-  if (!sel || !sysEl) return;
-  const p = (state.products || []).find(x => x && x.id === sel.value);
-  if (productLooksLikeRailing(p) || String(sel.value).toLowerCase().includes('rail')) {
+  if (!sel) return null;
+  return (state.products || []).find(x => x && x.id === sel.value) || null;
+}
+function productWorldOf(p, ln) {
+  const typ = String((p && p.productType) || (ln && ln.productType) || (ln && ln.options && ln.options.productType) || '').toLowerCase();
+  if (typ === 'staircase_railing' || typ === 'staircase') return 'staircase_railing';
+  if (typ.includes('rail')) return 'railing';
+  if (productLooksLikeRailing(p)) {
+    if (typ.includes('stair') || String((p && p.category) || '').toLowerCase().includes('stair')) return 'staircase_railing';
+    return 'railing';
+  }
+  if (ln && (ln.options && ln.options.railing || String(ln.product || '').toLowerCase().includes('rail'))) {
+    const shape = (ln.options && ln.options.railing && ln.options.railing.shape) || '';
+    return shape === 'staircase' ? 'staircase_railing' : 'railing';
+  }
+  const pid = String((p && p.id) || (ln && ln.product) || '').toLowerCase();
+  if (pid.includes('rail')) return 'railing';
+  return 'window';
+}
+function applyProductWorld() {
+  const p = selectedProductMeta();
+  const ln = state.lines[state.selectedLine];
+  const world = productWorldOf(p, ln);
+  const win = $('windowCartTools');
+  const addBtn = $('btnAddLine');
+  if (world === 'railing' || world === 'staircase_railing') {
     state.railingMode = true;
+    if (world === 'staircase_railing') {
+      state.railMode = 'staircase';
+      state.railShape = 'staircase';
+      if (!['stair', 'divisions', 'rates'].includes(state.railStep)) state.railStep = 'stair';
+    } else if (String((p && p.productType) || '').toLowerCase() === 'railing') {
+      state.railMode = 'normal';
+      if (state.railShape === 'staircase') state.railShape = 'straight';
+      if (!['install', 'shape', 'size', 'divisions', 'rates'].includes(state.railStep)) state.railStep = 'install';
+    }
+    if (win) win.classList.add('hidden');
     showRailTools(true);
+    if (addBtn) addBtn.textContent = 'Add railing to cart';
     railingCalc();
     return;
   }
-  // Leaving railing product → hide tools unless a railing cart line stays selected
-  const ln = state.lines[state.selectedLine];
-  if (!(ln && (ln.product === 'railing' || (ln.options && ln.options.railing)))) {
-    state.railingMode = false;
-    showRailTools(false);
-  }
+  state.railingMode = false;
+  if (win) win.classList.remove('hidden');
+  showRailTools(false);
+  if (addBtn) addBtn.textContent = 'Add to cart';
+  const sysEl = $('lineSystem');
   const sys = systemForProduct(p);
-  if (sys && sysEl.value !== sys) {
+  if (sys && sysEl && sysEl.value !== sys) {
     sysEl.value = sys;
     state.draftHandleOverrides = {};
     applySystemUiRules({ applyFoldPreset: sys === 'bifold' });
   } else {
     applySystemUiRules();
   }
-  // Series-setup defaults: prefill section sizes from the product's derived
-  // sectionSizes (from Product Library · Series Setup) when the cart fields are
-  // empty, so the live geometry uses the registered series' frame widths.
   const sizes = p && p.catalogue && p.catalogue.sectionSizes;
   if (sizes && typeof sizes === 'object') {
     const map = { secTop: 'topRail', secBottom: 'bottomRail', secJamb: 'leftJamb', secLeaf: 'leafStile' };
@@ -1796,6 +1851,9 @@ function applyProductSystem() {
       if (el && (el.value === '' || el.value == null) && sizes[map[id]]) el.value = sizes[map[id]];
     }
   }
+}
+function applyProductSystem() {
+  applyProductWorld();
 }
 
 function currentSectionSizes() {
@@ -1903,6 +1961,19 @@ function scheduleLivePrice() {
 
 async function refreshLivePrice() {
   if (!$('liveCost')) return;
+  if (isRailingMode()) {
+    try {
+      const res = await railingCalc();
+      const q = (res && res.quote) || (state.railing && state.railing.quote) || {};
+      $('liveCost').textContent = money(q.costTotal || q.materialCost || 0);
+      $('liveMeta').textContent = `Railing · ${q.lengthMm||0} mm · ${q.panelCount||0} panels · ${String(q.saleUnit||'rft').toUpperCase()}`;
+      $('liveSell').textContent = money(q.sellingTotal || 0);
+      $('liveMargin').textContent = q.sellingPerUnit != null ? `Rate ₹${q.sellingPerUnit}/${String(q.saleUnit||'rft').toUpperCase()}` : '';
+    } catch (_) {
+      $('liveCost').textContent = '₹ —';
+    }
+    return;
+  }
   const draft = currentLineDraft();
   if (!draft.width || !draft.height) return;
   try {
@@ -2352,7 +2423,13 @@ async function calculate() {
 }
 
 $('btnAddLine').onclick = () => {
+  // Product-type lock: railing world never pushes a window draft into the cart
+  // (that caused PDF to print Track/Fold window drawings while canvas showed railing).
+  if (isRailingMode()) { railingAdd(); return; }
   const draft = currentLineDraft();
+  const p = selectedProductMeta();
+  if (p && p.productType) draft.productType = p.productType;
+  if (p && p.category) draft.category = p.category;
   state.lines.push(draft);
   state.selectedLine = state.lines.length-1;
   renderCart(); scheduleSave(); refreshPreview(); scheduleLivePrice();
@@ -2383,15 +2460,10 @@ function productLooksLikeRailing(p) {
   return id.includes('rail') || cat.includes('rail') || typ.includes('rail') || name.includes('rail');
 }
 function isRailingMode() {
-  if (state.railingMode) return true;
-  const sel = $('lineProduct');
-  const pid = sel ? sel.value : '';
-  if (pid === 'railing' || String(pid).toLowerCase().includes('rail')) return true;
-  const p = (state.products || []).find(x => x && x.id === pid);
-  if (productLooksLikeRailing(p)) return true;
+  const p = selectedProductMeta();
   const ln = state.lines[state.selectedLine];
-  if (ln && (ln.product === 'railing' || (ln.options && ln.options.railing))) return true;
-  return false;
+  const world = productWorldOf(p, ln);
+  return world === 'railing' || world === 'staircase_railing';
 }
 function showRailTools(on) {
   const el = $('railTools');
@@ -2894,23 +2966,26 @@ async function railingAdd(){
   const { cfg, quote:q } = state.railing;
   const qty = ($('rQty') && +$('rQty').value) || 1;
   const railProd = (($('lineProduct') && $('lineProduct').value) || 'railing');
+  const p = (state.products||[]).find(x=>x&&x.id===railProd);
+  const ptype = (q.shape === 'staircase' || state.railMode === 'staircase')
+    ? 'staircase_railing'
+    : (String((p && p.productType) || '').toLowerCase().includes('stair') ? 'staircase_railing' : 'railing');
   state.lines.push({
-    product: productLooksLikeRailing((state.products||[]).find(x=>x&&x.id===railProd)) ? railProd : 'railing',
-    displayName:'Railing',
+    product: productLooksLikeRailing(p) ? railProd : 'railing',
+    productType: ptype,
+    category: 'Railings',
+    displayName: ptype === 'staircase_railing' ? 'Staircase railing' : (p && p.displayName) || 'Railing',
     width: q.lengthMm, height: q.heightMm || q.glassHeightMm, qty,
     saleUnit: q.saleUnit, sellingRate: q.sellingPerUnit,
     description: `Railing · ${q.shape||'straight'} · ${q.lengthMm} mm · ${q.panelCount||0} panels · ${q.glassThicknessMm||12}mm ${q.glassType||''} · ${q.sellingPerUnit}/${String(q.saleUnit||'rft').toUpperCase()}`,
-    options: { railing: cfg, railingQuote: q, commercialOnly: q.commercial || { sellingRatePerUnit: q.sellingPerUnit, saleUnit: q.saleUnit } },
+    options: { railing: cfg, railingQuote: q, productType: ptype, commercialOnly: q.commercial || { sellingRatePerUnit: q.sellingPerUnit, saleUnit: q.saleUnit } },
   });
   state.selectedLine = state.lines.length-1;
   state.railingMode = true;
   renderCart(); scheduleSave(); refreshPreview(); toast('Railing added to cart');
 }
 function applyRailingModeFromProduct() {
-  const on = isRailingMode();
-  state.railingMode = on || state.railingMode;
-  showRailTools(on || state.railingMode);
-  if (on || state.railingMode) railingCalc();
+  applyProductWorld();
 }
 function railWizardNext() {
   const order = railStepOrder();
@@ -3255,6 +3330,9 @@ async function loadAdminProduct(id) {
   state.selectedProduct = id;
   state.materials = JSON.parse(JSON.stringify(p.materials || []));
   $('adName').value = p.displayName || '';
+  const pt = String(p.productType || '').toLowerCase();
+  const ptMap = { casement:'casements', telescopic_sliding:'telescopic', style_slide_door:'style', staircase:'staircase_railing' };
+  if ($('adProductType')) $('adProductType').value = ptMap[pt] || pt || '';
   $('adCat').value = p.category || '';
   $('adStatus').value = p.status || 'active';
   $('adBrand').value = p.brand || 'woodenmax';
@@ -3275,7 +3353,7 @@ async function loadAdminProduct(id) {
   if ($('adCatProfiles')) $('adCatProfiles').value = JSON.stringify(cat.profiles || [], null, 2);
   // Series setup — load structured setup (round-trips through the product store)
   const setup = (p.setup && typeof p.setup === 'object') ? JSON.parse(JSON.stringify(p.setup)) : {};
-  const stype = setup.type || ({ 'casement':'casement','telescopic_sliding':'telescopic','style_slide_door':'style' }[p.productType] || 'sliding');
+  const stype = setup.type || ({ 'casements':'casement','casement':'casement','telescopic':'telescopic','telescopic_sliding':'telescopic','style':'style','style_slide_door':'style','fold':'fold','synchron':'synchron' }[p.productType] || 'sliding');
   state.setup = ensureSetupShape(setup, stype);
   if ($('setupType')) $('setupType').value = stype;
   if ($('setupImported')) $('setupImported').checked = !!setup.imported;
@@ -3406,22 +3484,28 @@ function renderSetup(){
       <div><label class="l">DGU (dg) clip mm</label><input data-num="casement.glass.dgClip" type="number" step="0.1" value="${g.dgClip==null?'':g.dgClip}" style="width:120px"/></div></div>
       <h4 style="margin:.6rem 0 .2rem">Hardware · brand · rate · qty</h4>
       ${listCard('Interlock/outer connectors, hinges, friction stay (sizes), shutter holder, door closer, stopper', state.setup.casement.hardware, 'casement.hardware','Add hardware')}`;
-  } else if (type==='telescopic'){
+  } else if (type==='telescopic' || type==='synchron'){
     const t = state.setup.telescopic;
-    html += `<p class="muted" style="font-size:.76rem">Order: vertical first → its top &amp; bottom → joint connectors (GI) → top track. Std length 3&nbsp;mtr; common size 16×45. Doors overlap adjacent vertical (like sliding interlock).</p>
+    html += `<p class="muted" style="font-size:.76rem">${type==='synchron'?'Synchron / 2+2 sync':'Telescopic'} — vertical first → top &amp; bottom → joint connectors (GI) → top track.</p>
       <h4 style="margin:.4rem 0 .2rem">Vertical &amp; its sections</h4>
       <div class="two">${singleSectionCard('Vertical','telescopic.vertical')}${singleSectionCard('Top track','telescopic.topTrack')}</div>
       <div class="two">${singleSectionCard('Vertical — top','telescopic.verticalTop')}${singleSectionCard('Vertical — bottom','telescopic.verticalBottom')}</div>
       <div class="row" style="margin:.3rem 0"><div><label class="l">Common size</label><input data-str="telescopic.commonSize" value="${t.commonSize||'16x45'}" style="width:110px"/></div>
         <div><label class="l">Max config</label><input data-str="telescopic.maxConfig" value="${t.maxConfig||'1+1'}" style="width:90px"/></div>
         <label class="chk" style="display:flex;align-items:center;gap:.35rem;margin-bottom:.35rem"><input type="checkbox" data-flag="telescopic.overlapAdjacent" ${t.overlapAdjacent?'checked':''}/> Overlap adjacent vertical</label>
-        <label class="chk" style="display:flex;align-items:center;gap:.35rem;margin-bottom:.35rem"><input type="checkbox" data-flag="telescopic.synchro2plus2" ${t.synchro2plus2?'checked':''}/> 2+2 synchro (center opening)</label></div>
+        <label class="chk" style="display:flex;align-items:center;gap:.35rem;margin-bottom:.35rem"><input type="checkbox" data-flag="telescopic.synchro2plus2" ${t.synchro2plus2 || type==='synchron'?'checked':''}/> 2+2 synchro (center opening)</label></div>
       <h4 style="margin:.4rem 0 .2rem">Joint connector (GI)</h4>
       <div data-hwsingle="telescopic.jointConnectorGI">${setupTable(HW_COLS,[t.jointConnectorGI],null,{noDel:true})}</div>
       <h4 style="margin:.6rem 0 .2rem">Hardware sets per config <span class="muted" style="font-weight:400;font-size:.74rem">(first “1” = FIX, rest slide)</span></h4>`;
     ['1+1','1+2','1+3','1+4','1+5'].forEach(cfg => {
       html += listCard('Set '+cfg, t.hardwareSets[cfg], 'telescopic.hardwareSets.'+cfg, 'Add to '+cfg);
     });
+  } else if (type==='fold'){
+    html += `<p class="muted" style="font-size:.76rem">Fold &amp; sliding — cart uses bifold geometry. Register outer frame / leaf sections here.</p>
+      ${singleSectionCard('Outer frame','casement.outerFrame')}
+      ${singleSectionCard('Shutter / leaf','casement.shutter')}
+      <h4 style="margin:.6rem 0 .2rem">Hardware</h4>
+      ${listCard('Hinges, locks, handles', state.setup.casement.hardware, 'casement.hardware','Add hardware')}`;
   } else if (type==='style'){
     const st = state.setup.style;
     html += `<p class="muted" style="font-size:.76rem">Imported. Std length 2.4 &amp; 3 mtr. Uses casement hardware + floor spring / pivot door options.</p>
@@ -3484,6 +3568,12 @@ if ($('setupType')) $('setupType').onchange = () => {
   if ($('setupStdLen') && !$('setupStdLen').value) $('setupStdLen').value = SETUP_STD_DEFAULTS[t] || '';
   renderSetup();
 };
+if ($('adProductType')) $('adProductType').onchange = () => {
+  const t = $('adProductType').value;
+  if (t && PRODUCT_TYPE_CATEGORY[t] && (!$('adCat').value || Object.values(PRODUCT_TYPE_CATEGORY).includes($('adCat').value))) {
+    $('adCat').value = PRODUCT_TYPE_CATEGORY[t];
+  }
+};
 $('btnAdminLoad').onclick = () => loadAdminProduct($('adminProdSelect').value);
 $('btnAddMat').onclick = () => {
   state.materials.push({id:'mat_'+Date.now(), name:'New material', category:'hardware', unit:'PC', quantityFormula:'1', unitRate:0});
@@ -3504,6 +3594,8 @@ $('btnAdminNew').onclick = async () => {
 $('btnAdminSave').onclick = async () => {
   $('adminErr').textContent = '';
   try {
+    const productType = ($('adProductType') && $('adProductType').value) || '';
+    if (!productType) throw new Error('Select a product type (railing / staircase railing / windows / door / …) before saving');
     let rules = undefined;
     try { rules = JSON.parse($('adRulesJson').value || '{}'); } catch(e) { throw new Error('Rules JSON invalid: '+e.message); }
     let profiles = [];
@@ -3520,7 +3612,7 @@ $('btnAdminSave').onclick = async () => {
     };
     // Assemble the series setup (structured, per-type) for persistence.
     let setup = undefined;
-    if (state.setup) {
+    if (state.setup && !['railing','staircase_railing','pergolas'].includes(productType)) {
       const stype = ($('setupType') && $('setupType').value) || state.setup.type || 'sliding';
       state.setup = ensureSetupShape(state.setup, stype);
       state.setup.imported = !!($('setupImported') && $('setupImported').checked);
@@ -3528,9 +3620,12 @@ $('btnAdminSave').onclick = async () => {
       state.setup.standardLengths = std;
       setup = state.setup;
     }
+    const catVal = $('adCat').value || PRODUCT_TYPE_CATEGORY[productType] || '';
+    if ($('adCat') && !$('adCat').value && catVal) $('adCat').value = catVal;
     const body = {
       displayName: $('adName').value,
-      category: $('adCat').value,
+      productType,
+      category: $('adCat').value || catVal,
       status: $('adStatus').value,
       brand: $('adBrand').value,
       tagline: $('adTag').value,

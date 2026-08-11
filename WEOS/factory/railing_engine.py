@@ -13,6 +13,8 @@ with fabricator hardware rules:
 * staircase glass: trapezoid/parallelogram panels (100 mm edge inset, 12 mm gaps),
   dual cut-angle display, Level-2 sheet nesting wastage (Level-1 % fallback),
   full internal cost cascade vs customer commercial rate only
+* normal (non-stair) railings: SAME cost cascade, but wastage = 0 / nesting OFF
+  (purchased glass area = net glass area); materials pulled from railing gallery
 
 Glass panels keep the classic 12 mm gap / wall-gap model on each run segment.
 Per-RFT / per-RMT selling rate is preserved.
@@ -226,10 +228,19 @@ def _handrail_connectors(length_mm: float, max_mm: float) -> int:
     return max(pieces - 1, 0)
 
 
-def _measurement_basis(cfg: Mapping[str, Any]) -> str:
-    raw = str(cfg.get("measurementBasis") or cfg.get("saleBasis") or cfg.get("saleUnit") or "sloping_rft").strip().lower()
+def _measurement_basis(cfg: Mapping[str, Any], *, default: str = "sloping_rft") -> str:
+    raw = str(cfg.get("measurementBasis") or cfg.get("saleBasis") or "").strip().lower()
+    if not raw:
+        # saleUnit alone → horizontal for flat runs when default is horizontal
+        su = str(cfg.get("saleUnit") or "").strip().lower()
+        if su == "rmt":
+            return "horizontal_rmt" if "horizontal" in default else "sloping_rmt"
+        if su == "rft":
+            return "horizontal_rft" if "horizontal" in default else "sloping_rft"
+        return default
     aliases = {
-        "rft": "sloping_rft", "rmt": "sloping_rmt",
+        "rft": default if "rft" in default else "sloping_rft",
+        "rmt": default if "rmt" in default else "sloping_rmt",
         "horizontal rft": "horizontal_rft", "horizontal_rft": "horizontal_rft", "hrft": "horizontal_rft",
         "sloping rft": "sloping_rft", "sloping_rft": "sloping_rft", "srft": "sloping_rft",
         "horizontal rmt": "horizontal_rmt", "horizontal_rmt": "horizontal_rmt", "hrmt": "horizontal_rmt",
@@ -237,7 +248,50 @@ def _measurement_basis(cfg: Mapping[str, Any]) -> str:
     }
     return aliases.get(raw, raw if raw in (
         "horizontal_rft", "sloping_rft", "horizontal_rmt", "sloping_rmt",
-    ) else "sloping_rft")
+    ) else default)
+
+
+def _zero_wastage_nest(panels: list[Mapping[str, Any]]) -> dict[str, Any]:
+    """Normal railing path: purchased = net, nesting skipped, wastage 0%."""
+    net_sqmm = sum(_f(p.get("netGlassAreaSqMm")) for p in panels)
+    net_sqft = net_sqmm / SQMM_PER_SQFT if net_sqmm else 0.0
+    return {
+        "method": "no_wastage",
+        "nestingAvailable": False,
+        "nestingSkipped": True,
+        "netGlassAreaSqMm": round(net_sqmm, 2),
+        "netGlassAreaSqFt": round(net_sqft, 4),
+        "netGlassAreaSqM": round(net_sqmm / SQMM_PER_SQM, 6) if net_sqmm else 0.0,
+        "purchasedGlassAreaSqMm": round(net_sqmm, 2),
+        "purchasedGlassAreaSqFt": round(net_sqft, 4),
+        "purchasedGlassAreaSqM": round(net_sqmm / SQMM_PER_SQM, 6) if net_sqmm else 0.0,
+        "wastageAreaSqMm": 0.0,
+        "wastageAreaSqFt": 0.0,
+        "wastagePercent": 0.0,
+        "sheetsNeeded": 0,
+        "sheetWidthMm": None,
+        "sheetHeightMm": None,
+        "nesting": {
+            "algorithm": "skipped",
+            "note": "Normal (non-stair) railing — wastage disabled; purchased = net glass area.",
+        },
+    }
+
+
+def _span_overrides(cfg: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Optional per-span config for L/U/polyline: panels, blocks, length, height."""
+    raw = cfg.get("spans") or cfg.get("spanConfigs") or cfg.get("segmentPanels")
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out: list[dict[str, Any]] = []
+    for s in raw:
+        if isinstance(s, Mapping):
+            out.append(dict(s))
+        elif isinstance(s, (int, float)):
+            out.append({"panels": int(s)})
+        else:
+            out.append({})
+    return out
 
 
 def compute_stair_geometry(cfg: Mapping[str, Any]) -> dict[str, Any]:
@@ -594,12 +648,37 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     wall_gap = _f(cfg.get("wallGapMm"), DEFAULT_GLASS_GAP_MM)
     wall_start = bool(cfg.get("wallStart", cfg.get("wallLeft", True)))
     wall_end = bool(cfg.get("wallEnd", cfg.get("wallRight", True)))
-    basis = _measurement_basis(cfg)
+    # Flat runs default to horizontal RFT; stairs keep sloping RFT.
+    basis_default = "sloping_rft" if shape == "staircase" else "horizontal_rft"
+    basis = _measurement_basis(cfg, default=basis_default)
     sale_unit = "rmt" if basis.endswith("rmt") else "rft"
     if str(cfg.get("saleUnit") or "").lower() in ("rft", "rmt") and not cfg.get("measurementBasis"):
         sale_unit = str(cfg.get("saleUnit")).lower()
 
-    rates = dict(cfg.get("rates") or {})
+    # Gallery selections → rates (UI may still override rates explicitly)
+    material_selections = cfg.get("materialSelections") or cfg.get("materials") or {}
+    gallery_meta: dict[str, dict[str, Any]] = {}
+    gallery_rates: dict[str, float] = {}
+    try:
+        from WEOS.factory.railing_materials import rates_from_selections, resolve_selections
+
+        gallery_rates = rates_from_selections(material_selections if isinstance(material_selections, Mapping) else {})
+        gallery_meta = resolve_selections(material_selections if isinstance(material_selections, Mapping) else {})
+    except Exception:
+        gallery_rates = {}
+        gallery_meta = {}
+
+    rates = dict(gallery_rates)
+    for k, v in dict(cfg.get("rates") or {}).items():
+        # Explicit UI rates win when non-zero; zeros do not wipe gallery SKUs
+        if v in (None, ""):
+            continue
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            continue
+        if fv != 0.0 or k not in rates:
+            rates[k] = fv
     r_glass = _f(rates.get("glassPerSqft") or cfg.get("glassRatePerSqft"), 200.0)
     r_block = _f(rates.get("blockPerPc"), 100.0)
     r_anchor = _f(rates.get("anchorPerPc"), 50.0)
@@ -613,12 +692,45 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     r_endcap = _f(rates.get("endCapPerPc"), 0.0)
     r_stud = _f(rates.get("studPerPc"), 0.0)
 
+    # Install components — UI multi-select of what is being installed.
+    # Stairs never use a bottom rail option; continuous bottom-rail-only hides pillars.
+    install = cfg.get("installComponents") if isinstance(cfg.get("installComponents"), Mapping) else {}
+    if not install:
+        install = {
+            "bottomRail": shape != "staircase",
+            "block": True,
+            "ssPillar": False,
+            "handrail": bool(cfg.get("handrail", shape != "straight")),
+            "glass": True,
+        }
+    want_bottom = bool(install.get("bottomRail", shape != "staircase")) and shape != "staircase"
+    want_block = bool(install.get("block", False))
+    want_ss = bool(install.get("ssPillar", False) or install.get("ss_pillar", False))
+    want_pillars = want_block or want_ss
+    want_handrail = bool(install.get("handrail", cfg.get("handrail", shape != "straight")))
+    want_glass = bool(install.get("glass", True))
+    if want_ss and not want_block:
+        cfg["pillarType"] = "ss"
+    elif want_block and not str(cfg.get("pillarType") or "").lower().startswith("ss"):
+        cfg["pillarType"] = cfg.get("pillarType") or "block"
+
     panels_cfg = max(_i(cfg.get("panels") or cfg.get("glassPanels"), 1), 1)
     blocks_per_glass = max(_i(cfg.get("blocksPerGlass"), 0), 0)
+    if not want_pillars:
+        blocks_per_glass = 0
     pillar_edge = _f(cfg.get("pillarEdgeMm"), PILLAR_EDGE_MM)
-    handrail_on = bool(cfg.get("handrail", shape != "straight"))
+    handrail_on = want_handrail
     handrail_max = _f(cfg.get("handrailMaxMm"), DEFAULT_HANDRAIL_MAX_MM)
-    continuous_rail = bool(cfg.get("continuousRail", blocks_per_glass == 0))
+    continuous_rail = bool(cfg.get("continuousRail", blocks_per_glass == 0 or (want_bottom and not want_pillars)))
+    span_cfgs = _span_overrides(cfg)
+
+    # Color system: global color applied to whole railing, or per-component overrides.
+    color_mode = str(cfg.get("colorMode") or "global").lower()
+    system_color = str(cfg.get("systemColor") or cfg.get("colour") or cfg.get("color") or "").strip()
+    component_colors = cfg.get("componentColors") if isinstance(cfg.get("componentColors"), Mapping) else {}
+    glass_type = str(cfg.get("glassType") or cfg.get("glassColour") or cfg.get("glassColor") or "clear")
+    glass_brand = str(cfg.get("glassBrand") or "")
+    glass_thickness = _f(cfg.get("glassThicknessMm"), 12.0)
 
     # ── per-segment glass / pillars ─────────────────────────────────────────
     explicit = cfg.get("panelSizesMm")
@@ -628,6 +740,7 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     all_panel_widths: list[float] = []
     pillar_count = 0
     pillar_positions_plan: list[dict[str, Any]] = []
+    global_panel_index = 0
 
     if shape == "staircase" and stair_panels:
         all_panel_widths = [_f(p.get("panelWidthHorizontal")) for p in stair_panels]
@@ -643,46 +756,78 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
             "wallEnd": wall_end,
             "continuousRail": False,
             "glassPanels": stair_panels,
+            "panelStartIndex": 1,
         })
     else:
         n_seg = len(segments)
         for si, seg in enumerate(segments):
             L = _f(seg.get("lengthMm"))
+            # Per-span length override
+            if si < len(span_cfgs) and _f(span_cfgs[si].get("lengthMm")) > 0:
+                L = _f(span_cfgs[si].get("lengthMm"))
+                seg = {**seg, "lengthMm": L}
             w_left = wall_start if si == 0 else False
             w_right = wall_end if si == n_seg - 1 else False
-            if n_seg == 1:
+            span_ov = span_cfgs[si] if si < len(span_cfgs) else {}
+            if n_seg == 1 and not span_ov:
                 seg_panels = panels_cfg
                 seg_explicit = explicit_list
+                seg_blocks = blocks_per_glass
             else:
-                share = L / total_length_mm if total_length_mm else 0
-                seg_panels = max(1, int(round(panels_cfg * share))) if panels_cfg else 1
+                # Prefer explicit per-span panels; else proportional share of total
+                if span_ov.get("panels") not in (None, ""):
+                    seg_panels = max(_i(span_ov.get("panels"), 1), 1)
+                elif n_seg == 1:
+                    seg_panels = panels_cfg
+                else:
+                    share = L / total_length_mm if total_length_mm else 0
+                    seg_panels = max(1, int(round(panels_cfg * share))) if panels_cfg else 1
                 seg_explicit = None
+                if isinstance(span_ov.get("panelSizesMm"), (list, tuple)):
+                    seg_explicit = [max(_f(x), 0.0) for x in span_ov["panelSizesMm"]]
+                seg_blocks = (
+                    max(_i(span_ov.get("blocksPerGlass"), blocks_per_glass), 0)
+                    if span_ov.get("blocksPerGlass") not in (None, "")
+                    else blocks_per_glass
+                )
             widths = _panel_widths_for_run(
                 L, panels=seg_panels, gap=gap, wall_gap=wall_gap,
                 wall_left=w_left, wall_right=w_right, explicit=seg_explicit,
             )
             all_panel_widths.extend(widths)
-            if blocks_per_glass > 0:
-                n_pillars = blocks_per_glass * len(widths)
-            elif continuous_rail:
+            if seg_blocks > 0:
+                n_pillars = seg_blocks * len(widths)
+            elif continuous_rail and seg_blocks == 0:
                 n_pillars = 0
             else:
-                n_pillars = max(_i(cfg.get("pillarsPerSegment"), 0), 0)
+                n_pillars = max(_i(span_ov.get("pillarsPerSegment") or cfg.get("pillarsPerSegment"), 0), 0)
             positions = _pillar_positions_along(L, n_pillars, edge_mm=pillar_edge)
             pillar_count += len(positions)
             for px in positions:
                 pillar_positions_plan.append({"segment": si, "sMm": round(px, 1)})
+            panel_start = global_panel_index + 1
+            global_panel_index += len(widths)
+            span_label = str(span_ov.get("label") or f"Span {chr(65 + si)}" if n_seg > 1 else "Span A")
             run_details.append({
                 "index": si,
+                "label": span_label,
                 "lengthMm": round(L, 1),
                 "turnDeg": _f(seg.get("turnDeg")),
                 "kind": seg.get("kind") or "straight",
                 "panelWidthsMm": [round(w, 1) for w in widths],
                 "pillarPositionsMm": [round(p, 1) for p in positions],
+                "blocksPerGlass": seg_blocks,
                 "wallStart": w_left,
                 "wallEnd": w_right,
                 "continuousRail": n_pillars == 0,
+                "panelStartIndex": panel_start,
+                "panelEndIndex": global_panel_index,
             })
+            # Keep segment list in sync for plan polyline / connectors
+            if si < len(segments):
+                segments[si] = {**segments[si], "lengthMm": L}
+        # Recompute total length if spans overrode segment lengths
+        total_length_mm = sum(_f(r.get("lengthMm")) for r in run_details) or total_length_mm
 
     panel_count = len(all_panel_widths)
     panel_widths_in = [round(w / MM_PER_IN, 2) for w in all_panel_widths]
@@ -743,6 +888,14 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
                 "anchors": 2,
                 "edgeInsetMm": GLASS_EDGE_INSET_MM,
             })
+        if not want_pillars:
+            stair_pillars = 0
+            pillar_count = 0
+            # keep studs (structural dual studs) unless glass+pillars both off
+            if not want_glass:
+                stair_studs = 0
+                stair_stud_anchors = 0
+                stud_stations = []
 
     anchors_per_pillar = min(max(_i(cfg.get("anchorsPerPillar"), 1), 1), 2) if pillar_count else 0
     pillar_anchors = pillar_count * anchors_per_pillar
@@ -792,14 +945,55 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     rail_unit_len = width_unit
     items: list[dict[str, Any]] = []
 
-    def add(key: str, label: str, qty: float, unit: str, rate: float, weight: float | None = None) -> None:
+    def _mat_for(*roles: str) -> dict[str, Any]:
+        for role in roles:
+            if role in gallery_meta:
+                return gallery_meta[role]
+            # also match by category
+            for m in gallery_meta.values():
+                if str(m.get("category") or "") == role:
+                    return m
+        return {}
+
+    def add(
+        key: str, label: str, qty: float, unit: str, rate: float,
+        weight: float | None = None, *, material: Mapping[str, Any] | None = None,
+        color_role: str | None = None,
+    ) -> None:
         amount = round(qty * rate, 2)
-        row = {"key": key, "label": label, "qty": round(qty, 3), "unit": unit, "rate": round(rate, 3), "amount": amount}
+        row: dict[str, Any] = {
+            "key": key, "label": label, "qty": round(qty, 3), "unit": unit,
+            "rate": round(rate, 3), "amount": amount,
+        }
         if weight is not None:
             row["weightKg"] = round(weight, 3)
+        mat = material or {}
+        if mat:
+            try:
+                from WEOS.factory.railing_materials import bom_meta_from_material
+                row.update(bom_meta_from_material(mat))
+            except Exception:
+                row["materialId"] = mat.get("id")
+                row["color"] = mat.get("color")
+                row["grade"] = mat.get("grade")
+                row["sizeMm"] = mat.get("sizeMm")
+                row["mountType"] = mat.get("mountType")
+            # Prefer gallery display name in label when present
+            if mat.get("name") and key != "glass":
+                row["label"] = f"{label} · {mat.get('name')}"
+        # Color system override
+        role = color_role or key
+        if color_mode == "per_part" and component_colors.get(role):
+            row["color"] = component_colors.get(role)
+        elif system_color and (color_mode == "global" or not row.get("color")):
+            row["color"] = system_color
+        if key == "glass":
+            row["glassType"] = glass_type
+            row["glassBrand"] = glass_brand or None
+            row["sizeMm"] = row.get("sizeMm") or f"{glass_thickness:g} mm"
         items.append(row)
 
-    # ── nesting wastage (Level 2) / estimated % (Level 1) ────────────────────
+    # ── nesting wastage (stairs) / zero wastage (normal) ─────────────────────
     sheet_w = _f(cfg.get("sheetWidthMm") or cfg.get("standardGlassSheetWidthMm"), DEFAULT_SHEET_W_MM)
     sheet_h = _f(cfg.get("sheetHeightMm") or cfg.get("standardGlassSheetHeightMm"), DEFAULT_SHEET_H_MM)
     est_waste = cfg.get("estimatedWastagePercent")
@@ -819,43 +1013,63 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
             "rightGlassHeight": glass_h_for_area,
         } for i, w in enumerate(all_panel_widths) if w > 0 and glass_h_for_area > 0]
 
-    glass_nest = nest_railing_glass(
-        nest_panels,
-        sheet_w=sheet_w,
-        sheet_h=sheet_h,
-        estimated_wastage_pct=_f(est_waste, 10.0) if est_waste is not None else None,
-    )
+    # Normal railings: wastage OFF (purchased = net). Stairs keep nesting path.
+    apply_wastage = shape == "staircase" and not bool(cfg.get("forceNoWastage", False))
+    if apply_wastage:
+        glass_nest = nest_railing_glass(
+            nest_panels,
+            sheet_w=sheet_w,
+            sheet_h=sheet_h,
+            estimated_wastage_pct=_f(est_waste, 10.0) if est_waste is not None else None,
+        )
+    else:
+        glass_nest = _zero_wastage_nest(nest_panels)
     purchased_sqft = _f(glass_nest.get("purchasedGlassAreaSqFt"))
     net_sqft = _f(glass_nest.get("netGlassAreaSqFt"), glass_area_sqft)
 
-    # BOM glass line uses purchased area when nesting/estimate available
-    include_stair_glass = shape != "staircase" or bool(cfg.get("stairGlass", True))
-    if net_sqft > 0 and include_stair_glass:
-        add("glass", "Glass (purchased / cutting area)", round(purchased_sqft or net_sqft, 3), "sqft", r_glass)
+    mount_hint = str(
+        cfg.get("mountType")
+        or (_mat_for("block", "ss_pillar", "bottom_rail", "u_channel") or {}).get("mountType")
+        or "side_mount"
+    )
 
-    if pillar_count:
-        label = f"Blocks / pillars ({cfg.get('pillarType') or 'block'})"
+    # BOM glass line uses purchased area when nesting/estimate available
+    include_stair_glass = want_glass and (shape != "staircase" or bool(cfg.get("stairGlass", True)))
+    if net_sqft > 0 and include_stair_glass:
+        glass_label = (
+            f"Glass {glass_thickness:g} mm {glass_type}" + (" · no wastage" if not apply_wastage else " · purchased / cutting")
+        )
+        add("glass", glass_label, round(purchased_sqft or net_sqft, 3), "sqft", r_glass, color_role="glass")
+
+    pillar_type = str(cfg.get("pillarType") or ("ss" if want_ss else "block")).lower()
+    block_mat = _mat_for("ss_pillar" if pillar_type in ("ss", "ss_pillar", "pillar") else "block", "block", "ss_pillar")
+    if pillar_count and want_pillars:
+        label = f"Blocks / pillars ({pillar_type}) · {mount_hint}"
         if shape == "staircase":
-            label = f"Side-mount pillars (every 3 steps · {cfg.get('pillarType') or 'block'})"
-        add("blocks", label, pillar_count, "pc", r_block)
+            label = f"Side-mount pillars (every 3 steps · {pillar_type})"
+        add("blocks", label, pillar_count, "pc", r_block, material=block_mat, color_role="block")
     if stair_studs:
-        add("studs", f"SS studs {stud_size} mm (dual @ every 3rd step)", stair_studs, "pc", r_stud or r_block)
-    if anchor_count:
-        add("anchors", "Anchor bolts", anchor_count, "pc", r_anchor)
-    if r_brail and total_length_mm:
-        add("bottomRail", "Bottom / continuous rail", round(rail_unit_len, 3), sale_unit, r_brail,
-            weight=rail_unit_len * w_brail if w_brail else None)
+        add("studs", f"SS studs {stud_size} mm (dual @ every 3rd step)", stair_studs, "pc",
+            r_stud or r_block, material=_mat_for("stud"), color_role="stud")
+    if anchor_count and (want_pillars or shape == "staircase"):
+        add("anchors", "Anchor bolts", anchor_count, "pc", r_anchor, material=_mat_for("anchor"), color_role="anchor")
+    if want_bottom and r_brail and total_length_mm:
+        brail_mat = _mat_for("bottom_rail", "u_channel")
+        add("bottomRail", f"Bottom / continuous rail · {mount_hint}", round(rail_unit_len, 3), sale_unit, r_brail,
+            weight=rail_unit_len * w_brail if w_brail else None, material=brail_mat, color_role="bottom_rail")
     if handrail_on and r_hrail and total_length_mm:
         add("handrail", "Handrail", round(rail_unit_len, 3), sale_unit, r_hrail,
-            weight=rail_unit_len * w_hrail if w_hrail else None)
+            weight=rail_unit_len * w_hrail if w_hrail else None, material=_mat_for("handrail"), color_role="handrail")
     if bend_count and (r_bend or True):
-        add("modularBend", "Modular bend (corners)", bend_count, "pc", r_bend)
+        add("modularBend", "Modular bend (corners)", bend_count, "pc", r_bend, material=_mat_for("bend"), color_role="bend")
     if connector_180 and (r_conn180 or True):
-        add("connector180", "180° handrail connector", connector_180, "pc", r_conn180)
+        add("connector180", "180° handrail connector", connector_180, "pc", r_conn180,
+            material=_mat_for("connector_180"), color_role="connector_180")
     if end_caps and (r_endcap or True):
-        add("endCap", "Handrail end cap", end_caps, "pc", r_endcap)
-    if wall_connectors and r_wall:
-        add("wallConnector", "Wall connector", wall_connectors, "pc", r_wall)
+        add("endCap", "Handrail end cap", end_caps, "pc", r_endcap, material=_mat_for("end_cap"), color_role="end_cap")
+    if wall_connectors and (r_wall or True):
+        add("wallConnector", "Wall connector", wall_connectors, "pc", r_wall,
+            material=_mat_for("wall_connector"), color_role="wall_connector")
 
     extras_in = cfg.get("extras") if isinstance(cfg.get("extras"), (list, tuple)) else []
     extras: list[dict[str, Any]] = []
@@ -905,12 +1119,16 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         commercial_rmt=commercial_rmt,
     )
 
-    # Prefer cascade selling when overhead/markup path is active or staircase (full engine).
+    # Prefer cascade selling: always for stairs; for normal when cascade inputs present
+    # OR always for non-stair (same formula as stairs, wastage already zeroed).
     use_cascade = bool(
-        overhead_pct or markup_pct or installation or transport
+        shape != "staircase"
+        or overhead_pct or markup_pct or installation or transport
         or cfg.get("hardwareCost") not in (None, "")
         or shape == "staircase"
     )
+    # Force cascade for all railing shapes (shared commercial path).
+    use_cascade = True
     total = round(cost["sellingPrice"] if use_cascade else (items_total + extras_total), 2)
     per_unit_rate = (
         cost["sellingRatePerRFT"] if sale_unit == "rft" else cost["sellingRatePerRMT"]
@@ -939,6 +1157,7 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "purchasedGlassAreaSqFt": cost["purchasedGlassAreaSqFt"],
         "wastagePercent": glass_nest.get("wastagePercent"),
         "nestingMethod": glass_nest.get("method"),
+        "nestingSkipped": bool(glass_nest.get("nestingSkipped")),
         "glassMaterialCost": cost["glassMaterialCost"],
         "directCost": cost["directCost"],
         "overheadCost": cost["overheadCost"],
@@ -968,11 +1187,45 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         glass_height_mm=glass_height_mm,
     )
 
+    # Flat BOM detail rows for PDF / quote (rate + amount + specs)
+    bom_details = []
+    for it in items:
+        bom_details.append({
+            "item": it.get("label"),
+            "key": it.get("key"),
+            "qty": it.get("qty"),
+            "unit": it.get("unit"),
+            "rate": it.get("rate"),
+            "amount": it.get("amount"),
+            "color": it.get("color"),
+            "grade": it.get("grade"),
+            "sizeMm": it.get("sizeMm"),
+            "mountType": it.get("mountType") or (mount_hint if it.get("key") in ("blocks", "bottomRail") else None),
+            "materialId": it.get("materialId"),
+            "bends": bend_count if it.get("key") == "modularBend" else None,
+            "anchors": anchor_count if it.get("key") == "anchors" else None,
+            "endCaps": end_caps if it.get("key") == "endCap" else None,
+            "wallConnectors": wall_connectors if it.get("key") == "wallConnector" else None,
+        })
+
     return {
         "shape": shape,
         "lengthMm": round(total_length_mm, 2), "heightMm": round(height_mm if height_mm > 0 else glass_height_mm, 2),
         "glassHeightMm": round(glass_height_mm, 2),
-        "glassThicknessMm": _f(cfg.get("glassThicknessMm"), 12.0),
+        "glassThicknessMm": glass_thickness,
+        "glassType": glass_type,
+        "glassColour": glass_type,
+        "glassBrand": glass_brand or None,
+        "installComponents": {
+            "bottomRail": want_bottom,
+            "block": want_block,
+            "ssPillar": want_ss,
+            "handrail": handrail_on,
+            "glass": want_glass,
+        },
+        "colorMode": color_mode,
+        "systemColor": system_color or None,
+        "componentColors": dict(component_colors) if component_colors else {},
         "lengthRft": round(length_rft, 3), "lengthRmt": round(length_rmt, 3),
         "saleUnit": sale_unit, "measurementBasis": basis, "widthUnit": round(width_unit, 3),
         "commercialRailingLengthRFT": round(commercial_rft, 4),
@@ -987,6 +1240,7 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
                 "leftGlassHeight": round(glass_h_for_area, 2),
                 "rightGlassHeight": round(glass_h_for_area, 2),
                 "netGlassAreaSqFt": round(w * glass_h_for_area / SQMM_PER_SQFT, 4),
+                "netGlassAreaSqMm": round(w * glass_h_for_area, 2),
             }
             for i, w in enumerate(all_panel_widths)
         ],
@@ -997,6 +1251,7 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "wastageAreaSqFt": round(_f(glass_nest.get("wastageAreaSqFt")), 4),
         "wastagePercent": glass_nest.get("wastagePercent"),
         "glassNesting": glass_nest,
+        "wastageEnabled": apply_wastage,
         "pillarCount": pillar_count, "anchorsPerPillar": anchors_per_pillar,
         "anchorCount": anchor_count, "baseAnchorCount": base_anchors,
         "handrail": handrail_on, "wallConnectors": wall_connectors,
@@ -1007,7 +1262,13 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "stairGeometry": stair_geo,
         "segments": run_details,
         "continuousRailSegments": sum(1 for r in run_details if r.get("continuousRail")),
-        "items": items, "extras": extras, "extrasTotal": round(extras_total, 2),
+        "mountType": mount_hint,
+        "materialSelections": {
+            k: {"id": v.get("id"), "name": v.get("name"), "category": v.get("category")}
+            for k, v in gallery_meta.items()
+        },
+        "items": items, "bomDetails": bom_details,
+        "extras": extras, "extrasTotal": round(extras_total, 2),
         "costCascade": cost,
         "internal": internal,
         "commercial": commercial,
@@ -1066,7 +1327,7 @@ def _railing_geometry(
 
 
 def railing_svg(cfg: Mapping[str, Any], *, quote: Mapping[str, Any] | None = None) -> str:
-    """2D railing drawing — plan for multi-segment / arch / stair; elevation for straight."""
+    """2D railing drawing — plan+elevations for multi-segment; elevation for straight; stair side view."""
     q = quote if isinstance(quote, Mapping) else compute_railing(cfg)
     g = q.get("geometry") or {}
     shape = str(g.get("shape") or q.get("shape") or "straight")
@@ -1077,7 +1338,8 @@ def railing_svg(cfg: Mapping[str, Any], *, quote: Mapping[str, Any] | None = Non
         return _svg_staircase(q, g)
     if shape == "arch":
         return _svg_arch_plan(q, g)
-    return _svg_plan_polyline(q, g)
+    # L / U / polyline → shop drawing: plan + per-span elevations
+    return _svg_shop_drawing_multi(cfg, q, g)
 
 
 def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
@@ -1125,14 +1387,20 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
 
     x = wall_gap if wall_left else 0.0
     glass_y0, glass_y1 = rail_h, Hgt - hand_h
+    panel_start = _i((segs[0] if segs else {}).get("panelStartIndex"), 1)
     for i, w in enumerate(widths):
         gx0, gx1 = x, x + w
         p.append(f'<rect x="{X(gx0):.1f}" y="{Y(glass_y1):.1f}" width="{(gx1-gx0):.1f}" height="{(glass_y1-glass_y0):.1f}" '
                  f'fill="{glass}" stroke="{glass_stroke}" stroke-width="{sw*0.8:.2f}"/>')
-        p.append(f'<text x="{X((gx0+gx1)/2):.1f}" y="{Y((glass_y0+glass_y1)/2):.1f}" text-anchor="middle" font-size="{fs:.1f}" fill="#173a63">G{i+1}</text>')
+        pno = panel_start + i
+        p.append(f'<text x="{X((gx0+gx1)/2):.1f}" y="{Y((glass_y0+glass_y1)/2):.1f}" text-anchor="middle" font-size="{fs:.1f}" fill="#173a63">Panel #{pno}</text>')
         _dim_h(p, X(gx0), X(gx1), Y(0) + fs * 1.6, f'{(gx1-gx0):.0f}', dim, sw, fs)
+        # Gap label between panels
+        if i < len(widths) - 1:
+            p.append(f'<text x="{X(gx1 + gap/2):.1f}" y="{Y(glass_y1) - fs*0.3:.1f}" text-anchor="middle" '
+                     f'font-size="{fs*0.65:.1f}" fill="#666">gap {gap:.0f}</text>')
         # pillars along panel with 100 mm edge rule inside panel
-        n_block = _i((cfg or {}).get("blocksPerGlass"), 0)
+        n_block = _i((cfg or {}).get("blocksPerGlass"), _i((segs[0] if segs else {}).get("blocksPerGlass"), 0))
         for bx in _pillar_positions_along(w, n_block):
             cx = gx0 + bx
             bw = post_w
@@ -1152,8 +1420,147 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
 
     _dim_h(p, X(0), X(L), Y(0) + fs * 3.4, f'{L:.0f} mm  ·  {q.get("lengthRft")} RFT', dim, sw, fs)
     _dim_v(p, Y(0), Y(Hgt), X(0) - fs * 1.6, f'{Hgt:.0f}', dim, sw, fs)
-    summ = f'Railing · straight · {q.get("panelCount")} panels · {q.get("glassAreaSqft")} sft'
+    mount = q.get("mountType") or "side_mount"
+    summ = (f'Railing · straight · {q.get("panelCount")} panels · {q.get("glassAreaSqft")} sft · '
+            f'{mount} · waste {q.get("wastagePercent", 0)}%')
     p.append(f'<text x="{X(0):.1f}" y="{oy - fs*0.6:.1f}" font-size="{fs*1.05:.1f}" fill="#111">{escape(summ)}</text>')
+    p.append('</svg>')
+    return "".join(p)
+
+
+def _svg_elevation_span(
+    *, L: float, Hgt: float, widths: list[float], gap: float, wall_gap: float,
+    wall_left: bool, wall_right: bool, handrail: bool, blocks_per_glass: int,
+    panel_start: int, title: str, ox: float, oy: float, scale: float = 1.0,
+) -> tuple[list[str], float, float]:
+    """Draw one span elevation into SVG fragments; returns (parts, width, height) in SVG units."""
+    rail_h = max(min(Hgt * 0.06, 60.0), 25.0)
+    hand_h = rail_h if handrail else 0.0
+    post_w = max(min(L * 0.01, 40.0), 18.0)
+    stroke, glass, glass_stroke, dim = "#14181c", "#e6eef6", "#2f6db0", "#8c1f18"
+    sw = max(L, Hgt) / 500.0
+    fs = max(L, Hgt) * 0.022 * scale
+    pad_x, pad_y = 80.0, 70.0
+
+    def X(mx: float) -> float:
+        return ox + pad_x + mx
+
+    def Y(my: float) -> float:
+        return oy + pad_y + (Hgt - my)
+
+    parts: list[str] = [
+        f'<text x="{ox + pad_x:.1f}" y="{oy + fs*1.1:.1f}" font-size="{fs*1.05:.1f}" fill="#111" font-weight="600">{escape(title)}</text>',
+        f'<rect x="{X(0):.1f}" y="{Y(rail_h):.1f}" width="{L:.1f}" height="{rail_h:.1f}" fill="#f0f2f4" stroke="{stroke}" stroke-width="{sw:.2f}"/>',
+    ]
+    if hand_h > 0:
+        parts.append(f'<line x1="{X(0):.1f}" y1="{Y(Hgt):.1f}" x2="{X(L):.1f}" y2="{Y(Hgt):.1f}" '
+                     f'stroke="#6b3fa0" stroke-width="{sw*2:.2f}"/>')
+
+    x = wall_gap if wall_left else 0.0
+    glass_y0, glass_y1 = rail_h, Hgt - hand_h
+    for i, w in enumerate(widths):
+        if w <= 0:
+            continue
+        gx0, gx1 = x, x + w
+        parts.append(
+            f'<rect x="{X(gx0):.1f}" y="{Y(glass_y1):.1f}" width="{(gx1-gx0):.1f}" height="{(glass_y1-glass_y0):.1f}" '
+            f'fill="{glass}" stroke="{glass_stroke}" stroke-width="{sw*0.8:.2f}"/>'
+        )
+        pno = panel_start + i
+        parts.append(
+            f'<text x="{X((gx0+gx1)/2):.1f}" y="{Y((glass_y0+glass_y1)/2):.1f}" text-anchor="middle" '
+            f'font-size="{fs*0.9:.1f}" fill="#173a63">Panel #{pno}</text>'
+        )
+        _dim_h(parts, X(gx0), X(gx1), Y(0) + fs * 1.4, f'{w:.0f}', dim, sw, fs * 0.85)
+        if i < len(widths) - 1:
+            parts.append(
+                f'<text x="{X(gx1 + gap/2):.1f}" y="{Y(glass_y1)-fs*0.25:.1f}" text-anchor="middle" '
+                f'font-size="{fs*0.6:.1f}" fill="#666">{gap:.0f}</text>'
+            )
+        for bx in _pillar_positions_along(w, blocks_per_glass):
+            cx = gx0 + bx
+            parts.append(
+                f'<rect x="{X(cx-post_w/2):.1f}" y="{Y(rail_h*1.5):.1f}" width="{post_w:.1f}" height="{rail_h*1.5:.1f}" '
+                f'fill="#fff" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
+            )
+        x = gx1 + gap
+
+    if wall_left:
+        parts.append(f'<rect x="{X(-36):.1f}" y="{Y(Hgt):.1f}" width="28" height="{Hgt:.1f}" fill="#dfe6ea" stroke="{stroke}" stroke-width="{sw*0.5:.2f}"/>')
+    if wall_right:
+        parts.append(f'<rect x="{X(L+8):.1f}" y="{Y(Hgt):.1f}" width="28" height="{Hgt:.1f}" fill="#dfe6ea" stroke="{stroke}" stroke-width="{sw*0.5:.2f}"/>')
+    _dim_h(parts, X(0), X(L), Y(0) + fs * 3.0, f'{L:.0f} mm', dim, sw, fs * 0.9)
+    _dim_v(parts, Y(0), Y(Hgt), X(0) - fs * 1.4, f'{Hgt:.0f}', dim, sw, fs * 0.85)
+    drawn_w = L + pad_x * 2 + 40
+    drawn_h = Hgt + pad_y * 2 + fs * 2
+    return parts, drawn_w, drawn_h
+
+
+def _svg_shop_drawing_multi(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
+    """Shop drawing: plan (top) + per-span elevations (Panel #, gaps, blocks) for L/U/poly."""
+    segs = list(g.get("segments") or q.get("segments") or [])
+    Hgt = _f(g.get("heightMm") or q.get("heightMm") or q.get("glassHeightMm"), 900.0)
+    gap = _f(g.get("gap"), DEFAULT_GLASS_GAP_MM)
+    wall_gap = _f(g.get("wallGap"), DEFAULT_GLASS_GAP_MM)
+    handrail = bool(g.get("handrail") or q.get("handrail"))
+    blocks_default = _i(cfg.get("blocksPerGlass"), 0)
+
+    pts_raw = g.get("points") or []
+    pts = [(_f(p.get("x")), _f(p.get("y"))) for p in pts_raw]
+    if len(pts) < 2:
+        pts = [(0.0, 0.0), (_f(q.get("lengthMm"), 1000.0), 0.0)]
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    span_x = max(max(xs) - min(xs), 1.0)
+    span_y = max(max(ys) - min(ys), 1.0)
+    plan_pad = max(span_x, span_y) * 0.18 + 160.0
+    plan_w = span_x + plan_pad * 2
+    plan_h = span_y + plan_pad * 2
+
+    elev_parts_all: list[str] = []
+    elev_y = 36.0 + plan_h + 24.0
+    elev_max_w = plan_w
+    for si, seg in enumerate(segs):
+        L = _f(seg.get("lengthMm"))
+        widths = [float(w) for w in (seg.get("panelWidthsMm") or [])]
+        if not widths:
+            continue
+        label = str(seg.get("label") or f"Span {chr(65 + si)}")
+        pstart = _i(seg.get("panelStartIndex"), 1)
+        bpg = _i(seg.get("blocksPerGlass"), blocks_default)
+        title = f"{label} elevation · {len(widths)} panels · {L:.0f} mm"
+        parts, dw, dh = _svg_elevation_span(
+            L=L, Hgt=Hgt, widths=widths, gap=gap, wall_gap=wall_gap,
+            wall_left=bool(seg.get("wallStart")), wall_right=bool(seg.get("wallEnd")),
+            handrail=handrail, blocks_per_glass=bpg, panel_start=pstart,
+            title=title, ox=20.0, oy=elev_y,
+        )
+        elev_parts_all.extend(parts)
+        elev_y += dh + 30.0
+        elev_max_w = max(elev_max_w, dw + 40.0)
+
+    vb_w = max(plan_w, elev_max_w) + 20.0
+    vb_h = elev_y + 40.0
+    plan_body = _svg_plan_polyline(q, g)
+    inner = plan_body
+    if inner.startswith("<svg"):
+        start = inner.find(">")
+        end = inner.rfind("</svg>")
+        if start >= 0 and end > start:
+            inner = inner[start + 1:end]
+
+    p: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb_w:.1f} {vb_h:.1f}" font-family="Segoe UI, Arial, sans-serif">',
+        f'<rect x="0" y="0" width="{vb_w:.1f}" height="{vb_h:.1f}" fill="#ffffff"/>',
+        f'<text x="20" y="28" font-size="22" fill="#111" font-weight="600">'
+        f'Railing shop drawing · {escape(str(q.get("shape")))} · '
+        f'{q.get("panelCount")} panels · waste {q.get("wastagePercent", 0)}% · '
+        f'{escape(str(q.get("mountType") or ""))}</text>',
+        f'<svg x="0" y="36" width="{plan_w:.1f}" height="{plan_h:.1f}" viewBox="0 0 {plan_w:.1f} {plan_h:.1f}">',
+        inner,
+        '</svg>',
+    ]
+    p.extend(elev_parts_all)
     p.append('</svg>')
     return "".join(p)
 

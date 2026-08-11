@@ -1,0 +1,20 @@
+{
+  "id": "rm_bend_90_38_316",
+  "name": "Modular 90° bend Ø38",
+  "category": "bend",
+  "sizeMm": "Ø38 90°",
+  "widthMm": null,
+  "heightMm": null,
+  "thicknessMm": null,
+  "diameterMm": 38.0,
+  "color": "4753",
+  "grade": "316",
+  "mountType": "none",
+  "unit": "pc",
+  "rate": 250.0,
+  "weightKgPerUnit": null,
+  "brand": "",
+  "remarks": "",
+  "status": "active",
+  "updatedAt": "2026-08-10T00:00:00+00:00"
+}

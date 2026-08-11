@@ -1,0 +1,20 @@
+{
+  "id": "rm_u_channel_102x62_alu",
+  "name": "Aluminium U-channel 102×62",
+  "category": "u_channel",
+  "sizeMm": "102×62",
+  "widthMm": 102.0,
+  "heightMm": 62.0,
+  "thicknessMm": null,
+  "diameterMm": null,
+  "color": "unfinished",
+  "grade": "6063-T5",
+  "mountType": "base_channel",
+  "unit": "RFT",
+  "rate": 220.0,
+  "weightKgPerUnit": null,
+  "brand": "",
+  "remarks": "",
+  "status": "active",
+  "updatedAt": "2026-08-10T00:00:00+00:00"
+}

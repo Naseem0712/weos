@@ -901,6 +901,30 @@ def render_svg_string(
 
 def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> str | None:
     """Build quote/canvas SVG for a cart line from the same geometry engine as live preview."""
+    from WEOS.factory.line_kind import is_railing_cart_line
+
+    # Railing lines must NEVER call window generate_job (that printed windows on quotes).
+    if is_railing_cart_line(line):
+        opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+        cfg = opts.get("railing") if isinstance(opts, Mapping) else None
+        cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
+        q = opts.get("railingQuote") if isinstance(opts, Mapping) else None
+        if not isinstance(q, Mapping):
+            q = line.get("railing") if isinstance(line.get("railing"), Mapping) else None
+        try:
+            from WEOS.factory.railing_engine import compute_railing, railing_svg
+
+            if not isinstance(q, Mapping) and cfg:
+                q = compute_railing(cfg)
+            svg = railing_svg(cfg or {}, quote=q if isinstance(q, Mapping) else None)
+            if svg:
+                return str(svg)
+        except Exception:
+            pass
+        prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
+        svg = (prev or {}).get("svg")
+        return str(svg) if svg else None
+
     w = float(line.get("width") or 0)
     h = float(line.get("height") or 0)
     if w <= 0 or h <= 0:

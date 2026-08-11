@@ -1,0 +1,20 @@
+{
+  "id": "rm_block_side_50_316",
+  "name": "Side-mount glass block 50 mm",
+  "category": "block",
+  "sizeMm": "50×50×30",
+  "widthMm": 50.0,
+  "heightMm": 50.0,
+  "thicknessMm": 30.0,
+  "diameterMm": null,
+  "color": "natural",
+  "grade": "316",
+  "mountType": "side_mount",
+  "unit": "pc",
+  "rate": 100.0,
+  "weightKgPerUnit": null,
+  "brand": "",
+  "remarks": "",
+  "status": "active",
+  "updatedAt": "2026-08-10T00:00:00+00:00"
+}

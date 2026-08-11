@@ -1,0 +1,20 @@
+{
+  "id": "rm_handrail_38_round_316_4753",
+  "name": "Ø38 round slot handrail",
+  "category": "handrail",
+  "sizeMm": "Ø38×1.2",
+  "widthMm": null,
+  "heightMm": null,
+  "thicknessMm": 1.2,
+  "diameterMm": 38.0,
+  "color": "4753",
+  "grade": "316",
+  "mountType": "top_mount",
+  "unit": "RFT",
+  "rate": 320.0,
+  "weightKgPerUnit": null,
+  "brand": "",
+  "remarks": "",
+  "status": "active",
+  "updatedAt": "2026-08-10T00:00:00+00:00"
+}

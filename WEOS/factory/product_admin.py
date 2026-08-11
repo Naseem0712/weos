@@ -125,11 +125,19 @@ def create_product(payload: Mapping[str, Any]) -> dict[str, Any]:
     target.mkdir(parents=True)
     (target / "rules").mkdir(exist_ok=True)
 
+    from WEOS.factory.line_kind import (
+        CATEGORY_FOR_TYPE,
+        normalize_product_type,
+    )
+
+    ptype = normalize_product_type(payload.get("productType")) or "windows"
+    category = payload.get("category") or CATEGORY_FOR_TYPE.get(ptype) or "Windows"
+
     meta = {
         "id": pid,
         "displayName": payload.get("displayName") or pid,
-        "productType": payload.get("productType") or "custom",
-        "category": payload.get("category") or "Windows",
+        "productType": ptype,
+        "category": category,
         "units": payload.get("units") or "mm",
         "version": int(payload.get("version") or 1),
         "status": payload.get("status") or "stub",
@@ -182,6 +190,13 @@ def update_product(product_id: str, payload: Mapping[str, Any]) -> dict[str, Any
     meta_path = pdir / "product.json"
     meta = _read_json(meta_path) if meta_path.is_file() else {"id": product_id}
 
+    from WEOS.factory.line_kind import (
+        CATEGORY_FOR_TYPE,
+        SETUP_FORM_TYPES,
+        category_for_product_type,
+        normalize_product_type,
+    )
+
     for key in (
         "displayName", "productType", "category", "units", "version", "status",
         "description", "tagline", "warranty", "heroImage", "gallery", "sectionDrawings",
@@ -191,18 +206,37 @@ def update_product(product_id: str, payload: Mapping[str, Any]) -> dict[str, Any
         if key in payload:
             meta[key] = copy.deepcopy(payload[key])
 
-    # Series setup → normalise, then let it drive product type + default section
-    # sizes so the setup actually flows into geometry / BOM / weight.
+    # Require a canonical product type on save (Product Library lock).
+    ptype = normalize_product_type(payload.get("productType") or meta.get("productType"))
+    if not ptype and "setup" in payload:
+        stype = str((payload.get("setup") or {}).get("type") or "").lower()
+        if stype in SETUP_FORM_TYPES:
+            from WEOS.factory.product_setup import TYPE_TO_PRODUCT_TYPE
+
+            mapped = TYPE_TO_PRODUCT_TYPE.get(stype, stype)
+            ptype = normalize_product_type(mapped) or (
+                "casements" if stype == "casement" else
+                "telescopic" if stype == "telescopic" else
+                "style" if stype == "style" else
+                "sliding"
+            )
+    if not ptype:
+        raise ValueError(
+            "productType is required — select railing, staircase railing, windows, "
+            "door, casements, pergolas, synchron, telescopic, fold, sliding, or style"
+        )
+    meta["productType"] = ptype
+    if not (payload.get("category") or meta.get("category")):
+        meta["category"] = category_for_product_type(ptype) or CATEGORY_FOR_TYPE.get(ptype) or "Windows"
+    elif payload.get("category"):
+        meta["category"] = payload.get("category")
+
+    # Series setup → normalise, then let it drive default section sizes for window worlds.
     if "setup" in payload:
         setup = _normalize_setup_field(payload.get("setup"))
         meta["setup"] = setup
-        if setup:
+        if setup and ptype not in ("railing", "staircase_railing", "pergolas"):
             try:
-                from WEOS.factory.product_setup import TYPE_TO_PRODUCT_TYPE
-
-                stype = str(setup.get("type") or "").lower()
-                if stype and not payload.get("productType"):
-                    meta["productType"] = TYPE_TO_PRODUCT_TYPE.get(stype, stype)
                 sizes = (setup.get("derived") or {}).get("sectionSizes") or {}
                 if sizes:
                     cat = meta.get("catalogue")

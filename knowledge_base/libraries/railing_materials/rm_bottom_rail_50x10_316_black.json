@@ -1,0 +1,20 @@
+{
+  "id": "rm_bottom_rail_50x10_316_black",
+  "name": "Bottom continuous rail 50×10",
+  "category": "bottom_rail",
+  "sizeMm": "50×10",
+  "widthMm": 50.0,
+  "heightMm": 10.0,
+  "thicknessMm": null,
+  "diameterMm": null,
+  "color": "black",
+  "grade": "316",
+  "mountType": "side_mount",
+  "unit": "RFT",
+  "rate": 180.0,
+  "weightKgPerUnit": null,
+  "brand": "",
+  "remarks": "",
+  "status": "active",
+  "updatedAt": "2026-08-10T00:00:00+00:00"
+}

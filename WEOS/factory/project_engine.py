@@ -191,17 +191,9 @@ def _error_line_result(line: Mapping[str, Any], error: str = "") -> dict[str, An
 
 def _is_railing_cart_line(line: Mapping[str, Any]) -> bool:
     """True when a cart line is a railing designer product (not a window)."""
-    if not isinstance(line, Mapping):
-        return False
-    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
-    if isinstance(opts, Mapping) and isinstance(opts.get("railing"), Mapping):
-        return True
-    if str(line.get("status") or "").lower() == "railing":
-        return True
-    if isinstance(line.get("railing"), Mapping):
-        return True
-    pid = str(line.get("product") or line.get("productId") or "").lower()
-    return pid in ("railing", "railings_stub", "glass_railings") or "railing" in pid
+    from WEOS.factory.line_kind import is_railing_cart_line
+
+    return is_railing_cart_line(line)
 
 
 def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
@@ -214,11 +206,15 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
     Always refreshes ``options.railing`` + ``options.railingQuote`` so customer /
     factory PDFs can redraw the designed elevation and print BOM details.
     """
+    from WEOS.factory.line_kind import railing_product_type_for_line
     from WEOS.factory.railing_engine import compute_railing, railing_svg
 
     opts_in = line.get("options") if isinstance(line.get("options"), Mapping) else {}
     cfg = (opts_in or {}).get("railing") if isinstance(opts_in, Mapping) else {}
     cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
+    # Staircase product type without an explicit shape → stair world (no window fallback).
+    if not cfg.get("shape") and railing_product_type_for_line(line) == "staircase_railing":
+        cfg["shape"] = "staircase"
     q = compute_railing(cfg)
     qty = int(line.get("qty") or line.get("quantity") or 1)
     unit_total = float(q.get("sellingTotal") or 0.0)
@@ -245,13 +241,17 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
          "color": it.get("color"), "grade": it.get("grade"), "sizeMm": it.get("sizeMm")}
         for it in (q.get("items") or [])
     ]
+    ptype = railing_product_type_for_line({**dict(line), "options": {**(opts_in or {}), "railing": cfg}, "railing": q})
     # Persist cfg + fresh quote so PDF draw_line_elevation / _spec_lines never lose the design.
-    opts_out = dict(opts_in) if isinstance(opts_in, Mapping) else {}
-    opts_out["railing"] = cfg
-    opts_out["railingQuote"] = q
-    opts_out["commercialOnly"] = q.get("commercial") or {
-        "sellingRatePerUnit": q.get("sellingPerUnit"),
-        "saleUnit": sale_unit,
+    # Strip window layout keys so specs never mix Track / Fold / Panels S1 Sliding.
+    opts_out = {
+        "railing": cfg,
+        "railingQuote": q,
+        "productType": ptype,
+        "commercialOnly": q.get("commercial") or {
+            "sellingRatePerUnit": q.get("sellingPerUnit"),
+            "saleUnit": sale_unit,
+        },
     }
     svg = railing_svg(cfg, quote=q)
     selling = {
@@ -265,8 +265,9 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
         "product": "railing",
-        "displayName": line.get("displayName") or "Railing",
-        "category": "Railing",
+        "productType": ptype,
+        "displayName": line.get("displayName") or ("Staircase railing" if ptype == "staircase_railing" else "Railing"),
+        "category": "Railings",
         "status": "railing",
         "description": line.get("description") or (
             f"Railing · {q.get('shape') or 'straight'} · {q.get('lengthMm') or 0} mm · "
@@ -309,6 +310,7 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
     from WEOS.factory.live_pricing import apply_selling_to_line_result
 
     from WEOS.factory.layout_options import line_layout_options
+    from WEOS.factory.line_kind import is_railing_product_type, product_world
 
     product_id = str(line.get("product") or line.get("productId") or "29mm_sliding")
     # Railing lines are self-priced from their designer config.
@@ -319,6 +321,21 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
             _log.exception("railing line calc failed: %s", exc)
             return _error_line_result(line, f"railing calc failed: {exc}")
     product = load_product(product_id, strict=False)
+    # Product Library type lock: even without options.railing yet, never run window geometry.
+    world = product_world(
+        line.get("productType") or product.get("productType"),
+        category=line.get("category") or product.get("category"),
+        product_id=product_id,
+    )
+    if world in ("railing", "staircase_railing") or is_railing_product_type(product.get("productType")):
+        enriched = dict(line) if isinstance(line, Mapping) else {}
+        enriched.setdefault("productType", product.get("productType") or world)
+        enriched.setdefault("category", product.get("category") or "Railings")
+        try:
+            return _railing_line_result(enriched)
+        except Exception as exc:  # pragma: no cover
+            _log.exception("railing line calc failed: %s", exc)
+            return _error_line_result(enriched, f"railing calc failed: {exc}")
     qty = int(line.get("qty") or line.get("quantity") or 1)
     width = float(line.get("width", 0))
     height = float(line.get("height", 0))

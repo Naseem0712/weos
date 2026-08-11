@@ -38,9 +38,11 @@ SETUP_TYPES = ("sliding", "casement", "telescopic", "style")
 # the product implies its system when selected.
 TYPE_TO_PRODUCT_TYPE = {
     "sliding": "sliding",
-    "casement": "casement",
-    "telescopic": "telescopic_sliding",
-    "style": "style_slide_door",
+    "casement": "casements",
+    "telescopic": "telescopic",
+    "style": "style",
+    "fold": "fold",
+    "synchron": "synchron",
 }
 
 # Type defaults for the standard stock length(s) in mm.
