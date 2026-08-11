@@ -1161,8 +1161,8 @@ def _build_shutter_profiles(model: DrawingModel, L: SlidingLayout, glass_panels:
     """
     n = len(glass_panels)
     # Determine meeting (interlock) sides from nominal adjacency + depth difference.
-    # A sliding sash that laps a differing-depth neighbour has a SQUARE meeting stile
-    # (no diagonal miter) so the centre reads as a clean interlock, not a mitred joint.
+    # FRONT sash meeting-stile corners get 45° miters (visible interlock stile).
+    # BACK sash meeting corners stay square (avoids double center line / cap stubs).
     by_pos = sorted(glass_panels, key=lambda p: p.nom_x0)
     pos_of = {id(p): k for k, p in enumerate(by_pos)}
 
@@ -1205,15 +1205,18 @@ def _build_shutter_profiles(model: DrawingModel, L: SlidingLayout, glass_panels:
             model.add_polyline(rect_polyline(o, closed=True, layer="PROFILES", name=oname))
         glass_name = f"fix_shutter_{sp.index}_glass" if fixed else f"shutter_{sp.index}_glass"
         model.add_polyline(rect_polyline(g, closed=True, layer="GLASS", name=glass_name))
+        # Corner miters: outer corners always. Meeting-stile corners only on the
+        # FRONT (overlapping) sash — the visible interlock stile that the user sees.
+        # BACK sash meeting corners stay square so we don't get double-line / cap stubs.
         miters = (
-            ("bl", Point(o.x0, o.y0), Point(g.x0, g.y0), left_m),
-            ("br", Point(o.x1, o.y0), Point(g.x1, g.y0), right_m),
-            ("tr", Point(o.x1, o.y1), Point(g.x1, g.y1), right_m),
-            ("tl", Point(o.x0, o.y1), Point(g.x0, g.y1), left_m),
+            ("bl", Point(o.x0, o.y0), Point(g.x0, g.y0), left_m, ol),
+            ("br", Point(o.x1, o.y0), Point(g.x1, g.y0), right_m, orr),
+            ("tr", Point(o.x1, o.y1), Point(g.x1, g.y1), right_m, orr),
+            ("tl", Point(o.x0, o.y1), Point(g.x0, g.y1), left_m, ol),
         )
-        for tag, p0, p1, is_meeting in miters:
-            if is_meeting:
-                continue  # square interlock stile — no diagonal miter/stub at the lap
+        for tag, p0, p1, is_meeting, is_back_lap in miters:
+            if is_meeting and is_back_lap:
+                continue  # back sash at lap — keep square; front sash draws the miter
             model.add_segment(Segment(p0, p1, layer="PROFILES", name=f"{prefix}_{sp.index}_miter_{tag}"))
 
     # Draw a meeting line ONLY where two same-track sashes butt together (no stray
