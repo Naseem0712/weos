@@ -206,6 +206,102 @@ def _is_railing_cart_line(line: Mapping[str, Any]) -> bool:
     return is_railing_cart_line(line)
 
 
+def _railing_weight_summary(
+    bom: list[dict[str, Any]] | None,
+    glass_pieces: list[dict[str, Any]] | None,
+    quote: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Additive weight summary from railing BOM via Universal Weight Engine.
+
+    Does not invent weights — sums known BOM/glass kg and reports unknowns.
+    Pricing is untouched.
+    """
+    try:
+        from WEOS.factory.weight_engine import analyze_missing_weights, enrich_bom_with_weights
+    except Exception:
+        return {"aluminiumKg": 0, "glassKg": 0, "hardwareKg": 0, "totalKg": 0}
+
+    items: list[dict[str, Any]] = []
+    for row in bom or []:
+        if not isinstance(row, dict):
+            continue
+        it = dict(row)
+        # Map common railing BOM fields
+        if it.get("weightKg") is not None and it.get("weightPerUnit") is None:
+            it["weightPerUnit"] = it.get("weightKg")
+            it.setdefault("weightSource", "catalogue")
+        items.append(it)
+    for g in glass_pieces or []:
+        if isinstance(g, dict):
+            items.append(
+                {
+                    "name": g.get("name") or "railing glass",
+                    "material": "glass",
+                    "category": "glass",
+                    "widthMm": g.get("widthMm"),
+                    "heightMm": g.get("heightMm"),
+                    "thicknessMm": g.get("thicknessMm"),
+                    "quantity": g.get("qty") or g.get("quantity") or 1,
+                    "weightKg": g.get("weightKg"),
+                    "unit": "pcs",
+                }
+            )
+
+    enriched = enrich_bom_with_weights(items)
+    glass_kg = 0.0
+    alu_kg = 0.0
+    hw_kg = 0.0
+    other_kg = 0.0
+    for row in enriched:
+        tw = row.get("totalWeight")
+        if tw is None:
+            continue
+        cat = str(row.get("category") or row.get("materialKind") or "").lower()
+        if "glass" in cat:
+            glass_kg += float(tw)
+        elif any(x in cat for x in ("rail", "profile", "aluminium", "alu", "handrail", "bottom")):
+            alu_kg += float(tw)
+        elif any(x in cat for x in ("hardware", "anchor", "connector", "block", "cap", "stud")):
+            hw_kg += float(tw)
+        else:
+            other_kg += float(tw)
+
+    # Prefer explicit quote total when already computed with known weights
+    q = quote or {}
+    if q.get("totalWeightKg") is not None:
+        try:
+            explicit = float(q["totalWeightKg"])
+            if explicit > 0:
+                return {
+                    "aluminiumKg": round(alu_kg, 3),
+                    "glassKg": round(glass_kg, 3),
+                    "hardwareKg": round(hw_kg + other_kg, 3),
+                    "totalKg": round(explicit, 3),
+                    "weightSource": "catalogue",
+                }
+        except (TypeError, ValueError):
+            pass
+
+    total = glass_kg + alu_kg + hw_kg + other_kg
+    report = analyze_missing_weights(items)
+    out: dict[str, Any] = {
+        "aluminiumKg": round(alu_kg, 3),
+        "glassKg": round(glass_kg, 3),
+        "hardwareKg": round(hw_kg + other_kg, 3),
+        "totalKg": round(total, 3) if total > 0 else 0,
+        "missingWeight": report.get("summary") if report.get("missingCount") else None,
+        "missingWeightReport": {
+            "missingCount": report.get("missingCount"),
+            "calculableCount": report.get("calculableCount"),
+            "needsCatalogueCount": report.get("needsCatalogueCount"),
+            "offerCalculateNow": report.get("offerCalculateNow"),
+        }
+        if report.get("missingCount")
+        else None,
+    }
+    return out
+
+
 def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
     """Price a railing line from its own designer config (no window geometry).
 
@@ -368,7 +464,7 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
         "trackRail": [],
         "cutList": [],
         "bom": bom,
-        "weight": {"aluminiumKg": 0, "glassKg": 0, "hardwareKg": 0, "totalKg": 0},
+        "weight": _railing_weight_summary(bom, glass_pieces, q),
         "price": {
             "currency": "INR",
             "unitRate": float(q.get("sellingPerUnit") or 0.0),

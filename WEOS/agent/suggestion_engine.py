@@ -272,4 +272,87 @@ def generate(ctx: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
 
+    # ── Rule 6: missing material weights (Universal Weight Engine) ───────────
+    weight_items = _collect_weight_items(ctx)
+    if weight_items:
+        try:
+            from WEOS.factory.weight_engine import analyze_missing_weights
+
+            report = analyze_missing_weights(weight_items)
+            n = int(report.get("missingCount") or 0)
+            if n > 0:
+                m = int(report.get("calculableCount") or 0)
+                k = int(report.get("needsCatalogueCount") or 0)
+                out.append(
+                    {
+                        "key": "missing_weights",
+                        "type": "warning",
+                        "message": report.get("summary")
+                        or f"⚠️ {n} items have no weight data. {m} can be calculated from available dimensions. {k} requires catalogue weight.",
+                        "reason": "Weight Source must be Catalogue, Manual, or Calculated — never guessed.",
+                        "source": "universal weight engine",
+                        "confidence": 0.9,
+                        "action": "calculate_weights" if report.get("offerCalculateNow") else "add_catalogue_weight",
+                        "why": {
+                            "formula": "priority: catalogue/manual → calculated (dims×density) → unknown",
+                            "inputs": {
+                                "missingCount": n,
+                                "calculableCount": m,
+                                "needsCatalogueCount": k,
+                            },
+                            "result": {
+                                "offerCalculateNow": report.get("offerCalculateNow"),
+                                "calculatePrompt": report.get("calculatePrompt"),
+                            },
+                            "weightSources": ["Catalogue", "Manual", "Calculated", "Missing"],
+                        },
+                        "data": {
+                            "missingCount": n,
+                            "calculableCount": m,
+                            "needsCatalogueCount": k,
+                            "offerCalculateNow": report.get("offerCalculateNow"),
+                            "calculatePrompt": report.get("calculatePrompt"),
+                        },
+                    }
+                )
+        except Exception:
+            pass
+
     return out
+
+
+def _collect_weight_items(ctx: dict[str, Any]) -> list[dict[str, Any]]:
+    """Pull BOM / materials / glass rows from a live quote context."""
+    items: list[dict[str, Any]] = []
+    for key in ("bom", "materials", "bomDetails", "items"):
+        block = ctx.get(key)
+        if isinstance(block, list):
+            for row in block:
+                if isinstance(row, dict):
+                    items.append(row)
+    glass = ctx.get("glass")
+    if isinstance(glass, list):
+        for g in glass:
+            if isinstance(g, dict):
+                items.append(
+                    {
+                        "name": g.get("name") or "glass",
+                        "material": "glass",
+                        "category": "glass",
+                        "widthMm": g.get("widthMm") or g.get("width_mm"),
+                        "heightMm": g.get("heightMm") or g.get("height_mm"),
+                        "thicknessMm": g.get("thicknessMm") or g.get("thickness_mm"),
+                        "quantity": g.get("quantity") or g.get("qty") or 1,
+                        "weightKg": g.get("weightKg") or g.get("weight_kg"),
+                        "unit": "pcs",
+                    }
+                )
+    calc = ctx.get("calculation") or ctx.get("result") or {}
+    if isinstance(calc, dict):
+        for key in ("bom", "materials"):
+            block = calc.get(key)
+            if isinstance(block, list):
+                for row in block:
+                    if isinstance(row, dict):
+                        items.append(row)
+    return items

@@ -35,6 +35,7 @@ def compute_materials(
         length_val = eval_formula(length_expr, local) if length_expr not in (None, "", 0, "0") else 0.0
 
         weight_kg = None
+        weight_meta: dict[str, Any] = {}
         if mat.get("weightFormula"):
             wctx = dict(local)
             wctx["qty"] = qty
@@ -42,16 +43,24 @@ def compute_materials(
             if length_val:
                 wctx["runningMeters"] = length_val if normalize_unit(mat.get("unit")) == "RM" else length_val / 1000.0
             weight_kg = eval_formula(mat["weightFormula"], wctx)
+            weight_meta = {
+                "weightSource": "manually entered",
+                "weightStatus": "known",
+                "weightFormula": str(mat.get("weightFormula")),
+                "sourceLabel": "Manual",
+            }
         else:
-            # Default weight formula fallback — makes basic material weights compute
-            # out-of-the-box from the preloaded baseline formulas (Part 1).
-            weight_kg = _default_material_weight(mat, ctx, qty)
+            # Universal Weight Engine — catalogue → calculated → unknown (never guess)
+            weight_kg, weight_meta = _universal_material_weight(mat, ctx, qty, length_val)
 
         unit = normalize_unit(mat.get("unit", "PC"))
         unit_rate = mat.get("unitRate")
         remarks = str(mat.get("remarks") or "")
         if weight_kg is not None:
-            remarks = (remarks + f" · {weight_kg:.3f} kg").strip(" ·")
+            src = weight_meta.get("sourceLabel") or weight_meta.get("weightSource") or ""
+            remarks = (remarks + f" · {weight_kg:.3f} kg [{src}]").strip(" ·")
+        elif weight_meta.get("weightStatus") in ("missing", "needs_catalogue", "calculable"):
+            remarks = (remarks + " · weight Missing").strip(" ·")
 
         # Store length in mm when unit implies linear measure in meters/feet formulas
         length_mm = 0.0
@@ -63,45 +72,52 @@ def compute_materials(
             else:
                 length_mm = length_val
 
-        items.append(
-            LineItem(
-                category=str(mat.get("category") or "material"),
-                description=str(mat.get("name") or mat.get("id") or "material"),
-                quantity=round(qty, 4),
-                unit=unit,
-                length_mm=round(length_mm, 2),
-                remarks=remarks,
-                unit_rate=float(unit_rate) if unit_rate is not None else None,
-            )
+        # LineItem stays lean for pricing; weight transparency lives in remarks + optional attrs
+        li = LineItem(
+            category=str(mat.get("category") or "material"),
+            description=str(mat.get("name") or mat.get("id") or "material"),
+            quantity=round(qty, 4),
+            unit=unit,
+            length_mm=round(length_mm, 2),
+            remarks=remarks,
+            unit_rate=float(unit_rate) if unit_rate is not None else None,
         )
+        # Attach weight metadata for BOM / agent (ignored by asdict consumers that only use known fields)
+        for k, v in weight_meta.items():
+            try:
+                setattr(li, k, v)
+            except Exception:
+                pass
+        if weight_kg is not None:
+            try:
+                setattr(li, "totalWeight", float(weight_kg))
+                setattr(li, "weightPerUnit", float(weight_kg) / qty if qty else float(weight_kg))
+            except Exception:
+                pass
+        items.append(li)
     return items
 
 
-def _default_material_weight(
-    mat: Mapping[str, Any], ctx: Mapping[str, float], qty: float
-) -> float | None:
-    """Compute a material weight from the preloaded baseline formulas when the
-    material declares a materialType but no explicit weightFormula.
+def _universal_material_weight(
+    mat: Mapping[str, Any],
+    ctx: Mapping[str, float],
+    qty: float,
+    length_val: float,
+) -> tuple[float | None, dict[str, Any]]:
+    """Delegate to Universal Weight Engine. Non-fatal on any error."""
+    try:
+        from WEOS.factory.weight_engine import calculate_material_weight
+    except Exception:
+        return None, {}
 
-    Non-fatal: any issue simply returns None (no weight shown), never raises.
-    """
-    material_key = (
+    material_key = str(
         mat.get("materialType")
         or mat.get("material")
         or mat.get("weightMaterial")
+        or mat.get("category")
+        or mat.get("name")
+        or "unknown"
     )
-    if not material_key:
-        return None
-    try:
-        from WEOS.learning.material_formulas import (
-            DEFAULT_WEIGHT_FORMULA_BY_MATERIAL,
-            compute_weight as _fx_weight,
-        )
-    except Exception:
-        return None
-
-    key = str(material_key).strip().lower().replace(" ", "_")
-    formula_key = DEFAULT_WEIGHT_FORMULA_BY_MATERIAL.get(key, key)
 
     def _num(*names: str) -> float | None:
         for n in names:
@@ -117,36 +133,78 @@ def _default_material_weight(
                     pass
         return None
 
-    params: dict[str, Any] = {"qty": qty}
-    width = _num("widthMm", "width")
-    height = _num("heightMm", "height")
-    if width is not None:
-        params["widthMm"] = width
-    if height is not None:
-        params["heightMm"] = height
-    for src, dst in (
-        ("thicknessMm", "thicknessMm"),
-        ("thickness", "thicknessMm"),
-        ("lengthMm", "lengthMm"),
-        ("weightPerMeterKg", "weightPerMeterKg"),
-        ("weightPerMeter", "weightPerMeterKg"),
-        ("densityKgPerM3", "densityKgPerM3"),
-        ("glass1Mm", "glass1Mm"),
-        ("glass2Mm", "glass2Mm"),
-        ("pvbMm", "pvbMm"),
+    dims: dict[str, Any] = {}
+    for key in (
+        "widthMm",
+        "heightMm",
+        "thicknessMm",
+        "lengthMm",
+        "crossSectionAreaMm2",
+        "areaM2",
+        "layersMm",
+        "makeup",
+        "glass1Mm",
+        "glass2Mm",
+        "pvbMm",
     ):
-        if mat.get(src) is not None:
-            try:
-                params[dst] = float(mat[src])
-            except (TypeError, ValueError):
-                pass
+        if mat.get(key) is not None:
+            dims[key] = mat[key]
+    w = _num("widthMm", "width")
+    h = _num("heightMm", "height")
+    if w is not None:
+        dims.setdefault("widthMm", w)
+    if h is not None:
+        dims.setdefault("heightMm", h)
+    thk = _num("thicknessMm", "thickness")
+    if thk is not None:
+        dims.setdefault("thicknessMm", thk)
+    if length_val:
+        unit = normalize_unit(mat.get("unit"))
+        if unit == "RM":
+            dims["lengthM"] = length_val
+        elif unit == "RFT":
+            dims["lengthRft"] = length_val
+        else:
+            dims["lengthMm"] = length_val
+
     try:
-        res = _fx_weight(str(material_key), params=params, formula_key=formula_key)
+        res = calculate_material_weight(
+            material_key,
+            dimensions=dims,
+            quantity=qty,
+            density=_num("densityKgPerM3", "density"),
+            unit=str(mat.get("unit") or "PC"),
+            catalogue_weight=_num("catalogueWeight", "weightKgPerUnit"),
+            weight_per_unit=_num("weightPerUnit", "weightKg"),
+            weight_per_meter=_num("weightPerMeter", "weightPerMeterKg", "weightKgPerM", "weightKgPerMtr"),
+            weight_source=str(mat.get("weightSource") or "") or None,
+            waste_factor=_num("wasteFactor"),
+            learned_weight=_num("learnedWeight"),
+            learned_approved=bool(mat.get("learnedApproved")),
+        )
     except Exception:
-        return None
-    if isinstance(res, dict) and res.get("ok"):
-        return float(res.get("weightKg") or 0.0)
-    return None
+        return None, {}
+
+    meta = {
+        "weightSource": res.get("weightSource"),
+        "weightStatus": res.get("weightStatus"),
+        "weightFormula": res.get("formula"),
+        "weightWhy": res.get("why"),
+        "missingHints": res.get("missingHints"),
+        "sourceLabel": res.get("sourceLabel"),
+        "confidence": res.get("confidence"),
+    }
+    if res.get("ok") and res.get("totalWeight") is not None:
+        return float(res["totalWeight"]), meta
+    return None, meta
+
+
+def _default_material_weight(
+    mat: Mapping[str, Any], ctx: Mapping[str, float], qty: float
+) -> float | None:
+    """Compatibility shim — prefer Universal Weight Engine."""
+    kg, _meta = _universal_material_weight(mat, ctx, qty, 0.0)
+    return kg
 
 
 def materials_to_hardware_rules(materials: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]]:

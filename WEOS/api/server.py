@@ -1759,12 +1759,127 @@ def api_engineering_formulas() -> dict[str, Any]:
 
 @app.post("/api/engineering/weight")
 def api_engineering_weight(body: MaterialWeightBody) -> dict[str, Any]:
+    """Live formula weight (learning UI) + Universal Weight Engine when params fit."""
     from WEOS.learning.material_formulas import compute_weight
+
+    # Prefer universal engine when caller sends structured dims (weightSource required)
+    params = body.params or {}
+    if any(
+        k in params
+        for k in (
+            "widthMm",
+            "heightMm",
+            "thicknessMm",
+            "lengthMm",
+            "weightPerMeterKg",
+            "weightPerMeter",
+            "crossSectionAreaMm2",
+            "useUniversalEngine",
+        )
+    ) and params.get("useFormulaEngine") is not True:
+        try:
+            from WEOS.factory.weight_engine import calculate_material_weight
+
+            dims = {k: v for k, v in params.items() if k not in ("qty", "quantity", "wastePercent", "useUniversalEngine")}
+            if "weightPerMeterKg" in dims and "weightPerMeter" not in dims:
+                dims["weightPerMeter"] = dims["weightPerMeterKg"]
+            qty = float(params.get("qty") or params.get("quantity") or 1)
+            dens = params.get("densityKgPerM3")
+            waste = params.get("wasteFactor")
+            if waste is None and params.get("wastePercent") is not None:
+                try:
+                    waste = 1.0 + float(params["wastePercent"]) / 100.0
+                except (TypeError, ValueError):
+                    waste = None
+            uni = calculate_material_weight(
+                body.material,
+                dimensions=dims,
+                quantity=qty,
+                density=float(dens) if dens is not None else None,
+                weight_per_meter=float(params["weightPerMeterKg"])
+                if params.get("weightPerMeterKg") is not None
+                else None,
+                waste_factor=waste,
+            )
+            # Keep legacy shape for existing UI
+            return {
+                **uni,
+                "ok": bool(uni.get("ok")),
+                "weightKg": uni.get("totalWeight"),
+                "message": uni.get("formula")
+                or (
+                    f"{uni.get('sourceLabel')}: {uni.get('totalWeight')} kg"
+                    if uni.get("ok")
+                    else (uni.get("missingHints") or ["missing data"])[0]
+                ),
+                "engine": "universal_weight_engine",
+            }
+        except Exception:
+            pass
 
     try:
         return compute_weight(body.material, params=body.params, formula_key=body.formulaKey)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class UniversalWeightBody(BaseModel):
+    material: str
+    dimensions: dict[str, Any] = Field(default_factory=dict)
+    quantity: float = 1.0
+    density: float | None = None
+    unit: str | None = None
+    catalogueWeight: float | None = None
+    weightPerUnit: float | None = None
+    weightPerMeter: float | None = None
+    weightSource: str | None = None
+    wasteFactor: float | None = None
+    learnedWeight: float | None = None
+    learnedApproved: bool = False
+
+
+@app.post("/api/weight/calculate")
+def api_weight_calculate(body: UniversalWeightBody) -> dict[str, Any]:
+    from WEOS.factory.weight_engine import calculate_material_weight
+
+    return calculate_material_weight(
+        body.material,
+        dimensions=body.dimensions,
+        quantity=body.quantity,
+        density=body.density,
+        unit=body.unit,
+        catalogue_weight=body.catalogueWeight,
+        weight_per_unit=body.weightPerUnit,
+        weight_per_meter=body.weightPerMeter,
+        weight_source=body.weightSource,
+        waste_factor=body.wasteFactor,
+        learned_weight=body.learnedWeight,
+        learned_approved=body.learnedApproved,
+    )
+
+
+@app.post("/api/weight/analyze")
+def api_weight_analyze(body: dict[str, Any]) -> dict[str, Any]:
+    from WEOS.factory.weight_engine import analyze_missing_weights, sum_product_weights
+
+    items = body.get("items") or body.get("bom") or []
+    return {
+        "missing": analyze_missing_weights(items),
+        "product": sum_product_weights(items, critical_unknown_blocks_total=bool(body.get("blockOnCritical", True))),
+    }
+
+
+@app.post("/api/weight/learn-candidate")
+def api_weight_learn_candidate(body: dict[str, Any]) -> dict[str, Any]:
+    from WEOS.factory.weight_engine import propose_learned_weight_candidate
+
+    return propose_learned_weight_candidate(
+        material=str(body.get("material") or "unknown"),
+        weight_kg=float(body.get("weightKg") or body.get("weight") or 0),
+        evidence=body.get("evidence") if isinstance(body.get("evidence"), dict) else {},
+        source_doc=body.get("sourceDoc"),
+        unit=str(body.get("unit") or "kg"),
+    )
 
 
 @app.get("/api/engineering/suggestions")

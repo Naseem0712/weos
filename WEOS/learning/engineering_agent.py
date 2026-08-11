@@ -601,5 +601,9 @@ def agent_status() -> dict[str, Any]:
     }
 
 
-# Re-export compute for API convenience
+# Re-export compute for API convenience (legacy formulas + universal engine)
+from WEOS.factory import weight_engine as _weight_engine
+
 compute_material_weight = compute_weight
+calculate_material_weight = _weight_engine.calculate_material_weight
+analyze_missing_weights = _weight_engine.analyze_missing_weights

@@ -826,7 +826,8 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           <p class="muted" id="pdStatus" style="margin-top:.6rem"></p>
           <div style="margin-top:.8rem;overflow:auto">
             <strong style="font-size:.85rem">Materials</strong>
-            <table><thead><tr><th>Name</th><th>Unit</th><th>Formula</th></tr></thead><tbody id="pdMats"></tbody></table>
+            <p class="muted" style="font-size:.72rem;margin:.2rem 0 .35rem">Weight Source: Catalogue · Manual · Calculated · Missing (never guessed)</p>
+            <table><thead><tr><th>Item</th><th>Weight</th><th>Source</th></tr></thead><tbody id="pdMats"></tbody></table>
           </div>
         </div>
       </div>
@@ -945,8 +946,9 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           </div>
           <div id="matHelpBox" class="hidden" style="margin-bottom:.6rem;padding:.55rem .7rem;border:1px solid var(--line);border-radius:10px;background:#f7faf8;font-size:.78rem;line-height:1.45"></div>
           <p class="muted" style="font-size:.78rem;margin:0 0 .45rem">Changing <strong>Unit</strong> auto-fills Qty formula when it is empty or still a previous default (RFT → <code>LengthRft</code>, RM → <code>LengthRm</code>, SQFT → <code>AreaSqft</code>, PC → <code>1</code>). Continuous bottom/hand rail: use RFT + <code>LengthRft</code> (aliases <code>Length</code>, <code>ActualLength</code> also work).</p>
+          <p class="muted" style="font-size:.78rem;margin:0 0 .45rem"><strong>Weight [Auto Calculate]</strong> — Source chips: Catalogue / Manual / Calculated / Unknown. Admin override → catalogue. Missing shows — / Missing.</p>
           <div style="overflow:auto">
-            <table class="mat-table"><thead><tr><th>Name</th><th>Category</th><th>Unit</th><th>Qty formula</th><th>Rate</th><th></th></tr></thead>
+            <table class="mat-table"><thead><tr><th>Item</th><th>Category</th><th>Unit</th><th>Qty formula</th><th>Rate</th><th>Weight</th><th>Source</th><th></th></tr></thead>
             <tbody id="matBody"></tbody></table>
           </div>
         </div>
@@ -2197,8 +2199,36 @@ async function openProduct(id) {
   const img = p.heroImage || '/static/products/placeholder.svg';
   $('pdPreview').innerHTML = `<img src="${img}" alt="" style="max-width:100%;max-height:320px"/>`;
   $('pdStatus').textContent = p.manufacturingReady ? 'Full manufacturing rules available' : 'Catalogue stub — manual rate on quotation';
-  $('pdMats').innerHTML = (p.materials||[]).map(m => `<tr><td>${m.name||m.id}</td><td>${m.unit||''}</td><td style="font-family:ui-monospace,monospace;font-size:.75rem">${m.quantityFormula||''}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">No materials yet — edit in Admin</td></tr>';
+  $('pdMats').innerHTML = (p.materials||[]).map(m => {
+    const w = weightDisplayForMaterial(m);
+    return `<tr><td>${m.name||m.id||'—'}</td><td>${w.weight}</td><td>${w.chip}</td></tr>`;
+  }).join('') || '<tr><td colspan="3" class="muted">No materials yet — edit in Admin</td></tr>';
   setView('product');
+}
+
+function weightSourceChip(source){
+  const s = String(source||'unknown').toLowerCase();
+  let label = 'Missing', bg = '#f1f5f9', fg = '#64748b';
+  if (s.includes('catalog')) { label='Catalogue'; bg='#ecfdf5'; fg='#047857'; }
+  else if (s.includes('manual')) { label='Manual'; bg='#eff6ff'; fg='#1d4ed8'; }
+  else if (s.includes('calculat')) { label='Calculated'; bg='#fefce8'; fg='#a16207'; }
+  else if (s.includes('learned')) { label='Learned'; bg='#faf5ff'; fg='#7e22ce'; }
+  return `<span class="pill" style="background:${bg};color:${fg};font-size:.68rem;padding:.12rem .4rem">${label}</span>`;
+}
+
+function weightDisplayForMaterial(m){
+  const kg = m.weightPerUnit ?? m.weightKg ?? m.catalogueWeight ?? m.weightKgPerUnit ?? m.totalWeight;
+  const src = m.weightSource || (kg!=null ? 'catalogue' : 'unknown');
+  const formula = m.weightFormula || m.weightWhy?.message || '';
+  if (kg==null || kg==='' || Number.isNaN(+kg)) {
+    return { weight: '<span class="muted">— / Missing</span>', chip: weightSourceChip('unknown'), formula };
+  }
+  const tip = formula ? ` title="${String(formula).replace(/"/g,'&quot;')}"` : '';
+  return {
+    weight: `<span${tip}>${(+kg).toFixed(3)} kg</span>`,
+    chip: weightSourceChip(src),
+    formula
+  };
 }
 
 function renderCart() {
@@ -3840,21 +3870,46 @@ function renderMaterials() {
     PC:'1', KG:'1', RFT:'LengthRft', RM:'LengthRm', SQFT:'AreaSqft', SQM:'AreaSqm', BOX:'1', PAIR:'1', SET:'1'
   };
   const defaultSet = new Set(Object.values(defaults).concat(['1','Length','ActualLength','runningFeet','runningMeters','glassArea','areaSqft','areaSqm']));
-  $('matBody').innerHTML = state.materials.map((m,i) => `
+  $('matBody').innerHTML = state.materials.map((m,i) => {
+    const w = weightDisplayForMaterial(m);
+    const srcVal = m.weightSource || (m.weightPerUnit!=null || m.weightKg!=null ? 'catalogue' : 'unknown');
+    return `
     <tr>
       <td><input data-m="${i}" data-k="name" value="${m.name||''}"/></td>
       <td><input data-m="${i}" data-k="category" value="${m.category||'hardware'}" style="width:90px"/></td>
       <td><select data-m="${i}" data-k="unit">${units.map(u=>`<option ${u===(m.unit||'PC')?'selected':''}>${u}</option>`).join('')}</select></td>
       <td><input data-m="${i}" data-k="quantityFormula" value="${m.quantityFormula||'1'}" style="min-width:140px;font-family:ui-monospace,monospace" placeholder="${defaults[m.unit||'PC']||'1'}"/></td>
       <td><input data-m="${i}" data-k="unitRate" type="number" value="${m.unitRate??0}" style="width:80px"/></td>
+      <td style="min-width:110px">
+        <input data-m="${i}" data-k="weightPerUnit" type="number" step="0.001" value="${m.weightPerUnit??m.weightKg??''}" placeholder="Auto" style="width:72px" title="${(m.weightFormula||'Weight [Auto Calculate]').replace(/"/g,'&quot;')}"/>
+        <div style="font-size:.68rem;color:#64748b;margin-top:.15rem">${w.weight}</div>
+      </td>
+      <td>
+        <select data-m="${i}" data-k="weightSource" style="font-size:.72rem;max-width:110px" title="Admin override to Catalogue">
+          <option value="unknown" ${srcVal==='unknown'?'selected':''}>Unknown</option>
+          <option value="catalogue" ${String(srcVal).includes('catalog')?'selected':''}>Catalogue</option>
+          <option value="manually entered" ${String(srcVal).includes('manual')?'selected':''}>Manual</option>
+          <option value="calculated" ${String(srcVal).includes('calculat')?'selected':''}>Calculated</option>
+        </select>
+        <div style="margin-top:.15rem">${w.chip}</div>
+      </td>
       <td><button class="btn ghost sm" data-mdel="${i}">Del</button></td>
-    </tr>`).join('') || '<tr><td colspan="6" class="muted">No materials — click Add material</td></tr>';
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" class="muted">No materials — click Add material</td></tr>';
   $('matBody').querySelectorAll('input[data-m],select[data-m]').forEach(el => {
     el.onchange = () => {
       const i = +el.dataset.m, k = el.dataset.k;
       const prevUnit = state.materials[i].unit || 'PC';
       const prevFx = String(state.materials[i].quantityFormula || '1').trim();
-      state.materials[i][k] = k === 'unitRate' ? +el.value : el.value;
+      if (k === 'unitRate' || k === 'weightPerUnit') {
+        const n = el.value === '' ? null : +el.value;
+        state.materials[i][k] = n;
+        if (k === 'weightPerUnit' && n != null && !state.materials[i].weightSource) {
+          state.materials[i].weightSource = 'manually entered';
+        }
+      } else {
+        state.materials[i][k] = el.value;
+      }
       if (k === 'unit') {
         const next = defaults[el.value] || '1';
         const prevDefault = defaults[prevUnit] || '1';
@@ -3864,6 +3919,10 @@ function renderMaterials() {
           const fxEl = $('matBody').querySelector(`input[data-m="${i}"][data-k="quantityFormula"]`);
           if (fxEl) fxEl.value = next;
         }
+      }
+      if (k === 'weightSource' || k === 'weightPerUnit') {
+        // refresh chip row without full rebuild of focus
+        renderMaterials();
       }
     };
   });
@@ -4089,7 +4148,8 @@ $('btnAddMat').onclick = () => {
   const defaults = (state.adminMeta && state.adminMeta.defaultQtyFormulaByUnit) || {};
   state.materials.push({
     id:'mat_'+Date.now(), name:'New material', category:'hardware', unit:'PC',
-    quantityFormula: defaults.PC || '1', unitRate:0
+    quantityFormula: defaults.PC || '1', unitRate:0,
+    weightPerUnit: null, weightSource: 'unknown'
   });
   renderMaterials();
 };
@@ -5028,12 +5088,16 @@ if ($('btnFxWeight')) $('btnFxWeight').onclick = async () => {
     widthMm: Number($('fxP_widthMm').value)||undefined,
     heightMm: Number($('fxP_heightMm').value)||undefined,
     qty: 1,
+    useUniversalEngine: true,
   };
   try {
     const res = await api('/api/engineering/weight', {method:'POST', body:{material:key, formulaKey:key, params}});
-    $('fxWeightOut').textContent = res.ok
-      ? `${res.message}\n${res.formula?.expression||''}`
-      : (res.message || JSON.stringify(res));
+    if (res.ok) {
+      const src = res.sourceLabel || res.weightSource || (res.formula?.name) || '';
+      $('fxWeightOut').textContent = `${res.message || (res.weightKg+' kg')}\nWeight Source: ${src}\n${res.formula?.expression || res.formula || ''}`;
+    } else {
+      $('fxWeightOut').textContent = res.message || (res.missingHints||[]).join('; ') || JSON.stringify(res);
+    }
   } catch(e) { $('fxWeightOut').textContent = e.message; }
 };
 
