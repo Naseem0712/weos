@@ -167,6 +167,118 @@ def main() -> int:
         fails.append("stair specs have Track")
     if not any("Railing" in s or "Type =" in s or "Stairs" in s for s in stair_specs):
         fails.append(f"stair specs wrong: {stair_specs[:4]}")
+    # Window series must never appear on staircase railing specs / calc result
+    leak_keys = ("profileSeries", "sectionSizeMm", "standardLength", "wallThickness", "sectionSpecs")
+    blob = " ".join(stair_specs).lower() + " " + str(stair_res.get("specifications") or {}).lower()
+    if any(k.lower() in blob for k in ("profileseries", "sectionsize", "2-track", "s1 sliding")):
+        fails.append(f"window series leaked into stair specs: {stair_specs[:6]}")
+    if stair_res.get("sectionSpecs"):
+        fails.append(f"stair result has sectionSpecs: {stair_res.get('sectionSpecs')}")
+    if stair_res.get("layout"):
+        fails.append("stair result should not carry window layout")
+    # Contaminated cart (window series fields) must still price as railing only
+    dirty = calculate_line({
+        **stair_cart,
+        "sectionSeries": "25mm_eco_gulf",
+        "specifications": {
+            "profileSeries": "25mm eco gulf system",
+            "sectionSizeMm": 49,
+            "standardLength": "16F",
+            "wallThicknessMm": 1.1,
+            "track": "2 track 49x37.8 mm",
+        },
+        "system": "sliding",
+        "trackCount": 2,
+        "glassShutters": 2,
+    })
+    dirty_specs = _spec_lines(dirty)
+    dirty_blob = " ".join(dirty_specs).lower()
+    if "eco gulf" in dirty_blob or "2 track" in dirty_blob or "s1" in dirty_blob:
+        fails.append(f"contaminated stair still dumps series: {dirty_specs[:8]}")
+    if dirty.get("sectionSpecs"):
+        fails.append("contaminated stair kept sectionSpecs")
+    if dirty.get("productType") != "staircase_railing":
+        fails.append(f"contaminated stair productType {dirty.get('productType')}")
+
+    # Manual rate must drive commercialTotal / price.total (Total Amount)
+    manual_cfg = {
+        **cfg,
+        "manualRatePerUnit": 999.0,
+    }
+    mq = compute_railing(manual_cfg)
+    if abs(float(mq.get("sellingPerUnit") or 0) - 999.0) > 0.01:
+        fails.append(f"manual rate not on sellingPerUnit: {mq.get('sellingPerUnit')}")
+    # Engine rounds widthUnit for display; sellingTotal uses full precision — tolerate 1 INR.
+    expected_total = float(mq.get("sellingTotal") or 0)
+    approx = round(999.0 * float(mq.get("widthUnit") or 0), 2)
+    if abs(expected_total - approx) > 1.0:
+        fails.append(f"manual sellingTotal {expected_total} far from RFT×rate {approx}")
+    m_line = calculate_line({
+        "product": "railing",
+        "productType": "railing",
+        "width": mq["lengthMm"],
+        "height": mq["heightMm"],
+        "qty": 1,
+        "saleUnit": mq["saleUnit"],
+        "sellingRate": 999.0,
+        "options": {"railing": manual_cfg, "railingQuote": mq, "productType": "railing"},
+    })
+    if abs(float(m_line.get("commercialTotal") or 0) - expected_total) > 0.05:
+        fails.append(f"manual commercialTotal {m_line.get('commercialTotal')} != {expected_total}")
+    if abs(float((m_line.get("price") or {}).get("total") or 0) - expected_total) > 0.05:
+        fails.append(f"manual price.total {(m_line.get('price') or {}).get('total')} != {expected_total}")
+    # Cart sellingRate alone (no cfg.manual) must NOT freeze/override cascade —
+    # otherwise BOM material rates never reach Total Amount.
+    cart_only = calculate_line({
+        "product": "railing",
+        "productType": "railing",
+        "width": 3000,
+        "height": 1000,
+        "qty": 1,
+        "saleUnit": "rft",
+        "sellingRate": 777.0,
+        "options": {
+            "railing": {
+                "shape": "straight", "lengthMm": 3000, "heightMm": 1000, "panels": 2,
+                "rates": {"glassPerSqft": 200},
+            },
+            "productType": "railing",
+        },
+    })
+    cascade_only = compute_railing({
+        "shape": "straight", "lengthMm": 3000, "heightMm": 1000, "panels": 2,
+        "rates": {"glassPerSqft": 200},
+    })
+    if abs(float(cart_only.get("commercialTotal") or 0) - float(cascade_only.get("sellingTotal") or 0)) > 0.05:
+        fails.append(
+            f"cart sellingRate froze total: {cart_only.get('commercialTotal')} "
+            f"vs cascade {cascade_only.get('sellingTotal')}"
+        )
+    if abs(float(cart_only.get("sellingRate") or 0) - 777.0) < 0.01 and abs(
+        float(cascade_only.get("sellingPerUnit") or 0) - 777.0
+    ) > 1.0:
+        fails.append("cart sellingRate incorrectly applied as manual override")
+
+    # Stale staircase description must refresh from live quote
+    stale_desc = calculate_line({
+        "product": "railing",
+        "productType": "staircase_railing",
+        "width": 3000,
+        "height": 1000,
+        "qty": 1,
+        "description": "Railing · staircase · 3000 mm · 4 panels · 12mm",
+        "options": {
+            "railing": {
+                "shape": "straight", "lengthMm": 3000, "heightMm": 1000, "panels": 1,
+                "rates": {"glassPerSqft": 200},
+            },
+            "productType": "staircase_railing",
+        },
+    })
+    if "staircase" in str(stale_desc.get("description") or "").lower():
+        fails.append(f"stale staircase description kept: {stale_desc.get('description')}")
+    if stale_desc.get("productType") != "railing":
+        fails.append(f"stale staircase productType kept: {stale_desc.get('productType')}")
 
     # Continuous bottom-rail only — no pillar qty
     cont = compute_railing({

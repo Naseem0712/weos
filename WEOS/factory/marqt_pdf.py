@@ -119,12 +119,20 @@ def _railing_cfg_and_quote(line: Mapping[str, Any]) -> tuple[dict[str, Any], dic
     q = opts.get("railingQuote") if isinstance(opts, Mapping) else None
     if not isinstance(q, Mapping):
         q = line.get("railing") if isinstance(line.get("railing"), Mapping) else {}
-    # Recompute when quote is missing OR length collapsed (stale 0 / 1 mm quote).
+    # Recompute when quote is missing, length collapsed, or shape/panels diverge
+    # from options.railing (stale staircase quote on a straight design, etc.).
     need_recompute = False
     if not isinstance(q, Mapping) or not q:
         need_recompute = bool(cfg)
-    elif float(q.get("lengthMm") or 0) <= 1.0 and float(cfg.get("lengthMm") or line.get("width") or 0) > 1.0:
-        need_recompute = True
+    else:
+        try:
+            from WEOS.factory.railing_engine import railing_quote_matches_cfg
+
+            if not railing_quote_matches_cfg(q, cfg):
+                need_recompute = True
+        except Exception:
+            if float(q.get("lengthMm") or 0) <= 1.0 and float(cfg.get("lengthMm") or line.get("width") or 0) > 1.0:
+                need_recompute = True
     if need_recompute and cfg:
         try:
             from WEOS.factory.railing_engine import compute_railing
@@ -280,8 +288,11 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
             (rail_cfg or {}).get("glassColour") or q.get("glassColour") or "",
         ]
         glass_bits = [str(b) for b in glass_bits if b]
+        from WEOS.factory.railing_engine import format_railing_description
+
+        title = format_railing_description(q, rail_cfg)
         lines = [
-            str(line.get("description") or line.get("displayName") or "Railing"),
+            title,
             f"Type = {shape} · Mount = {q.get('mountType') or (rail_cfg or {}).get('mountType') or 'side_mount'}",
             f"Length = {q.get('lengthMm') or w:g} mm · Height = {q.get('heightMm') or h:g} mm",
             f"Panels = {q.get('panelCount') or 0} · Gap = {q.get('gapMm') or 12} mm",

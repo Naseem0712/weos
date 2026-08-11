@@ -850,7 +850,31 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
         if not cfg.get("shape") and world == "staircase_railing":
             cfg["shape"] = "staircase"
         q = compute_railing(cfg)
-        return {"svg": railing_svg(cfg, quote=q), "system": "railing", "railing": q}
+        # Railing world: never return Product Library window series metadata.
+        shape = q.get("shape") or cfg.get("shape") or "straight"
+        rail_specs = {
+            "type": shape,
+            "mount": q.get("mountType") or cfg.get("mountType") or "side_mount",
+            "lengthMm": q.get("lengthMm"),
+            "heightMm": q.get("heightMm") or q.get("glassHeightMm"),
+            "panels": q.get("panelCount"),
+            "saleUnit": q.get("saleUnit"),
+            "sellingPerUnit": q.get("sellingPerUnit"),
+        }
+        if shape == "staircase" or isinstance(q.get("stairGeometry"), dict):
+            sg = q.get("stairGeometry") or {}
+            rail_specs["stairs"] = (
+                f"{sg.get('steps') or cfg.get('stairSteps') or '—'} steps"
+            )
+        return {
+            "svg": railing_svg(cfg, quote=q),
+            "system": "railing",
+            "productType": "staircase_railing" if shape == "staircase" else "railing",
+            "railing": q,
+            "specifications": rail_specs,
+            "layout": {},
+            "sectionSpecs": {},
+        }
     try:
         from WEOS.factory.layout_options import resolve_mesh_track
         from WEOS.factory.product_loader import load_product

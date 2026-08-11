@@ -128,6 +128,61 @@ def ensure_railing_dims(
     return out
 
 
+def format_railing_description(
+    q: Mapping[str, Any] | None = None,
+    cfg: Mapping[str, Any] | None = None,
+) -> str:
+    """Single source of truth for cart / PDF line titles from compute quote + cfg."""
+    q = q if isinstance(q, Mapping) else {}
+    cfg = cfg if isinstance(cfg, Mapping) else {}
+    shape = str(q.get("shape") or cfg.get("shape") or "straight").strip() or "straight"
+    length = q.get("lengthMm")
+    if length in (None, ""):
+        length = cfg.get("lengthMm") or 0
+    panels = q.get("panelCount")
+    if panels in (None, ""):
+        panels = cfg.get("panels") or cfg.get("glassPanels") or 0
+    glass_mm = q.get("glassThicknessMm") or cfg.get("glassThicknessMm") or 12
+    glass_type = str(q.get("glassType") or cfg.get("glassType") or "").strip()
+    bits = [
+        "Railing",
+        shape,
+        f"{length} mm",
+        f"{panels} panels",
+        f"{glass_mm}mm",
+    ]
+    if glass_type:
+        bits.append(glass_type)
+    return " · ".join(str(b) for b in bits if b not in (None, ""))
+
+
+def railing_quote_matches_cfg(q: Mapping[str, Any] | None, cfg: Mapping[str, Any] | None) -> bool:
+    """True when a stored ``railingQuote`` still matches the designer cfg."""
+    if not isinstance(q, Mapping) or not q:
+        return False
+    cfg = cfg if isinstance(cfg, Mapping) else {}
+    q_shape = str(q.get("shape") or "straight").strip().lower()
+    c_shape = _shape(cfg) if cfg else q_shape
+    if q_shape != c_shape:
+        return False
+    cfg_len = _length_mm(cfg) if cfg else 0.0
+    q_len = _f(q.get("lengthMm"))
+    if cfg_len > 1.0 and q_len <= 1.0:
+        return False
+    if cfg_len > 1.0 and q_len > 1.0 and abs(cfg_len - q_len) > max(2.0, cfg_len * 0.02):
+        return False
+    cfg_panels = cfg.get("panels") if cfg else None
+    if cfg_panels in (None, "") and cfg:
+        cfg_panels = cfg.get("glassPanels")
+    if cfg_panels not in (None, "") and c_shape != "staircase":
+        try:
+            if int(cfg_panels) != int(q.get("panelCount") or 0):
+                return False
+        except (TypeError, ValueError):
+            pass
+    return True
+
+
 def _svg_missing_size_error(*, kind: str = "length") -> str:
     """Clear SVG error instead of a collapsed 1 mm railing stub."""
     msg = (
@@ -921,7 +976,9 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
 
     wall_connectors = (1 if wall_start else 0) + (1 if wall_end else 0)
 
-    # ── staircase studs (side-mounted, every 3 steps, dual SS) ───────────────
+    # ── staircase studs ─────────────────────────────────────────────────────
+    # Easy wizard: studsPerGlass × panel count (step: 2/3/4, side: 2/4/6/8).
+    # Legacy fallback: every 3rd step → dual SS studs when studsPerGlass unset.
     stair_pillars = 0
     stair_studs = 0
     stair_stud_anchors = 0
@@ -929,30 +986,73 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     stud_size = _i(cfg.get("studSizeMm"), 38)
     if stud_size not in (38, 50):
         stud_size = 38
+    stair_mount = str(cfg.get("stairMountType") or cfg.get("mountType") or "side").lower()
+    if "step" in stair_mount:
+        stair_mount = "step"
+    else:
+        stair_mount = "side"
+    studs_per_glass = _i(cfg.get("studsPerGlass"), 0)
+    if shape == "staircase" and studs_per_glass <= 0:
+        # Sensible defaults by mount if UI omitted the count
+        studs_per_glass = 3 if stair_mount == "step" else 4
     if shape == "staircase" and stair_geo:
         steps = int(stair_geo["steps"])
-        stair_pillars = steps // 3
-        dual_stations = steps // 3
-        stair_studs = dual_stations * 2
-        stair_stud_anchors = stair_studs
+        stair_pillars = steps // 3  # hardware rule: pillar/block every 3 steps
+        panel_n = max(len(stair_panels) if stair_panels else panels_cfg, 1)
+        if studs_per_glass > 0:
+            stair_studs = panel_n * studs_per_glass
+            stair_stud_anchors = stair_studs
+            # Place stud stations evenly along the run (one group per glass)
+            tread = _f(stair_geo["treadMm"])
+            riser = _f(stair_geo["riserMm"])
+            run_h = _f(stair_geo.get("totalHorizontalRunMm")) or (tread * steps)
+            for i in range(panel_n):
+                frac = (i + 0.5) / panel_n
+                hx = run_h * frac
+                stud_stations.append({
+                    "panel": i + 1,
+                    "step": max(1, int(round(hx / max(tread, 1e-6)))),
+                    "horizontalMm": round(hx, 2),
+                    "riseMm": round(riser * (hx / max(tread, 1e-6)), 2),
+                    "studs": studs_per_glass,
+                    "anchors": studs_per_glass,
+                    "mount": stair_mount,
+                    "studSizeMm": stud_size if stair_mount == "side" else None,
+                    "edgeInsetMm": GLASS_EDGE_INSET_MM,
+                })
+        else:
+            dual_stations = steps // 3
+            stair_studs = dual_stations * 2
+            stair_stud_anchors = stair_studs
+            tread = _f(stair_geo["treadMm"])
+            riser = _f(stair_geo["riserMm"])
+            for n in range(3, steps + 1, 3):
+                stud_stations.append({
+                    "step": n,
+                    "horizontalMm": round(tread * n, 2),
+                    "riseMm": round(riser * n, 2),
+                    "studs": 2,
+                    "anchors": 2,
+                    "edgeInsetMm": GLASS_EDGE_INSET_MM,
+                })
         pillar_count = stair_pillars
         bend_count = 0
         connector_180 = _handrail_connectors(total_length_mm, handrail_max) if handrail_on else 0
-        tread = _f(stair_geo["treadMm"])
-        riser = _f(stair_geo["riserMm"])
-        for n in range(3, steps + 1, 3):
-            stud_stations.append({
-                "step": n,
-                "horizontalMm": round(tread * n, 2),
-                "riseMm": round(riser * n, 2),
-                "studs": 2,
-                "anchors": 2,
-                "edgeInsetMm": GLASS_EDGE_INSET_MM,
-            })
+        # Stair bottom type: topiller (SS) or block — maps to pillarType
+        sbt = str(cfg.get("stairBottomType") or "").lower()
+        if sbt in ("topiller", "ss", "ss_pillar", "pillar"):
+            cfg["pillarType"] = "ss"
+            want_ss = True
+            want_block = True
+            want_pillars = True
+        elif sbt in ("block", "aluminium_block"):
+            cfg["pillarType"] = "block"
+            want_ss = False
+            want_block = True
+            want_pillars = True
         if not want_pillars:
             stair_pillars = 0
             pillar_count = 0
-            # keep studs (structural dual studs) unless glass+pillars both off
             if not want_glass:
                 stair_studs = 0
                 stair_stud_anchors = 0
@@ -1110,17 +1210,36 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
             label = f"Side-mount pillars (every 3 steps · {pillar_type})"
         add("blocks", label, pillar_count, "pc", r_block, material=block_mat, color_role="block")
     if stair_studs:
-        add("studs", f"SS studs {stud_size} mm (dual @ every 3rd step)", stair_studs, "pc",
-            r_stud or r_block, material=_mat_for("stud"), color_role="stud")
-    if anchor_count and (want_pillars or shape == "staircase"):
+        mount_lbl = "step-mount" if stair_mount == "step" else f"side-mount Ø{stud_size}"
+        add(
+            "studs",
+            f"SS studs · {mount_lbl} · {studs_per_glass or 2}/glass × {(len(stair_panels) if stair_panels else panels_cfg) or 1}",
+            stair_studs,
+            "pc",
+            r_stud or r_block,
+            material=_mat_for("stud"),
+            color_role="stud",
+        )
+    # Bill anchors whenever counted and a rate is set (incl. continuous 1/RFT base count).
+    if anchor_count and r_anchor > 0:
         add("anchors", "Anchor bolts", anchor_count, "pc", r_anchor, material=_mat_for("anchor"), color_role="anchor")
     if want_bottom and r_brail and total_length_mm:
         brail_mat = _mat_for("bottom_rail", "u_channel")
-        add("bottomRail", f"Bottom / continuous rail · {mount_hint}", round(rail_unit_len, 3), sale_unit, r_brail,
+        br_label = f"Bottom / continuous rail · {mount_hint}"
+        if cfg.get("bottomSize"):
+            br_label += f" · {cfg.get('bottomSize')}"
+        add("bottomRail", br_label, round(rail_unit_len, 3), sale_unit, r_brail,
             weight=rail_unit_len * w_brail if w_brail else None, material=brail_mat, color_role="bottom_rail")
+        if items and cfg.get("bottomSize") and not items[-1].get("sizeMm"):
+            items[-1]["sizeMm"] = str(cfg.get("bottomSize"))
     if handrail_on and r_hrail and total_length_mm:
-        add("handrail", "Handrail", round(rail_unit_len, 3), sale_unit, r_hrail,
+        hr_label = "Handrail"
+        if cfg.get("handrailSize"):
+            hr_label += f" · {cfg.get('handrailSize')}"
+        add("handrail", hr_label, round(rail_unit_len, 3), sale_unit, r_hrail,
             weight=rail_unit_len * w_hrail if w_hrail else None, material=_mat_for("handrail"), color_role="handrail")
+        if items and cfg.get("handrailSize") and not items[-1].get("sizeMm"):
+            items[-1]["sizeMm"] = str(cfg.get("handrailSize"))
     if bend_count and (r_bend or True):
         add("modularBend", "Modular bend (corners)", bend_count, "pc", r_bend, material=_mat_for("bend"), color_role="bend")
     if connector_180 and (r_conn180 or True):
@@ -1180,15 +1299,10 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         commercial_rmt=commercial_rmt,
     )
 
-    # Prefer cascade selling: always for stairs; for normal when cascade inputs present
-    # OR always for non-stair (same formula as stairs, wastage already zeroed).
-    use_cascade = bool(
-        shape != "staircase"
-        or overhead_pct or markup_pct or installation or transport
-        or cfg.get("hardwareCost") not in (None, "")
-        or shape == "staircase"
-    )
-    # Force cascade for all railing shapes (shared commercial path).
+    # Prefer cascade sellingPrice (BOM materials + overhead + markup).
+    # manualRatePerUnit is an explicit commercial override from the designer
+    # "Manual rate" field only — cart "selling rate" must NOT be stuffed in here
+    # or BOM line rates stop flowing into Total Amount.
     use_cascade = True
     total = round(cost["sellingPrice"] if use_cascade else (items_total + extras_total), 2)
     per_unit_rate = (
@@ -1196,6 +1310,9 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     ) if use_cascade else (round((items_total + extras_total) / width_unit, 2) if width_unit else 0.0)
     manual = cfg.get("manualRatePerUnit")
     manual_rate = _f(manual) if manual not in (None, "") else None
+    # Treat 0 as "no override" so empty/zero inputs don't wipe the cascade.
+    if manual_rate is not None and manual_rate <= 0:
+        manual_rate = None
     selling_per_unit = manual_rate if manual_rate is not None else per_unit_rate
     selling_total = round(selling_per_unit * width_unit, 2) if width_unit else round(total, 2)
 
@@ -1319,6 +1436,12 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "bendCount": bend_count, "connector180Count": connector_180, "endCapCount": end_caps,
         "stairPillars": stair_pillars, "stairStuds": stair_studs,
         "stairStudAnchors": stair_stud_anchors, "studSizeMm": stud_size,
+        "studsPerGlass": studs_per_glass if shape == "staircase" else None,
+        "stairMountType": stair_mount if shape == "staircase" else None,
+        "stairBottomType": str(cfg.get("stairBottomType") or ("ss" if want_ss else "block")) if shape == "staircase" else None,
+        "bottomKind": str(cfg.get("bottomKind") or ("continuous" if continuous_rail else ("ss_pillar" if want_ss else "block"))) if shape != "staircase" else None,
+        "bottomSize": str(cfg.get("bottomSize") or "") or None,
+        "handrailSize": str(cfg.get("handrailSize") or "") or None,
         "studStations": stud_stations,
         "stairGeometry": stair_geo,
         "segments": run_details,

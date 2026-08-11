@@ -217,14 +217,23 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
     factory PDFs can redraw the designed elevation and print BOM details.
     """
     from WEOS.factory.line_kind import railing_product_type_for_line
-    from WEOS.factory.railing_engine import compute_railing, ensure_railing_dims, railing_svg
+    from WEOS.factory.railing_engine import (
+        compute_railing,
+        ensure_railing_dims,
+        format_railing_description,
+        railing_svg,
+    )
 
     opts_in = line.get("options") if isinstance(line.get("options"), Mapping) else {}
     cfg = (opts_in or {}).get("railing") if isinstance(opts_in, Mapping) else {}
     cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
     # Staircase product type without an explicit shape → stair world (no window fallback).
+    # Prefer live cfg.shape when set (Normal/straight must not resurrect staircase).
     if not cfg.get("shape") and railing_product_type_for_line(line) == "staircase_railing":
         cfg["shape"] = "staircase"
+    # Do NOT copy cart sellingRate into manualRatePerUnit — that froze Total Amount
+    # at RFT×old rate and dropped BOM / material rate edits from the cascade.
+    # Only options.railing.manualRatePerUnit (designer Manual rate) may override.
     # Cart width/height (mm) must drive designer length when options.railing is empty
     # or missing lengthMm — otherwise PDF drew a collapsed 1 mm stub.
     cfg = ensure_railing_dims(
@@ -322,17 +331,21 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
         "sellingAmount": subtotal,
         "qty": qty,
     }
+    # Always rebuild from the live quote — never keep a stale cart description
+    # (e.g. "staircase · 4 panels" after switching to Normal / straight).
+    description = format_railing_description(q, cfg)
+    display = "Staircase railing" if ptype == "staircase_railing" else "Railing"
+    prior_name = str(line.get("displayName") or "")
+    if ptype != "staircase_railing" and prior_name and "stair" not in prior_name.lower():
+        display = prior_name
     return {
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
         "product": product_id,
         "productType": ptype,
-        "displayName": line.get("displayName") or ("Staircase railing" if ptype == "staircase_railing" else "Railing"),
+        "displayName": display,
         "category": "Railings",
         "status": "railing",
-        "description": line.get("description") or (
-            f"Railing · {q.get('shape') or 'straight'} · {q.get('lengthMm') or 0} mm · "
-            f"{q.get('panelCount') or 0} panels"
-        ),
+        "description": description,
         "width": float(line.get("width") or q.get("lengthMm") or 0),
         "height": float(line.get("height") or q.get("heightMm") or q.get("glassHeightMm") or 0),
         "qty": qty,
@@ -342,6 +355,12 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
         "commercialTotal": subtotal,
         "railing": q,
         "options": opts_out,
+        # Explicitly absent — never inherit window Product Library / series setup.
+        "sectionSeries": None,
+        "sectionSpecs": {},
+        "sectionDetails": [],
+        "layout": {},
+        "specifications": {},
         "glass": glass_pieces,
         "hardware": [],
         "materials": lib_materials,
@@ -361,7 +380,7 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
             "saleUnit": sale_unit,
         },
         "preview": {"svg": svg},
-        "note": "Railing — priced from the railing designer (cost ÷ width = per-unit rate; user rate override applies).",
+        "note": "Railing — BOM rates → cost cascade → per-unit rate; designer Manual rate only when set.",
     }
 
 

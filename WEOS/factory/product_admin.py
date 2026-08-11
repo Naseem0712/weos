@@ -247,6 +247,19 @@ def update_product(product_id: str, payload: Mapping[str, Any]) -> dict[str, Any
             except Exception:  # pragma: no cover
                 pass
 
+    # Railing worlds must never keep window series / catalogue / setup metadata.
+    if ptype in ("railing", "staircase_railing", "pergolas"):
+        meta["setup"] = {}
+        meta["catalogue"] = {}
+        meta["sectionSeries"] = None
+        specs = dict(meta.get("specifications") or {})
+        for k in (
+            "profileSeries", "sectionSizeMm", "standardLength", "wallThicknessMm",
+            "track", "sash", "interlock", "trackOptions", "glassTypes",
+        ):
+            specs.pop(k, None)
+        meta["specifications"] = specs
+
     # Validate material formulas
     issues: list[str] = []
     for i, mat in enumerate(meta.get("materials") or []):

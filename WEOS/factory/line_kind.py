@@ -164,12 +164,13 @@ def is_railing_cart_line(line: Mapping[str, Any] | None) -> bool:
 
 
 def railing_product_type_for_line(line: Mapping[str, Any] | None) -> str:
-    """``staircase_railing`` or ``railing`` for a railing cart line."""
+    """``staircase_railing`` or ``railing`` for a railing cart line.
+
+    Prefer the live designer ``options.railing.shape`` over a stale
+    ``productType`` (e.g. leftover staircase_railing after switching to Normal).
+    """
     if not isinstance(line, Mapping):
         return "railing"
-    pt = normalize_product_type(line.get("productType"))
-    if pt == "staircase_railing":
-        return "staircase_railing"
     opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
     cfg = opts.get("railing") if isinstance(opts, Mapping) else None
     shape = ""
@@ -180,6 +181,15 @@ def railing_product_type_for_line(line: Mapping[str, Any] | None) -> str:
         shape = str(q.get("shape") or "").lower()
     if not shape and isinstance(line.get("railing"), Mapping):
         shape = str((line.get("railing") or {}).get("shape") or "").lower()
-    if shape == "staircase" or "stair" in str(line.get("category") or "").lower():
+    if shape in ("stairs", "stair"):
+        shape = "staircase"
+    if shape == "staircase":
+        return "staircase_railing"
+    if shape in ("straight", "l", "u", "polyline", "arch"):
+        return "railing"
+    pt = normalize_product_type(line.get("productType"))
+    if pt == "staircase_railing":
+        return "staircase_railing"
+    if "stair" in str(line.get("category") or "").lower():
         return "staircase_railing"
     return "railing"

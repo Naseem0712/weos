@@ -211,6 +211,19 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
 
 def apply_selling_to_line_result(result: dict[str, Any], line: Mapping[str, Any]) -> dict[str, Any]:
     """Attach commercial selling fields onto a calculate_line result."""
+    from WEOS.factory.line_kind import is_railing_cart_line
+
+    # Railing lines already carry commercial totals from the designer — do not
+    # attach window sectionSpecs / series metadata or reprice via sqft sell_amount.
+    if is_railing_cart_line(result) or is_railing_cart_line(line):
+        out = dict(result)
+        out.setdefault("sectionSeries", None)
+        out.setdefault("sectionSpecs", {})
+        out.setdefault("sectionDetails", [])
+        out.setdefault("specifications", {})
+        out.setdefault("layout", {})
+        return out
+
     product = load_product(str(result.get("product") or line.get("product") or ""), strict=False)
     sale_unit = str(line.get("saleUnit") or default_sale_unit(product))
     selling_rate = line.get("sellingRate")
