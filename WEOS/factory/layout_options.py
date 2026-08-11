@@ -340,4 +340,23 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
         "gridSpec": grid_spec,
         "sectionSeries": line.get("sectionSeries") or (opts or {}).get("sectionSeries"),
         "grid": line.get("grid") or (opts or {}).get("grid") or (opts or {}).get("grille"),
+        "panelFill": _panel_fill_from_pick(line, opts),
+        "features": (opts or {}).get("features") if isinstance((opts or {}).get("features"), (list, dict)) else line.get("features"),
     }
+
+
+def _panel_fill_from_pick(line: Mapping[str, Any], opts: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    try:
+        from WEOS.factory.panel_fills import normalize_panel_fill, panel_fill_from_line
+
+        merged = dict(line or {})
+        if isinstance(opts, Mapping):
+            merged.setdefault("options", opts)
+            if opts.get("panelFill") and "panelFill" not in merged:
+                merged["panelFill"] = opts.get("panelFill")
+        fill = panel_fill_from_line(merged)
+        if (fill or {}).get("fillType") in (None, "", "glass"):
+            return None
+        return normalize_panel_fill(fill)
+    except Exception:
+        return None

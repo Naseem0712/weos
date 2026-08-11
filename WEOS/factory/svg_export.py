@@ -682,14 +682,34 @@ def render_svg_string(
         return "\n".join(parts)
 
     # Glass first (filled), then profile outlines on top
-    for pl in model.polylines:
-        if pl.layer != "GLASS" or len(pl.points) < 2:
-            continue
-        pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
-        parts.append(
-            f'<polygon points="{pts}" fill="{glass_fill}" stroke="{glass_stroke}" '
-            f'stroke-width="{sw_profile * 0.75:.2f}"/>'
-        )
+    panel_fill = None
+    try:
+        from WEOS.factory.panel_fills import normalize_panel_fill, svg_fill_for_rect
+
+        raw_fill = (model.metadata or {}).get("panel_fill") or (model.metadata or {}).get("panelFill")
+        if isinstance(raw_fill, Mapping) and str(raw_fill.get("fillType") or "glass") != "glass":
+            panel_fill = normalize_panel_fill(raw_fill)
+    except Exception:
+        panel_fill = None
+
+    glasses_early = _glass_panels(model)
+    if panel_fill:
+        for _name, gx0, gy0, gx1, gy1 in glasses_early:
+            parts.extend(
+                svg_fill_for_rect(
+                    x0=gx0, y0=gy0, x1=gx1, y1=gy1,
+                    fill=panel_fill, tx=tx, ty=ty, k=k, annotate=annotations or pdf,
+                )
+            )
+    else:
+        for pl in model.polylines:
+            if pl.layer != "GLASS" or len(pl.points) < 2:
+                continue
+            pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
+            parts.append(
+                f'<polygon points="{pts}" fill="{glass_fill}" stroke="{glass_stroke}" '
+                f'stroke-width="{sw_profile * 0.75:.2f}"/>'
+            )
 
     for pl in model.polylines:
         if pl.layer in ("GLASS", "HARDWARE") or len(pl.points) < 2:
@@ -978,6 +998,10 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
             handle_overrides=lo.get("handleOverrides"),
             grid=lo.get("gridSpec"),
         )
+        if lo.get("panelFill"):
+            from WEOS.factory.panel_fills import attach_fill_to_drawing
+
+            attach_fill_to_drawing(job.drawing, lo.get("panelFill"))
         return render_svg_string(
             job.drawing,
             colour=str(colour).lower().replace(" ", "_"),

@@ -253,6 +253,8 @@ class PreviewRequest(BaseModel):
     railing: dict[str, Any] | None = None
     productType: str | None = None
     category: str | None = None
+    panelFill: dict[str, Any] | None = None
+    features: list[dict[str, Any]] | None = None
 
 
 class FormulaPreviewRequest(BaseModel):
@@ -880,6 +882,20 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             handle_overrides=body.handleOverrides,
             grid=body.grid if str(body.system or "").lower() == "grid" else None,
         )
+        pf = getattr(body, "panelFill", None)
+        if not pf and getattr(body, "features", None):
+            try:
+                from WEOS.factory.panel_fills import panel_fill_from_line
+
+                pf = panel_fill_from_line({"features": body.features, "panelFill": None})
+                if (pf or {}).get("fillType") == "glass":
+                    pf = None
+            except Exception:
+                pf = None
+        if pf:
+            from WEOS.factory.panel_fills import attach_fill_to_drawing
+
+            attach_fill_to_drawing(job.drawing, pf)
         svg = render_svg_string(
             job.drawing,
             colour=body.colour.lower().replace(" ", "_"),

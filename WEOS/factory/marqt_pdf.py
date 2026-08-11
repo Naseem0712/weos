@@ -349,6 +349,14 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
             lines.append(f"Glazing = {gname}")
     elif isinstance(glass, str) and glass.strip():
         lines.append(f"Glazing = {str(glass).replace('_', ' ')}")
+    # Optional panel fill (louvers / sheet) — replaces glass description when set
+    try:
+        from WEOS.factory.panel_fills import fill_spec_lines, panel_fill_from_line
+
+        for s in fill_spec_lines(panel_fill_from_line(line)):
+            lines.append(s)
+    except Exception:
+        pass
     colour = opts.get("colour") or line.get("colour")
     pc_name = opts.get("powderCoatName") or line.get("powderCoatName")
     if pc_name and str(pc_name).strip():

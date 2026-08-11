@@ -63,6 +63,16 @@ def _persist_window_options(
         _v = lo.get(_k) or line.get(_k) or (_opts_in or {}).get(_k)
         if _v:
             options[_k] = _v
+    # Optional panel fill (glass → louvers / sheet) — composable feature, not a product type.
+    pf = lo.get("panelFill") or line.get("panelFill") or (_opts_in or {}).get("panelFill")
+    if isinstance(pf, Mapping) and str(pf.get("fillType") or "glass") != "glass":
+        options["panelFill"] = dict(pf)
+        feats = options.get("features")
+        if not isinstance(feats, list):
+            feats = list(feats) if isinstance(feats, tuple) else []
+        if not any(isinstance(f, Mapping) and str(f.get("type") or "") == "panel_fill" for f in feats):
+            feats.append({"type": "panel_fill", **dict(pf)})
+        options["features"] = feats
     # Fold lines must never carry a sliding trackCount that prints as "2-track"
     if str(options.get("system") or "").lower() in ("bifold", "fold", "fold_sliding", "fold_and_sliding"):
         options.pop("trackCount", None)
@@ -373,6 +383,10 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
                 handle_overrides=lo.get("handleOverrides"),
                 grid=lo.get("gridSpec"),
             )
+            if lo.get("panelFill"):
+                from WEOS.factory.panel_fills import attach_fill_to_drawing
+
+                attach_fill_to_drawing(job.drawing, lo.get("panelFill"))
             result["preview"] = {
                 "svg": render_svg_string(
                     job.drawing,
@@ -456,6 +470,10 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
         handle_overrides=lo.get("handleOverrides"),
         grid=lo.get("gridSpec"),
     )
+    if lo.get("panelFill"):
+        from WEOS.factory.panel_fills import attach_fill_to_drawing
+
+        attach_fill_to_drawing(job.drawing, lo.get("panelFill"))
     quote = job.quotation.as_dict() if job.quotation else {}
     weight = job.weight.as_dict() if job.weight else {}
     colour = (line.get("colour") or "white")

@@ -393,6 +393,37 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             </div>
             <div class="grow"><label class="l">Description</label><input id="lineDesc" placeholder="Customer-facing description"/></div>
           </div>
+          <!-- Composable add-on: glass replacement (louvers / sheet) — not a product-type change -->
+          <div id="addFeatureBox" style="margin-top:.55rem;padding:.55rem .65rem;border:1px dashed var(--line);border-radius:10px;background:rgba(0,0,0,.015)">
+            <div class="row" style="align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap">
+              <strong style="font-size:.82rem">Add feature</strong>
+              <span class="muted" style="font-size:.72rem">Optional — replace glass in leaves without changing product type</span>
+            </div>
+            <div class="row" style="margin-top:.4rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
+              <div><label class="l">Panel fill</label>
+                <select id="lineFillType" style="width:150px">
+                  <option value="glass" selected>Glass (default)</option>
+                  <option value="louvers">Louvers</option>
+                  <option value="aluminium_sheet">Aluminium sheet</option>
+                  <option value="compact_sheet">Compact sheet</option>
+                </select>
+              </div>
+              <div id="wrapLouverOpts" style="display:none;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end" class="row">
+                <div><label class="l">Orientation</label>
+                  <select id="lineLouverOrient" style="width:120px">
+                    <option value="horizontal" selected>Horizontal</option>
+                    <option value="vertical">Vertical</option>
+                  </select>
+                </div>
+                <div><label class="l">Gap mm</label><input id="lineLouverGap" type="number" min="0" step="1" value="20" style="width:70px" title="Gap between every louver"/></div>
+                <div><label class="l">Blade W mm</label><input id="lineLouverBladeW" type="number" min="1" step="1" value="50" style="width:70px" title="Blade face width"/></div>
+                <div><label class="l">Depth mm</label><input id="lineLouverDepth" type="number" min="1" step="1" value="70" style="width:70px" title="Blade depth (shop drawing ~70)"/></div>
+                <div><label class="l">Thk mm</label><input id="lineLouverThk" type="number" min="0.5" step="0.5" value="3" style="width:60px" title="Blade thickness"/></div>
+              </div>
+              <div id="wrapSheetOpts" style="display:none"><label class="l">Sheet thk mm</label><input id="lineSheetThk" type="number" min="0.5" step="0.5" value="3" style="width:70px"/></div>
+            </div>
+            <p class="muted" style="margin:.35rem 0 0;font-size:.7rem">Hook for later: Pergola → Insert window (feature <code>window_in_pergola</code>) nests a window job in a bay without dumping window tools into the pergola toolbar.</p>
+          </div>
           </div><!-- /#windowCartTools — hidden when product world is railing -->
           <div class="livebox" id="livePriceBox">
             <div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.06em">Live amount</div>
@@ -1783,7 +1814,7 @@ function systemForProduct(p) {
   if (t.includes('casement') || t.includes('openable') || t.includes('opening')) return 'casement';
   if (t.includes('bifold') || t.includes('fold')) return 'bifold';
   if (t.includes('grid') || t.includes('partition')) return 'grid';
-  if (t.includes('slid') || t.includes('tele') || t.includes('sync') || t === 'windows' || t === 'door') return 'sliding';
+  if (t.includes('slid') || t.includes('tele') || t.includes('sync') || t === 'windows' || t === 'door' || t === 'style') return 'sliding';
   return null; // section_series / unknown → leave current selection
 }
 function selectedProductMeta() {
@@ -1892,6 +1923,7 @@ function syncDraftFromLine(ln) {
   if ($('lineHandleName')) $('lineHandleName').value = ln.handleName || '';
   if ($('lineMeshName')) $('lineMeshName').value = ln.meshName || '';
   applyMeshNameVisibility();
+  applyPanelFillToForm(ln.panelFill || (ln.options && ln.options.panelFill) || null);
   if (ln.grid && typeof ln.grid === 'object') {
     state.draftGrid = { cols: (ln.grid.cols || [1, 1]).slice(), rows: (ln.grid.rows || [1]).slice(), cells: (ln.grid.cells || []).map(x => ({ ...x })) };
     if ($('gridCols')) $('gridCols').value = state.draftGrid.cols.join(',');
@@ -1944,6 +1976,8 @@ function currentLineDraft() {
     meshName: ($('lineMeshName') && $('lineMeshName').value.trim()) || null,
     // Powder-coat colour is merged into the single Colour field — use its label.
     powderCoatName: colourLabel(),
+    panelFill: currentPanelFill(),
+    features: currentPanelFill() ? [{ type: 'panel_fill', ...currentPanelFill() }] : null,
   };
 }
 
@@ -1952,6 +1986,47 @@ function colourLabel() {
   if (!el) return null;
   const opt = el.options[el.selectedIndex];
   return (opt && opt.textContent && opt.textContent.trim()) || el.value || null;
+}
+
+function syncFillFeatureUi() {
+  const ft = ($('lineFillType') && $('lineFillType').value) || 'glass';
+  const lou = $('wrapLouverOpts');
+  const sh = $('wrapSheetOpts');
+  if (lou) lou.style.display = ft === 'louvers' ? 'flex' : 'none';
+  if (sh) sh.style.display = (ft === 'aluminium_sheet' || ft === 'compact_sheet') ? '' : 'none';
+}
+function currentPanelFill() {
+  const ft = ($('lineFillType') && $('lineFillType').value) || 'glass';
+  if (ft === 'glass') return null;
+  if (ft === 'louvers') {
+    return {
+      fillType: 'louvers',
+      orientation: ($('lineLouverOrient') && $('lineLouverOrient').value) || 'horizontal',
+      gapMm: ($('lineLouverGap') && +$('lineLouverGap').value) || 20,
+      bladeWidthMm: ($('lineLouverBladeW') && +$('lineLouverBladeW').value) || 50,
+      bladeDepthMm: ($('lineLouverDepth') && +$('lineLouverDepth').value) || 70,
+      bladeThicknessMm: ($('lineLouverThk') && +$('lineLouverThk').value) || 3,
+    };
+  }
+  return {
+    fillType: ft,
+    thicknessMm: ($('lineSheetThk') && +$('lineSheetThk').value) || 3,
+  };
+}
+function applyPanelFillToForm(pf) {
+  if (!pf || typeof pf !== 'object') {
+    if ($('lineFillType')) $('lineFillType').value = 'glass';
+    syncFillFeatureUi();
+    return;
+  }
+  if ($('lineFillType')) $('lineFillType').value = pf.fillType || 'glass';
+  if ($('lineLouverOrient') && pf.orientation) $('lineLouverOrient').value = pf.orientation;
+  if ($('lineLouverGap') && pf.gapMm != null) $('lineLouverGap').value = pf.gapMm;
+  if ($('lineLouverBladeW') && pf.bladeWidthMm != null) $('lineLouverBladeW').value = pf.bladeWidthMm;
+  if ($('lineLouverDepth') && pf.bladeDepthMm != null) $('lineLouverDepth').value = pf.bladeDepthMm;
+  if ($('lineLouverThk') && pf.bladeThicknessMm != null) $('lineLouverThk').value = pf.bladeThicknessMm;
+  if ($('lineSheetThk') && pf.thicknessMm != null) $('lineSheetThk').value = pf.thicknessMm;
+  syncFillFeatureUi();
 }
 
 function scheduleLivePrice() {
@@ -2196,6 +2271,9 @@ async function refreshPreview() {
       handleName: ln.handleName || null,
       meshName: ln.meshName || null,
       powderCoatName: ln.powderCoatName || null,
+      panelFill: ln.panelFill || currentPanelFill() || null,
+      features: ln.features || null,
+      productType: ln.productType || null,
     }});
     if (prev.meshTrack && prev.meshTrack.shifted && $('lineTrack')) {
       $('lineTrack').value = String(prev.trackCount || 3);
@@ -3168,6 +3246,12 @@ applyMeshNameVisibility();
   const el = $(id); if (!el) return;
   el.addEventListener('change', () => { refreshPreview(); scheduleLivePrice(); });
 });
+['lineFillType','lineLouverOrient','lineLouverGap','lineLouverBladeW','lineLouverDepth','lineLouverThk','lineSheetThk'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('change', () => { syncFillFeatureUi(); refreshPreview(); scheduleLivePrice(); });
+  el.addEventListener('input', () => { if (id !== 'lineFillType' && id !== 'lineLouverOrient') refreshPreview(); });
+});
+if ($('lineFillType')) syncFillFeatureUi();
 // Partition grid designer controls
 if ($('btnGridBuild')) $('btnGridBuild').onclick = () => rebuildGrid();
 ['gridCols','gridRows'].forEach(id => {
