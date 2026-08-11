@@ -817,12 +817,15 @@ def _compute_bifold_layout(
 
     notes: list[str] = []
     W, H = float(width), float(height)
+    # Soft envelope only — never shrink the drawing/PDF dims (canvas must match quote).
     if W > BIFOLD_MAX_WIDTH_MM:
-        notes.append(f"Width clamped to max 25 ft ({BIFOLD_MAX_WIDTH_MM:.0f} mm) for Fold & Sliding")
-        W = BIFOLD_MAX_WIDTH_MM
+        notes.append(
+            f"Width {W:g} mm exceeds recommended max 25 ft ({BIFOLD_MAX_WIDTH_MM:.0f} mm) for Fold & Sliding"
+        )
     if H > BIFOLD_MAX_HEIGHT_MM:
-        notes.append(f"Height clamped to max 12 ft ({BIFOLD_MAX_HEIGHT_MM:.0f} mm) for Fold & Sliding")
-        H = BIFOLD_MAX_HEIGHT_MM
+        notes.append(
+            f"Height {H:g} mm exceeds recommended max 12 ft ({BIFOLD_MAX_HEIGHT_MM:.0f} mm) for Fold & Sliding"
+        )
 
     L = max(int(fold_left) if fold_left is not None else 2, 0)
     R = max(int(fold_right) if fold_right is not None else 1, 0)
@@ -884,7 +887,8 @@ def _compute_bifold_layout(
         fix_panels=(),
         mullions=(),
         mesh=False,
-        track_count=2.0,
+        # Fold systems are not multi-track sliders — 0 avoids false "2-track" specs.
+        track_count=0.0,
         sliding_area=track,
         shutters=tuple(leaves),
         glass_count=L + R,

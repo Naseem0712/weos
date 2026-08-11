@@ -16,6 +16,84 @@ from WEOS.factory.project_store import new_quotation_id
 from WEOS.factory.svg_export import layout_summary_for_job, render_svg_string
 
 
+def _persist_window_options(
+    lo: Mapping[str, Any],
+    line: Mapping[str, Any],
+    *,
+    base: Mapping[str, Any] | None = None,
+    track_count: float | None = None,
+) -> dict[str, Any]:
+    """Options blob that PDF elevation re-derive must see (system/fold/sections)."""
+    options: dict[str, Any] = dict(base or {})
+    options["glass"] = line.get("glass") if line.get("glass") is not None else options.get("glass")
+    options["colour"] = line.get("colour") if line.get("colour") is not None else options.get("colour")
+    options["handle"] = line.get("handle") if line.get("handle") is not None else options.get("handle")
+    options["partitions"] = lo.get("partitions") or options.get("partitions") or []
+    options["mesh"] = bool(lo.get("mesh"))
+    if track_count is not None:
+        options["trackCount"] = float(track_count)
+    elif lo.get("trackCount") is not None:
+        options["trackCount"] = float(lo.get("trackCount"))
+    options["system"] = lo.get("system") or options.get("system") or "sliding"
+    if lo.get("glassCount") is not None:
+        options["glassShutters"] = lo.get("glassCount")
+    if lo.get("meshCount") is not None:
+        options["meshShutters"] = lo.get("meshCount")
+    if lo.get("opening"):
+        options["opening"] = lo.get("opening")
+    if lo.get("fixShuttersRaw") not in (None, ""):
+        options["fixShutters"] = lo.get("fixShuttersRaw")
+    if lo.get("foldLeft") is not None:
+        options["foldLeft"] = lo.get("foldLeft")
+    if lo.get("foldRight") is not None:
+        options["foldRight"] = lo.get("foldRight")
+    if lo.get("sectionSizes"):
+        options["sectionSizes"] = lo.get("sectionSizes")
+    if lo.get("handleLevel") is not None:
+        options["handleLevel"] = lo.get("handleLevel")
+    if lo.get("handleOverrides"):
+        options["handleOverrides"] = lo.get("handleOverrides")
+    if lo.get("gridSpec"):
+        options["grid"] = lo.get("gridSpec")
+    series = lo.get("sectionSeries") or line.get("sectionSeries")
+    if series:
+        options["sectionSeries"] = series
+    _opts_in = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    for _k in ("handleName", "meshName", "powderCoatName", "handleFinish"):
+        _v = lo.get(_k) or line.get(_k) or (_opts_in or {}).get(_k)
+        if _v:
+            options[_k] = _v
+    # Fold lines must never carry a sliding trackCount that prints as "2-track"
+    if str(options.get("system") or "").lower() in ("bifold", "fold", "fold_sliding", "fold_and_sliding"):
+        options.pop("trackCount", None)
+    return options
+
+
+def _section_details_for_product(product: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """Series Setup section rows for quote specs (name / dims / weight / std length)."""
+    if not isinstance(product, Mapping):
+        return []
+    setup = product.get("setup")
+    if isinstance(setup, Mapping) and setup:
+        try:
+            from WEOS.factory.product_setup import flatten_setup_sections
+
+            rows = flatten_setup_sections(setup)
+            if rows:
+                return rows
+        except Exception:
+            pass
+    cat = product.get("catalogue") if isinstance(product.get("catalogue"), Mapping) else {}
+    sizes = (cat or {}).get("sectionSizes") if isinstance(cat, Mapping) else None
+    if isinstance(sizes, Mapping) and sizes:
+        return [
+            {"name": k, "use": k, "wMm": v, "hMm": None}
+            for k, v in sizes.items()
+            if v is not None
+        ]
+    return []
+
+
 def _stub_line_result(line: Mapping[str, Any], product: Mapping[str, Any]) -> dict[str, Any]:
     qty = int(line.get("qty") or line.get("quantity") or 1)
     quote = product.get("quotation") or {}
@@ -31,11 +109,13 @@ def _stub_line_result(line: Mapping[str, Any], product: Mapping[str, Any]) -> di
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
         "product": product.get("id"),
         "displayName": product.get("displayName"),
+        "description": line.get("description") or product.get("displayName"),
         "category": product.get("category", "Windows"),
         "status": "stub",
         "width": float(line.get("width", 0)),
         "height": float(line.get("height", 0)),
         "qty": qty,
+        "options": {},
         "glass": [],
         "hardware": [],
         "brush": {"totalMeters": 0, "pieces": []},
@@ -109,44 +189,98 @@ def _error_line_result(line: Mapping[str, Any], error: str = "") -> dict[str, An
     }
 
 
+def _is_railing_cart_line(line: Mapping[str, Any]) -> bool:
+    """True when a cart line is a railing designer product (not a window)."""
+    if not isinstance(line, Mapping):
+        return False
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    if isinstance(opts, Mapping) and isinstance(opts.get("railing"), Mapping):
+        return True
+    if str(line.get("status") or "").lower() == "railing":
+        return True
+    if isinstance(line.get("railing"), Mapping):
+        return True
+    pid = str(line.get("product") or line.get("productId") or "").lower()
+    return pid in ("railing", "railings_stub", "glass_railings") or "railing" in pid
+
+
 def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
     """Price a railing line from its own designer config (no window geometry).
 
     Uses :func:`railing_engine.compute_railing` for the cost breakdown and the
     2D SVG. The customer price is the railing ``sellingTotal`` (per-unit rate ×
     width, or the user's manual rate override) × qty.
+
+    Always refreshes ``options.railing`` + ``options.railingQuote`` so customer /
+    factory PDFs can redraw the designed elevation and print BOM details.
     """
     from WEOS.factory.railing_engine import compute_railing, railing_svg
 
-    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
-    cfg = (opts or {}).get("railing") if isinstance(opts, Mapping) else {}
-    cfg = cfg if isinstance(cfg, Mapping) else {}
+    opts_in = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    cfg = (opts_in or {}).get("railing") if isinstance(opts_in, Mapping) else {}
+    cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
     q = compute_railing(cfg)
     qty = int(line.get("qty") or line.get("quantity") or 1)
     unit_total = float(q.get("sellingTotal") or 0.0)
     subtotal = round(unit_total * qty, 2)
+    sale_unit = str(q.get("saleUnit") or line.get("saleUnit") or "rft").lower()
+    billable = float(q.get("widthUnit") or (q.get("lengthRft") if sale_unit == "rft" else q.get("lengthRmt")) or 0)
+    glass_spec = " · ".join(
+        str(x) for x in (
+            f"{q.get('glassThicknessMm') or cfg.get('glassThicknessMm') or 12} mm",
+            cfg.get("glassType") or cfg.get("glassColour") or q.get("glassType"),
+            cfg.get("glassBrand") or q.get("glassBrand"),
+        ) if x
+    ) or "railing glass"
 
     glass_pieces = [
-        {"qty": 1, "width": round(w, 1), "height": round(float(q.get("heightMm") or 0), 1),
-         "thicknessMm": float(cfg.get("glassThicknessMm") or 12), "spec": "railing glass"}
+        {"qty": 1, "width": round(w, 1), "height": round(float(q.get("heightMm") or q.get("glassHeightMm") or 0), 1),
+         "thicknessMm": float(q.get("glassThicknessMm") or cfg.get("glassThicknessMm") or 12),
+         "spec": glass_spec}
         for w in (q.get("panelWidthsMm") or [])
     ]
     bom = [
         {"name": it.get("label"), "qty": it.get("qty"), "unit": it.get("unit"),
-         "rate": it.get("rate"), "amount": it.get("amount")}
+         "rate": it.get("rate"), "amount": it.get("amount"),
+         "color": it.get("color"), "grade": it.get("grade"), "sizeMm": it.get("sizeMm")}
         for it in (q.get("items") or [])
     ]
+    # Persist cfg + fresh quote so PDF draw_line_elevation / _spec_lines never lose the design.
+    opts_out = dict(opts_in) if isinstance(opts_in, Mapping) else {}
+    opts_out["railing"] = cfg
+    opts_out["railingQuote"] = q
+    opts_out["commercialOnly"] = q.get("commercial") or {
+        "sellingRatePerUnit": q.get("sellingPerUnit"),
+        "saleUnit": sale_unit,
+    }
+    svg = railing_svg(cfg, quote=q)
+    selling = {
+        "saleUnit": sale_unit,
+        "saleUnitLabel": f"Per {sale_unit.upper()}",
+        "sellingRate": float(q.get("sellingPerUnit") or 0.0),
+        "billableQty": round(billable * qty, 4),
+        "sellingAmount": subtotal,
+        "qty": qty,
+    }
     return {
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
         "product": "railing",
         "displayName": line.get("displayName") or "Railing",
         "category": "Railing",
         "status": "railing",
+        "description": line.get("description") or (
+            f"Railing · {q.get('shape') or 'straight'} · {q.get('lengthMm') or 0} mm · "
+            f"{q.get('panelCount') or 0} panels"
+        ),
         "width": float(line.get("width") or q.get("lengthMm") or 0),
-        "height": float(line.get("height") or q.get("heightMm") or 0),
+        "height": float(line.get("height") or q.get("heightMm") or q.get("glassHeightMm") or 0),
         "qty": qty,
+        "saleUnit": sale_unit,
+        "sellingRate": float(q.get("sellingPerUnit") or 0.0),
+        "selling": selling,
+        "commercialTotal": subtotal,
         "railing": q,
-        "options": dict(opts) if isinstance(opts, Mapping) else {},
+        "options": opts_out,
         "glass": glass_pieces,
         "hardware": [],
         "materials": [],
@@ -163,9 +297,9 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
             "markupPercent": 0,
             "gstPercent": 0,
             "total": subtotal,
-            "saleUnit": q.get("saleUnit"),
+            "saleUnit": sale_unit,
         },
-        "preview": {"svg": railing_svg(cfg, quote=q)},
+        "preview": {"svg": svg},
         "note": "Railing — priced from the railing designer (cost ÷ width = per-unit rate; user rate override applies).",
     }
 
@@ -178,8 +312,7 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
 
     product_id = str(line.get("product") or line.get("productId") or "29mm_sliding")
     # Railing lines are self-priced from their designer config.
-    _opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
-    if product_id.lower() == "railing" or (isinstance(_opts, Mapping) and isinstance(_opts.get("railing"), Mapping)):
+    if _is_railing_cart_line(line):
         try:
             return _railing_line_result(line)
         except Exception as exc:  # pragma: no cover - keep the quote rendering
@@ -235,19 +368,45 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
             result["layout"] = layout_summary_for_job(
                 width=width, height=height, layout_meta=job.layout_meta
             )
-            # Resolve glass so specs don't show "? glass".
-            if job.glass and hasattr(job.glass[0], "as_dict"):
-                result["glass"] = [g.as_dict() for g in job.glass]
+            # Resolve glass so specs don't show blank glazing.
+            glass_out = []
+            for g in job.glass or []:
+                if hasattr(g, "as_dict"):
+                    d = g.as_dict()
+                    glass_out.append(
+                        {
+                            "name": d.get("name") or getattr(g, "name", None),
+                            "qty": getattr(g, "quantity", d.get("qty") or 1) * qty,
+                            "width": round(float(getattr(g, "width_mm", d.get("width") or 0)), 1),
+                            "height": round(float(getattr(g, "height_mm", d.get("height") or 0)), 1),
+                            "thicknessMm": getattr(g, "thickness_mm", d.get("thicknessMm") or d.get("thickness_mm")),
+                            "areaM2": round(float(getattr(g, "area_m2", 0) or 0) * qty, 4),
+                            "weightKg": round(float(getattr(g, "weight_kg", 0) or 0) * qty, 3),
+                        }
+                    )
+                elif isinstance(g, Mapping):
+                    glass_out.append(dict(g))
+            if glass_out:
+                result["glass"] = glass_out
+            if job.weight and hasattr(job.weight, "as_dict"):
+                wd = job.weight.as_dict()
+                result["weight"] = {
+                    "aluminiumKg": round(float(wd.get("aluminium_kg") or 0) * qty, 3),
+                    "glassKg": round(float(wd.get("glass_kg") or 0) * qty, 3),
+                    "hardwareKg": round(float(wd.get("hardware_kg") or 0) * qty, 3),
+                    "totalKg": round(float(wd.get("total_kg") or 0) * qty, 3),
+                }
             # Persist resolved config so the PDF re-render reproduces the same type.
-            opts = dict(result.get("options") or {})
-            opts["system"] = lo.get("system") or "sliding"
-            if lo.get("glassCount") is not None:
-                opts["glassShutters"] = lo.get("glassCount")
-            if lo.get("meshCount") is not None:
-                opts["meshShutters"] = lo.get("meshCount")
-            if lo.get("sectionSeries") or line.get("sectionSeries"):
-                opts["sectionSeries"] = lo.get("sectionSeries") or line.get("sectionSeries")
-            result["options"] = opts
+            result["options"] = _persist_window_options(
+                lo,
+                line,
+                base=result.get("options") if isinstance(result.get("options"), Mapping) else {},
+                track_count=(job.layout_meta or {}).get("track_count") if lo.get("system") != "bifold" else None,
+            )
+            result["description"] = line.get("description") or result.get("displayName")
+            result["sectionDetails"] = _section_details_for_product(product)
+            if line.get("sectionSeries"):
+                result["sectionSeries"] = line.get("sectionSeries")
         except Exception as exc:  # keep the manual-rate result even if drawing fails
             _log.warning("stub preview render failed for %s: %s", product_id, exc)
         return apply_selling_to_line_result(result, line)
@@ -303,65 +462,33 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
             brush_m = b.length_mm / 1000.0
             break
 
-    options = {
-        "glass": line.get("glass"),
-        "colour": line.get("colour"),
-        "handle": line.get("handle"),
-        "partitions": lo.get("partitions") or [],
-        "mesh": bool(lo.get("mesh")),
-        "trackCount": float((job.layout_meta or {}).get("track_count") or lo.get("trackCount") or 2),
-    }
-    if grid:
+    options = _persist_window_options(
+        lo,
+        line,
+        track_count=(
+            None
+            if str(lo.get("system") or "") == "bifold"
+            else float((job.layout_meta or {}).get("track_count") or lo.get("trackCount") or 2)
+        ),
+    )
+    if grid and "grid" not in options:
         options["grid"] = grid
-    if line.get("sectionSeries"):
-        options["sectionSeries"] = line.get("sectionSeries")
-    # User-entered names/labels must thread to the PDF specs (mesh / hardware /
-    # powder-coat colour). Read the merged layout options, then the raw line.
-    _opts_in = line.get("options") if isinstance(line.get("options"), Mapping) else {}
-    for _k in ("handleName", "meshName", "powderCoatName", "handleFinish"):
-        _v = lo.get(_k) or line.get(_k) or _opts_in.get(_k)
-        if _v:
-            options[_k] = _v
-
-    # Persist the resolved window configuration onto the result line's options so
-    # the PDF elevation renderer (which re-derives geometry via line_layout_options)
-    # reproduces the SAME window type. Otherwise the PDF re-generation, seeing no
-    # system on the calculated line, would fall back to sliding for every line.
-    options["system"] = lo.get("system") or "sliding"
-    if lo.get("glassCount") is not None:
-        options["glassShutters"] = lo.get("glassCount")
-    if lo.get("meshCount") is not None:
-        options["meshShutters"] = lo.get("meshCount")
-    if lo.get("opening"):
-        options["opening"] = lo.get("opening")
-    if lo.get("fixShuttersRaw") not in (None, ""):
-        options["fixShutters"] = lo.get("fixShuttersRaw")
-    if lo.get("foldLeft") is not None:
-        options["foldLeft"] = lo.get("foldLeft")
-    if lo.get("foldRight") is not None:
-        options["foldRight"] = lo.get("foldRight")
-    if lo.get("sectionSizes"):
-        options["sectionSizes"] = lo.get("sectionSizes")
-    if lo.get("handleLevel") is not None:
-        options["handleLevel"] = lo.get("handleLevel")
-    if lo.get("handleOverrides"):
-        options["handleOverrides"] = lo.get("handleOverrides")
-    if lo.get("gridSpec"):
-        options["grid"] = lo.get("gridSpec")
 
     result_base = {
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
         "product": job.profile_id,
         "displayName": job.display_name,
+        "description": line.get("description") or job.display_name,
         "category": product.get("category", "Windows"),
         "status": "active",
         "width": width,
         "height": height,
         "qty": qty,
         "sectionSeries": line.get("sectionSeries"),
+        "sectionDetails": _section_details_for_product(product),
         "partitions": lo.get("partitions") or [],
         "mesh": bool(lo.get("mesh")),
-        "trackCount": options["trackCount"],
+        "trackCount": options.get("trackCount"),
         "options": options,
         "layout": layout,
         "glass": [

@@ -95,6 +95,36 @@ def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: flo
     c.restoreState()
 
 
+def _line_is_railing(line: Mapping[str, Any]) -> bool:
+    """Detect railing designer lines even when product id varies."""
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    if isinstance(opts, Mapping) and isinstance(opts.get("railing"), Mapping):
+        return True
+    if str(line.get("status") or "").lower() == "railing":
+        return True
+    if isinstance(line.get("railing"), Mapping):
+        return True
+    pid = str(line.get("product") or "").lower()
+    return pid in ("railing", "railings_stub", "glass_railings") or "railing" in pid
+
+
+def _railing_cfg_and_quote(line: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    cfg = opts.get("railing") if isinstance(opts, Mapping) else None
+    cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
+    q = opts.get("railingQuote") if isinstance(opts, Mapping) else None
+    if not isinstance(q, Mapping):
+        q = line.get("railing") if isinstance(line.get("railing"), Mapping) else {}
+    if not q and cfg:
+        try:
+            from WEOS.factory.railing_engine import compute_railing
+
+            q = compute_railing(cfg)
+        except Exception:
+            q = {}
+    return cfg, dict(q) if isinstance(q, Mapping) else {}
+
+
 def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
     """Draw the same geometry-engine elevation used by the live canvas into the design column.
 
@@ -109,29 +139,57 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
     w = float(line.get("width") or 0)
     h = float(line.get("height") or 0)
 
-    # Railing lines carry their own 2D designer geometry — render that SVG as a
-    # crisp vector (identical to the live railing designer).
-    opts_r = line.get("options") if isinstance(line.get("options"), Mapping) else {}
-    rail_cfg = (opts_r or {}).get("railing")
-    if str(line.get("product") or "").lower() == "railing" or isinstance(rail_cfg, Mapping):
+    # Railing lines carry their own 2D designer geometry — never fall through to
+    # window elevation (that produced blank/wrong "window" drawings on quotes).
+    if _line_is_railing(line):
+        rail_cfg, rail_q = _railing_cfg_and_quote(line)
+        svg = None
         try:
-            from WEOS.factory.image_engine import svg_to_rl_drawing
             from WEOS.factory.railing_engine import railing_svg
 
-            svg = railing_svg(rail_cfg or {})
-            drawing = svg_to_rl_drawing(str(svg))
-            if drawing is not None and getattr(drawing, "width", 0) and getattr(drawing, "height", 0):
-                from reportlab.graphics import renderPDF
-
-                dwid, dhei = float(drawing.width), float(drawing.height)
-                scale = min(box_w / dwid, box_h / dhei)
-                dw, dh = dwid * scale, dhei * scale
-                drawing.scale(scale, scale)
-                drawing.width, drawing.height = dw, dh
-                renderPDF.draw(drawing, c, x + (box_w - dw) / 2.0, y + (box_h - dh))
-                return True
+            svg = railing_svg(rail_cfg or {}, quote=rail_q or None)
         except Exception:
-            _log.exception("railing elevation render failed; continuing with window path")
+            _log.exception("railing_svg failed; trying stored preview")
+            prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
+            svg = (prev or {}).get("svg")
+
+        if svg:
+            try:
+                drawing = svg_to_rl_drawing(str(svg))
+                if drawing is not None and getattr(drawing, "width", 0) and getattr(drawing, "height", 0):
+                    from reportlab.graphics import renderPDF
+
+                    dwid, dhei = float(drawing.width), float(drawing.height)
+                    scale = min(box_w / dwid, box_h / dhei)
+                    dw, dh = dwid * scale, dhei * scale
+                    drawing.scale(scale, scale)
+                    drawing.width, drawing.height = dw, dh
+                    renderPDF.draw(drawing, c, x + (box_w - dw) / 2.0, y + (box_h - dh))
+                    return True
+            except Exception:
+                _log.exception("railing vector embed failed; trying PNG")
+
+            png = svg_to_png_bytes(str(svg), scale=2.0)
+            if png:
+                img = ImageReader(io.BytesIO(png))
+                iw, ih = img.getSize()
+                if iw > 0 and ih > 0:
+                    scale = min(box_w / float(iw), box_h / float(ih))
+                    dw, dh = iw * scale, ih * scale
+                    c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh), width=dw, height=dh, mask="auto")
+                    return True
+
+        # Last resort: labelled box so the design column is never a window stub.
+        c.setStrokeColorRGB(0.35, 0.35, 0.35)
+        c.setFillColorRGB(0.96, 0.96, 0.97)
+        c.rect(x + 4, y + 4, box_w - 8, box_h - 8, stroke=1, fill=1)
+        c.setFillColorRGB(0.2, 0.2, 0.2)
+        _set_font(c, 8, bold=True)
+        c.drawCentredString(x + box_w / 2, y + box_h / 2 + 6, "Railing design")
+        _set_font(c, 7)
+        shape = (rail_q or {}).get("shape") or (rail_cfg or {}).get("shape") or "—"
+        c.drawCentredString(x + box_w / 2, y + box_h / 2 - 8, f"{shape} · {w:g}×{h:g} mm")
+        return True
 
     # The live canvas is rendered by svg_export.render_svg_string. To guarantee the
     # PDF matches the canvas 1:1 (same geometry, labels, hinges, mullions, arrows,
@@ -187,8 +245,9 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
 
 def _spec_lines(line: Mapping[str, Any]) -> list[str]:
     opts = line.get("options") or {}
-    w = float(line.get("width") or 0)
-    h = float(line.get("height") or 0)
+    layout = line.get("layout") if isinstance(line.get("layout"), Mapping) else {}
+    w = float((layout or {}).get("widthMm") or line.get("width") or 0)
+    h = float((layout or {}).get("heightMm") or line.get("height") or 0)
     weight = (line.get("weight") or {}).get("totalKg")
     section = line.get("sectionSpecs") or {}
     if not section and line.get("sectionSeries"):
@@ -199,12 +258,72 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
         except Exception:
             section = {}
 
+    # ── Railing lines: full BOM / materials detail block ─────────────────────
+    if _line_is_railing(line):
+        rail_cfg, q = _railing_cfg_and_quote(line)
+        shape = q.get("shape") or (rail_cfg or {}).get("shape") or "straight"
+        color_mode = (rail_cfg or {}).get("colorMode") or "global"
+        sys_color = (rail_cfg or {}).get("systemColor") or ""
+        glass_bits = [
+            f"{q.get('glassThicknessMm') or (rail_cfg or {}).get('glassThicknessMm') or 12} mm",
+            (rail_cfg or {}).get("glassType") or q.get("glassType") or "",
+            (rail_cfg or {}).get("glassColour") or q.get("glassColour") or "",
+        ]
+        glass_bits = [str(b) for b in glass_bits if b]
+        lines = [
+            str(line.get("description") or line.get("displayName") or "Railing"),
+            f"Type = {shape} · Mount = {q.get('mountType') or (rail_cfg or {}).get('mountType') or 'side_mount'}",
+            f"Length = {q.get('lengthMm') or w:g} mm · Height = {q.get('heightMm') or h:g} mm",
+            f"Panels = {q.get('panelCount') or 0} · Gap = {q.get('gapMm') or 12} mm",
+            f"Glass = {' · '.join(glass_bits) or '—'}"
+            f" · net {q.get('netGlassAreaSqFt') or q.get('glassAreaSqft') or 0} sft"
+            f" · purchased {q.get('purchasedGlassAreaSqFt') or 0} sft"
+            f" · wastage {q.get('wastagePercent') or 0}%",
+            f"RFT = {q.get('lengthRft') or q.get('widthUnit') or 0}"
+            f" · Pillars/blocks = {q.get('pillarCount') or 0}"
+            f" · Anchors = {q.get('anchorCount') or 0}",
+            f"Bends = {q.get('bendCount') or 0} · End caps = {q.get('endCapCount') or 0}"
+            f" · Wall connectors = {q.get('wallConnectors') or 0}"
+            f" · 180° = {q.get('connector180Count') or 0}",
+            f"Color = {sys_color or 'per-part'} ({color_mode})"
+            f" · Sale = {q.get('sellingPerUnit') or line.get('sellingRate') or 0}"
+            f" / {str(q.get('saleUnit') or line.get('saleUnit') or 'rft').upper()}",
+        ]
+        sg = q.get("stairGeometry") if isinstance(q.get("stairGeometry"), Mapping) else {}
+        if shape == "staircase" or sg:
+            lines.append(
+                f"Stairs = {sg.get('steps') or (rail_cfg or {}).get('stairSteps') or '—'} steps"
+                f" · riser {sg.get('riserMm') or (rail_cfg or {}).get('stairRiseMm') or '—'} mm"
+                f" · tread {sg.get('treadMm') or (rail_cfg or {}).get('stairRunMm') or '—'} mm"
+                f" · floor {sg.get('floorHeightMm') or (rail_cfg or {}).get('floorHeightMm') or '—'} mm"
+            )
+            if sg.get("riseMismatch"):
+                lines.append(str(sg.get("riseMismatchMessage") or "Rise mismatch vs floor height"))
+        bom = q.get("bomDetails") or q.get("items") or []
+        for it in bom[:14]:
+            if not isinstance(it, Mapping):
+                continue
+            bits = [
+                str(it.get("item") or it.get("label") or it.get("key") or "Item"),
+                f"{it.get('qty')} {it.get('unit')}",
+            ]
+            if it.get("sizeMm"):
+                bits.append(f"size {it['sizeMm']}")
+            if it.get("color"):
+                bits.append(f"color {it['color']}")
+            if it.get("grade"):
+                bits.append(f"grade {it['grade']}")
+            if it.get("mountType"):
+                bits.append(str(it["mountType"]))
+            bits.append(f"@ {it.get('rate')} = {it.get('amount')}")
+            lines.append("BOM: " + " · ".join(bits))
+        return lines
+
     lines = [
         str(line.get("description") or line.get("displayName") or line.get("product") or "Window"),
         f"W = {w:g} mm; H = {h:g} mm",
         f"Area = {_area_sqft(w, h)} Sq.Ft.",
     ]
-    layout = line.get("layout") if isinstance(line.get("layout"), Mapping) else {}
     panels = list((layout or {}).get("panels") or [])
     if panels:
         panel_bits = []
@@ -217,13 +336,24 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
                 panel_bits.append(f"{pid} {role} {pw:g}×{ph:g}")
         if panel_bits:
             lines.append("Panels: " + "; ".join(panel_bits))
-    if weight is not None:
+    if weight is not None and float(weight or 0) > 0:
         lines.append(f"Weight = {weight} kg")
-    glass = opts.get("glass") or line.get("glass")
+    # Prefer sized glass from calculate_line; fall back to option glass id string
+    glass = line.get("glass")
+    if not (isinstance(glass, list) and glass):
+        glass = opts.get("glass") or glass
     if isinstance(glass, list) and glass:
-        g0 = glass[0]
-        lines.append(f"Glazing = {g0.get('thicknessMm', '')} mm")
-    elif glass:
+        g0 = glass[0] if isinstance(glass[0], Mapping) else {}
+        thick = g0.get("thicknessMm") or g0.get("thickness_mm")
+        gname = g0.get("name") or ""
+        if thick not in (None, ""):
+            glz = f"Glazing = {thick:g} mm" if isinstance(thick, (int, float)) else f"Glazing = {thick} mm"
+            if gname and "glass" not in str(gname).lower():
+                glz += f" ({gname})"
+            lines.append(glz)
+        elif gname:
+            lines.append(f"Glazing = {gname}")
+    elif isinstance(glass, str) and glass.strip():
         lines.append(f"Glazing = {str(glass).replace('_', ' ')}")
     colour = opts.get("colour") or line.get("colour")
     pc_name = opts.get("powderCoatName") or line.get("powderCoatName")
@@ -233,14 +363,27 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
         lines.append(f"Colour / Powder-coat = {str(colour).replace('_', ' ').title()}")
     if section.get("seriesTitle"):
         lines.append(f"Series = {section['seriesTitle']}")
-    # Prefer resolved track from layout (mesh may have shifted 2→3)
+
+    system = str((layout or {}).get("system") or opts.get("system") or "").lower()
+    is_bifold = system in ("bifold", "fold", "fold_sliding", "fold_and_sliding") or (
+        str((layout or {}).get("kind") or "") == "fold_and_sliding"
+    )
+    fl = (layout or {}).get("foldLeft")
+    fr = (layout or {}).get("foldRight")
+    if fl is None:
+        fl = opts.get("foldLeft")
+    if fr is None:
+        fr = opts.get("foldRight")
+
+    # Prefer resolved track from layout (mesh may have shifted 2→3) — never for fold
     tc = layout.get("trackCount") if layout else None
-    if tc and section.get("track"):
-        lines.append(f"Track / Outer = {section['track']} (using {float(tc):g}-track)")
-    elif section.get("track"):
-        lines.append(f"Track / Outer = {section['track']}")
-    elif tc:
-        lines.append(f"Track = {float(tc):g}-track")
+    if not is_bifold:
+        if tc and section.get("track"):
+            lines.append(f"Track / Outer = {section['track']} (using {float(tc):g}-track)")
+        elif section.get("track"):
+            lines.append(f"Track / Outer = {section['track']}")
+        elif tc:
+            lines.append(f"Track = {float(tc):g}-track")
     if section.get("sash"):
         lines.append(f"Sash = {section['sash']}")
     if section.get("interlock"):
@@ -253,17 +396,75 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
         lines.append(f"Handle = {str(handle).replace('_', ' ').title()}")
     # Sell rate prints in the RATE column only — never duplicate here
     mesh_name = opts.get("meshName") or line.get("meshName")
-    if layout.get("mesh") or (opts or {}).get("mesh"):
+    if not is_bifold and (layout.get("mesh") or (opts or {}).get("mesh")):
         lines.append(f"Mesh = {mesh_name or 'Yes'} (track {float(tc or 3):g}, 1 panel wide)")
     elif mesh_name:
         lines.append(f"Mesh = {mesh_name}")
-    system = str((layout or {}).get("system") or opts.get("system") or "").lower()
     if system == "grid":
         lines.append("Type = Partition grid (per-cell fix/sliding/openable)")
     elif system == "casement":
         lines.append("Type = Casement / Openable")
-    elif system == "bifold":
-        lines.append("Type = Fold & Sliding")
+    elif is_bifold:
+        cfg = f"{int(fl or 0)}+{int(fr or 0)}"
+        lines.append(f"Type = Fold & Sliding ({cfg})")
+        lines.append(f"Fold configuration = {cfg} (left + right leaves)")
+
+    # Section sizes used by geometry (Series Setup / line overrides)
+    sizes = (layout or {}).get("sectionSizes") or opts.get("sectionSizes") or {}
+    if isinstance(sizes, Mapping) and sizes:
+        bits = []
+        labels = (
+            ("topRail", "Top"),
+            ("bottomRail", "Bottom"),
+            ("leftJamb", "Left jamb"),
+            ("rightJamb", "Right jamb"),
+            ("leafStile", "Leaf stile"),
+        )
+        for key, lab in labels:
+            if sizes.get(key) is not None and str(sizes.get(key)).strip() != "":
+                bits.append(f"{lab} {sizes[key]:g} mm" if isinstance(sizes[key], (int, float)) else f"{lab} {sizes[key]}")
+        if bits:
+            lines.append("Section sizes = " + " · ".join(bits))
+
+    # Rich section details from Series Setup / catalogue (name, dims, weight, std length)
+    detail_rows = list(line.get("sectionDetails") or [])
+    if not detail_rows and isinstance(section.get("sections"), list):
+        for sec in section.get("sections") or []:
+            if not isinstance(sec, Mapping):
+                continue
+            detail_rows.append(
+                {
+                    "name": sec.get("name"),
+                    "use": sec.get("usage") or sec.get("use"),
+                    "wMm": sec.get("widthMm") or sec.get("wMm"),
+                    "hMm": sec.get("sectionDepthMm") or sec.get("hMm"),
+                    "wallMm": sec.get("wallThicknessMm") or sec.get("wallMm"),
+                    "weightKgPerM": sec.get("weightKgPerM"),
+                    "stdLengthMm": sec.get("stdLengthMm") or sec.get("standardLengthMm"),
+                }
+            )
+    for sec in detail_rows[:12]:
+        if not isinstance(sec, Mapping):
+            continue
+        name = sec.get("name") or sec.get("use") or "Section"
+        bits = [str(name)]
+        if sec.get("use") and sec.get("name"):
+            bits.append(f"({sec.get('use')})")
+        w_mm, h_mm = sec.get("wMm"), sec.get("hMm")
+        if w_mm is not None or h_mm is not None:
+            bits.append(f"{w_mm or '—'}×{h_mm or '—'} mm")
+        if sec.get("wallMm") is not None:
+            bits.append(f"wall {sec['wallMm']} mm")
+        if sec.get("weightKgPerM") is not None:
+            bits.append(f"{sec['weightKgPerM']} kg/m")
+        if sec.get("stdLengthMm") is not None:
+            bits.append(f"std {sec['stdLengthMm']:g} mm" if isinstance(sec["stdLengthMm"], (int, float)) else f"std {sec['stdLengthMm']}")
+        lines.append("Section: " + " · ".join(bits))
+
+    notes = (layout or {}).get("notes") or []
+    for note in notes[:3]:
+        if note:
+            lines.append(f"Note = {note}")
     return lines
 
 
@@ -545,6 +746,12 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
                 rate = float(amount) / float(selling["billableQty"])
             except (TypeError, ValueError, ZeroDivisionError):
                 rate = None
+        if rate is None and _line_is_railing(line):
+            # Prefer railing commercial RFT/RMT rate — never fake sqft from length×height.
+            rate = line.get("sellingRate") or (line.get("price") or {}).get("unitRate")
+            if rate is None:
+                _, rq = _railing_cfg_and_quote(line)
+                rate = (rq or {}).get("sellingPerUnit")
         if rate is None:
             # derive from cost / area for display
             try:

@@ -372,6 +372,46 @@ def derive_weights(setup: Mapping[str, Any]) -> dict[str, float]:
     return out
 
 
+def flatten_setup_sections(setup: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """Flat list of named section rows from a Series Setup blob (for quote specs)."""
+    if not isinstance(setup, Mapping):
+        return []
+    stype = _str(setup.get("type")).lower()
+    block = setup.get(stype) if stype else None
+    if not isinstance(block, Mapping):
+        block = {}
+    rows: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+
+    def add(sec: Any, *, use_hint: str = "") -> None:
+        if not isinstance(sec, Mapping):
+            return
+        row = normalize_section(sec)
+        if use_hint and not row.get("use"):
+            row["use"] = use_hint
+        if not row.get("name") and not (row.get("wMm") or row.get("hMm")):
+            return
+        key = (row.get("name"), row.get("use"), row.get("wMm"), row.get("hMm"), row.get("side"))
+        if key in seen:
+            return
+        seen.add(key)
+        rows.append(row)
+
+    def walk(node: Any, use_hint: str = "") -> None:
+        if isinstance(node, Mapping):
+            if any(k in node for k in ("name", "wMm", "widthMm", "weightKgPerM")):
+                add(node, use_hint=use_hint)
+                return
+            for k, v in node.items():
+                walk(v, use_hint=str(k))
+        elif isinstance(node, (list, tuple)):
+            for it in node:
+                walk(it, use_hint=use_hint)
+
+    walk(block)
+    return rows
+
+
 def empty_setup(stype: str = "sliding") -> dict[str, Any]:
     """A blank, normalised setup for a given type (used to seed the editor)."""
     return normalize_setup({"type": stype})

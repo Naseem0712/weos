@@ -245,6 +245,7 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
     """Extract partitions / mesh / trackCount / shutter config from a cart line."""
     line = line or {}
     opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    layout = line.get("layout") if isinstance(line.get("layout"), Mapping) else {}
 
     def pick(*keys: str) -> Any:
         for k in keys:
@@ -252,6 +253,9 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
                 return line.get(k)
             if isinstance(opts, Mapping) and opts.get(k) is not None:
                 return opts.get(k)
+            # PDF re-derive must honour fold/system persisted only on layout summary
+            if isinstance(layout, Mapping) and layout.get(k) is not None:
+                return layout.get(k)
         return None
 
     partitions = (
@@ -275,6 +279,9 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
         opening=pick("opening"),
     )
     system_raw = pick("system", "windowSystem")
+    # layout.kind uses fold_and_sliding
+    if system_raw is None and str((layout or {}).get("kind") or "") == "fold_and_sliding":
+        system_raw = "bifold"
     system = str(system_raw or "sliding").strip().lower()
     is_bifold = system in ("bifold", "fold", "fold_sliding", "fold_and_sliding")
     is_casement = system in ("casement", "openable", "opening")
@@ -305,10 +312,14 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
     if not isinstance(handle_overrides, Mapping):
         handle_overrides = None
 
+    # Prefer explicit fold counts; also accept layout.fold_left snake_case via pick keys
+    fold_left = _coerce_int(pick("foldLeft", "fold_left"))
+    fold_right = _coerce_int(pick("foldRight", "fold_right"))
+
     return {
         "partitions": normalize_partitions(partitions),
         "mesh": shutter_cfg["mesh"] and not is_bifold and not is_casement,
-        "trackCount": track_count,
+        "trackCount": None if is_bifold else track_count,
         "glassCount": shutter_cfg["glassCount"],
         "meshCount": 0 if (is_bifold or is_casement) else shutter_cfg["meshCount"],
         "opening": shutter_cfg["opening"],
@@ -317,8 +328,8 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
         # normalises exactly once (avoids double 1-based conversion).
         "fixShuttersRaw": pick("fixShutters", "fixedShutters", "fixed_shutters"),
         "system": resolved_system,
-        "foldLeft": _coerce_int(pick("foldLeft", "fold_left")),
-        "foldRight": _coerce_int(pick("foldRight", "fold_right")),
+        "foldLeft": fold_left,
+        "foldRight": fold_right,
         "sectionSizes": section_sizes,
         "handleFinish": pick("handleFinish", "handle_finish"),
         "handleLevel": handle_level,

@@ -1010,15 +1010,21 @@ def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[
             s_idx += 1
             fixed = not bool(s.get("operable", True))
             if is_bifold:
-                role, label, pid = "leaf", f"Fold ({s.get('pack','')})", f"L{s_idx}"
+                pack = str(s.get("pack") or "").strip().lower()
+                if pack.startswith("r"):
+                    n = sum(1 for p in panels if str(p.get("id") or "").startswith("R")) + 1
+                    role, label, pid = "leaf", "Fold (R)", f"R{n}"
+                else:
+                    n = sum(1 for p in panels if str(p.get("id") or "").startswith("L")) + 1
+                    role, label, pid = "leaf", "Fold (L)", f"L{n}"
             elif fixed:
                 role, label, pid = "fix", "Fix (locked sash)", f"S{s_idx}"
             else:
                 role, label, pid = "sliding", "Sliding", f"S{s_idx}"
             panels.append(
                 {
-                    "id": pid, "role": role, "side": s.get("track"), "label": label,
-                    "track": s.get("track"), "depth": s.get("depth"),
+                    "id": pid, "role": role, "side": s.get("track") or s.get("pack"), "label": label,
+                    "track": s.get("track"), "depth": s.get("depth"), "pack": s.get("pack"),
                     "widthMm": round(float(s.get("widthMm") or 0), 1), "heightMm": round(shutter_h, 1),
                     "glassWidthMm": round(float(s.get("glassWidthMm") or 0), 1),
                     "glassHeightMm": round(float(s.get("glassHeightMm") or 0), 1),
@@ -1050,12 +1056,21 @@ def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[
         kind = "sliding_with_partitions"
     else:
         kind = "two_track_sliding"
+    tc_raw = meta.get("track_count")
+    try:
+        tc_val = float(tc_raw) if tc_raw is not None else None
+    except (TypeError, ValueError):
+        tc_val = None
+    if is_bifold:
+        tc_val = None
+    elif tc_val is None:
+        tc_val = 2.0
     return {
         "kind": kind,
         "system": system,
         "widthMm": float(width),
         "heightMm": float(height),
-        "trackCount": float(meta.get("track_count") or 2),
+        "trackCount": tc_val,
         "mesh": bool(meta.get("mesh")),
         "glassCount": int(meta.get("glass_count") or 0),
         "meshCount": int(meta.get("mesh_count") or 0),
