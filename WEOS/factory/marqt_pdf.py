@@ -106,16 +106,32 @@ def _railing_cfg_and_quote(line: Mapping[str, Any]) -> tuple[dict[str, Any], dic
     opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
     cfg = opts.get("railing") if isinstance(opts, Mapping) else None
     cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
+    try:
+        from WEOS.factory.railing_engine import ensure_railing_dims
+
+        cfg = ensure_railing_dims(
+            cfg,
+            width=float(line.get("width") or 0) or None,
+            height=float(line.get("height") or 0) or None,
+        )
+    except Exception:
+        pass
     q = opts.get("railingQuote") if isinstance(opts, Mapping) else None
     if not isinstance(q, Mapping):
         q = line.get("railing") if isinstance(line.get("railing"), Mapping) else {}
-    if not q and cfg:
+    # Recompute when quote is missing OR length collapsed (stale 0 / 1 mm quote).
+    need_recompute = False
+    if not isinstance(q, Mapping) or not q:
+        need_recompute = bool(cfg)
+    elif float(q.get("lengthMm") or 0) <= 1.0 and float(cfg.get("lengthMm") or line.get("width") or 0) > 1.0:
+        need_recompute = True
+    if need_recompute and cfg:
         try:
             from WEOS.factory.railing_engine import compute_railing
 
             q = compute_railing(cfg)
         except Exception:
-            q = {}
+            q = q if isinstance(q, Mapping) else {}
     return cfg, dict(q) if isinstance(q, Mapping) else {}
 
 

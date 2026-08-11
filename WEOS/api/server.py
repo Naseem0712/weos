@@ -805,10 +805,16 @@ def api_railing_quote(body: dict[str, Any]) -> dict[str, Any]:
     elevation. Pure/stateless — the cart persists the config in the quote line.
     """
     try:
-        from WEOS.factory.railing_engine import compute_railing, railing_svg
+        from WEOS.factory.railing_engine import compute_railing, ensure_railing_dims, railing_svg
 
-        quote = compute_railing(body or {})
-        svg = railing_svg(body or {}, quote=quote)
+        raw = dict(body or {})
+        cfg = ensure_railing_dims(
+            raw,
+            width=float(raw.get("width") or 0) or None,
+            height=float(raw.get("height") or 0) or None,
+        )
+        quote = compute_railing(cfg)
+        svg = railing_svg(cfg, quote=quote)
         return {"quote": quote, "svg": svg}
     except Exception as exc:  # pragma: no cover - defensive
         raise HTTPException(status_code=400, detail=f"railing quote failed: {exc}") from exc
@@ -834,9 +840,13 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
         or "railing" in prod
         or isinstance(rail_cfg, dict)
     ):
-        from WEOS.factory.railing_engine import compute_railing, railing_svg
+        from WEOS.factory.railing_engine import compute_railing, ensure_railing_dims, railing_svg
 
-        cfg = dict(rail_cfg or {})
+        cfg = ensure_railing_dims(
+            dict(rail_cfg or {}),
+            width=float(getattr(body, "width", 0) or 0) or None,
+            height=float(getattr(body, "height", 0) or 0) or None,
+        )
         if not cfg.get("shape") and world == "staircase_railing":
             cfg["shape"] = "staircase"
         q = compute_railing(cfg)

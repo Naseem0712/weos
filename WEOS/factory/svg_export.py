@@ -928,13 +928,21 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
         opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
         cfg = opts.get("railing") if isinstance(opts, Mapping) else None
         cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
-        q = opts.get("railingQuote") if isinstance(opts, Mapping) else None
-        if not isinstance(q, Mapping):
-            q = line.get("railing") if isinstance(line.get("railing"), Mapping) else None
         try:
-            from WEOS.factory.railing_engine import compute_railing, railing_svg
+            from WEOS.factory.railing_engine import compute_railing, ensure_railing_dims, railing_svg
 
-            if not isinstance(q, Mapping) and cfg:
+            cfg = ensure_railing_dims(
+                cfg,
+                width=float(line.get("width") or 0) or None,
+                height=float(line.get("height") or 0) or None,
+            )
+            q = opts.get("railingQuote") if isinstance(opts, Mapping) else None
+            if not isinstance(q, Mapping):
+                q = line.get("railing") if isinstance(line.get("railing"), Mapping) else None
+            if (
+                not isinstance(q, Mapping)
+                or float((q or {}).get("lengthMm") or 0) <= 1.0
+            ) and cfg:
                 q = compute_railing(cfg)
             svg = railing_svg(cfg or {}, quote=q if isinstance(q, Mapping) else None)
             if svg:

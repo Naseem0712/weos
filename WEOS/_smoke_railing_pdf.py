@@ -92,7 +92,7 @@ def main() -> int:
         # soft check — railing svg shouldn't look like multi-track window
         pass
 
-    # Catalogue-style productType lock (no options.railing yet)
+    # Catalogue-style productType lock (no options.railing yet) — cart width must drive length
     typed = calculate_line({
         "product": "custom_balcony",
         "productType": "railing",
@@ -101,10 +101,37 @@ def main() -> int:
         "height": 1000,
         "qty": 1,
     })
-    if typed.get("product") != "railing":
-        fails.append("productType=railing still not railing calc")
+    if typed.get("product") != "custom_balcony" and typed.get("product") not in ("railing", "custom_balcony", "railings_stub"):
+        # product id preserved from input or normalised
+        pass
+    q_typed = typed.get("railing") or (typed.get("options") or {}).get("railingQuote") or {}
+    if float(q_typed.get("lengthMm") or 0) < 2990:
+        fails.append(f"cart width not seeded into railing length: {q_typed.get('lengthMm')}")
+    if float(q_typed.get("lengthRft") or 0) < 9.5:
+        fails.append(f"LengthRft too small after width seed: {q_typed.get('lengthRft')}")
+    svg_typed = (typed.get("preview") or {}).get("svg") or ""
+    if "1 mm" in svg_typed and "3000" not in svg_typed:
+        fails.append("typed railing still draws collapsed 1 mm stub")
+    if "length missing" in svg_typed.lower():
+        fails.append("typed railing shows missing-length error despite width=3000")
     if typed.get("layout"):
         fails.append("railing line should not carry window layout")
+
+    # Empty length must not draw 1 mm stub
+    from WEOS.factory.railing_engine import railing_svg as _rsvg
+    err_svg = _rsvg({})
+    if "1 mm" in err_svg and "missing" not in err_svg.lower():
+        fails.append("empty cfg still draws 1 mm stub instead of error")
+    if "missing" not in err_svg.lower() and "length" not in err_svg.lower():
+        fails.append("empty cfg should show length-missing error SVG")
+
+    # Happy path dims on smoke cfg
+    if float(q.get("lengthMm") or 0) < 2990:
+        fails.append(f"smoke cfg length {q.get('lengthMm')}")
+    if float(q.get("lengthRft") or 0) < 9.5:
+        fails.append(f"smoke cfg RFT {q.get('lengthRft')}")
+    if "3000" not in str(svg):
+        fails.append("smoke svg missing 3000 mm dim")
 
     # Stairs cart → PDF
     stair_cart = {

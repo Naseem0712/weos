@@ -2127,6 +2127,19 @@ function renderCart() {
       const i = +inp.dataset.i; const f = inp.dataset.f;
       state.lines[i][f] = f==='qty' ? +inp.value : +inp.value;
       state.selectedLine = i;
+      // Keep railing designer size in sync with cart width/height edits
+      const railLn = state.lines[i];
+      if (railLn && railLn.options && typeof railLn.options === 'object') {
+        const rc = railLn.options.railing = { ...(railLn.options.railing || {}) };
+        if (f === 'width' && +inp.value > 0) {
+          rc.lengthMm = +inp.value;
+          delete railLn.options.railingQuote;
+        }
+        if (f === 'height' && +inp.value > 0) {
+          rc.heightMm = +inp.value;
+          delete railLn.options.railingQuote;
+        }
+      }
       scheduleSave();
       refreshPreview();
       updateLocalTotalHint();
@@ -2137,6 +2150,10 @@ function renderCart() {
         $('lineW').value = ln.width; $('lineH').value = ln.height; $('lineQty').value = ln.qty;
         if (ln.sellingRate != null) $('lineSellRate').value = ln.sellingRate;
         if (ln.saleUnit) $('lineSaleUnit').value = ln.saleUnit;
+        if (ln.options && ln.options.railing) {
+          if (f === 'width' && $('rLenMm')) $('rLenMm').value = ln.width;
+          if (f === 'height' && $('rHtMm')) $('rHtMm').value = ln.height;
+        }
       }
       scheduleLivePrice();
     };
@@ -3033,9 +3050,27 @@ async function railingCalc(){
     state.railingMode = true;
     showRailTools(true);
     const cfg = railingConfig();
+    // Seed from main cart size fields when designer length/height left blank
+    if (!(cfg.lengthMm > 0) && !(cfg.lengthFt > 0) && $('lineW') && +$('lineW').value > 0) {
+      cfg.lengthMm = +$('lineW').value;
+      if ($('rLenMm') && !$('rLenMm').value) $('rLenMm').value = cfg.lengthMm;
+    }
+    if (!(cfg.heightMm > 0) && !(cfg.heightFt > 0) && $('lineH') && +$('lineH').value > 0) {
+      cfg.heightMm = +$('lineH').value;
+      if ($('rHtMm') && !$('rHtMm').value) $('rHtMm').value = cfg.heightMm;
+    }
     const res = await api('/api/railing/quote', { method:'POST', body: cfg });
     state.railing = { cfg, quote: res.quote };
     const q = res.quote || {};
+    const shape = q.shape || cfg.shape || 'straight';
+    if (shape !== 'staircase' && !(q.lengthMm > 1)) {
+      const msg = 'Enter railing length (mm or ft) — PDF will not draw a collapsed stub.';
+      if ($('railingErr')) $('railingErr').textContent = msg;
+      $('previewLabel').textContent = `Railing · ${shape} · length required`;
+      $('livePreview').innerHTML = res.svg || `<span class="muted">${msg}</span>`;
+      renderRailingBom(q);
+      return { ...res, _lengthMissing: true };
+    }
     $('previewLabel').textContent = `Railing · ${q.shape || 'straight'} · ${q.lengthMm || 0} mm · ${q.panelCount || 0} panels`;
     $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
     renderRailingBom(q);
@@ -3045,7 +3080,16 @@ async function railingCalc(){
 async function railingAdd(){
   const res = await railingCalc();
   if (!res || !state.railing) return;
+  if (res._lengthMissing) {
+    toast('Enter railing length before adding to cart');
+    return;
+  }
   const { cfg, quote:q } = state.railing;
+  if ((q.shape || cfg.shape) !== 'staircase' && !(q.lengthMm > 1)) {
+    if ($('railingErr')) $('railingErr').textContent = 'Enter railing length (mm or ft) before adding.';
+    toast('Railing length required');
+    return;
+  }
   const qty = ($('rQty') && +$('rQty').value) || 1;
   const railProd = (($('lineProduct') && $('lineProduct').value) || 'railing');
   const p = (state.products||[]).find(x=>x&&x.id===railProd);

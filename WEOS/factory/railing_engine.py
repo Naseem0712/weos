@@ -63,25 +63,86 @@ def _i(value: Any, default: int = 0) -> int:
 
 
 def _length_mm(cfg: Mapping[str, Any]) -> float:
-    if cfg.get("lengthMm") not in (None, ""):
-        return _f(cfg.get("lengthMm"))
+    """Run length in mm. Accepts designer ``lengthMm`` and cart aliases ``width`` / ``widthMm``."""
+    for key in ("lengthMm", "widthMm", "width"):
+        if cfg.get(key) not in (None, ""):
+            v = _f(cfg.get(key))
+            if v > 0:
+                return v
     if cfg.get("lengthFt") not in (None, ""):
-        return _f(cfg.get("lengthFt")) * MM_PER_FT
+        v = _f(cfg.get("lengthFt")) * MM_PER_FT
+        if v > 0:
+            return v
     if cfg.get("lengthIn") not in (None, ""):
-        return _f(cfg.get("lengthIn")) * MM_PER_IN
+        v = _f(cfg.get("lengthIn")) * MM_PER_IN
+        if v > 0:
+            return v
     if cfg.get("lengthM") not in (None, ""):
-        return _f(cfg.get("lengthM")) * MM_PER_M
+        v = _f(cfg.get("lengthM")) * MM_PER_M
+        if v > 0:
+            return v
     return 0.0
 
 
 def _height_mm(cfg: Mapping[str, Any]) -> float:
-    if cfg.get("heightMm") not in (None, ""):
-        return _f(cfg.get("heightMm"))
+    for key in ("heightMm", "height", "glassHeightMm"):
+        if cfg.get(key) not in (None, ""):
+            v = _f(cfg.get(key))
+            if v > 0:
+                return v
     if cfg.get("heightFt") not in (None, ""):
-        return _f(cfg.get("heightFt")) * MM_PER_FT
+        v = _f(cfg.get("heightFt")) * MM_PER_FT
+        if v > 0:
+            return v
     if cfg.get("heightIn") not in (None, ""):
-        return _f(cfg.get("heightIn")) * MM_PER_IN
+        v = _f(cfg.get("heightIn")) * MM_PER_IN
+        if v > 0:
+            return v
     return 0.0
+
+
+def ensure_railing_dims(
+    cfg: Mapping[str, Any] | None,
+    *,
+    width: float | None = None,
+    height: float | None = None,
+) -> dict[str, Any]:
+    """Copy cfg and fill missing length/height from cart ``width`` / ``height`` (mm).
+
+    Catalogue / PDF paths often have line.width set but an empty ``options.railing``.
+    Without this seed, SVG used to draw a collapsed 1 mm stub.
+    """
+    out = dict(cfg or {})
+    if _length_mm(out) <= 0:
+        for cand in (width, out.get("widthMm"), out.get("width")):
+            v = _f(cand)
+            if v > 0:
+                out["lengthMm"] = v
+                break
+    if _height_mm(out) <= 0:
+        for cand in (height, out.get("height"), out.get("glassHeightMm")):
+            v = _f(cand)
+            if v > 0:
+                out["heightMm"] = v
+                break
+    return out
+
+
+def _svg_missing_size_error(*, kind: str = "length") -> str:
+    """Clear SVG error instead of a collapsed 1 mm railing stub."""
+    msg = (
+        "Railing length missing — enter length (mm or ft) in the designer"
+        if kind == "length"
+        else "Railing height missing — enter height (mm) in the designer"
+    )
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 160" '
+        'font-family="Segoe UI, Arial, sans-serif">'
+        '<rect x="0" y="0" width="640" height="160" fill="#fff8f6"/>'
+        '<rect x="12" y="12" width="616" height="136" fill="none" stroke="#8c1f18" stroke-width="2"/>'
+        f'<text x="320" y="88" text-anchor="middle" font-size="18" fill="#8c1f18">{escape(msg)}</text>'
+        "</svg>"
+    )
 
 
 def _shape(cfg: Mapping[str, Any]) -> str:
@@ -1328,6 +1389,7 @@ def _railing_geometry(
 
 def railing_svg(cfg: Mapping[str, Any], *, quote: Mapping[str, Any] | None = None) -> str:
     """2D railing drawing — plan+elevations for multi-segment; elevation for straight; stair side view."""
+    cfg = ensure_railing_dims(cfg)
     q = quote if isinstance(quote, Mapping) else compute_railing(cfg)
     g = q.get("geometry") or {}
     shape = str(g.get("shape") or q.get("shape") or "straight")
@@ -1345,8 +1407,13 @@ def railing_svg(cfg: Mapping[str, Any], *, quote: Mapping[str, Any] | None = Non
 def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
     """Classic front elevation for a single straight run (with glass panels)."""
     segs = g.get("segments") or []
-    L = _f(g.get("lengthMm")) or _f(q.get("lengthMm")) or 1.0
-    Hgt = _f(g.get("heightMm")) or _f(q.get("heightMm")) or 1.0
+    L = _f(g.get("lengthMm")) or _f(q.get("lengthMm"))
+    Hgt = _f(g.get("heightMm")) or _f(q.get("heightMm"))
+    # Never draw the old collapsed 1 mm stub when length was missing.
+    if L <= 1.0:
+        return _svg_missing_size_error(kind="length")
+    if Hgt <= 1.0:
+        return _svg_missing_size_error(kind="height")
     rail_h = _f(g.get("railH"), 40.0)
     hand_h = rail_h if g.get("handrail") else 0.0
     post_w = max(min(L * 0.01, 40.0), 18.0)

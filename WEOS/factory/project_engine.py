@@ -217,7 +217,7 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
     factory PDFs can redraw the designed elevation and print BOM details.
     """
     from WEOS.factory.line_kind import railing_product_type_for_line
-    from WEOS.factory.railing_engine import compute_railing, railing_svg
+    from WEOS.factory.railing_engine import compute_railing, ensure_railing_dims, railing_svg
 
     opts_in = line.get("options") if isinstance(line.get("options"), Mapping) else {}
     cfg = (opts_in or {}).get("railing") if isinstance(opts_in, Mapping) else {}
@@ -225,6 +225,13 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
     # Staircase product type without an explicit shape → stair world (no window fallback).
     if not cfg.get("shape") and railing_product_type_for_line(line) == "staircase_railing":
         cfg["shape"] = "staircase"
+    # Cart width/height (mm) must drive designer length when options.railing is empty
+    # or missing lengthMm — otherwise PDF drew a collapsed 1 mm stub.
+    cfg = ensure_railing_dims(
+        cfg,
+        width=float(line.get("width") or 0) or None,
+        height=float(line.get("height") or 0) or None,
+    )
     q = compute_railing(cfg)
     qty = int(line.get("qty") or line.get("quantity") or 1)
     unit_total = float(q.get("sellingTotal") or 0.0)
