@@ -488,40 +488,42 @@ def compute_louver_weight(
     }
 
 
-def fill_spec_lines(fill: Mapping[str, Any] | None) -> list[str]:
-    """Customer-PDF spec lines for the active panel fill."""
+def fill_spec_rows(fill: Mapping[str, Any] | None) -> list[tuple[str, str]]:
+    """Customer-PDF tabular spec rows for the active panel fill."""
     f = normalize_panel_fill(fill or {})
     ft = f.get("fillType") or "glass"
     if ft == "glass":
         return []
-    lines = [f"Panel fill = {FILL_LABELS.get(ft, ft)}"]
+    rows: list[tuple[str, str]] = [("PANEL FILL", FILL_LABELS.get(ft, ft))]
     if ft == "louvers":
         mode = f.get("patternMode") or "uniform"
         shape = f.get("bladeShape") or "rect"
-        base = (
-            f"Louvers = {f.get('orientation')} · {mode}"
-            f" · shape {shape}"
-        )
+        bits = [str(f.get("orientation") or ""), str(mode), f"shape {shape}"]
         if mode == "uniform":
-            base += (
-                f" · gap {f.get('gapMm')} mm"
-                f" · blade {f.get('bladeWidthMm')}×{f.get('bladeDepthMm')}×{f.get('bladeThicknessMm')} mm (W×D×Thk)"
+            bits.append(
+                f"gap {f.get('gapMm')} mm · blade "
+                f"{f.get('bladeWidthMm')}×{f.get('bladeDepthMm')}×{f.get('bladeThicknessMm')} mm (W×D×Thk)"
             )
         elif mode == "repeat" and f.get("pattern"):
-            bits = []
+            parts = []
             for s in f["pattern"]:
-                bits.append(
+                parts.append(
                     f"{s.get('shape')} {s.get('sizeMm'):g}"
                     f"+gap{s.get('gapAfterMm'):g}"
                     + (f"@{s.get('depthOffsetMm'):g}off" if s.get("depthOffsetMm") else "")
                 )
-            base += " · pattern " + " → ".join(bits)
+            bits.append("pattern " + " → ".join(parts))
         elif mode == "explicit" and f.get("blades"):
-            base += f" · {len(f['blades'])} explicit blades"
-        lines.append(base)
+            bits.append(f"{len(f['blades'])} explicit blades")
+        rows.append(("LOUVERS", " · ".join(b for b in bits if b)))
     elif ft in ("aluminium_sheet", "compact_sheet"):
-        lines.append(f"Sheet thickness = {f.get('thicknessMm') or 3} mm")
-    return lines
+        rows.append(("SHEET", f"thickness {f.get('thicknessMm') or 3} mm"))
+    return rows
+
+
+def fill_spec_lines(fill: Mapping[str, Any] | None) -> list[str]:
+    """Customer-PDF spec lines for the active panel fill."""
+    return [f"{lab}: {val}" if lab else val for lab, val in fill_spec_rows(fill)]
 
 
 def svg_fill_for_rect(

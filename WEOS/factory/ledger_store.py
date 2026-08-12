@@ -35,11 +35,48 @@ RUNNING_STATUSES = frozenset(
 )
 
 TOTALS_BASIS = "latest_per_quotation_number"
+DEFAULT_GST_PERCENT = 18.0
 TOTALS_NOTE = (
-    "Billed / total value = sum of latest quote grand totals per quotation number "
+    "Taxable (without GST) = sum of latest quote commercial totals per quotation number "
     "(versions retained as history; live project value updates when a new version is saved). "
-    "Balance = billed − advances. Year value uses the current calendar year of the live quote."
+    "With GST = taxable + GST@18% (same split as customer quote PDF). "
+    "Billed / balance use taxable so advances match quote line totals; "
+    "balanceWithGst = totalGrand − advances. Year totals use the current calendar year of the live quote."
 )
+
+
+def quote_money_parts(
+    commercial_total: Any,
+    *,
+    gst_percent: float | None = None,
+    includes_gst: bool = False,
+) -> dict[str, float]:
+    """Split a stored quote commercial total into taxable / GST / grand (PDF parity).
+
+    Customer quote PDFs treat selling amounts as ex-GST by default and add GST@18%.
+    When ``includes_gst`` is True, GST is backed out of the commercial figure.
+    """
+    try:
+        basic = float(commercial_total or 0)
+    except (TypeError, ValueError):
+        basic = 0.0
+    pct = float(gst_percent if gst_percent is not None else DEFAULT_GST_PERCENT)
+    if pct < 0:
+        pct = 0.0
+    if includes_gst and pct > 0:
+        grand = round(basic, 2)
+        gst_amt = round(grand * pct / (100.0 + pct), 2)
+        taxable = round(grand - gst_amt, 2)
+    else:
+        taxable = round(basic, 2)
+        gst_amt = round(taxable * pct / 100.0, 2) if pct else 0.0
+        grand = round(taxable + gst_amt, 2)
+    return {
+        "totalTaxable": taxable,
+        "totalGst": gst_amt,
+        "totalGrand": grand,
+        "gstPercent": pct,
+    }
 
 
 def _ensure_advance_schema() -> None:
@@ -236,11 +273,29 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
     live = _latest_per_quotation(quotes)
 
     projects = []
-    total_billed = 0.0
+    total_taxable = 0.0
+    total_gst = 0.0
+    total_grand = 0.0
+    year_taxable = 0.0
+    year_gst = 0.0
+    year_grand = 0.0
+    calendar_year = datetime.now(timezone.utc).year
     by_pid: dict[str, dict[str, Any]] = {}
     for q in live:
         amt = _money(q.get("grandTotal"))
-        total_billed += amt
+        parts = quote_money_parts(amt)
+        total_taxable += parts["totalTaxable"]
+        total_gst += parts["totalGst"]
+        total_grand += parts["totalGrand"]
+        ysrc = str(q.get("updatedAt") or q.get("createdAt") or "")
+        try:
+            y = int(ysrc[:4]) if len(ysrc) >= 4 else 0
+        except ValueError:
+            y = 0
+        if y == calendar_year:
+            year_taxable += parts["totalTaxable"]
+            year_gst += parts["totalGst"]
+            year_grand += parts["totalGrand"]
         row = {
             "projectId": q.get("projectId"),
             "name": q.get("name"),
@@ -250,6 +305,9 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
             "updatedAt": q.get("updatedAt"),
             "createdAt": q.get("createdAt"),
             "grandTotal": amt if q.get("grandTotal") is not None else None,
+            "totalTaxable": parts["totalTaxable"],
+            "totalGst": parts["totalGst"],
+            "totalGrand": parts["totalGrand"],
             "lineCount": q.get("lineCount"),
             "versionCount": q.get("versionCount"),
             "versions": q.get("versions") or [],
@@ -317,10 +375,36 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
             a["linkedQuote"] = None
 
     total_advances = round(sum(_money(a.get("amount")) for a in advances), 2)
-    total_billed = round(total_billed, 2)
-    balance = round(total_billed - total_advances, 2)
+    total_taxable = round(total_taxable, 2)
+    total_gst = round(total_gst, 2)
+    total_grand = round(total_grand, 2)
+    year_taxable = round(year_taxable, 2)
+    year_gst = round(year_gst, 2)
+    year_grand = round(year_grand, 2)
+    # Billed / balance stay on taxable (commercial) so advances match quote line totals.
+    balance = round(total_taxable - total_advances, 2)
+    balance_with_gst = round(total_grand - total_advances, 2)
     as_of = datetime.now(timezone.utc).isoformat()
 
+    totals = {
+        "billed": total_taxable,
+        "value": total_taxable,
+        "totalTaxable": total_taxable,
+        "totalGst": total_gst,
+        "totalGrand": total_grand,
+        "totalAdvances": total_advances,
+        "advances": total_advances,
+        "balance": balance,
+        "balanceWithGst": balance_with_gst,
+        "yearTaxable": year_taxable,
+        "yearGst": year_gst,
+        "yearGrand": year_grand,
+        "year": calendar_year,
+        "gstPercent": DEFAULT_GST_PERCENT,
+        "currency": "INR",
+        "basis": TOTALS_BASIS,
+        "note": TOTALS_NOTE,
+    }
     return {
         "customer": cust,
         "customerKey": customer_key(cust),
@@ -331,15 +415,13 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
         "allVersions": all_versions,
         "advances": advances,
         "advanceCount": len(advances),
-        "totals": {
-            "billed": total_billed,
-            "value": total_billed,
-            "advances": total_advances,
-            "balance": balance,
-            "currency": "INR",
-            "basis": TOTALS_BASIS,
-            "note": TOTALS_NOTE,
-        },
+        "totals": totals,
+        # Top-level aliases for aggregate clients / workspace open payload.
+        "totalTaxable": total_taxable,
+        "totalGst": total_gst,
+        "totalGrand": total_grand,
+        "totalAdvances": total_advances,
+        "balance": balance,
         "asOf": as_of,
         "paymentModes": list(PAYMENT_MODES),
     }

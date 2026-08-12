@@ -26,10 +26,10 @@ _log = logging.getLogger("weos.company_workspace")
 
 # Documented ledger / account total rule (also returned in API payloads):
 TOTALS_RULE = (
-    "Account billed = sum of latest quote grand totals per quotation number "
-    "(each version is retained as history; only the live/latest version per "
-    "quote number counts toward project and customer totals). "
-    "Balance = billed − advances."
+    "Account taxable (without GST) = sum of latest quote commercial totals per quotation number "
+    "(each version is retained as history; only the live/latest version per quote number counts). "
+    "With GST = taxable + GST@18% (customer quote PDF parity). "
+    "Balance = taxable − advances; balanceWithGst = totalGrand − advances."
 )
 
 
@@ -90,17 +90,24 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
         gst = normalise_gstin(active.get("gstNo") or "")
 
     from WEOS.factory.customer_store import customer_quotes, list_customer_profiles
-    from WEOS.factory.ledger_store import build_ledger
+    from WEOS.factory.ledger_store import build_ledger, quote_money_parts
     from WEOS.factory.project_store import list_projects
 
     customers_raw = list_customer_profiles(company_gst=gst or None)
     projects_raw = list_projects(include_archived=False, company_gst=gst or None)
 
     customer_rows: list[dict[str, Any]] = []
-    total_billed = 0.0
+    total_taxable = 0.0
+    total_gst = 0.0
+    total_grand = 0.0
     total_advances = 0.0
     total_balance = 0.0
+    total_balance_gst = 0.0
     total_quote_versions = 0
+    year_taxable = 0.0
+    year_gst = 0.0
+    year_grand = 0.0
+    calendar_year = datetime.now(timezone.utc).year
 
     for c in customers_raw:
         name = str(c.get("name") or "").strip()
@@ -115,14 +122,41 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
             led = build_ledger(name, company_gst=gst or None)
         except Exception:
             _log.exception("workspace ledger failed for %s", name)
-            led = {"totals": {"billed": 0, "advances": 0, "balance": 0}, "projects": quotes}
+            led = {
+                "totals": {
+                    "billed": 0,
+                    "totalTaxable": 0,
+                    "totalGst": 0,
+                    "totalGrand": 0,
+                    "advances": 0,
+                    "balance": 0,
+                    "balanceWithGst": 0,
+                    "yearTaxable": 0,
+                    "yearGst": 0,
+                    "yearGrand": 0,
+                },
+                "projects": quotes,
+            }
         t = led.get("totals") or {}
-        billed = float(t.get("billed") or 0)
-        adv = float(t.get("advances") or 0)
+        taxable = float(t.get("totalTaxable") if t.get("totalTaxable") is not None else t.get("billed") or 0)
+        gst_amt = float(t.get("totalGst") or 0)
+        grand = float(t.get("totalGrand") or 0)
+        if not grand and taxable:
+            parts = quote_money_parts(taxable)
+            gst_amt = parts["totalGst"]
+            grand = parts["totalGrand"]
+        adv = float(t.get("advances") or t.get("totalAdvances") or 0)
         bal = float(t.get("balance") or 0)
-        total_billed += billed
+        bal_gst = float(t.get("balanceWithGst") if t.get("balanceWithGst") is not None else (grand - adv))
+        total_taxable += taxable
+        total_gst += gst_amt
+        total_grand += grand
         total_advances += adv
         total_balance += bal
+        total_balance_gst += bal_gst
+        year_taxable += float(t.get("yearTaxable") or 0)
+        year_gst += float(t.get("yearGst") or 0)
+        year_grand += float(t.get("yearGrand") or 0)
         customer_rows.append(
             {
                 "name": name,
@@ -133,9 +167,13 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
                 "companyGst": c.get("companyGst") or gst,
                 "projectCount": len(quotes),
                 "quoteVersionCount": version_count,
-                "totalBilled": round(billed, 2),
+                "totalBilled": round(taxable, 2),
+                "totalTaxable": round(taxable, 2),
+                "totalGst": round(gst_amt, 2),
+                "totalGrand": round(grand, 2),
                 "totalAdvances": round(adv, 2),
                 "balance": round(bal, 2),
+                "balanceWithGst": round(bal_gst, 2),
                 "ledgerUrl": f"/api/customers/{name}/ledger",
                 "ledgerPdfUrl": f"/api/customers/{name}/ledger.pdf",
                 "updatedAt": c.get("updatedAt"),
@@ -143,10 +181,8 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
         )
 
     project_rows = []
-    year_value = 0.0
     orders_confirmed = 0
     projects_running = 0
-    calendar_year = datetime.now(timezone.utc).year
 
     from WEOS.factory.ledger_store import CONFIRMED_STATUSES
 
@@ -156,17 +192,7 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
         projects_running += 1
         if st in CONFIRMED_STATUSES:
             orders_confirmed += 1
-        # Year value: live rows are already latest-per-quotation-number.
-        ysrc = str(p.get("updatedAt") or p.get("createdAt") or "")
-        try:
-            y = int(ysrc[:4]) if len(ysrc) >= 4 else 0
-        except ValueError:
-            y = 0
-        if y == calendar_year:
-            try:
-                year_value += float(p.get("grandTotal") or 0)
-            except (TypeError, ValueError):
-                pass
+        parts = quote_money_parts(p.get("grandTotal"))
         project_rows.append(
             {
                 "projectId": p.get("projectId"),
@@ -176,6 +202,9 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
                 "version": p.get("version"),
                 "status": p.get("status"),
                 "grandTotal": p.get("grandTotal"),
+                "totalTaxable": parts["totalTaxable"],
+                "totalGst": parts["totalGst"],
+                "totalGrand": parts["totalGrand"],
                 "lineCount": p.get("lineCount"),
                 "updatedAt": p.get("updatedAt"),
                 "companyGst": p.get("companyGst") or gst,
@@ -185,9 +214,13 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
     accounts = [
         {
             "customer": r["name"],
-            "billed": r["totalBilled"],
+            "billed": r["totalTaxable"],
+            "totalTaxable": r["totalTaxable"],
+            "totalGst": r["totalGst"],
+            "totalGrand": r["totalGrand"],
             "advances": r["totalAdvances"],
             "balance": r["balance"],
+            "balanceWithGst": r["balanceWithGst"],
             "projectCount": r["projectCount"],
             "quoteVersionCount": r["quoteVersionCount"],
             "ledgerPdfUrl": r["ledgerPdfUrl"],
@@ -199,8 +232,15 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
         "projectsRunning": projects_running,
         "ordersConfirmed": orders_confirmed,
         "totalAdvances": round(total_advances, 2),
-        "yearValueGenerated": round(year_value, 2),
+        "yearValueGenerated": round(year_taxable, 2),
+        "yearTaxable": round(year_taxable, 2),
+        "yearGst": round(year_gst, 2),
+        "yearGrand": round(year_grand, 2),
+        "totalTaxable": round(total_taxable, 2),
+        "totalGst": round(total_gst, 2),
+        "totalGrand": round(total_grand, 2),
         "balanceOutstanding": round(total_balance, 2),
+        "balanceWithGst": round(total_balance_gst, 2),
         "yearBasis": "calendar",
         "year": calendar_year,
         "ordersConfirmedDefinition": (
@@ -211,10 +251,13 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
             "Projects running = non-archived projects in the company workspace."
         ),
         "yearValueDefinition": (
-            "Year value = sum of live (latest-per-quotation-number) grand totals whose "
-            "updatedAt falls in the current calendar year."
+            "Year taxable = sum of live (latest-per-quotation-number) commercial totals whose "
+            "updatedAt falls in the current calendar year. Year with GST adds GST@18% (quote PDF parity)."
         ),
-        "balanceDefinition": "Balance outstanding = total billed − total advances (receivables).",
+        "balanceDefinition": (
+            "Balance outstanding = total taxable − total advances. "
+            "Balance with GST = totalGrand − advances."
+        ),
     }
 
     return {
@@ -226,11 +269,19 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
         "accountCount": len(accounts),
         "dashboard": dashboard,
         "totals": {
-            "billed": round(total_billed, 2),
+            "billed": round(total_taxable, 2),
+            "totalTaxable": round(total_taxable, 2),
+            "totalGst": round(total_gst, 2),
+            "totalGrand": round(total_grand, 2),
             "advances": round(total_advances, 2),
+            "totalAdvances": round(total_advances, 2),
             "balance": round(total_balance, 2),
+            "balanceWithGst": round(total_balance_gst, 2),
             "quoteVersions": total_quote_versions,
-            "yearValue": round(year_value, 2),
+            "yearValue": round(year_taxable, 2),
+            "yearTaxable": round(year_taxable, 2),
+            "yearGst": round(year_gst, 2),
+            "yearGrand": round(year_grand, 2),
             "ordersConfirmed": orders_confirmed,
             "projectsRunning": projects_running,
             "currency": "INR",

@@ -79,8 +79,27 @@ def main() -> int:
         fails.append(f"balanceOutstanding expected 150000 got {dash.get('balanceOutstanding')}")
     if abs(float(dash.get("yearValueGenerated") or 0) - 200000) > 0.01:
         fails.append(f"yearValueGenerated expected 200000 got {dash.get('yearValueGenerated')}")
+    if abs(float(dash.get("yearTaxable") or 0) - 200000) > 0.01:
+        fails.append(f"yearTaxable expected 200000 got {dash.get('yearTaxable')}")
+    if abs(float(dash.get("yearGrand") or 0) - 236000) > 0.01:
+        fails.append(f"yearGrand expected 236000 got {dash.get('yearGrand')}")
+    if abs(float(dash.get("totalTaxable") or 0) - 200000) > 0.01:
+        fails.append(f"totalTaxable expected 200000 got {dash.get('totalTaxable')}")
+    if abs(float(dash.get("totalGrand") or 0) - 236000) > 0.01:
+        fails.append(f"totalGrand expected 236000 got {dash.get('totalGrand')}")
     if int(dash.get("ordersConfirmed") or 0) != 0:
         fails.append("ordersConfirmed should be 0 before confirm")
+
+    led0 = build_ledger(cust, company_gst=gst)
+    t0 = led0.get("totals") or {}
+    if abs(float(t0.get("totalTaxable") or 0) - 200000) > 0.01:
+        fails.append(f"ledger totalTaxable expected 200000 got {t0.get('totalTaxable')}")
+    if abs(float(t0.get("totalGrand") or 0) - 236000) > 0.01:
+        fails.append(f"ledger totalGrand expected 236000 got {t0.get('totalGrand')}")
+    if abs(float(dash.get("totalTaxable") or 0) - float(t0.get("totalTaxable") or 0)) > 0.01:
+        fails.append("hub totalTaxable must match sum of customer ledgers")
+    if abs(float(dash.get("totalGrand") or 0) - float(t0.get("totalGrand") or 0)) > 0.01:
+        fails.append("hub totalGrand must match sum of customer ledgers")
 
     set_project_status(p["projectId"], "confirmed")
     ws3 = open_workspace(gst)
@@ -110,7 +129,8 @@ def main() -> int:
         "RUNNING QUOTES",
         "ADVANCE BREAKDOWN",
         "TOTAL ADVANCE",
-        "TOTAL VALUE",
+        "TOTAL TAXABLE",
+        "TOTAL WITH GST",
         "TOTAL BALANCE",
         "HUB PERSIST CO",
     ):

@@ -63,7 +63,7 @@ def main() -> None:
     joined = "\n".join(specs)
     assert "2-track" not in joined.lower(), joined
     assert "4+4" in joined, joined
-    assert "Section sizes" in joined, joined
+    assert "SECTIONS:" in joined, joined
     assert "Fold & Sliding" in joined, joined
 
     # PDF path re-derive from calculated line only

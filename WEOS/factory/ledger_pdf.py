@@ -179,16 +179,35 @@ def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | No
             )
 
     y -= 8
-    ensure_space(140)
+    ensure_space(160)
     c.line(M, y + 10, W - M, y + 10)
-    total_value = totals.get("value", totals.get("billed"))
-    line(f"Total advance:  {_inr(totals.get('advances'))}", bold=True)
-    line(f"Total value:  {_inr(total_value)}", bold=True)
-    line(f"Total balance:  {_inr(totals.get('balance'))}", size=12, bold=True, dy=16)
+    total_taxable = totals.get("totalTaxable", totals.get("value", totals.get("billed")))
+    total_gst = totals.get("totalGst")
+    total_grand = totals.get("totalGrand")
+    line(f"Total taxable (without GST):  {_inr(total_taxable)}", bold=True)
+    if total_gst is not None:
+        line(f"Total GST:  {_inr(total_gst)}", bold=True)
+    if total_grand is not None:
+        line(f"Total with GST:  {_inr(total_grand)}", bold=True)
+    line(f"Total advance:  {_inr(totals.get('advances') or totals.get('totalAdvances'))}", bold=True)
+    line(f"Total balance (taxable − advances):  {_inr(totals.get('balance'))}", size=12, bold=True, dy=14)
+    if totals.get("balanceWithGst") is not None:
+        line(f"Balance with GST:  {_inr(totals.get('balanceWithGst'))}", bold=True, dy=14)
     line(f"As of: {as_of_disp} (up to date)", size=9)
     note = _txt((totals or {}).get("note"))
     if note:
-        line(note, size=8, dy=11)
+        # Wrap long note across lines
+        words = note.split()
+        chunk = ""
+        for w in words:
+            trial = (chunk + " " + w).strip()
+            if len(trial) > 100 and chunk:
+                line(chunk, size=8, dy=11)
+                chunk = w
+            else:
+                chunk = trial
+        if chunk:
+            line(chunk, size=8, dy=11)
 
     ensure_space(120)
     imgs = resolve_doc_images(customer=cust)
