@@ -25,20 +25,29 @@ from WEOS.paths import knowledge_base_dir
 SINGLE_THICKNESSES_MM = [4.0, 5.0, 6.0, 8.0, 10.0, 12.0]
 
 # DGU overall thickness → default layer makeup (glass / air gap / glass) in mm.
+# Keys are overall mm; makeupLabel uses glass+air+glass (e.g. 5+12A+5).
 DGU_MAKEUPS_MM: dict[float, dict[str, float]] = {
     18.0: {"glass1Mm": 5.0, "airGapMm": 8.0, "glass2Mm": 5.0},
     20.0: {"glass1Mm": 6.0, "airGapMm": 8.0, "glass2Mm": 6.0},
-    22.0: {"glass1Mm": 6.0, "airGapMm": 10.0, "glass2Mm": 6.0},
-    24.0: {"glass1Mm": 6.0, "airGapMm": 12.0, "glass2Mm": 6.0},
-    28.0: {"glass1Mm": 8.0, "airGapMm": 12.0, "glass2Mm": 8.0},
+    22.0: {"glass1Mm": 5.0, "airGapMm": 12.0, "glass2Mm": 5.0},  # 5+12A+5
+    24.0: {"glass1Mm": 6.0, "airGapMm": 12.0, "glass2Mm": 6.0},  # 6+12A+6
+    26.0: {"glass1Mm": 6.0, "airGapMm": 14.0, "glass2Mm": 6.0},
+    28.0: {"glass1Mm": 8.0, "airGapMm": 12.0, "glass2Mm": 8.0},  # 8+12A+8
     30.0: {"glass1Mm": 8.0, "airGapMm": 14.0, "glass2Mm": 8.0},
+    32.0: {"glass1Mm": 10.0, "airGapMm": 12.0, "glass2Mm": 10.0},  # 10+12A+10
 }
 
 # Laminated overall thickness → default makeup (glass + PVB + glass) in mm.
 LAMINATED_MAKEUPS_MM: dict[float, dict[str, float]] = {
-    11.52: {"glass1Mm": 5.0, "pvbMm": 1.52, "glass2Mm": 5.0},
-    13.52: {"glass1Mm": 6.0, "pvbMm": 1.52, "glass2Mm": 6.0},
+    11.52: {"glass1Mm": 5.0, "pvbMm": 1.52, "glass2Mm": 5.0},   # 5+1.52+5
+    12.52: {"glass1Mm": 6.0, "pvbMm": 1.52, "glass2Mm": 5.0},   # 6+1.52+5
+    13.52: {"glass1Mm": 6.0, "pvbMm": 1.52, "glass2Mm": 6.0},   # 6+1.52+6
+    15.52: {"glass1Mm": 8.0, "pvbMm": 1.52, "glass2Mm": 6.0},   # 8+1.52+6
+    17.52: {"glass1Mm": 8.0, "pvbMm": 1.52, "glass2Mm": 8.0},   # 8+1.52+8
 }
+
+# Tinted colours commonly offered on single toughened panes (cart + railing).
+TINTED_COLOURS = ("clear", "black", "grey", "brown")
 
 
 def _now() -> str:
@@ -296,28 +305,269 @@ def delete_glass(glass_id: str) -> dict[str, Any]:
     raise FileNotFoundError(f"Glass '{glass_id}' not found")
 
 
-def seed_default_glass(*, force: bool = False) -> dict[str, Any]:
-    """Preload a starter set of common glass options into the library."""
-    sentinel = catalogue_dir() / "_seeded.json"
-    if sentinel.is_file() and not force:
+def _starter_glass_specs() -> list[dict[str, Any]]:
+    """Full default catalogue: single clear/tinted, laminated safety, DGU/IGU."""
+    starters: list[dict[str, Any]] = []
+    # Single clear (annealed 5) + toughened clear at common thicknesses
+    starters.append({
+        "makeup": "single", "thicknessMm": 5.0, "colour": "clear", "toughened": False,
+        "name": "5mm Clear", "id": "5mm_clear",
+    })
+    for thk in (5.0, 6.0, 8.0, 10.0, 12.0):
+        starters.append({
+            "makeup": "single", "thicknessMm": thk, "colour": "clear", "toughened": True,
+            "name": f"{thk:g}mm Clear Toughened",
+            "id": f"{int(thk)}mm_toughened" if thk != 5 else "5mm_clear_toughened",
+        })
+    # Single tinted toughened (black / grey / brown) at 5–12 mm
+    for colour in ("black", "grey", "brown"):
+        for thk in (5.0, 6.0, 8.0, 10.0, 12.0):
+            starters.append({
+                "makeup": "single", "thicknessMm": thk, "colour": colour, "toughened": True,
+                "name": f"{thk:g}mm {colour.title()} Toughened",
+                "id": f"{int(thk)}mm_{colour}_toughened",
+            })
+    # Laminated safety
+    for overall, g1, pvb, g2, oid, label in (
+        (11.52, 5.0, 1.52, 5.0, "lam_5_152_5", "Laminated 5+1.52+5"),
+        (12.52, 6.0, 1.52, 5.0, "lam_6_152_5", "Laminated 6+1.52+5"),
+        (13.52, 6.0, 1.52, 6.0, "lam_6_152_6", "Laminated 6+1.52+6"),
+        (15.52, 8.0, 1.52, 6.0, "lam_8_152_6", "Laminated 8+1.52+6"),
+        (17.52, 8.0, 1.52, 8.0, "lam_8_152_8", "Laminated 8+1.52+8"),
+    ):
+        starters.append({
+            "makeup": "laminated", "overallMm": overall,
+            "glass1Mm": g1, "pvbMm": pvb, "glass2Mm": g2,
+            "colour": "clear", "toughened": False,
+            "name": label, "id": oid,
+        })
+    # DGU / IGU typical build-ups
+    for overall, g1, gap, g2, oid, label in (
+        (22.0, 5.0, 12.0, 5.0, "dgu_5_12_5", "DGU 5+12A+5"),
+        (24.0, 6.0, 12.0, 6.0, "dgu_6_12_6", "DGU 6+12A+6"),
+        (28.0, 8.0, 12.0, 8.0, "dgu_8_12_8", "DGU 8+12A+8"),
+        (32.0, 10.0, 12.0, 10.0, "dgu_10_12_10", "DGU 10+12A+10"),
+        (18.0, 5.0, 8.0, 5.0, "dgu_5_8_5", "DGU 5+8A+5"),
+    ):
+        starters.append({
+            "makeup": "dgu", "overallMm": overall,
+            "glass1Mm": g1, "airGapMm": gap, "glass2Mm": g2,
+            "colour": "clear", "toughened": True,
+            "name": f"{label} Clear Toughened", "id": oid,
+        })
+    return starters
+
+
+def default_product_glass_options() -> list[dict[str, Any]]:
+    """Cart / product ``rules/glass.json`` options — shared across window products.
+
+    Includes legacy ids (``5mm_clear``, ``8mm_toughened``, ``10mm_toughened``) so
+    existing quotes keep resolving, plus the expanded single / laminated / DGU set.
+    """
+    options: list[dict[str, Any]] = []
+    # Legacy-compatible singles first
+    options.append({
+        "id": "5mm_clear", "label": "5mm Clear", "thicknessMm": 5,
+        "makeup": "single", "colour": "clear", "toughened": False, "rateMultiplier": 1.0,
+    })
+    for thk, mult in ((5, 1.15), (6, 1.25), (8, 1.45), (10, 1.75), (12, 2.1)):
+        oid = f"{thk}mm_toughened" if thk != 5 else "5mm_clear_toughened"
+        # Keep classic 8mm_toughened / 10mm_toughened ids
+        if thk == 8:
+            oid = "8mm_toughened"
+        elif thk == 10:
+            oid = "10mm_toughened"
+        options.append({
+            "id": oid, "label": f"{thk}mm Clear Toughened", "thicknessMm": thk,
+            "makeup": "single", "colour": "clear", "toughened": True,
+            "rateMultiplier": mult, "densityKgPerM3": 2500,
+        })
+    for colour, base in (("black", 1.2), ("grey", 1.18), ("brown", 1.18)):
+        for thk, bump in ((5, 0.0), (6, 0.1), (8, 0.3), (10, 0.55), (12, 0.9)):
+            options.append({
+                "id": f"{thk}mm_{colour}_toughened",
+                "label": f"{thk}mm {colour.title()} Toughened",
+                "thicknessMm": thk, "makeup": "single", "colour": colour,
+                "toughened": True, "rateMultiplier": round(base + bump, 2),
+                "densityKgPerM3": 2500,
+            })
+    for oid, label, g1, pvb, g2, overall, mult in (
+        ("lam_5_152_5", "Laminated 5+1.52+5", 5, 1.52, 5, 11.52, 2.2),
+        ("lam_6_152_5", "Laminated 6+1.52+5", 6, 1.52, 5, 12.52, 2.4),
+        ("lam_6_152_6", "Laminated 6+1.52+6", 6, 1.52, 6, 13.52, 2.55),
+        ("lam_8_152_6", "Laminated 8+1.52+6", 8, 1.52, 6, 15.52, 2.8),
+        ("lam_8_152_8", "Laminated 8+1.52+8", 8, 1.52, 8, 17.52, 3.0),
+    ):
+        options.append({
+            "id": oid, "label": label, "thicknessMm": overall, "overallMm": overall,
+            "makeup": "laminated", "glass1Mm": g1, "pvbMm": pvb, "glass2Mm": g2,
+            "colour": "clear", "toughened": False, "rateMultiplier": mult,
+            "densityKgPerM3": 2500,
+        })
+    for oid, label, g1, gap, g2, overall, mult in (
+        ("dgu_5_12_5", "DGU 5+12A+5", 5, 12, 5, 22, 2.6),
+        ("dgu_6_12_6", "DGU 6+12A+6", 6, 12, 6, 24, 2.9),
+        ("dgu_8_12_8", "DGU 8+12A+8", 8, 12, 8, 28, 3.4),
+        ("dgu_10_12_10", "DGU 10+12A+10", 10, 12, 10, 32, 3.9),
+        ("dgu_5_8_5", "DGU 5+8A+5", 5, 8, 5, 18, 2.35),
+    ):
+        options.append({
+            "id": oid, "label": f"{label} Clear Toughened", "thicknessMm": overall,
+            "overallMm": overall, "makeup": "dgu",
+            "glass1Mm": g1, "airGapMm": gap, "glass2Mm": g2,
+            "colour": "clear", "toughened": True, "rateMultiplier": mult,
+            "densityKgPerM3": 2500,
+        })
+    return options
+
+
+def library_as_cart_options() -> list[dict[str, Any]]:
+    """Map Glass Library specs into cart-select options (id + label + makeup fields)."""
+    out: list[dict[str, Any]] = []
+    for g in list_glass():
+        if not isinstance(g, Mapping):
+            continue
+        gid = str(g.get("id") or "").strip()
+        if not gid:
+            continue
+        out.append({
+            "id": gid,
+            "label": g.get("name") or g.get("specLine") or gid,
+            "thicknessMm": g.get("thicknessMm") or g.get("overallMm"),
+            "overallMm": g.get("overallMm"),
+            "makeup": g.get("makeup") or "single",
+            "glass1Mm": g.get("glass1Mm"),
+            "glass2Mm": g.get("glass2Mm"),
+            "airGapMm": g.get("airGapMm"),
+            "pvbMm": g.get("pvbMm"),
+            "colour": g.get("colour") or "clear",
+            "toughened": bool(g.get("toughened")),
+            "brand": g.get("brand") or "",
+            "rate": g.get("rate"),
+            "rateUnit": g.get("rateUnit") or "sqft",
+            "densityKgPerM3": g.get("densityKgPerM3") or 2500,
+            "rateMultiplier": 1.0,
+        })
+    return out
+
+
+def cart_glass_options(*, merge_library: bool = True) -> list[dict[str, Any]]:
+    """Canonical cart list: product defaults, then any extra Glass Library entries."""
+    by_id: dict[str, dict[str, Any]] = {}
+    for opt in default_product_glass_options():
+        by_id[str(opt["id"])] = opt
+    if merge_library:
+        for opt in library_as_cart_options():
+            oid = str(opt["id"])
+            if oid not in by_id:
+                by_id[oid] = opt
+            else:
+                # Library rate / brand wins when present
+                merged = dict(by_id[oid])
+                for k in ("rate", "rateUnit", "brand", "label", "name"):
+                    if opt.get(k) not in (None, ""):
+                        merged[k if k != "name" else "label"] = opt[k]
+                by_id[oid] = merged
+    return list(by_id.values())
+
+
+def sync_glass_options_to_products(
+    *,
+    product_ids: list[str] | None = None,
+    merge_library: bool = True,
+) -> dict[str, Any]:
+    """Write the shared glass options list into each window product's ``rules/glass.json``.
+
+    Stub / window catalogue products without a glass file get a new one (options only).
+    Existing glass.json keeps engineering overlaps/density and only replaces ``options``.
+    Railing / facade stubs that do not use window glass are skipped.
+    """
+    from WEOS.paths import products_dir
+
+    skip_types = {
+        "railing", "staircase_railing", "railings_stub", "pergolas", "pergola_stub",
+        "acp_stub", "fluted_stub", "perforated_stub", "louvers_stub",
+    }
+    options = cart_glass_options(merge_library=merge_library)
+    root = products_dir()
+    updated: list[str] = []
+    skipped: list[str] = []
+    targets = product_ids
+    if not targets:
+        targets = [p.name for p in root.iterdir() if p.is_dir() and (p / "product.json").is_file()]
+    for pid in targets:
+        pdir = root / pid
+        meta_path = pdir / "product.json"
+        if not meta_path.is_file():
+            skipped.append(pid)
+            continue
         try:
-            return json.loads(sentinel.read_text(encoding="utf-8"))
+            meta = json.loads(meta_path.read_text(encoding="utf-8-sig"))
         except Exception:
-            pass
+            skipped.append(pid)
+            continue
+        ptype = str(meta.get("productType") or pid).lower()
+        cat = str(meta.get("category") or "").lower()
+        # Sync window/door glass products; skip railing / facade / pergola worlds.
+        if ptype in skip_types or cat in ("railings", "facades", "pergolas"):
+            skipped.append(pid)
+            continue
+        rules_dir = pdir / "rules"
+        rules_dir.mkdir(parents=True, exist_ok=True)
+        glass_path = rules_dir / "glass.json"
+        if glass_path.is_file():
+            try:
+                glass_doc = json.loads(glass_path.read_text(encoding="utf-8-sig"))
+            except Exception:
+                glass_doc = {}
+            if not isinstance(glass_doc, dict):
+                glass_doc = {}
+        else:
+            glass_doc = {
+                "thicknessMm": 5,
+                "densityKgPerM3": 2500,
+                "quantityFormula": "shutterCount",
+            }
+        glass_doc["options"] = options
+        glass_path.write_text(json.dumps(glass_doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        updated.append(pid)
+    return {
+        "ok": True,
+        "updated": updated,
+        "skipped": skipped,
+        "optionCount": len(options),
+    }
+
+
+def seed_default_glass(*, force: bool = False, sync_products: bool = True) -> dict[str, Any]:
+    """Preload the full glass catalogue into the library (and sync product options).
+
+    When the library was previously seeded with a small starter set, missing
+    entries are still added (unless ``force`` rewrites every starter id).
+    """
+    existing_ids = {str(g.get("id")) for g in list_glass()}
     created: list[str] = []
-    starters = [
-        {"makeup": "single", "thicknessMm": 5.0, "colour": "clear", "toughened": False},
-        {"makeup": "single", "thicknessMm": 8.0, "colour": "clear", "toughened": True},
-        {"makeup": "dgu", "overallMm": 24.0, "colour": "clear", "toughened": True},
-        {"makeup": "laminated", "overallMm": 11.52, "colour": "clear", "toughened": False},
-    ]
-    for s in starters:
+    skipped: list[str] = []
+    for s in _starter_glass_specs():
+        sid = str(s.get("id") or "")
+        if sid and sid in existing_ids and not force:
+            skipped.append(sid)
+            continue
         try:
             created.append(save_glass(s)["id"])
         except Exception:
             continue
-    result = {"ok": True, "seeded": created, "count": len(created)}
+    result: dict[str, Any] = {
+        "ok": True,
+        "seeded": created,
+        "skipped": skipped,
+        "count": len(created),
+        "libraryCount": len(list_glass()),
+    }
+    if sync_products:
+        result["productSync"] = sync_glass_options_to_products(merge_library=True)
     try:
+        sentinel = catalogue_dir() / "_seeded.json"
         sentinel.write_text(json.dumps(result, indent=2), encoding="utf-8")
     except Exception:
         pass

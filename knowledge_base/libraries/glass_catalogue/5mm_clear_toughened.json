@@ -1,0 +1,25 @@
+{
+  "id": "5mm_clear_toughened",
+  "name": "5mm Clear Toughened",
+  "makeup": "single",
+  "thicknessMm": 5.0,
+  "overallMm": 5.0,
+  "glass1Mm": null,
+  "glass2Mm": null,
+  "airGapMm": null,
+  "pvbMm": null,
+  "layersMm": [
+    5.0
+  ],
+  "colour": "clear",
+  "brand": "",
+  "toughened": true,
+  "toughenedLabel": "Toughened",
+  "rate": null,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "5mm",
+  "specLine": "5mm · Clear · Toughened",
+  "status": "active",
+  "updatedAt": "2026-08-12T15:46:21.684495+00:00"
+}

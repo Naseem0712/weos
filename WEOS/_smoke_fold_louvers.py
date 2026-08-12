@@ -80,12 +80,32 @@ def main() -> int:
     if not vlayout.get("gaps"):
         fails.append("vertical gaps empty")
 
+    # Complex pattern: varying gaps + stagger + round
+    cfill = normalize_panel_fill({
+        "fillType": "louvers",
+        "orientation": "vertical",
+        "patternMode": "repeat",
+        "pattern": [
+            {"shape": "round", "sizeMm": 40, "gapAfterMm": 15, "depthOffsetMm": 0},
+            {"shape": "rect", "sizeMm": 50, "depthMm": 70, "gapAfterMm": 40, "depthOffsetMm": 25},
+        ],
+    })
+    clayout = compute_louver_layout(x0=0, y0=0, x1=900, y1=1800, fill=cfill)
+    if clayout.get("bladeCount", 0) < 2:
+        fails.append("complex pattern blade count")
+    if not any(b.get("shape") == "round" for b in clayout.get("blades") or []):
+        fails.append("round pipe missing")
+    gap_vals = {float(g.get("gapMm") or 0) for g in clayout.get("gaps") or []}
+    if 15 not in gap_vals or 40 not in gap_vals:
+        fails.append(f"varying gaps missing: {gap_vals}")
+
     if fails:
         print("FAIL:", "; ".join(fails))
         return 1
     print(
         f"OK fold+louvers smoke · blades={layout.get('bladeCount')} "
-        f"gaps={len(layout.get('gaps') or [])} svg={len(svg)} elev={len(elev)}"
+        f"gaps={len(layout.get('gaps') or [])} pattern={clayout.get('bladeCount')} "
+        f"svg={len(svg)} elev={len(elev)}"
     )
     return 0
 

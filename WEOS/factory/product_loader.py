@@ -315,10 +315,18 @@ def apply_customer_options(
             gnorm = glass.lower().replace(" ", "_")
             match = next((o for o in options if o.get("id") == gnorm), None)
         if match:
-            if "thicknessMm" in match:
+            if match.get("thicknessMm") is not None:
                 glass_rules["thicknessMm"] = match["thicknessMm"]
+            elif match.get("overallMm") is not None:
+                glass_rules["thicknessMm"] = match["overallMm"]
             if "densityKgPerM3" in match:
                 glass_rules["densityKgPerM3"] = match["densityKgPerM3"]
+            for k in (
+                "makeup", "overallMm", "glass1Mm", "glass2Mm", "airGapMm", "pvbMm",
+                "layersMm", "colour", "toughened", "brand",
+            ):
+                if match.get(k) is not None:
+                    glass_rules[k] = match[k]
             glass_rules["_selectedOption"] = match.get("id", glass)
             glass_rules["_rateMultiplier"] = float(match.get("rateMultiplier", 1.0))
     # keep options list for API meta (not used by glass_engine numeric keys)

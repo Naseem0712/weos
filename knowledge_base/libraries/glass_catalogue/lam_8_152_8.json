@@ -1,0 +1,26 @@
+{
+  "id": "lam_8_152_8",
+  "name": "Laminated 8+1.52+8",
+  "makeup": "laminated",
+  "thicknessMm": 17.52,
+  "overallMm": 17.52,
+  "glass1Mm": 8.0,
+  "glass2Mm": 8.0,
+  "airGapMm": null,
+  "pvbMm": 1.52,
+  "layersMm": [
+    8.0,
+    8.0
+  ],
+  "colour": "clear",
+  "brand": "",
+  "toughened": false,
+  "toughenedLabel": "Non-toughened",
+  "rate": null,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "8+1.52PVB+8",
+  "specLine": "8+1.52PVB+8 · Clear · Non-toughened",
+  "status": "active",
+  "updatedAt": "2026-08-12T15:46:21.709536+00:00"
+}

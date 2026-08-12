@@ -1,0 +1,25 @@
+{
+  "id": "6mm_brown_toughened",
+  "name": "6mm Brown Toughened",
+  "makeup": "single",
+  "thicknessMm": 6.0,
+  "overallMm": 6.0,
+  "glass1Mm": null,
+  "glass2Mm": null,
+  "airGapMm": null,
+  "pvbMm": null,
+  "layersMm": [
+    6.0
+  ],
+  "colour": "brown",
+  "brand": "",
+  "toughened": true,
+  "toughenedLabel": "Toughened",
+  "rate": null,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "6mm",
+  "specLine": "6mm · Brown · Toughened",
+  "status": "active",
+  "updatedAt": "2026-08-12T15:46:21.702106+00:00"
+}

@@ -1,8 +1,4 @@
 {
-  "handleSideOverlap": 8,
-  "interlockSideOverlap": 6,
-  "topOverlap": 8,
-  "bottomOverlap": 6,
   "thicknessMm": 5,
   "densityKgPerM3": 2500,
   "quantityFormula": "shutterCount",

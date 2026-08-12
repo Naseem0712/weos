@@ -1,0 +1,25 @@
+{
+  "id": "6mm_black_toughened",
+  "name": "6mm Black Toughened",
+  "makeup": "single",
+  "thicknessMm": 6.0,
+  "overallMm": 6.0,
+  "glass1Mm": null,
+  "glass2Mm": null,
+  "airGapMm": null,
+  "pvbMm": null,
+  "layersMm": [
+    6.0
+  ],
+  "colour": "black",
+  "brand": "",
+  "toughened": true,
+  "toughenedLabel": "Toughened",
+  "rate": null,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "6mm",
+  "specLine": "6mm · Black · Toughened",
+  "status": "active",
+  "updatedAt": "2026-08-12T15:46:21.692984+00:00"
+}

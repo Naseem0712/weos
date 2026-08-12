@@ -1,0 +1,25 @@
+{
+  "id": "8mm_toughened",
+  "name": "8mm Clear Toughened",
+  "makeup": "single",
+  "thicknessMm": 8.0,
+  "overallMm": 8.0,
+  "glass1Mm": null,
+  "glass2Mm": null,
+  "airGapMm": null,
+  "pvbMm": null,
+  "layersMm": [
+    8.0
+  ],
+  "colour": "clear",
+  "brand": "",
+  "toughened": true,
+  "toughenedLabel": "Toughened",
+  "rate": null,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "8mm",
+  "specLine": "8mm · Clear · Toughened",
+  "status": "active",
+  "updatedAt": "2026-08-12T15:46:21.688170+00:00"
+}

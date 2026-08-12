@@ -1,0 +1,26 @@
+{
+  "id": "dgu_5_8_5",
+  "name": "DGU 5+8A+5 Clear Toughened",
+  "makeup": "dgu",
+  "thicknessMm": 18.0,
+  "overallMm": 18.0,
+  "glass1Mm": 5.0,
+  "glass2Mm": 5.0,
+  "airGapMm": 8.0,
+  "pvbMm": null,
+  "layersMm": [
+    5.0,
+    5.0
+  ],
+  "colour": "clear",
+  "brand": "",
+  "toughened": true,
+  "toughenedLabel": "Toughened",
+  "rate": null,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "5+8A+5",
+  "specLine": "5+8A+5 · Clear · Toughened",
+  "status": "active",
+  "updatedAt": "2026-08-12T15:46:21.710541+00:00"
+}

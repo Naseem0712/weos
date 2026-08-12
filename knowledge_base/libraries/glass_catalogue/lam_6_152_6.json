@@ -1,0 +1,26 @@
+{
+  "id": "lam_6_152_6",
+  "name": "Laminated 6+1.52+6",
+  "makeup": "laminated",
+  "thicknessMm": 13.52,
+  "overallMm": 13.52,
+  "glass1Mm": 6.0,
+  "glass2Mm": 6.0,
+  "airGapMm": null,
+  "pvbMm": 1.52,
+  "layersMm": [
+    6.0,
+    6.0
+  ],
+  "colour": "clear",
+  "brand": "",
+  "toughened": false,
+  "toughenedLabel": "Non-toughened",
+  "rate": null,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "6+1.52PVB+6",
+  "specLine": "6+1.52PVB+6 · Clear · Non-toughened",
+  "status": "active",
+  "updatedAt": "2026-08-12T15:46:21.706331+00:00"
+}

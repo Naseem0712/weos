@@ -1,0 +1,25 @@
+{
+  "id": "5mm_black_toughened",
+  "name": "5mm Black Toughened",
+  "makeup": "single",
+  "thicknessMm": 5.0,
+  "overallMm": 5.0,
+  "glass1Mm": null,
+  "glass2Mm": null,
+  "airGapMm": null,
+  "pvbMm": null,
+  "layersMm": [
+    5.0
+  ],
+  "colour": "black",
+  "brand": "",
+  "toughened": true,
+  "toughenedLabel": "Toughened",
+  "rate": null,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "5mm",
+  "specLine": "5mm · Black · Toughened",
+  "status": "active",
+  "updatedAt": "2026-08-12T15:46:21.691578+00:00"
+}

@@ -1,0 +1,58 @@
+{
+  "ok": true,
+  "seeded": [],
+  "skipped": [
+    "5mm_clear",
+    "5mm_clear_toughened",
+    "6mm_toughened",
+    "8mm_toughened",
+    "10mm_toughened",
+    "12mm_toughened",
+    "5mm_black_toughened",
+    "6mm_black_toughened",
+    "8mm_black_toughened",
+    "10mm_black_toughened",
+    "12mm_black_toughened",
+    "5mm_grey_toughened",
+    "6mm_grey_toughened",
+    "8mm_grey_toughened",
+    "10mm_grey_toughened",
+    "12mm_grey_toughened",
+    "5mm_brown_toughened",
+    "6mm_brown_toughened",
+    "8mm_brown_toughened",
+    "10mm_brown_toughened",
+    "12mm_brown_toughened",
+    "lam_5_152_5",
+    "lam_6_152_5",
+    "lam_6_152_6",
+    "lam_8_152_6",
+    "lam_8_152_8",
+    "dgu_5_12_5",
+    "dgu_6_12_6",
+    "dgu_8_12_8",
+    "dgu_10_12_10",
+    "dgu_5_8_5"
+  ],
+  "count": 0,
+  "libraryCount": 31,
+  "productSync": {
+    "ok": true,
+    "updated": [
+      "29mm_sliding",
+      "35mm_sliding",
+      "casement_stub",
+      "fixed_stub",
+      "folding_stub"
+    ],
+    "skipped": [
+      "acp_stub",
+      "fluted_stub",
+      "louvers_stub",
+      "perforated_stub",
+      "pergola_stub",
+      "railings_stub"
+    ],
+    "optionCount": 31
+  }
+}

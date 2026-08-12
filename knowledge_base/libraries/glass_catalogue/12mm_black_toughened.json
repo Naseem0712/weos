@@ -1,0 +1,25 @@
+{
+  "id": "12mm_black_toughened",
+  "name": "12mm Black Toughened",
+  "makeup": "single",
+  "thicknessMm": 12.0,
+  "overallMm": 12.0,
+  "glass1Mm": null,
+  "glass2Mm": null,
+  "airGapMm": null,
+  "pvbMm": null,
+  "layersMm": [
+    12.0
+  ],
+  "colour": "black",
+  "brand": "",
+  "toughened": true,
+  "toughenedLabel": "Toughened",
+  "rate": null,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "12mm",
+  "specLine": "12mm · Black · Toughened",
+  "status": "active",
+  "updatedAt": "2026-08-12T15:46:21.694986+00:00"
+}

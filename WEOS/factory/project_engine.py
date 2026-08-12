@@ -79,6 +79,45 @@ def _persist_window_options(
     return options
 
 
+def _augment_weight_with_louvers(
+    result: dict[str, Any],
+    panel_fill: Mapping[str, Any] | None,
+    *,
+    width: float,
+    height: float,
+    qty: float = 1.0,
+) -> None:
+    """Add aluminium louver blade kg into the line weight (does not remove glass kg)."""
+    if not isinstance(panel_fill, Mapping):
+        return
+    if str(panel_fill.get("fillType") or "glass") != "louvers":
+        return
+    try:
+        from WEOS.factory.panel_fills import compute_louver_weight
+    except Exception:
+        return
+    try:
+        lw = compute_louver_weight(
+            panel_fill,
+            opening_width_mm=float(width),
+            opening_height_mm=float(height),
+            qty=float(qty or 1.0),
+        )
+    except Exception:
+        return
+    kg = float((lw or {}).get("weightKg") or 0.0)
+    if kg <= 0:
+        return
+    w = result.get("weight")
+    if not isinstance(w, dict):
+        w = {}
+        result["weight"] = w
+    w["aluminiumKg"] = round(float(w.get("aluminiumKg") or 0) + kg, 3)
+    w["totalKg"] = round(float(w.get("totalKg") or 0) + kg, 3)
+    w["louverKg"] = round(kg, 3)
+    result["louverWeight"] = lw
+
+
 def _section_details_for_product(product: Mapping[str, Any] | None) -> list[dict[str, Any]]:
     """Series Setup section rows for quote specs (name / dims / weight / std length)."""
     if not isinstance(product, Mapping):
@@ -763,6 +802,7 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
             for g in job.glass
         ],
     }
+    _augment_weight_with_louvers(result_base, lo.get("panelFill"), width=width, height=height, qty=qty)
     return apply_selling_to_line_result(result_base, line)
 
 

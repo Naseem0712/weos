@@ -2604,7 +2604,24 @@ def api_glass_library_delete(glass_id: str) -> dict[str, Any]:
 def api_glass_seed(force: bool = False) -> dict[str, Any]:
     from WEOS.factory.glass_catalogue import seed_default_glass
 
-    return seed_default_glass(force=force)
+    return seed_default_glass(force=force, sync_products=True)
+
+
+@app.get("/api/glass/cart-options")
+def api_glass_cart_options() -> dict[str, Any]:
+    """Full glass list for the cart dropdown (defaults + Glass Library extras)."""
+    from WEOS.factory.glass_catalogue import cart_glass_options
+
+    opts = cart_glass_options(merge_library=True)
+    return {"options": opts, "count": len(opts)}
+
+
+@app.post("/api/glass/sync-products")
+def api_glass_sync_products() -> dict[str, Any]:
+    """Push shared glass options into window product ``rules/glass.json`` files."""
+    from WEOS.factory.glass_catalogue import sync_glass_options_to_products
+
+    return sync_glass_options_to_products(merge_library=True)
 
 
 @app.post("/api/glass/compute")

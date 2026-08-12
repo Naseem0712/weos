@@ -1,0 +1,26 @@
+{
+  "id": "dgu_6_12_6",
+  "name": "DGU 6+12A+6 Clear Toughened",
+  "makeup": "dgu",
+  "thicknessMm": 24.0,
+  "overallMm": 24.0,
+  "glass1Mm": 6.0,
+  "glass2Mm": 6.0,
+  "airGapMm": 12.0,
+  "pvbMm": null,
+  "layersMm": [
+    6.0,
+    6.0
+  ],
+  "colour": "clear",
+  "brand": "",
+  "toughened": true,
+  "toughenedLabel": "Toughened",
+  "rate": null,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "6+12A+6",
+  "specLine": "6+12A+6 · Clear · Toughened",
+  "status": "active",
+  "updatedAt": "2026-08-12T15:46:21.710541+00:00"
+}

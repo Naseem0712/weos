@@ -1,0 +1,25 @@
+{
+  "id": "10mm_toughened",
+  "name": "10mm Clear Toughened",
+  "makeup": "single",
+  "thicknessMm": 10.0,
+  "overallMm": 10.0,
+  "glass1Mm": null,
+  "glass2Mm": null,
+  "airGapMm": null,
+  "pvbMm": null,
+  "layersMm": [
+    10.0
+  ],
+  "colour": "clear",
+  "brand": "",
+  "toughened": true,
+  "toughenedLabel": "Toughened",
+  "rate": null,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "10mm",
+  "specLine": "10mm · Clear · Toughened",
+  "status": "active",
+  "updatedAt": "2026-08-12T15:46:21.688170+00:00"
+}
