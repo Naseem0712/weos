@@ -985,9 +985,12 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
         <div class="panel">
           <div class="row" style="justify-content:space-between;margin-bottom:.6rem">
             <strong>Customers</strong>
-            <button class="btn sm" id="btnCustNew">New customer</button>
+            <div class="row" style="gap:.35rem">
+              <button class="btn ghost sm" id="btnCustNewSetup" type="button">New project setup</button>
+              <button class="btn sm" id="btnCustNew">New customer</button>
+            </div>
           </div>
-          <input id="custSearch" placeholder="Search customer…" style="width:100%;margin-bottom:.6rem"/>
+          <input id="custSearch" placeholder="Search by name or mobile…" style="width:100%;margin-bottom:.6rem"/>
           <div id="custList" style="max-height:520px;overflow:auto"></div>
         </div>
         <div class="panel">
@@ -1019,9 +1022,9 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           <strong style="font-size:.9rem">Account / Ledger</strong>
           <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">Billed = latest grand total per quote number (versions kept as history). Balance = billed − advances.</p>
           <div id="cpLedgerKpis" class="row" style="gap:.7rem;flex-wrap:wrap;margin-bottom:.6rem">
-            <div class="kpi"><label class="l">Total billed</label><div class="big" style="font-size:1.05rem" id="cpTotBilled">₹ —</div></div>
-            <div class="kpi"><label class="l">Advances</label><div class="big" style="font-size:1.05rem" id="cpTotAdv">₹ —</div></div>
-            <div class="kpi"><label class="l">Balance</label><div class="big" style="font-size:1.05rem" id="cpTotBal">₹ —</div></div>
+            <div class="kpi"><label class="l">Total value</label><div class="big" style="font-size:1.05rem" id="cpTotBilled">₹ —</div></div>
+            <div class="kpi"><label class="l">Total advance</label><div class="big" style="font-size:1.05rem" id="cpTotAdv">₹ —</div></div>
+            <div class="kpi"><label class="l">Total balance</label><div class="big" style="font-size:1.05rem" id="cpTotBal">₹ —</div></div>
           </div>
           <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.55rem">
             <div><label class="l">Advance ₹</label><input id="cpAdvAmt" type="number" min="0" step="0.01" style="width:110px"/></div>
@@ -1077,11 +1080,12 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           </div>
         </div>
         <div class="row" id="coHubKpis" style="gap:.7rem;flex-wrap:wrap;margin:0.8rem 0">
+          <div class="kpi"><label class="l">Projects running</label><div class="big" style="font-size:1.05rem" id="hubProjRunning">—</div></div>
+          <div class="kpi"><label class="l">Orders confirmed</label><div class="big" style="font-size:1.05rem" id="hubOrdersConfirmed">—</div></div>
+          <div class="kpi"><label class="l">Total advances</label><div class="big" style="font-size:1.05rem" id="hubAdv">₹ —</div></div>
+          <div class="kpi"><label class="l">Year value</label><div class="big" style="font-size:1.05rem" id="hubYearValue">₹ —</div></div>
+          <div class="kpi"><label class="l">Balance outstanding</label><div class="big" style="font-size:1.05rem" id="hubBal">₹ —</div></div>
           <div class="kpi"><label class="l">Customers</label><div class="big" style="font-size:1.05rem" id="hubCustCount">—</div></div>
-          <div class="kpi"><label class="l">Projects</label><div class="big" style="font-size:1.05rem" id="hubProjCount">—</div></div>
-          <div class="kpi"><label class="l">Total billed</label><div class="big" style="font-size:1.05rem" id="hubBilled">₹ —</div></div>
-          <div class="kpi"><label class="l">Advances</label><div class="big" style="font-size:1.05rem" id="hubAdv">₹ —</div></div>
-          <div class="kpi"><label class="l">Balance</label><div class="big" style="font-size:1.05rem" id="hubBal">₹ —</div></div>
         </div>
         <p class="muted" id="coHubRule" style="font-size:.75rem;margin:0 0 .6rem"></p>
         <div class="tabs" id="hubTabs" style="margin-bottom:.5rem">
@@ -1665,6 +1669,7 @@ const state = {
   memoryAskedFor: null,
   companyGst: null,
   workspace: null,
+  workspaceRestored: false,
   railShape: 'straight',
   railMode: 'normal',
   railStep: 'design',
@@ -1676,6 +1681,64 @@ const state = {
 };
 const $ = (id) => document.getElementById(id);
 const toast = (m) => { const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); };
+
+/** Persist active seller GST so refresh / minimize does not log out the workspace. */
+const WEOS_GST_KEY = 'weos.activeCompanyGst';
+function persistCompanyGst(gst) {
+  const g = (gst || '').trim().toUpperCase();
+  if (!g) return;
+  state.companyGst = g;
+  try { localStorage.setItem(WEOS_GST_KEY, g); } catch (_) {}
+  try { sessionStorage.setItem(WEOS_GST_KEY, g); } catch (_) {}
+}
+function savedCompanyGst() {
+  try {
+    return (sessionStorage.getItem(WEOS_GST_KEY) || localStorage.getItem(WEOS_GST_KEY) || '').trim().toUpperCase();
+  } catch (_) {
+    return (state.companyGst || '').trim().toUpperCase();
+  }
+}
+async function applyWorkspacePayload(ws) {
+  if (!ws || !ws.gstNo) return;
+  state.workspace = ws;
+  persistCompanyGst(ws.gstNo);
+  state.company = ws.company || state.company;
+  if ($('coGstLogin')) $('coGstLogin').value = ws.gstNo;
+  if (ws.company) {
+    const c = ws.company;
+    if ($('coName')) $('coName').value = c.companyName || '';
+    if ($('coGst')) $('coGst').value = c.gstNo || ws.gstNo;
+    if ($('coAddress') && c.address) $('coAddress').value = c.address;
+    if ($('coPhone') && c.phone) $('coPhone').value = c.phone;
+    if ($('coEmail') && c.email) $('coEmail').value = c.email;
+    if ($('coTagline') && c.tagline) $('coTagline').value = c.tagline;
+    if ($('coTerms') && c.terms) $('coTerms').value = c.terms;
+    if (typeof renderCompanyPreview === 'function') renderCompanyPreview();
+  }
+  if (typeof renderCompanyHub === 'function') renderCompanyHub(ws);
+  if ($('coGstStatus')) $('coGstStatus').textContent = 'Workspace open · GSTIN ' + ws.gstNo;
+  // Rehydrate lists from Postgres-backed APIs.
+  try { await loadCustomerList(); } catch (_) {}
+  try { if (typeof loadProjects === 'function') await loadProjects(); } catch (_) {}
+  try { if (typeof loadSetupList === 'function') await loadSetupList(); } catch (_) {}
+}
+async function restoreCompanyWorkspace() {
+  const gst = savedCompanyGst();
+  if (!gst) return null;
+  try {
+    const ws = await api('/api/company/workspace/open', {
+      method: 'POST',
+      body: { gstNo: gst, create: true },
+    });
+    await applyWorkspacePayload(ws);
+    state.workspaceRestored = true;
+    return ws;
+  } catch (e) {
+    console.warn('GST workspace restore failed', e);
+    if ($('coGstStatus')) $('coGstStatus').textContent = 'Restore failed — re-enter GSTIN';
+    return null;
+  }
+}
 
 /** Same-origin when UI is served by WEOS; otherwise hit local API (file:// / Live Server). */
 const API_BASE = (() => {
@@ -3970,11 +4033,35 @@ if ($('btnSaveSetup')) $('btnSaveSetup').onclick = async () => {
   try {
     syncProjectCustomer();
     await saveProject(false);
+    // Same customer APIs as Customers tab — no orphan records.
+    await upsertCustomerFromSetup();
     if ($('setupErr')) $('setupErr').textContent = '';
     await loadSetupList();
     await refreshExportSetupSelect();
+    if (state.companyGst) refreshCompanyHub(state.companyGst);
   } catch(e) { if ($('setupErr')) $('setupErr').textContent = e.message; toast(e.message); }
 };
+async function upsertCustomerFromSetup() {
+  const name = (($('projCustName') && $('projCustName').value.trim())
+    || ($('cartCustomer') && $('cartCustomer').value.trim()) || '').trim();
+  const phone = (($('projMobile') && $('projMobile').value.trim()) || '').trim();
+  if (!name && !phone) return;
+  const custName = name || phone;
+  try {
+    await api('/api/customers/'+encodeURIComponent(custName)+'/profile', {
+      method: 'PUT',
+      body: {
+        name: custName,
+        phone: phone || undefined,
+        address: (($('projCustAddress') && $('projCustAddress').value) || '') || undefined,
+        gstNo: (($('projCustGst') && $('projCustGst').value) || '') || undefined,
+        companyGst: state.companyGst || savedCompanyGst() || undefined,
+      },
+    });
+  } catch (e) {
+    console.warn('customer upsert from setup', e);
+  }
+}
 if ($('btnSetupToCart')) $('btnSetupToCart').onclick = async () => {
   try {
     syncProjectCustomer();
@@ -5349,11 +5436,17 @@ if ($('btnMemLookup')) $('btnMemLookup').onclick = async () => {
 
 /* ── Company Setup + GST workspace hub ─────────────────────────────────────── */
 async function initCompany() {
+  // Prefer saved GST workspace (session stick) over bare /api/company.
+  const saved = savedCompanyGst();
+  if (saved) {
+    const ws = await restoreCompanyWorkspace();
+    if (ws) return;
+  }
   try {
     const c = await api('/api/company');
     state.company = c;
     if (c.gstNo) {
-      state.companyGst = c.gstNo;
+      persistCompanyGst(c.gstNo);
       if ($('coGstLogin')) $('coGstLogin').value = c.gstNo;
     }
     $('coName').value = c.companyName || '';
@@ -5395,7 +5488,7 @@ if ($('btnCoSave')) $('btnCoSave').onclick = async () => {
       terms: ($('coTerms') && $('coTerms').value) || '',
     };
     const saved = await api('/api/company', {method:'PUT', body});
-    if (saved && saved.gstNo) state.companyGst = saved.gstNo;
+    if (saved && saved.gstNo) persistCompanyGst(saved.gstNo);
     toast(saved && saved.persisted === false
       ? 'Company saved locally only — set DATABASE_URL for durable storage'
       : 'Company saved');
@@ -5419,14 +5512,23 @@ function renderCompanyHub(ws) {
   hub.classList.remove('hidden');
   const co = ws.company || {};
   const t = ws.totals || {};
+  const dash = ws.dashboard || {};
   if ($('coHubTitle')) $('coHubTitle').textContent = (co.companyName || 'Company hub').toUpperCase();
   if ($('coHubSub')) $('coHubSub').textContent = 'GSTIN ' + (ws.gstNo || co.gstNo || '') + ' · ' + (ws.customerCount||0) + ' customers · ' + (ws.projectCount||0) + ' projects';
   if ($('hubCustCount')) $('hubCustCount').textContent = String(ws.customerCount ?? '—');
-  if ($('hubProjCount')) $('hubProjCount').textContent = String(ws.projectCount ?? '—');
-  if ($('hubBilled')) $('hubBilled').textContent = money(t.billed);
-  if ($('hubAdv')) $('hubAdv').textContent = money(t.advances);
-  if ($('hubBal')) $('hubBal').textContent = money(t.balance);
-  if ($('coHubRule')) $('coHubRule').textContent = ws.totalsRule || (t.note || '');
+  if ($('hubProjRunning')) $('hubProjRunning').textContent = String(dash.projectsRunning ?? t.projectsRunning ?? ws.projectCount ?? '—');
+  if ($('hubOrdersConfirmed')) $('hubOrdersConfirmed').textContent = String(dash.ordersConfirmed ?? t.ordersConfirmed ?? 0);
+  if ($('hubAdv')) $('hubAdv').textContent = money(dash.totalAdvances ?? t.advances);
+  if ($('hubYearValue')) $('hubYearValue').textContent = money(dash.yearValueGenerated ?? t.yearValue);
+  if ($('hubBal')) $('hubBal').textContent = money(dash.balanceOutstanding ?? t.balance);
+  if ($('coHubRule')) {
+    const bits = [
+      ws.totalsRule || (t.note || ''),
+      dash.ordersConfirmedDefinition || '',
+      dash.yearValueDefinition || '',
+    ].filter(Boolean);
+    $('coHubRule').textContent = bits.join(' ');
+  }
   if ($('hubCustBody')) {
     $('hubCustBody').innerHTML = (ws.customers||[]).map(c => `
       <tr>
@@ -5475,12 +5577,10 @@ function renderCompanyHub(ws) {
 }
 async function refreshCompanyHub(gst) {
   try {
-    const qs = gst ? ('?gst='+encodeURIComponent(gst)) : '';
+    const g = gst || state.companyGst || savedCompanyGst();
+    const qs = g ? ('?gst='+encodeURIComponent(g)) : '';
     const ws = await api('/api/company/workspace'+qs);
-    state.workspace = ws;
-    state.companyGst = ws.gstNo || state.companyGst;
-    renderCompanyHub(ws);
-    if ($('coGstStatus')) $('coGstStatus').textContent = 'Workspace open · GSTIN ' + (ws.gstNo||'');
+    await applyWorkspacePayload(ws);
   } catch(e) {
     if ($('coHubPanel')) $('coHubPanel').classList.add('hidden');
     if ($('coGstStatus')) $('coGstStatus').textContent = '';
@@ -5507,21 +5607,7 @@ if ($('btnCoGstOpen')) $('btnCoGstOpen').onclick = async () => {
       create: true,
     };
     const ws = await api('/api/company/workspace/open', {method:'POST', body});
-    state.workspace = ws;
-    state.companyGst = ws.gstNo;
-    state.company = ws.company || state.company;
-    if (ws.company) {
-      const c = ws.company;
-      if ($('coName')) $('coName').value = c.companyName || '';
-      if ($('coGst')) $('coGst').value = c.gstNo || gst;
-      if ($('coAddress') && c.address) $('coAddress').value = c.address;
-      if ($('coPhone') && c.phone) $('coPhone').value = c.phone;
-      if ($('coEmail') && c.email) $('coEmail').value = c.email;
-      if ($('coTagline') && c.tagline) $('coTagline').value = c.tagline;
-      if ($('coTerms') && c.terms) $('coTerms').value = c.terms;
-      renderCompanyPreview();
-    }
-    renderCompanyHub(ws);
+    await applyWorkspacePayload(ws);
     toast(ws.created ? 'Company workspace created' : 'Company workspace opened');
     if ($('coGstStatus')) $('coGstStatus').textContent = (ws.created ? 'Created · ' : 'Opened · ') + 'GSTIN ' + ws.gstNo;
   } catch(e) {
@@ -5557,14 +5643,19 @@ async function initCustomers() {
 }
 async function loadCustomerList() {
   try {
-    const data = await api('/api/customers');
+    const q = (($('custSearch') && $('custSearch').value) || '').trim();
+    const gst = state.companyGst || savedCompanyGst();
+    const params = [];
+    if (q) params.push('q='+encodeURIComponent(q));
+    if (gst) params.push('gst='+encodeURIComponent(gst));
+    const qs = params.length ? ('?'+params.join('&')) : '';
+    const data = await api('/api/customers'+qs);
     state.customers = data.customers || [];
     renderCustomerList();
   } catch(e) { $('custList').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
 }
 function renderCustomerList() {
-  const q = (($('custSearch') && $('custSearch').value) || '').trim().toLowerCase();
-  const list = (state.customers||[]).filter(c => !q || (c.name||'').toLowerCase().includes(q));
+  const list = state.customers || [];
   $('custList').innerHTML = list.map(c => `
     <div class="card" data-cust="${esc(c.name)}" style="cursor:pointer;padding:.6rem .75rem;margin-bottom:.4rem;${c.name===state.selectedCustomer?'outline:2px solid var(--green)':''}">
       <strong>${esc(c.name)}</strong>
@@ -5605,19 +5696,19 @@ async function loadCustomerLedger(name, quotesFallback) {
   if (sel) {
     const quotes = quotesFallback || [];
     sel.innerHTML = '<option value="">— any —</option>' + quotes.map(q =>
-      `<option value="${esc(q.projectId)}">${esc(q.projectId)} · ${esc(q.name||'')}</option>`
+      `<option value="${esc(q.projectId)}" data-ver="${q.version||1}" data-qid="${esc(q.quotationId||'')}">${esc(q.projectId)} · ${esc(q.name||'')} · v${q.version||1}${q.quotationId?(' · '+esc(q.quotationId)):''}</option>`
     ).join('');
   }
   try {
     const led = await api('/api/customers/'+encodeURIComponent(name)+'/ledger');
     const t = led.totals || {};
-    if ($('cpTotBilled')) $('cpTotBilled').textContent = money(t.billed);
+    if ($('cpTotBilled')) $('cpTotBilled').textContent = money(t.value != null ? t.value : t.billed);
     if ($('cpTotAdv')) $('cpTotAdv').textContent = money(t.advances);
     if ($('cpTotBal')) $('cpTotBal').textContent = money(t.balance);
     renderAdvances(led.advances || []);
     if (sel && (led.projects||[]).length) {
       sel.innerHTML = '<option value="">— any —</option>' + (led.projects||[]).map(q =>
-        `<option value="${esc(q.projectId)}">${esc(q.projectId)} · ${esc(q.name||'')}</option>`
+        `<option value="${esc(q.projectId)}" data-ver="${q.version||1}" data-qid="${esc(q.quotationId||'')}">${esc(q.projectId)} · ${esc(q.name||'')} · v${q.version||1}${q.quotationId?(' · '+esc(q.quotationId)):''}</option>`
       ).join('');
     }
   } catch(e) {
@@ -5631,15 +5722,21 @@ function renderAdvances(rows) {
     $('cpAdvances').innerHTML = '<p class="muted" style="font-size:.8rem">No advances yet</p>';
     return;
   }
-  $('cpAdvances').innerHTML = `<table><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Ref / note</th><th>Project</th><th></th></tr></thead><tbody>${
-    rows.map(a => `<tr>
+  $('cpAdvances').innerHTML = `<table><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Quote / version</th><th>Ref / note</th><th></th></tr></thead><tbody>${
+    rows.map(a => {
+      const linked = a.linkedQuote || {};
+      const qid = a.quoteId || linked.quotationId || a.projectId || '—';
+      const ver = a.quoteVersion != null ? a.quoteVersion : linked.version;
+      const qLabel = (qid && qid !== '—') ? (esc(qid) + (ver != null ? (' · v'+ver) : '')) : '—';
+      return `<tr>
       <td>${esc((a.paidAt||'').slice(0,10)||'—')}</td>
       <td>${money(a.amount)}</td>
       <td>${esc((a.paymentMode||'').toUpperCase())}</td>
+      <td>${qLabel}</td>
       <td>${esc([a.reference,a.note].filter(Boolean).join(' · ')||'—')}</td>
-      <td>${esc(a.projectId||a.quoteId||'—')}</td>
       <td><button class="btn ghost sm" data-del-adv="${a.id}" type="button">✕</button></td>
-    </tr>`).join('')
+    </tr>`;
+    }).join('')
   }</tbody></table>`;
   $('cpAdvances').querySelectorAll('[data-del-adv]').forEach(b => b.onclick = async () => {
     if (!state.selectedCustomer) return;
@@ -5656,6 +5753,8 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
   const amount = +(($('cpAdvAmt') && $('cpAdvAmt').value) || 0);
   if (!(amount > 0)) { toast('Enter advance amount'); return; }
   try {
+    const sel = $('cpAdvProject');
+    const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
     await api('/api/customers/'+encodeURIComponent(name)+'/advances', {
       method:'POST',
       body: {
@@ -5663,7 +5762,9 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
         paymentMode: ($('cpAdvMode') && $('cpAdvMode').value) || 'cash',
         paidAt: ($('cpAdvDate') && $('cpAdvDate').value) || null,
         reference: ($('cpAdvRef') && $('cpAdvRef').value) || '',
-        projectId: ($('cpAdvProject') && $('cpAdvProject').value) || null,
+        projectId: (sel && sel.value) || null,
+        quoteId: (opt && opt.dataset && opt.dataset.qid) || null,
+        quoteVersion: (opt && opt.dataset && opt.dataset.ver) ? +opt.dataset.ver : null,
         customerName: name,
       },
     });
@@ -5671,23 +5772,31 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
     if ($('cpAdvRef')) $('cpAdvRef').value = '';
     toast('Advance saved');
     await loadCustomerLedger(name);
+    if (state.companyGst) refreshCompanyHub(state.companyGst);
   } catch(e) { $('cpErr').textContent = e.message; toast(e.message); }
 };
 function renderCustomerQuotes(quotes) {
   if (!quotes.length) { $('cpQuotes').innerHTML = '<p class="muted">No quotes yet for this customer</p>'; return; }
-  $('cpQuotes').innerHTML = quotes.map(q => {
+  const billed = quotes.reduce((s,q) => {
+    // Prefer latest live row total for display roll-up note (versions listed separately).
+    return s + (q.grandTotal != null ? +q.grandTotal : 0);
+  }, 0);
+  $('cpQuotes').innerHTML = `<p class="muted" style="font-size:.78rem;margin:0 0 .5rem">All quote versions listed. Live total value (sum of current rows): <strong>${money(billed)}</strong> — account billed uses latest per quotation number.</p>` + quotes.map(q => {
     const brand = 'marqt';
     const versions = (q.versions||[]).map(v =>
-      `<span class="chip">v${v.version} <a href="${API_BASE}/api/projects/${q.projectId}/customer-pdf?brand=${brand}" target="_blank" title="Print current">🖨</a></span>`
+      `<span class="chip">v${v.version} ${v.grandTotal!=null?money(v.grandTotal):''} <a href="${API_BASE}/api/projects/${q.projectId}/customer-pdf?brand=${brand}" target="_blank" title="Print current">🖨</a></span>`
     ).join(' ');
+    const st = (q.status||'').toLowerCase();
+    const confLabel = ['confirmed','accepted','finalized','ordered','won'].includes(st) ? 'Confirmed' : 'Mark confirmed';
     return `<div class="card" style="padding:.65rem .8rem;margin-bottom:.55rem">
       <div class="row" style="justify-content:space-between;align-items:center">
         <div>
           <strong>${esc(q.name||q.projectId)}</strong>
-          <div class="muted" style="font-size:.74rem">${q.projectId} · v${q.version||1} · ${(q.status||'')} · ${money(q.grandTotal)}</div>
+          <div class="muted" style="font-size:.74rem">${q.projectId} · ${esc(q.quotationId||'—')} · v${q.version||1} · ${(q.status||'')} · ${money(q.grandTotal)}</div>
           <div class="muted" style="font-size:.72rem">Created ${fmtDate(q.createdAt)}${q.updatedAt&&q.updatedAt!==q.createdAt?(' · Updated '+fmtDate(q.updatedAt)):''}</div>
         </div>
         <div class="actions-inline">
+          <button class="btn ghost sm" data-confirm-q="${q.projectId}" type="button">${confLabel}</button>
           <a class="btn ghost sm" href="${API_BASE}/api/projects/${q.projectId}/customer-pdf?brand=marqt" target="_blank">Print</a>
           <button class="btn ghost sm" data-open-q="${q.projectId}">Edit</button>
           <button class="btn ghost sm" data-reuse-q="${q.projectId}">Reuse</button>
@@ -5702,15 +5811,32 @@ function renderCustomerQuotes(quotes) {
     toast('Reused → '+d.projectId);
     await openProject(d.projectId); setView('cart');
   });
+  $('cpQuotes').querySelectorAll('[data-confirm-q]').forEach(b => b.onclick = async () => {
+    try {
+      await api('/api/projects/'+b.dataset.confirmQ+'/status', {method:'POST', body:{status:'confirmed'}});
+      toast('Order confirmed');
+      if (state.selectedCustomer) await openCustomer(state.selectedCustomer);
+      if (state.companyGst) refreshCompanyHub(state.companyGst);
+    } catch(e) { toast(e.message); }
+  });
 }
 function fmtDate(iso){ if(!iso) return '—'; try { return new Date(iso).toLocaleDateString('en-IN'); } catch(_){ return iso; } }
-if ($('custSearch')) $('custSearch').oninput = renderCustomerList;
+let _custSearchTimer = null;
+if ($('custSearch')) $('custSearch').oninput = () => {
+  clearTimeout(_custSearchTimer);
+  _custSearchTimer = setTimeout(() => loadCustomerList(), 220);
+};
 if ($('btnCustNew')) $('btnCustNew').onclick = () => {
   const name = prompt('New customer name'); if (!name) return;
   state.selectedCustomer = name;
   ['cpGst','cpAddress','cpContact','cpPhone','cpEmail','cpSite','cpStateCode'].forEach(id => $(id).value='');
   $('cpName').value = name; $('custAccTitle').textContent = 'Account · '+name;
   $('cpQuotes').innerHTML = '<p class="muted">Save details, then create a quote.</p>';
+  if ($('cpAdvances')) $('cpAdvances').innerHTML = '';
+};
+if ($('btnCustNewSetup')) $('btnCustNewSetup').onclick = () => {
+  if ($('btnNewProj')) $('btnNewProj').click();
+  else setView('setup');
 };
 if ($('btnCpSave')) $('btnCpSave').onclick = async () => {
   $('cpErr').textContent = '';
@@ -5720,11 +5846,13 @@ if ($('btnCpSave')) $('btnCpSave').onclick = async () => {
     const body = {
       name, gstNo: $('cpGst').value, address: $('cpAddress').value, contactPerson: $('cpContact').value,
       phone: $('cpPhone').value, email: $('cpEmail').value, site: $('cpSite').value, stateCode: $('cpStateCode').value,
+      companyGst: state.companyGst || savedCompanyGst() || undefined,
     };
     await api('/api/customers/'+encodeURIComponent(name)+'/profile', {method:'PUT', body});
     toast('Customer saved');
     state.selectedCustomer = name;
     await loadCustomerList();
+    if (state.companyGst) refreshCompanyHub(state.companyGst);
   } catch(e) { $('cpErr').textContent = e.message; }
 };
 if ($('btnCpNewQuote')) $('btnCpNewQuote').onclick = async () => {
@@ -6135,6 +6263,8 @@ async function pingEngine(){
 (async function init(){
   pingEngine();
   setInterval(pingEngine, 30000);
+  // Auto-restore GST company workspace on boot (refresh / minimize safe).
+  try { await restoreCompanyWorkspace(); } catch (e) { console.warn(e); }
   await loadProducts();
   try { state.adminMeta = await api('/api/admin/meta'); } catch(_){}
   state.lines = [
@@ -6143,7 +6273,7 @@ async function pingEngine(){
     {product:'casement_stub', width:900, height:1500, qty:2, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft'},
     {product:'fixed_stub', width:1200, height:600, qty:8, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft'},
   ];
-  setView('dashboard');
+  setView(state.workspaceRestored ? 'company' : 'dashboard');
   scheduleLivePrice();
   try { weosMountAgentDock(); } catch(e){ console.warn('WEOS Agent dock failed to mount', e); }
 })();

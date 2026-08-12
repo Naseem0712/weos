@@ -440,6 +440,7 @@ class CustomerAdvance(Base):
     note: Mapped[str | None] = mapped_column(Text)
     project_id: Mapped[str | None] = mapped_column(String(60), index=True)
     quote_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    quote_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
@@ -455,6 +456,7 @@ class CustomerAdvance(Base):
             "note": self.note,
             "projectId": self.project_id,
             "quoteId": self.quote_id,
+            "quoteVersion": self.quote_version,
             "paidAt": _iso(self.paid_at),
             "createdAt": _iso(self.created_at),
             "updatedAt": _iso(self.updated_at),

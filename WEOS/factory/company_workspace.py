@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from WEOS.factory.company_store import (
@@ -142,7 +143,30 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
         )
 
     project_rows = []
+    year_value = 0.0
+    orders_confirmed = 0
+    projects_running = 0
+    calendar_year = datetime.now(timezone.utc).year
+
+    from WEOS.factory.ledger_store import CONFIRMED_STATUSES
+
     for p in projects_raw:
+        st = str(p.get("status") or "draft").strip().lower()
+        # list_projects(include_archived=False) already excludes archived.
+        projects_running += 1
+        if st in CONFIRMED_STATUSES:
+            orders_confirmed += 1
+        # Year value: live rows are already latest-per-quotation-number.
+        ysrc = str(p.get("updatedAt") or p.get("createdAt") or "")
+        try:
+            y = int(ysrc[:4]) if len(ysrc) >= 4 else 0
+        except ValueError:
+            y = 0
+        if y == calendar_year:
+            try:
+                year_value += float(p.get("grandTotal") or 0)
+            except (TypeError, ValueError):
+                pass
         project_rows.append(
             {
                 "projectId": p.get("projectId"),
@@ -171,6 +195,28 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
         for r in customer_rows
     ]
 
+    dashboard = {
+        "projectsRunning": projects_running,
+        "ordersConfirmed": orders_confirmed,
+        "totalAdvances": round(total_advances, 2),
+        "yearValueGenerated": round(year_value, 2),
+        "balanceOutstanding": round(total_balance, 2),
+        "yearBasis": "calendar",
+        "year": calendar_year,
+        "ordersConfirmedDefinition": (
+            "Orders confirmed = projects/quotes with status in "
+            f"{sorted(CONFIRMED_STATUSES)} (default status is draft/active — mark confirmed explicitly)."
+        ),
+        "projectsRunningDefinition": (
+            "Projects running = non-archived projects in the company workspace."
+        ),
+        "yearValueDefinition": (
+            "Year value = sum of live (latest-per-quotation-number) grand totals whose "
+            "updatedAt falls in the current calendar year."
+        ),
+        "balanceDefinition": "Balance outstanding = total billed − total advances (receivables).",
+    }
+
     return {
         "customers": customer_rows,
         "customerCount": len(customer_rows),
@@ -178,11 +224,15 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
         "projectCount": len(project_rows),
         "accounts": accounts,
         "accountCount": len(accounts),
+        "dashboard": dashboard,
         "totals": {
             "billed": round(total_billed, 2),
             "advances": round(total_advances, 2),
             "balance": round(total_balance, 2),
             "quoteVersions": total_quote_versions,
+            "yearValue": round(year_value, 2),
+            "ordersConfirmed": orders_confirmed,
+            "projectsRunning": projects_running,
             "currency": "INR",
             "basis": "latest_per_quotation_number",
             "note": TOTALS_RULE,

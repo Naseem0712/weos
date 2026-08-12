@@ -229,7 +229,44 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
     doc["_path"] = path.as_posix()
     if versioned:
         doc["quoteNumberVersioned"] = True
+    # Keep customer profile in sync so Project Setup and Customers tab share one record.
+    _sync_customer_from_project(out)
     return doc
+
+
+def _sync_customer_from_project(doc: Mapping[str, Any] | dict[str, Any]) -> None:
+    """Upsert customer profile from project bill-to fields (no orphan duplicates)."""
+    name = str(doc.get("customer") or "").strip()
+    mobile = str(doc.get("customerMobile") or "").strip()
+    if not name and not mobile:
+        return
+    cust_name = name or mobile
+    payload: dict[str, Any] = {"name": cust_name}
+    if mobile:
+        payload["phone"] = mobile
+    addr = str(doc.get("customerAddress") or "").strip()
+    if addr:
+        payload["address"] = addr
+    gst = str(doc.get("customerGst") or "").strip()
+    if gst:
+        payload["gstNo"] = gst
+    co = _norm_company_gst(doc.get("companyGst"))
+    if co:
+        payload["companyGst"] = co
+    try:
+        from WEOS.factory.customer_store import save_customer_profile
+
+        save_customer_profile(cust_name, payload)
+    except Exception:
+        _log.exception("sync customer profile from project %s failed", doc.get("projectId"))
+
+
+def set_project_status(project_id: str, status: str) -> dict[str, Any]:
+    """Set project status (draft|active|confirmed|accepted|finalized|archived…)."""
+    st = (status or "").strip().lower() or "draft"
+    doc = load_project(project_id)
+    doc["status"] = st
+    return save_project(doc, bump_version=False, action=f"status_{st}")
 
 
 def _norm_company_gst(value: Any) -> str:

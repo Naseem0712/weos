@@ -26,12 +26,50 @@ _log = logging.getLogger("weos.ledger")
 
 PAYMENT_MODES = ("cash", "cheque", "upi", "neft", "rtgs", "card", "other")
 
+# Project / quote statuses that count as a confirmed order on the company hub.
+CONFIRMED_STATUSES = frozenset(
+    {"confirmed", "accepted", "finalized", "ordered", "order", "won"}
+)
+RUNNING_STATUSES = frozenset(
+    {"active", "draft", "confirmed", "accepted", "finalized", "ordered", "order", "won"}
+)
+
 TOTALS_BASIS = "latest_per_quotation_number"
 TOTALS_NOTE = (
-    "Billed = sum of latest quote grand totals per quotation number "
+    "Billed / total value = sum of latest quote grand totals per quotation number "
     "(versions retained as history; live project value updates when a new version is saved). "
-    "Balance = billed − advances."
+    "Balance = billed − advances. Year value uses the current calendar year of the live quote."
 )
+
+
+def _ensure_advance_schema() -> None:
+    """Add quote_version on existing DBs (create_all does not ALTER)."""
+    try:
+        from sqlalchemy import text
+
+        from WEOS.db.engine import get_engine
+
+        eng = get_engine()
+        if eng is None:
+            return
+        with eng.begin() as conn:
+            conn.execute(
+                text("ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS quote_version INTEGER")
+            )
+    except Exception:
+        # SQLite < 3.35 / some drivers lack IF NOT EXISTS on ADD COLUMN — try bare add.
+        try:
+            from sqlalchemy import text
+
+            from WEOS.db.engine import get_engine
+
+            eng = get_engine()
+            if eng is None:
+                return
+            with eng.begin() as conn:
+                conn.execute(text("ALTER TABLE customer_advances ADD COLUMN quote_version INTEGER"))
+        except Exception:
+            pass
 
 
 def _slug(name: str) -> str:
@@ -69,6 +107,7 @@ def _ensure_ready() -> None:
             "Database unavailable — ledger advances require DATABASE_URL (PostgreSQL)."
         )
     init_db()
+    _ensure_advance_schema()
 
 
 def list_advances(customer: str) -> list[dict[str, Any]]:
@@ -108,6 +147,11 @@ def add_advance(customer: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     if mode not in PAYMENT_MODES:
         mode = "other"
     paid_at = _parse_dt(payload.get("paidAt") or payload.get("date")) or datetime.now(timezone.utc)
+    qver = payload.get("quoteVersion")
+    try:
+        qver_i = int(qver) if qver is not None and str(qver).strip() != "" else None
+    except (TypeError, ValueError):
+        qver_i = None
     with session_scope() as s:
         row = CustomerAdvance(
             customer_key=customer_key(name),
@@ -118,6 +162,7 @@ def add_advance(customer: str, payload: Mapping[str, Any]) -> dict[str, Any]:
             note=(str(payload.get("note") or "").strip() or None),
             project_id=(str(payload.get("projectId") or "").strip() or None),
             quote_id=(str(payload.get("quoteId") or "").strip() or None),
+            quote_version=qver_i,
             paid_at=paid_at,
         )
         s.add(row)
@@ -192,24 +237,56 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
 
     projects = []
     total_billed = 0.0
+    by_pid: dict[str, dict[str, Any]] = {}
     for q in live:
         amt = _money(q.get("grandTotal"))
         total_billed += amt
-        projects.append(
+        row = {
+            "projectId": q.get("projectId"),
+            "name": q.get("name"),
+            "quotationId": q.get("quotationId"),
+            "status": q.get("status"),
+            "version": q.get("version"),
+            "updatedAt": q.get("updatedAt"),
+            "createdAt": q.get("createdAt"),
+            "grandTotal": amt if q.get("grandTotal") is not None else None,
+            "lineCount": q.get("lineCount"),
+            "versionCount": q.get("versionCount"),
+            "versions": q.get("versions") or [],
+        }
+        projects.append(row)
+        if row.get("projectId"):
+            by_pid[str(row["projectId"])] = row
+
+    # Full version history for UI / PDF (every saved version + live row).
+    all_versions: list[dict[str, Any]] = []
+    for q in quotes:
+        live_amt = _money(q.get("grandTotal"))
+        all_versions.append(
             {
                 "projectId": q.get("projectId"),
-                "name": q.get("name"),
                 "quotationId": q.get("quotationId"),
-                "status": q.get("status"),
+                "name": q.get("name"),
                 "version": q.get("version"),
+                "status": q.get("status"),
+                "grandTotal": live_amt if q.get("grandTotal") is not None else None,
                 "updatedAt": q.get("updatedAt"),
-                "createdAt": q.get("createdAt"),
-                "grandTotal": amt if q.get("grandTotal") is not None else None,
-                "lineCount": q.get("lineCount"),
-                "versionCount": q.get("versionCount"),
-                "versions": q.get("versions") or [],
+                "live": True,
             }
         )
+        for v in q.get("versions") or []:
+            all_versions.append(
+                {
+                    "projectId": q.get("projectId"),
+                    "quotationId": q.get("quotationId"),
+                    "name": q.get("name"),
+                    "version": v.get("version"),
+                    "status": "history",
+                    "grandTotal": v.get("grandTotal"),
+                    "updatedAt": v.get("updatedAt") or v.get("createdAt"),
+                    "live": False,
+                }
+            )
 
     advances: list[dict[str, Any]] = []
     try:
@@ -219,6 +296,25 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
     except Exception:
         _log.exception("list advances failed for %s", cust)
         advances = []
+
+    # Enrich advances with linked quote number / version when project is known.
+    for a in advances:
+        pid = str(a.get("projectId") or "").strip()
+        linked = by_pid.get(pid) if pid else None
+        if linked:
+            if not a.get("quoteId"):
+                a["quoteId"] = linked.get("quotationId")
+            if a.get("quoteVersion") is None:
+                a["quoteVersion"] = linked.get("version")
+            a["linkedQuote"] = {
+                "projectId": linked.get("projectId"),
+                "quotationId": linked.get("quotationId"),
+                "version": linked.get("version"),
+                "name": linked.get("name"),
+                "grandTotal": linked.get("grandTotal"),
+            }
+        else:
+            a["linkedQuote"] = None
 
     total_advances = round(sum(_money(a.get("amount")) for a in advances), 2)
     total_billed = round(total_billed, 2)
@@ -232,10 +328,12 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
         "projects": projects,
         "projectCount": len(projects),
         "allQuoteRows": len(quotes),
+        "allVersions": all_versions,
         "advances": advances,
         "advanceCount": len(advances),
         "totals": {
             "billed": total_billed,
+            "value": total_billed,
             "advances": total_advances,
             "balance": balance,
             "currency": "INR",

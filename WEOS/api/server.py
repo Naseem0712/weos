@@ -360,8 +360,13 @@ class AdvanceBody(BaseModel):
     note: str | None = None
     projectId: str | None = None
     quoteId: str | None = None
+    quoteVersion: int | None = None
     paidAt: str | None = None
     customerName: str | None = None
+
+
+class ProjectStatusBody(BaseModel):
+    status: str
 
 
 class TemplateBody(BaseModel):
@@ -1202,6 +1207,19 @@ def api_restore(project_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@app.post("/api/projects/{project_id}/status")
+def api_project_set_status(project_id: str, body: ProjectStatusBody) -> dict[str, Any]:
+    """Mark a project/quote status (e.g. confirmed / accepted / draft / active)."""
+    from WEOS.factory.project_store import set_project_status
+
+    try:
+        return set_project_status(project_id, body.status)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/api/projects/{project_id}/undo")
 def api_undo(project_id: str) -> dict[str, Any]:
     try:
@@ -1685,12 +1703,20 @@ def api_get_company_logo() -> Response:
 # ── Customer profiles + accounts ─────────────────────────────────────────────
 
 @app.get("/api/customers")
-def api_list_customers() -> dict[str, Any]:
-    """All customers (profiles ∪ rate books) for the customer account picker."""
-    from WEOS.factory.customer_store import list_customer_profiles
+def api_list_customers(q: str | None = None, gst: str | None = None) -> dict[str, Any]:
+    """All customers (profiles ∪ rate books ∪ project bill-tos). Optional ``q`` = name or mobile."""
+    from WEOS.factory.company_store import get_active_gst, normalise_gstin
     from WEOS.factory.customer_rates import list_customers_with_rates
+    from WEOS.factory.customer_store import find_customers, list_customer_profiles
 
-    profiles = list_customer_profiles()
+    g = normalise_gstin(gst) if gst else (get_active_gst() or "")
+    if (q or "").strip():
+        merged = find_customers(q or "", company_gst=g or None)
+        return {"customers": merged, "count": len(merged), "query": q}
+    profiles = list_customer_profiles(company_gst=g or None, include_unscoped=bool(g))
+    # When no GST filter, keep legacy unscoped list behaviour.
+    if not g:
+        profiles = list_customer_profiles()
     seen = {str(p.get("name", "")).strip().lower() for p in profiles}
     merged = list(profiles)
     for r in list_customers_with_rates():
@@ -1698,6 +1724,13 @@ def api_list_customers() -> dict[str, Any]:
         if nm and nm.lower() not in seen:
             merged.append({"name": nm, "slug": nm.lower().replace(" ", "_"), "rateCount": r.get("rateCount")})
             seen.add(nm.lower())
+    # Also merge find_customers project-only rows when GST workspace is open.
+    if g:
+        for c in find_customers("", company_gst=g):
+            nm = str(c.get("name") or "").strip()
+            if nm and nm.lower() not in seen:
+                merged.append(c)
+                seen.add(nm.lower())
     return {"customers": merged, "count": len(merged)}
 
 

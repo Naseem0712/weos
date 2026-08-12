@@ -12,11 +12,11 @@ def _inr(n: Any) -> str:
         v = float(n or 0)
     except (TypeError, ValueError):
         v = 0.0
-    # Indian-style grouping via locale-ish formatting
     neg = v < 0
     v = abs(v)
     s = f"{v:,.2f}"
-    return ("-₹" if neg else "₹") + s
+    # Rs. is WinAnsi-safe; ₹ is missing from Helvetica/WinAnsiEncoding.
+    return ("-Rs." if neg else "Rs.") + s
 
 
 def _txt(v: Any) -> str:
@@ -53,11 +53,20 @@ def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | No
         c.drawString(M, y, txt[:110])
         y -= dy
 
+    # ── Company letterhead ────────────────────────────────────────────────
     co_name = (_txt(company.get("companyName")) or "WEOS").upper()
     line(co_name, size=16, bold=True, dy=18)
     for bit in (
         _txt(company.get("address")),
-        " · ".join(x for x in (_txt(company.get("phone")), _txt(company.get("email")), _txt(company.get("website"))) if x),
+        " · ".join(
+            x
+            for x in (
+                _txt(company.get("phone")),
+                _txt(company.get("email")),
+                _txt(company.get("website")),
+            )
+            if x
+        ),
         f"GSTIN: {_txt(company.get('gstNo'))}" if _txt(company.get("gstNo")) else "",
         _txt(company.get("bankDetails")),
     ):
@@ -73,30 +82,51 @@ def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | No
     line(f"Customer: {cust}", bold=True)
     for bit in (
         _txt(profile.get("address")),
-        " · ".join(x for x in (_txt(profile.get("phone")), _txt(profile.get("email")), _txt(profile.get("contactPerson"))) if x),
+        " · ".join(
+            x
+            for x in (
+                _txt(profile.get("phone")),
+                _txt(profile.get("email")),
+                _txt(profile.get("contactPerson")),
+            )
+            if x
+        ),
         f"GSTIN: {_txt(profile.get('gstNo'))}" if _txt(profile.get("gstNo")) else "",
         f"Site: {_txt(profile.get('site'))}" if _txt(profile.get("site")) else "",
     ):
         if bit:
             line(bit, size=9, dy=12)
 
+    # ── Running quotes + totals ───────────────────────────────────────────
     y -= 4
-    line("Projects / Quotes", bold=True, dy=16)
+    line("Running quotes / projects", bold=True, dy=16)
     if not projects:
         line("  (none)", size=9)
     else:
         for p in projects:
             amt = p.get("grandTotal")
             amt_s = _inr(amt) if amt is not None else "—"
+            qid = _txt(p.get("quotationId")) or "—"
+            ver = p.get("version")
+            ver_s = f"v{ver}" if ver is not None else ""
             line(
                 f"  {_txt(p.get('projectId'))}  {_txt(p.get('name')) or '—'}  "
-                f"[{_txt(p.get('status'))}]  {amt_s}",
+                f"Quote {qid} {ver_s}  [{_txt(p.get('status'))}]  {amt_s}",
                 size=9,
                 dy=12,
             )
+            for hv in (p.get("versions") or [])[:8]:
+                hv_amt = hv.get("grandTotal")
+                line(
+                    f"      history v{hv.get('version')}  "
+                    f"{_inr(hv_amt) if hv_amt is not None else '—'}",
+                    size=8,
+                    dy=10,
+                )
 
+    # ── Advance breakdown ─────────────────────────────────────────────────
     y -= 4
-    line("Advances received", bold=True, dy=16)
+    line("Advance breakdown", bold=True, dy=16)
     if not advances:
         line("  (none)", size=9)
     else:
@@ -105,21 +135,28 @@ def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | No
             mode = (_txt(a.get("paymentMode")) or "cash").upper()
             ref = _txt(a.get("reference"))
             note = _txt(a.get("note"))
-            link = _txt(a.get("projectId") or a.get("quoteId"))
-            extra = " · ".join(x for x in (ref, note, link) if x)
+            linked = a.get("linkedQuote") or {}
+            qid = _txt(a.get("quoteId") or linked.get("quotationId") or a.get("projectId"))
+            ver = a.get("quoteVersion")
+            if ver is None:
+                ver = linked.get("version")
+            ver_s = f"v{ver}" if ver is not None else ""
+            link_s = " · ".join(x for x in (f"Quote {qid}" if qid else "", ver_s, ref, note) if x)
             line(
                 f"  {paid}  {_inr(a.get('amount'))}  via {mode}"
-                + (f"  ({extra})" if extra else ""),
+                + (f"  ({link_s})" if link_s else ""),
                 size=9,
                 dy=12,
             )
 
+    # ── Footer totals (up to date) ────────────────────────────────────────
     y -= 8
     c.line(M, y + 10, W - M, y + 10)
-    line(f"Total billed (quote grand totals):  {_inr(totals.get('billed'))}", bold=True)
-    line(f"Total advances:  {_inr(totals.get('advances'))}", bold=True)
-    line(f"Balance up to date:  {_inr(totals.get('balance'))}", size=12, bold=True, dy=16)
-    line(f"As of: {as_of_disp}", size=9)
+    total_value = totals.get("value", totals.get("billed"))
+    line(f"Total advance:  {_inr(totals.get('advances'))}", bold=True)
+    line(f"Total value:  {_inr(total_value)}", bold=True)
+    line(f"Total balance:  {_inr(totals.get('balance'))}", size=12, bold=True, dy=16)
+    line(f"As of: {as_of_disp} (up to date)", size=9)
     note = _txt((totals or {}).get("note"))
     if note:
         line(note, size=8, dy=11)

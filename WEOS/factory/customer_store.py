@@ -308,7 +308,71 @@ def _matches_customer(row: Mapping[str, Any], target_slug: str, target_name: str
     # When the account was opened by mobile-as-name, match that too.
     if mob and (_slug(mob) == target_slug or mob == target_name):
         return True
+    # Digit-only compare for phone search (name may be profile name, mobile on project).
+    digits = re.sub(r"\D", "", target_name or "")
+    if digits and len(digits) >= 7:
+        mob_digits = re.sub(r"\D", "", mob)
+        if digits in mob_digits or mob_digits.endswith(digits) or digits.endswith(mob_digits):
+            return True
     return False
+
+
+def find_customers(
+    query: str = "",
+    *,
+    company_gst: str | None = None,
+) -> list[dict[str, Any]]:
+    """Search customers by name OR mobile (partial, case-insensitive)."""
+    q = (query or "").strip().lower()
+    digits = re.sub(r"\D", "", q)
+    gst = _norm_company_gst(company_gst) if company_gst else ""
+    rows = list_customer_profiles(company_gst=gst or None, include_unscoped=bool(gst))
+
+    # Also surface project-only bill-to names / mobiles not yet in profiles.
+    try:
+        from WEOS.factory.project_store import list_projects
+
+        seen = {str(r.get("slug") or _slug(r.get("name") or "")).lower() for r in rows}
+        for p in list_projects(include_archived=True, company_gst=gst or None, include_unscoped=bool(gst)):
+            cname = str(p.get("customer") or "").strip()
+            cmob = str(p.get("customerMobile") or "").strip()
+            label = cname or cmob
+            if not label:
+                continue
+            slug = _slug(label)
+            if slug.lower() in seen:
+                continue
+            seen.add(slug.lower())
+            rows.append(
+                {
+                    "name": label,
+                    "slug": slug,
+                    "gstNo": p.get("customerGst") or "",
+                    "phone": cmob,
+                    "email": "",
+                    "companyGst": p.get("companyGst") or "",
+                    "updatedAt": p.get("updatedAt"),
+                }
+            )
+    except Exception:
+        _log.exception("find_customers project merge failed")
+
+    if not q:
+        rows.sort(key=lambda r: str(r.get("name") or "").lower())
+        return rows
+
+    out: list[dict[str, Any]] = []
+    for c in rows:
+        name = str(c.get("name") or "").lower()
+        phone = re.sub(r"\D", "", str(c.get("phone") or ""))
+        if q in name:
+            out.append(c)
+            continue
+        if digits and len(digits) >= 3 and digits in phone:
+            out.append(c)
+            continue
+    out.sort(key=lambda r: str(r.get("name") or "").lower())
+    return out
 
 
 def customer_quotes(customer: str, *, company_gst: str | None = None) -> dict[str, Any]:
@@ -318,6 +382,8 @@ def customer_quotes(customer: str, *, company_gst: str | None = None) -> dict[st
     cust = (customer or "").strip()
     target = _slug(cust)
     gst = _norm_company_gst(company_gst) if company_gst else ""
+    profile = load_customer_profile(cust) if cust else _empty()
+    profile_phone = re.sub(r"\D", "", str((profile or {}).get("phone") or ""))
     rows = list_projects(
         include_archived=True,
         company_gst=gst or None,
@@ -325,7 +391,12 @@ def customer_quotes(customer: str, *, company_gst: str | None = None) -> dict[st
     )
     quotes: list[dict[str, Any]] = []
     for row in rows:
-        if not _matches_customer(row, target, cust):
+        matched = _matches_customer(row, target, cust)
+        if not matched and profile_phone and len(profile_phone) >= 7:
+            mob = re.sub(r"\D", "", str(row.get("customerMobile") or ""))
+            if mob and (profile_phone in mob or mob in profile_phone):
+                matched = True
+        if not matched:
             continue
         pid = row.get("projectId")
         versions = _project_versions(str(pid))
@@ -348,7 +419,6 @@ def customer_quotes(customer: str, *, company_gst: str | None = None) -> dict[st
             }
         )
     quotes.sort(key=lambda q: str(q.get("updatedAt") or ""), reverse=True)
-    profile = load_customer_profile(cust) if cust else _empty()
     return {
         "customer": cust,
         "profile": profile,
