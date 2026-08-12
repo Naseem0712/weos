@@ -1,0 +1,131 @@
+{
+  "id": "35mm_gulf_slim",
+  "displayName": "35MM Gulf Slim Series",
+  "productType": "sliding",
+  "category": "Windows",
+  "units": "mm",
+  "version": 1,
+  "status": "stub",
+  "description": "Imported from section catalogue — 35MM Gulf Slim Series.",
+  "tagline": "35MM Gulf Slim Series",
+  "warranty": "",
+  "heroImage": "/static/products/placeholder.svg",
+  "gallery": [],
+  "sectionDrawings": [],
+  "specifications": {
+    "profileSeries": "35MM Gulf Slim Series",
+    "sectionSizeMm": 95.3,
+    "track": "2 track top/bottom horizontle track 95.3×31.2 mm",
+    "trackOptions": "2 track, 3 track"
+  },
+  "materials": [],
+  "formulas": {},
+  "pdfLayout": {
+    "customer": "marqt_customer",
+    "factory": "woodenmax_factory"
+  },
+  "brand": "woodenmax",
+  "sectionSeries": "35mm_gulf_slim",
+  "linkedProductId": "35mm_sliding",
+  "catalogue": {
+    "sectionSeries": "35mm_gulf_slim",
+    "saleUnit": "sqft",
+    "ratePerUnit": 0,
+    "sizeMm": 95.3,
+    "standardLength": null,
+    "weightKgPerMtr": 1.65,
+    "profiles": [
+      {
+        "name": "2 track top/bottom horizontle track",
+        "usage": "track_horizontal",
+        "usageLabel": "Track — horizontal",
+        "sectionDepthMm": 95.3,
+        "widthMm": 31.2,
+        "weightKgPerMtr": 1.65,
+        "standardLength": null,
+        "wallThicknessMm": null,
+        "trackCount": 2.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "2 track left/right verticale track",
+        "usage": "track_vertical",
+        "usageLabel": "Track — vertical",
+        "sectionDepthMm": 100.0,
+        "widthMm": 32.8,
+        "weightKgPerMtr": 1.23,
+        "standardLength": null,
+        "wallThicknessMm": null,
+        "trackCount": 2.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "3 track top/bottom horizontle track",
+        "usage": "track_horizontal",
+        "usageLabel": "Track — horizontal",
+        "sectionDepthMm": 145.2,
+        "widthMm": 31.0,
+        "weightKgPerMtr": 2.45,
+        "standardLength": null,
+        "wallThicknessMm": null,
+        "trackCount": 3.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "3 track left/right verticale track",
+        "usage": "track_vertical",
+        "usageLabel": "Track — vertical",
+        "sectionDepthMm": 150.0,
+        "widthMm": 32.8,
+        "weightKgPerMtr": 2.15,
+        "standardLength": null,
+        "wallThicknessMm": null,
+        "trackCount": 3.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      }
+    ],
+    "designOptions": [],
+    "tracks": [
+      {
+        "count": 2.0,
+        "name": "2 track top/bottom horizontle track",
+        "sectionDepthMm": 95.3,
+        "widthMm": 31.2,
+        "sectionId": "35mm_gulf_slim__2-track-top-bottom-horizontle-track",
+        "meshCapable": false
+      },
+      {
+        "count": 3.0,
+        "name": "3 track top/bottom horizontle track",
+        "sectionDepthMm": 145.2,
+        "widthMm": 31.0,
+        "sectionId": "35mm_gulf_slim__3-track-top-bottom-horizontle-track",
+        "meshCapable": true
+      }
+    ],
+    "trackOptions": [
+      2.0,
+      3.0
+    ],
+    "trackCount": 2.0,
+    "sharedSash": null,
+    "glassTypes": [],
+    "compatibility": {
+      "trackOptions": [
+        2.0,
+        3.0
+      ],
+      "meshMinTrack": 3.0,
+      "glassTypes": [],
+      "notes": [
+        "Mesh requires 2.5 or 3 track"
+      ]
+    },
+    "source": "excel_section_catalogue",
+    "productId": "35mm_sliding"
+  }
+}

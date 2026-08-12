@@ -103,15 +103,15 @@ def list_products() -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     if not PRODUCTS_DIR.is_dir():
         return out
+    # Data folders (sections/, etc.) are not selectable products — only dirs with product.json.
     for d in sorted(PRODUCTS_DIR.iterdir()):
         if not d.is_dir():
             continue
         meta_path = d / "product.json"
-        if meta_path.is_file():
-            meta = _read_json(meta_path)
-            out.append((meta.get("id", d.name), meta.get("displayName", d.name)))
-        else:
-            out.append((d.name, d.name))
+        if not meta_path.is_file():
+            continue
+        meta = _read_json(meta_path)
+        out.append((meta.get("id", d.name), meta.get("displayName", d.name)))
     return out
 
 
@@ -203,15 +203,85 @@ def _catalogue_width(profiles: Any, usages: tuple[str, ...]) -> float | None:
     return None
 
 
+def _catalogue_track_count(cat: Mapping[str, Any] | None, profiles: Any) -> float | None:
+    """Prefer explicit catalogue trackCount; else parse from first track profile name."""
+    if isinstance(cat, Mapping):
+        raw = cat.get("trackCount")
+        if raw is not None and str(raw).strip() != "":
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                pass
+        opts = cat.get("trackOptions")
+        if isinstance(opts, (list, tuple)) and opts:
+            try:
+                return float(opts[0])
+            except (TypeError, ValueError):
+                pass
+    if not isinstance(profiles, (list, tuple)):
+        return None
+    try:
+        from WEOS.factory.section_catalogue import parse_track_count
+    except Exception:
+        parse_track_count = None  # type: ignore[assignment]
+    for p in profiles:
+        if not isinstance(p, Mapping):
+            continue
+        u = str(p.get("usage") or "").lower()
+        if u and not any(k in u for k in ("track", "frame")):
+            continue
+        tc = p.get("trackCount")
+        if tc is None and parse_track_count:
+            tc = parse_track_count(p.get("name"))
+        if tc is not None:
+            try:
+                return float(tc)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def resolve_engine_product_id(doc: Mapping[str, Any] | None, product_id: str | None = None) -> str:
+    """Map a catalogue/stub product to a manufacturing engine id when needed."""
+    pid = str(product_id or (doc or {}).get("id") or DEFAULT_PRODUCT_ID).replace(".json", "")
+    if not isinstance(doc, Mapping):
+        return pid
+    is_stub = bool(doc.get("_stub") or str(doc.get("status") or "").lower() == "stub")
+    if not is_stub and _has_renderable_geometry(doc):
+        return pid
+    linked = doc.get("linkedProductId") or (doc.get("catalogue") or {}).get("productId")
+    if linked:
+        return str(linked).replace(".json", "")
+    try:
+        from WEOS.factory.section_catalogue import SERIES_PRODUCT_MAP
+
+        mapped = SERIES_PRODUCT_MAP.get(pid)
+        if mapped:
+            return str(mapped)
+    except Exception:
+        pass
+    return pid
+
+
 def _ensure_renderable(doc: dict[str, Any]) -> None:
     """Fill missing engineering sections so the geometry engine can draw a
     catalogue/imported product. Mutates ``doc`` in place. Best-effort/no-raise."""
     if _has_renderable_geometry(doc):
         return
+    base_id = DEFAULT_PRODUCT_ID
+    linked = doc.get("linkedProductId")
+    if linked and str(linked) != str(doc.get("id") or ""):
+        base_id = str(linked).replace(".json", "")
     try:
-        base = load_product(DEFAULT_PRODUCT_ID, strict=False)
+        base = load_product(base_id, strict=False)
     except Exception:
-        return
+        if base_id != DEFAULT_PRODUCT_ID:
+            try:
+                base = load_product(DEFAULT_PRODUCT_ID, strict=False)
+            except Exception:
+                return
+        else:
+            return
     # Borrow any engineering section the catalogue product lacks (keep its own
     # identity, catalogue block, specifications and stub quotation).
     for sec in ("glass", "dimensioning", "weight", "hardware", "brush", "trackRail", "cutList", "bomExtras"):
@@ -230,12 +300,13 @@ def _ensure_renderable(doc: dict[str, Any]) -> None:
         geom["interlockWidth"] = iw
     if tw:
         geom["trackWidth"] = tw
-    # Track count from the product/catalogue if present.
+    # Track count from the product/catalogue if present (name-parse when Excel
+    # fields were never written onto stale section JSON).
+    tc = _catalogue_track_count(cat if isinstance(cat, Mapping) else None, profiles)
     try:
-        tc = float(cat.get("trackCount") or geom.get("trackCount") or 2)
-        geom["trackCount"] = tc
+        geom["trackCount"] = float(tc if tc is not None else geom.get("trackCount") or 2)
     except (TypeError, ValueError):
-        pass
+        geom["trackCount"] = float(base_geom.get("trackCount") or 2)
     # Sanitise so geometry_engine invariants hold (0 <= overlap < trackWidth, etc.).
     try:
         tw_v = float(geom.get("trackWidth") or base_geom.get("trackWidth") or 40)
@@ -247,6 +318,7 @@ def _ensure_renderable(doc: dict[str, Any]) -> None:
         pass
     doc["geometry"] = geom
     doc["_synthesizedGeometry"] = True
+    doc["_engineProductId"] = base_id
 
 
 def load_profile(profile_id: str | Path | None = None, *, strict: bool = True) -> dict[str, Any]:

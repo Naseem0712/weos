@@ -365,22 +365,32 @@ def persist_catalogue(doc: Mapping[str, Any]) -> Path:
 def _library_catalogue_block(series: Mapping[str, Any]) -> dict[str, Any]:
     """Build an editable catalogue block for a Product Library entry from a series."""
     sections = list(series.get("sections") or [])
-    profiles = [
-        {
-            "name": sec.get("name"),
-            "usage": sec.get("usage"),
-            "usageLabel": sec.get("usageLabel"),
-            "sectionDepthMm": sec.get("sectionDepthMm"),
-            "widthMm": sec.get("widthMm"),
-            "weightKgPerMtr": sec.get("weightKgPerMtr"),
-            "standardLength": sec.get("standardLength"),
-            "wallThicknessMm": sec.get("wallThicknessMm"),
-            "trackCount": sec.get("trackCount"),
-            "glassOptions": sec.get("glassOptions") or [],
-            "centerOpeningOnly": sec.get("centerOpeningOnly", False),
-        }
-        for sec in sections
-    ]
+    profiles = []
+    for sec in sections:
+        name = sec.get("name")
+        tc = sec.get("trackCount")
+        if tc is None:
+            tc = parse_track_count(name)
+        gopts = list(sec.get("glassOptions") or []) or parse_glass_options(name)
+        profiles.append(
+            {
+                "name": name,
+                "usage": sec.get("usage"),
+                "usageLabel": sec.get("usageLabel"),
+                "sectionDepthMm": sec.get("sectionDepthMm"),
+                "widthMm": sec.get("widthMm"),
+                "weightKgPerMtr": sec.get("weightKgPerMtr"),
+                "standardLength": sec.get("standardLength"),
+                "wallThicknessMm": sec.get("wallThicknessMm"),
+                "trackCount": tc,
+                "glassOptions": gopts,
+                "centerOpeningOnly": bool(
+                    sec.get("centerOpeningOnly")
+                    if sec.get("centerOpeningOnly") is not None
+                    else is_center_opening_only(name)
+                ),
+            }
+        )
     # Representative standard length (first non-empty)
     std_len = next((s.get("standardLength") for s in sections if s.get("standardLength")), None)
     depth = next((s.get("sectionDepthMm") for s in sections if s.get("sectionDepthMm")), None)
@@ -388,20 +398,34 @@ def _library_catalogue_block(series: Mapping[str, Any]) -> dict[str, Any]:
     # ── Excel data model ────────────────────────────────────────────────────
     # Track is an OPTION: 2 / 2.5 / 3 track are variants of the SAME series that
     # only change the outer/track section; the sash/shutter frame is shared.
+    # Stale section JSON (pre-trackCount field) still works via name parse.
     tracks: list[dict[str, Any]] = []
+    seen_tc: set[float] = set()
     for sec in sections:
+        usage = str(sec.get("usage") or "")
+        if usage and usage not in ("track", "track_horizontal", "track_vertical", "frame"):
+            continue
         tc = sec.get("trackCount")
         if tc is None:
+            tc = parse_track_count(sec.get("name"))
+        if tc is None:
             continue
+        try:
+            tc_f = float(tc)
+        except (TypeError, ValueError):
+            continue
+        if tc_f in seen_tc:
+            continue
+        seen_tc.add(tc_f)
         tracks.append(
             {
-                "count": tc,
+                "count": tc_f,
                 "name": sec.get("name"),
                 "sectionDepthMm": sec.get("sectionDepthMm"),
                 "widthMm": sec.get("widthMm"),
                 "sectionId": sec.get("id"),
                 # mesh needs 2.5 or 3 track (single 2-track has no room for a mesh sash)
-                "meshCapable": tc >= 2.5,
+                "meshCapable": tc_f >= 2.5,
             }
         )
     tracks.sort(key=lambda t: t["count"])
@@ -413,7 +437,8 @@ def _library_catalogue_block(series: Mapping[str, Any]) -> dict[str, Any]:
     # Glass types available anywhere in the series (sg=single, dg/gd=DGU).
     glass_types: list[str] = []
     for sec in sections:
-        for g in sec.get("glassOptions") or []:
+        gopts = list(sec.get("glassOptions") or []) or parse_glass_options(sec.get("name"))
+        for g in gopts:
             if g not in glass_types:
                 glass_types.append(g)
 
@@ -438,7 +463,8 @@ def _library_catalogue_block(series: Mapping[str, Any]) -> dict[str, Any]:
                 "name": shared_sash.get("name"),
                 "widthMm": shared_sash.get("widthMm"),
                 "sectionDepthMm": shared_sash.get("sectionDepthMm"),
-                "glassOptions": shared_sash.get("glassOptions") or [],
+                "glassOptions": list(shared_sash.get("glassOptions") or [])
+                or parse_glass_options(shared_sash.get("name")),
             }
             if shared_sash
             else None
@@ -458,6 +484,7 @@ def _library_catalogue_block(series: Mapping[str, Any]) -> dict[str, Any]:
             ],
         },
         "source": "excel_section_catalogue",
+        "productId": series.get("productId") or SERIES_PRODUCT_MAP.get(str(series.get("id") or "")),
     }
 
 
@@ -513,9 +540,19 @@ def sync_catalogue_to_library() -> dict[str, Any]:
                 meta = {"id": sid}
             meta["catalogue"] = catalogue_block
             meta["sectionSeries"] = sid
+            meta.setdefault("linkedProductId", SERIES_PRODUCT_MAP.get(sid))
+            # Catalogue series are sliding windows — never leave productType as the
+            # opaque "section_series" (that blocked system inference → live preview).
+            pt = str(meta.get("productType") or "").strip().lower()
+            if not pt or pt in ("section_series", "unknown", "other"):
+                meta["productType"] = "sliding"
+            if not meta.get("category"):
+                meta["category"] = "Windows"
             specs_existing = dict(meta.get("specifications") or {})
             for k, v in spec_fields.items():
-                specs_existing.setdefault(k, v)
+                # Refresh derived track/glass options; keep other manual overrides.
+                if k in ("trackOptions", "glassTypes", "track", "sash", "interlock") or k not in specs_existing:
+                    specs_existing[k] = v
             meta["specifications"] = specs_existing
             meta_path.write_text(_json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             updated.append(sid)
@@ -526,7 +563,7 @@ def sync_catalogue_to_library() -> dict[str, Any]:
         meta = {
             "id": sid,
             "displayName": series.get("displayName") or series.get("title") or sid,
-            "productType": "section_series",
+            "productType": "sliding",
             "category": "Windows",
             "units": "mm",
             "version": 1,
@@ -543,7 +580,7 @@ def sync_catalogue_to_library() -> dict[str, Any]:
             "pdfLayout": {"customer": "marqt_customer", "factory": "woodenmax_factory"},
             "brand": "woodenmax",
             "sectionSeries": sid,
-            "linkedProductId": SERIES_PRODUCT_MAP.get(sid),
+            "linkedProductId": SERIES_PRODUCT_MAP.get(sid) or "29mm_sliding",
             "catalogue": catalogue_block,
         }
         meta_path.write_text(_json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -627,12 +664,31 @@ def list_series() -> list[dict[str, Any]]:
 def get_series(series_id: str) -> dict[str, Any]:
     path = sections_dir() / f"{series_id}.json"
     if path.is_file():
-        return json.loads(path.read_text(encoding="utf-8-sig"))
-    doc = load_catalogue()
-    for s in doc.get("series") or []:
-        if s.get("id") == series_id:
-            return s
-    raise FileNotFoundError(f"Section series '{series_id}' not found")
+        doc = json.loads(path.read_text(encoding="utf-8-sig"))
+    else:
+        doc = None
+        cat = load_catalogue()
+        for s in cat.get("series") or []:
+            if s.get("id") == series_id:
+                doc = s
+                break
+        if doc is None:
+            raise FileNotFoundError(f"Section series '{series_id}' not found")
+    # Backfill track/glass fields on stale series JSON (pre-Excel-model imports).
+    for sec in doc.get("sections") or []:
+        if not isinstance(sec, dict):
+            continue
+        if sec.get("trackCount") is None:
+            tc = parse_track_count(sec.get("name"))
+            if tc is not None:
+                sec["trackCount"] = tc
+        if not sec.get("glassOptions"):
+            gopts = parse_glass_options(sec.get("name"))
+            if gopts:
+                sec["glassOptions"] = gopts
+        if "centerOpeningOnly" not in sec:
+            sec["centerOpeningOnly"] = is_center_opening_only(sec.get("name"))
+    return doc
 
 
 def sections_for_usage(series_id: str, usage: str | None = None) -> list[dict[str, Any]]:

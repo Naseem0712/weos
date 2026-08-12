@@ -1,0 +1,229 @@
+{
+  "id": "27mm_high_end_domal",
+  "displayName": "27MM High end & Domal",
+  "productType": "sliding",
+  "category": "Windows",
+  "units": "mm",
+  "version": 1,
+  "status": "stub",
+  "description": "Imported from section catalogue — 27MM High end & Domal.",
+  "tagline": "27MM High end & Domal",
+  "warranty": "",
+  "heroImage": "/static/products/placeholder.svg",
+  "gallery": [],
+  "sectionDrawings": [],
+  "specifications": {
+    "profileSeries": "27MM High end & Domal",
+    "sectionSizeMm": 49.0,
+    "standardLength": "16f, 12F",
+    "wallThicknessMm": 1.1,
+    "track": "2 track High End 49×37.8 mm",
+    "sash": "All side shutter Sg, DG 65×27 mm",
+    "interlock": "Slim Interlock SG, Dg 33.6×20 mm",
+    "trackOptions": "2 track, 2.5 track, 3 track",
+    "glassTypes": "Single glass, DGU"
+  },
+  "materials": [],
+  "formulas": {},
+  "pdfLayout": {
+    "customer": "marqt_customer",
+    "factory": "woodenmax_factory"
+  },
+  "brand": "woodenmax",
+  "sectionSeries": "27mm_high_end_domal",
+  "linkedProductId": "29mm_sliding",
+  "catalogue": {
+    "sectionSeries": "27mm_high_end_domal",
+    "saleUnit": "sqft",
+    "ratePerUnit": 0,
+    "sizeMm": 49.0,
+    "standardLength": "16f, 12F",
+    "weightKgPerMtr": 0.8,
+    "profiles": [
+      {
+        "name": "2 track High End",
+        "usage": "track",
+        "usageLabel": "Track / Outer frame",
+        "sectionDepthMm": 49.0,
+        "widthMm": 37.8,
+        "weightKgPerMtr": 0.8,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.1,
+        "trackCount": 2.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "2.5 track high end",
+        "usage": "track",
+        "usageLabel": "Track / Outer frame",
+        "sectionDepthMm": 72.8,
+        "widthMm": 37.8,
+        "weightKgPerMtr": 1.6,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.15,
+        "trackCount": 2.5,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "3 track high end",
+        "usage": "track",
+        "usageLabel": "Track / Outer frame",
+        "sectionDepthMm": 86.0,
+        "widthMm": 37.8,
+        "weightKgPerMtr": 1.4,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.15,
+        "trackCount": 3.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "All side shutter Sg, DG",
+        "usage": "sash",
+        "usageLabel": "Sash / Shutter",
+        "sectionDepthMm": 65.0,
+        "widthMm": 27.0,
+        "weightKgPerMtr": 0.86,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.4,
+        "trackCount": null,
+        "glassOptions": [
+          "single",
+          "dgu"
+        ],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "Slim Interlock SG, Dg",
+        "usage": "interlock",
+        "usageLabel": "Interlock",
+        "sectionDepthMm": 33.6,
+        "widthMm": 20.0,
+        "weightKgPerMtr": 0.62,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.4,
+        "trackCount": null,
+        "glassOptions": [
+          "single",
+          "dgu"
+        ],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "3 track Domal track",
+        "usage": "track",
+        "usageLabel": "Track / Outer frame",
+        "sectionDepthMm": 80.0,
+        "widthMm": 45.0,
+        "weightKgPerMtr": 1.7,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.6,
+        "trackCount": 3.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "2 track domal track",
+        "usage": "track",
+        "usageLabel": "Track / Outer frame",
+        "sectionDepthMm": 45.0,
+        "widthMm": 45.0,
+        "weightKgPerMtr": 0.91,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.3,
+        "trackCount": 2.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "Meeting Section center opning use only",
+        "usage": "meeting",
+        "usageLabel": "Meeting section",
+        "sectionDepthMm": 18.0,
+        "widthMm": 25.0,
+        "weightKgPerMtr": 0.22,
+        "standardLength": "16F, 12f",
+        "wallThicknessMm": 1.3,
+        "trackCount": null,
+        "glassOptions": [],
+        "centerOpeningOnly": true
+      }
+    ],
+    "designOptions": [
+      "2 track 2 glass shutters, center opning 4 glass shutters",
+      "Window Height",
+      "Sash",
+      "Height 62mm",
+      "Width 25mm",
+      "Interlocking",
+      "5mm Interlock 29mm",
+      "Without Slim Interlock 65mm",
+      "Glass Range"
+    ],
+    "tracks": [
+      {
+        "count": 2.0,
+        "name": "2 track High End",
+        "sectionDepthMm": 49.0,
+        "widthMm": 37.8,
+        "sectionId": "27mm_high_end_domal__2-track-high-end",
+        "meshCapable": false
+      },
+      {
+        "count": 2.5,
+        "name": "2.5 track high end",
+        "sectionDepthMm": 72.8,
+        "widthMm": 37.8,
+        "sectionId": "27mm_high_end_domal__2-5-track-high-end",
+        "meshCapable": true
+      },
+      {
+        "count": 3.0,
+        "name": "3 track high end",
+        "sectionDepthMm": 86.0,
+        "widthMm": 37.8,
+        "sectionId": "27mm_high_end_domal__3-track-high-end",
+        "meshCapable": true
+      }
+    ],
+    "trackOptions": [
+      2.0,
+      2.5,
+      3.0
+    ],
+    "trackCount": 2.0,
+    "sharedSash": {
+      "name": "All side shutter Sg, DG",
+      "widthMm": 27.0,
+      "sectionDepthMm": 65.0,
+      "glassOptions": [
+        "single",
+        "dgu"
+      ]
+    },
+    "glassTypes": [
+      "single",
+      "dgu"
+    ],
+    "compatibility": {
+      "trackOptions": [
+        2.0,
+        2.5,
+        3.0
+      ],
+      "meshMinTrack": 2.5,
+      "glassTypes": [
+        "single",
+        "dgu"
+      ],
+      "notes": [
+        "Mesh requires 2.5 or 3 track",
+        "sg = single glass; dg/gd = DGU (double-glazed)"
+      ]
+    },
+    "source": "excel_section_catalogue",
+    "productId": "29mm_sliding"
+  }
+}

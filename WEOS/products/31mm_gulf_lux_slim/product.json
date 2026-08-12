@@ -1,0 +1,213 @@
+{
+  "id": "31mm_gulf_lux_slim",
+  "displayName": "31 MM Gulf Lux Slim Sreis",
+  "productType": "sliding",
+  "category": "Windows",
+  "units": "mm",
+  "version": 1,
+  "status": "stub",
+  "description": "Imported from section catalogue — 31 MM Gulf Lux Slim Sreis.",
+  "tagline": "31 MM Gulf Lux Slim Sreis",
+  "warranty": "",
+  "heroImage": "/static/products/placeholder.svg",
+  "gallery": [],
+  "sectionDrawings": [],
+  "specifications": {
+    "profileSeries": "31 MM Gulf Lux Slim Sreis",
+    "sectionSizeMm": 85.0,
+    "standardLength": "16f, 12F",
+    "wallThicknessMm": 1.4,
+    "track": "horizontle tp bottom 2 track only 80.75×47.5 mm",
+    "sash": "top bottom horizontel shutter 65.55×28 mm",
+    "interlock": "slim interlock 38.03×26 mm",
+    "trackOptions": "2 track, 3 track"
+  },
+  "materials": [],
+  "formulas": {},
+  "pdfLayout": {
+    "customer": "marqt_customer",
+    "factory": "woodenmax_factory"
+  },
+  "brand": "woodenmax",
+  "sectionSeries": "31mm_gulf_lux_slim",
+  "linkedProductId": "29mm_sliding",
+  "catalogue": {
+    "sectionSeries": "31mm_gulf_lux_slim",
+    "saleUnit": "sqft",
+    "ratePerUnit": 0,
+    "sizeMm": 85.0,
+    "standardLength": "16f, 12F",
+    "weightKgPerMtr": 1.12,
+    "profiles": [
+      {
+        "name": "left right vertical 2 track only",
+        "usage": "track_vertical",
+        "usageLabel": "Track — vertical",
+        "sectionDepthMm": 85.0,
+        "widthMm": 33.0,
+        "weightKgPerMtr": 1.12,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.4,
+        "trackCount": 2.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "horizontle tp bottom 2 track only",
+        "usage": "track_horizontal",
+        "usageLabel": "Track — horizontal",
+        "sectionDepthMm": 80.75,
+        "widthMm": 47.5,
+        "weightKgPerMtr": 1.72,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.4,
+        "trackCount": 2.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "top bottom horizontle 3 track",
+        "usage": "track_horizontal",
+        "usageLabel": "Track — horizontal",
+        "sectionDepthMm": 120.45,
+        "widthMm": 47.5,
+        "weightKgPerMtr": 2.35,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.4,
+        "trackCount": 3.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "left right vertical 3 track only",
+        "usage": "track_vertical",
+        "usageLabel": "Track — vertical",
+        "sectionDepthMm": 126.81,
+        "widthMm": 32.7,
+        "weightKgPerMtr": 1.35,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.4,
+        "trackCount": 3.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "vertcal shuter",
+        "usage": "other",
+        "usageLabel": "Section",
+        "sectionDepthMm": 58.75,
+        "widthMm": 31.5,
+        "weightKgPerMtr": 1.1,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.4,
+        "trackCount": null,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "top bottom horizontel shutter",
+        "usage": "sash",
+        "usageLabel": "Sash / Shutter",
+        "sectionDepthMm": 65.55,
+        "widthMm": 28.0,
+        "weightKgPerMtr": 1.1,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.4,
+        "trackCount": null,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "slim interlock",
+        "usage": "interlock",
+        "usageLabel": "Interlock",
+        "sectionDepthMm": 38.03,
+        "widthMm": 26.0,
+        "weightKgPerMtr": 0.9,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.4,
+        "trackCount": null,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "renf. Int",
+        "usage": "interlock",
+        "usageLabel": "Interlock",
+        "sectionDepthMm": 100.0,
+        "widthMm": 26.0,
+        "weightKgPerMtr": 1.7,
+        "standardLength": "16F, 12F",
+        "wallThicknessMm": 1.4,
+        "trackCount": null,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "Meeting Section center opning use only",
+        "usage": "meeting",
+        "usageLabel": "Meeting section",
+        "sectionDepthMm": 24.2,
+        "widthMm": 27.2,
+        "weightKgPerMtr": 0.22,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.2,
+        "trackCount": null,
+        "glassOptions": [],
+        "centerOpeningOnly": true
+      }
+    ],
+    "designOptions": [
+      "Sash",
+      "Height 59 mm",
+      "Width 31 mm",
+      "Interlocking",
+      "Slim Interlock 26 mm",
+      "Slim Interlock 25 mm",
+      "Glass Range"
+    ],
+    "tracks": [
+      {
+        "count": 2.0,
+        "name": "left right vertical 2 track only",
+        "sectionDepthMm": 85.0,
+        "widthMm": 33.0,
+        "sectionId": "31mm_gulf_lux_slim__left-right-vertical-2-track-only",
+        "meshCapable": false
+      },
+      {
+        "count": 3.0,
+        "name": "top bottom horizontle 3 track",
+        "sectionDepthMm": 120.45,
+        "widthMm": 47.5,
+        "sectionId": "31mm_gulf_lux_slim__top-bottom-horizontle-3-track",
+        "meshCapable": true
+      }
+    ],
+    "trackOptions": [
+      2.0,
+      3.0
+    ],
+    "trackCount": 2.0,
+    "sharedSash": {
+      "name": "top bottom horizontel shutter",
+      "widthMm": 28.0,
+      "sectionDepthMm": 65.55,
+      "glassOptions": []
+    },
+    "glassTypes": [],
+    "compatibility": {
+      "trackOptions": [
+        2.0,
+        3.0
+      ],
+      "meshMinTrack": 3.0,
+      "glassTypes": [],
+      "notes": [
+        "Mesh requires 2.5 or 3 track"
+      ]
+    },
+    "source": "excel_section_catalogue",
+    "productId": "29mm_sliding"
+  }
+}

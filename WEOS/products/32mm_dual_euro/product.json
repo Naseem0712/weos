@@ -1,0 +1,183 @@
+{
+  "id": "32mm_dual_euro",
+  "displayName": "32 MM dual euro grove Sreies",
+  "productType": "sliding",
+  "category": "Windows",
+  "units": "mm",
+  "version": 1,
+  "status": "stub",
+  "description": "Imported from section catalogue — 32 MM dual euro grove Sreies.",
+  "tagline": "32 MM dual euro grove Sreies",
+  "warranty": "",
+  "heroImage": "/static/products/placeholder.svg",
+  "gallery": [],
+  "sectionDrawings": [],
+  "specifications": {
+    "profileSeries": "32 MM dual euro grove Sreies",
+    "sectionSizeMm": 74.0,
+    "wallThicknessMm": 1.4,
+    "track": "2 track all side track 74×47 mm",
+    "sash": "3 side shutter 65×32 mm",
+    "interlock": "slim int 39.3×30.2 mm",
+    "trackOptions": "2 track, 3 track"
+  },
+  "materials": [],
+  "formulas": {},
+  "pdfLayout": {
+    "customer": "marqt_customer",
+    "factory": "woodenmax_factory"
+  },
+  "brand": "woodenmax",
+  "sectionSeries": "32mm_dual_euro",
+  "linkedProductId": "29mm_sliding",
+  "catalogue": {
+    "sectionSeries": "32mm_dual_euro",
+    "saleUnit": "sqft",
+    "ratePerUnit": 0,
+    "sizeMm": 74.0,
+    "standardLength": null,
+    "weightKgPerMtr": 1.54,
+    "profiles": [
+      {
+        "name": "2 track all side track",
+        "usage": "track",
+        "usageLabel": "Track / Outer frame",
+        "sectionDepthMm": 74.0,
+        "widthMm": 47.0,
+        "weightKgPerMtr": 1.54,
+        "standardLength": null,
+        "wallThicknessMm": 1.4,
+        "trackCount": 2.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "3 track all side track",
+        "usage": "track",
+        "usageLabel": "Track / Outer frame",
+        "sectionDepthMm": 115.5,
+        "widthMm": 47.0,
+        "weightKgPerMtr": 2.212,
+        "standardLength": null,
+        "wallThicknessMm": 1.4,
+        "trackCount": 3.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "3 side shutter",
+        "usage": "sash",
+        "usageLabel": "Sash / Shutter",
+        "sectionDepthMm": 65.0,
+        "widthMm": 32.0,
+        "weightKgPerMtr": 1.1,
+        "standardLength": null,
+        "wallThicknessMm": 1.4,
+        "trackCount": null,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "slim int",
+        "usage": "interlock",
+        "usageLabel": "Interlock",
+        "sectionDepthMm": 39.3,
+        "widthMm": 30.2,
+        "weightKgPerMtr": 0.8,
+        "standardLength": null,
+        "wallThicknessMm": 1.4,
+        "trackCount": null,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "renf. Int",
+        "usage": "interlock",
+        "usageLabel": "Interlock",
+        "sectionDepthMm": 90.0,
+        "widthMm": 30.2,
+        "weightKgPerMtr": 1.4,
+        "standardLength": null,
+        "wallThicknessMm": 1.4,
+        "trackCount": null,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "shutter middle",
+        "usage": "sash",
+        "usageLabel": "Sash / Shutter",
+        "sectionDepthMm": 40.0,
+        "widthMm": 32.0,
+        "weightKgPerMtr": 0.85,
+        "standardLength": null,
+        "wallThicknessMm": 1.4,
+        "trackCount": null,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "meeting",
+        "usage": "meeting",
+        "usageLabel": "Meeting section",
+        "sectionDepthMm": 26.5,
+        "widthMm": 26.5,
+        "weightKgPerMtr": 0.55,
+        "standardLength": null,
+        "wallThicknessMm": 1.4,
+        "trackCount": null,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      }
+    ],
+    "designOptions": [
+      "Sash",
+      "Height 65 mm",
+      "Width 32 mm",
+      "Interlocking"
+    ],
+    "tracks": [
+      {
+        "count": 2.0,
+        "name": "2 track all side track",
+        "sectionDepthMm": 74.0,
+        "widthMm": 47.0,
+        "sectionId": "32mm_dual_euro__2-track-all-side-track",
+        "meshCapable": false
+      },
+      {
+        "count": 3.0,
+        "name": "3 track all side track",
+        "sectionDepthMm": 115.5,
+        "widthMm": 47.0,
+        "sectionId": "32mm_dual_euro__3-track-all-side-track",
+        "meshCapable": true
+      }
+    ],
+    "trackOptions": [
+      2.0,
+      3.0
+    ],
+    "trackCount": 2.0,
+    "sharedSash": {
+      "name": "3 side shutter",
+      "widthMm": 32.0,
+      "sectionDepthMm": 65.0,
+      "glassOptions": []
+    },
+    "glassTypes": [],
+    "compatibility": {
+      "trackOptions": [
+        2.0,
+        3.0
+      ],
+      "meshMinTrack": 3.0,
+      "glassTypes": [],
+      "notes": [
+        "Mesh requires 2.5 or 3 track"
+      ]
+    },
+    "source": "excel_section_catalogue",
+    "productId": "29mm_sliding"
+  }
+}

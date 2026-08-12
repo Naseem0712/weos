@@ -1,0 +1,217 @@
+{
+  "id": "25mm_eco_gulf",
+  "displayName": "25mm eco gulf system windows 25mm 2 track, 3 track",
+  "productType": "sliding",
+  "category": "Windows",
+  "units": "mm",
+  "version": 1,
+  "status": "stub",
+  "description": "Imported from section catalogue — 25mm eco gulf system windows 25mm 2 track, 3 track.",
+  "tagline": "25mm eco gulf system windows 25mm 2 track, 3 track",
+  "warranty": "",
+  "heroImage": "/static/products/placeholder.svg",
+  "gallery": [],
+  "sectionDrawings": [],
+  "specifications": {
+    "profileSeries": "25mm eco gulf system windows 25mm 2 track, 3 track",
+    "sectionSizeMm": 49.0,
+    "standardLength": "16f, 12F",
+    "wallThicknessMm": 1.1,
+    "track": "2 track 49×37.8 mm",
+    "sash": "shutter 3 side sg, dg 62.5×25 mm",
+    "interlock": "Slim interlock sg, dg 35.5×20 mm",
+    "trackOptions": "2 track, 2.5 track, 3 track",
+    "glassTypes": "Single glass, DGU"
+  },
+  "materials": [],
+  "formulas": {},
+  "pdfLayout": {
+    "customer": "marqt_customer",
+    "factory": "woodenmax_factory"
+  },
+  "brand": "woodenmax",
+  "sectionSeries": "25mm_eco_gulf",
+  "linkedProductId": "29mm_sliding",
+  "catalogue": {
+    "sectionSeries": "25mm_eco_gulf",
+    "saleUnit": "sqft",
+    "ratePerUnit": 0,
+    "sizeMm": 49.0,
+    "standardLength": "16f, 12F",
+    "weightKgPerMtr": 0.8,
+    "profiles": [
+      {
+        "name": "2 track",
+        "usage": "track",
+        "usageLabel": "Track / Outer frame",
+        "sectionDepthMm": 49.0,
+        "widthMm": 37.8,
+        "weightKgPerMtr": 0.8,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.1,
+        "trackCount": 2.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "2.5 track",
+        "usage": "track",
+        "usageLabel": "Track / Outer frame",
+        "sectionDepthMm": 72.5,
+        "widthMm": 35.5,
+        "weightKgPerMtr": 1.6,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.15,
+        "trackCount": 2.5,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "3 track",
+        "usage": "track",
+        "usageLabel": "Track / Outer frame",
+        "sectionDepthMm": 86.0,
+        "widthMm": 37.8,
+        "weightKgPerMtr": 1.4,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.15,
+        "trackCount": 3.0,
+        "glassOptions": [],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "shutter 3 side sg, dg",
+        "usage": "sash",
+        "usageLabel": "Sash / Shutter",
+        "sectionDepthMm": 62.5,
+        "widthMm": 25.0,
+        "weightKgPerMtr": 0.8,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.4,
+        "trackCount": null,
+        "glassOptions": [
+          "single",
+          "dgu"
+        ],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "Slim interlock sg, dg",
+        "usage": "interlock",
+        "usageLabel": "Interlock",
+        "sectionDepthMm": 35.5,
+        "widthMm": 20.0,
+        "weightKgPerMtr": 0.52,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.2,
+        "trackCount": null,
+        "glassOptions": [
+          "single",
+          "dgu"
+        ],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "renf. Int. Sg, dg",
+        "usage": "interlock",
+        "usageLabel": "Interlock",
+        "sectionDepthMm": 80.0,
+        "widthMm": 20.0,
+        "weightKgPerMtr": 1.01,
+        "standardLength": "16f, 12F",
+        "wallThicknessMm": 1.4,
+        "trackCount": null,
+        "glassOptions": [
+          "single",
+          "dgu"
+        ],
+        "centerOpeningOnly": false
+      },
+      {
+        "name": "Meeting Section center opning use only",
+        "usage": "meeting",
+        "usageLabel": "Meeting section",
+        "sectionDepthMm": 18.0,
+        "widthMm": 25.0,
+        "weightKgPerMtr": 0.22,
+        "standardLength": "16F, 12f",
+        "wallThicknessMm": 1.2,
+        "trackCount": null,
+        "glassOptions": [],
+        "centerOpeningOnly": true
+      }
+    ],
+    "designOptions": [
+      "2 track 2 glass shutters, center opning 4 glass shutters",
+      "Window Height",
+      "Sash",
+      "Height 62mm",
+      "Width 25mm",
+      "Interlocking",
+      "5mm Interlock 29mm"
+    ],
+    "tracks": [
+      {
+        "count": 2.0,
+        "name": "2 track",
+        "sectionDepthMm": 49.0,
+        "widthMm": 37.8,
+        "sectionId": "25mm_eco_gulf__2-track",
+        "meshCapable": false
+      },
+      {
+        "count": 2.5,
+        "name": "2.5 track",
+        "sectionDepthMm": 72.5,
+        "widthMm": 35.5,
+        "sectionId": "25mm_eco_gulf__2-5-track",
+        "meshCapable": true
+      },
+      {
+        "count": 3.0,
+        "name": "3 track",
+        "sectionDepthMm": 86.0,
+        "widthMm": 37.8,
+        "sectionId": "25mm_eco_gulf__3-track",
+        "meshCapable": true
+      }
+    ],
+    "trackOptions": [
+      2.0,
+      2.5,
+      3.0
+    ],
+    "trackCount": 2.0,
+    "sharedSash": {
+      "name": "shutter 3 side sg, dg",
+      "widthMm": 25.0,
+      "sectionDepthMm": 62.5,
+      "glassOptions": [
+        "single",
+        "dgu"
+      ]
+    },
+    "glassTypes": [
+      "single",
+      "dgu"
+    ],
+    "compatibility": {
+      "trackOptions": [
+        2.0,
+        2.5,
+        3.0
+      ],
+      "meshMinTrack": 2.5,
+      "glassTypes": [
+        "single",
+        "dgu"
+      ],
+      "notes": [
+        "Mesh requires 2.5 or 3 track",
+        "sg = single glass; dg/gd = DGU (double-glazed)"
+      ]
+    },
+    "source": "excel_section_catalogue",
+    "productId": "29mm_sliding"
+  }
+}
