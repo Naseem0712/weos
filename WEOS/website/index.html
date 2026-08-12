@@ -490,7 +490,9 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                 <select id="exportSetupSelect" title="Choose which project setup’s bill-to / terms print on the quote"></select>
               </div>
               <div class="actions-inline">
-                <a class="btn sm" id="linkCust" href="#" target="_blank" title="Customer quotation: branding, sizes, specs, pricing, GST, terms.">📄 Customer Quote (PDF)</a>
+                <a class="btn sm" id="linkCust" href="#" target="_blank" title="Customer quotation: branding, sizes, specs, pricing, GST, terms.">📄 Quote PDF</a>
+                <a class="btn ghost sm" id="linkCustPrint" href="#" target="_blank" title="Open quote PDF for printing">🖨 Print quote</a>
+                <a class="btn ghost sm" id="linkCustXlsx" href="#" title="Download quote as Excel">📊 Quote Excel</a>
                 <a class="btn sec sm" id="linkFact" href="#" target="_blank" title="Factory production sheet: panel schedule, glass sizes, hardware BOM, cut list, weights. No customer pricing.">🏭 Factory Sheet (PDF)</a>
                 <a class="btn ghost sm" id="linkQuote" href="#" target="_blank" title="Raw quotation data (JSON) — for integrations.">Quote data</a>
               </div>
@@ -1012,10 +1014,20 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <div class="grow"><label class="l">Site / project</label><input id="cpSite"/></div>
             <div><label class="l">State code</label><input id="cpStateCode" style="width:100px"/></div>
           </div>
-          <div class="row" style="margin-top:.6rem">
+          <div class="row" style="margin-top:.6rem;flex-wrap:wrap;gap:.4rem">
             <button class="btn sm" id="btnCpSave">Save details</button>
             <button class="btn ghost sm" id="btnCpNewQuote">New quote for customer</button>
-            <a class="btn ghost sm" id="btnCpLedgerPdf" href="#" target="_blank" style="display:none">Download ledger PDF</a>
+            <label class="btn ghost sm" style="margin:0">Stamp<input id="cpStampFile" type="file" accept="image/*" hidden/></label>
+            <label class="btn ghost sm" style="margin:0">Signature<input id="cpSignFile" type="file" accept="image/*" hidden/></label>
+          </div>
+          <div class="row" style="margin-top:.45rem;gap:.6rem;align-items:center;flex-wrap:wrap">
+            <img id="cpStampImg" alt="stamp" style="max-height:40px;max-width:90px;display:none;border:1px solid var(--line);border-radius:6px;background:#fff"/>
+            <img id="cpSignImg" alt="signature" style="max-height:40px;max-width:110px;display:none;border:1px solid var(--line);border-radius:6px;background:#fff"/>
+          </div>
+          <div class="row" style="margin-top:.55rem;flex-wrap:wrap;gap:.4rem" id="cpExportRow">
+            <a class="btn ghost sm" id="btnCpLedgerPdf" href="#" target="_blank" style="display:none">Ledger PDF</a>
+            <a class="btn ghost sm" id="btnCpLedgerPrint" href="#" target="_blank" style="display:none">Print ledger</a>
+            <a class="btn ghost sm" id="btnCpLedgerXlsx" href="#" style="display:none">Ledger Excel</a>
           </div>
           <div class="err" id="cpErr" style="margin-top:.4rem"></div>
           <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
@@ -1134,6 +1146,13 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           <div class="row" style="margin-top:.7rem;align-items:center">
             <button class="btn" id="btnCoSave">Save company</button>
             <label class="btn ghost sm" style="margin:0">Upload logo<input id="coLogoFile" type="file" accept="image/*" hidden/></label>
+            <label class="btn ghost sm" style="margin:0">Upload stamp<input id="coStampFile" type="file" accept="image/*" hidden/></label>
+            <label class="btn ghost sm" style="margin:0">Upload signature<input id="coSignFile" type="file" accept="image/*" hidden/></label>
+          </div>
+          <div class="row" style="margin-top:.45rem;gap:.8rem;align-items:center;flex-wrap:wrap">
+            <img id="coStampImg" alt="stamp" style="max-height:48px;max-width:100px;display:none;border:1px solid var(--line);border-radius:6px;background:#fff"/>
+            <img id="coSignImg" alt="signature" style="max-height:48px;max-width:120px;display:none;border:1px solid var(--line);border-radius:6px;background:#fff"/>
+            <span class="muted" style="font-size:.75rem">Stamp &amp; signature print on advance slips and ledgers.</span>
           </div>
           <div class="err" id="coErr" style="margin-top:.4rem"></div>
         </div>
@@ -2753,9 +2772,11 @@ function updatePdfLinks(){
   if (!id) return;
   const brand = ($('pdfBrand') && $('pdfBrand').value) || 'woodenmax';
   const q = '?brand='+encodeURIComponent(brand);
-  $('linkQuote').href = `${API_BASE}/api/projects/${id}/quotation`;
-  $('linkCust').href = `${API_BASE}/api/projects/${id}/customer-pdf`+q;
-  $('linkFact').href = `${API_BASE}/api/projects/${id}/factory-pdf`+q;
+  if ($('linkQuote')) $('linkQuote').href = `${API_BASE}/api/projects/${id}/quotation`;
+  if ($('linkCust')) $('linkCust').href = `${API_BASE}/api/projects/${id}/customer-pdf`+q;
+  if ($('linkCustPrint')) $('linkCustPrint').href = `${API_BASE}/api/projects/${id}/customer-pdf`+q;
+  if ($('linkCustXlsx')) $('linkCustXlsx').href = `${API_BASE}/api/projects/${id}/customer.xlsx`+q;
+  if ($('linkFact')) $('linkFact').href = `${API_BASE}/api/projects/${id}/factory-pdf`+q;
 }
 
 function refreshSetupSummary(){
@@ -4071,7 +4092,7 @@ if ($('btnSetupToCart')) $('btnSetupToCart').onclick = async () => {
 };
 if ($('btnSetupLoadList')) $('btnSetupLoadList').onclick = loadSetupList;
 if ($('btnEditSetup')) $('btnEditSetup').onclick = () => setView('setup');
-['linkCust','linkFact'].forEach(id => {
+['linkCust','linkCustPrint','linkFact'].forEach(id => {
   const a = $(id); if (!a) return;
   a.addEventListener('click', async (e) => {
     if (!state.projectId) { e.preventDefault(); toast('Save / calculate a project first'); return; }
@@ -4082,6 +4103,15 @@ if ($('btnEditSetup')) $('btnEditSetup').onclick = () => setView('setup');
       window.open(a.href, '_blank');
     } catch(err) { toast(err.message || String(err)); }
   });
+});
+if ($('linkCustXlsx')) $('linkCustXlsx').addEventListener('click', async (e) => {
+  if (!state.projectId) { e.preventDefault(); toast('Save / calculate a project first'); return; }
+  e.preventDefault();
+  try {
+    await ensureExportSetupApplied();
+    updatePdfLinks();
+    window.location.href = $('linkCustXlsx').href;
+  } catch(err) { toast(err.message || String(err)); }
 });
 if ($('exportSetupSelect')) {
   $('exportSetupSelect').onchange = () => {
@@ -5505,6 +5535,28 @@ if ($('coLogoFile')) $('coLogoFile').onchange = async (ev) => {
     if (img) { img.src = API_BASE+'/api/company/logo?t='+Date.now(); img.style.display=''; }
   } catch(e) { $('coErr').textContent = e.message; }
 };
+async function uploadCompanyMedia(kind, fileInputId, imgId) {
+  const inp = $(fileInputId); if (!inp) return;
+  inp.onchange = async (ev) => {
+    const f = ev.target.files[0]; if (!f) return;
+    const fd = new FormData(); fd.append('file', f);
+    try {
+      await api('/api/company/'+kind, {method:'POST', body: fd});
+      toast(kind[0].toUpperCase()+kind.slice(1)+' uploaded');
+      const img = $(imgId);
+      if (img) { img.src = API_BASE+'/api/company/'+kind+'?t='+Date.now(); img.style.display=''; }
+    } catch(e) { if ($('coErr')) $('coErr').textContent = e.message; }
+  };
+}
+uploadCompanyMedia('stamp', 'coStampFile', 'coStampImg');
+uploadCompanyMedia('signature', 'coSignFile', 'coSignImg');
+['coStampImg','coSignImg'].forEach(id => {
+  const img = $(id); if (!img) return;
+  const kind = id === 'coStampImg' ? 'stamp' : 'signature';
+  img.src = API_BASE+'/api/company/'+kind+'?t='+Date.now();
+  img.onload = () => img.style.display = '';
+  img.onerror = () => img.style.display = 'none';
+});
 
 function renderCompanyHub(ws) {
   const hub = $('coHubPanel');
@@ -5684,11 +5736,30 @@ async function openCustomer(name) {
   } catch(e) { $('cpErr').textContent = e.message; }
 }
 async function loadCustomerLedger(name, quotesFallback) {
+  const base = API_BASE + '/api/customers/' + encodeURIComponent(name);
   const pdf = $('btnCpLedgerPdf');
   if (pdf) {
     pdf.style.display = 'inline-flex';
-    pdf.href = API_BASE + '/api/customers/' + encodeURIComponent(name) + '/ledger.pdf';
+    pdf.href = base + '/ledger.pdf';
   }
+  const pr = $('btnCpLedgerPrint');
+  if (pr) {
+    pr.style.display = 'inline-flex';
+    pr.href = base + '/ledger.pdf';
+  }
+  const xl = $('btnCpLedgerXlsx');
+  if (xl) {
+    xl.style.display = 'inline-flex';
+    xl.href = base + '/ledger.xlsx';
+  }
+  // Refresh customer stamp/signature previews
+  ['cpStampImg','cpSignImg'].forEach(id => {
+    const img = $(id); if (!img) return;
+    const kind = id === 'cpStampImg' ? 'stamp' : 'signature';
+    img.src = base + '/' + kind + '?t=' + Date.now();
+    img.onload = () => img.style.display = '';
+    img.onerror = () => img.style.display = 'none';
+  });
   if ($('cpAdvDate') && !$('cpAdvDate').value) {
     try { $('cpAdvDate').value = new Date().toISOString().slice(0,10); } catch(_){}
   }
@@ -5722,18 +5793,25 @@ function renderAdvances(rows) {
     $('cpAdvances').innerHTML = '<p class="muted" style="font-size:.8rem">No advances yet</p>';
     return;
   }
-  $('cpAdvances').innerHTML = `<table><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Quote / version</th><th>Ref / note</th><th></th></tr></thead><tbody>${
+  const cust = encodeURIComponent(state.selectedCustomer || '');
+  $('cpAdvances').innerHTML = `<table><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Quote / version</th><th>Ref / note</th><th>Slip</th><th></th></tr></thead><tbody>${
     rows.map(a => {
       const linked = a.linkedQuote || {};
       const qid = a.quoteId || linked.quotationId || a.projectId || '—';
       const ver = a.quoteVersion != null ? a.quoteVersion : linked.version;
       const qLabel = (qid && qid !== '—') ? (esc(qid) + (ver != null ? (' · v'+ver) : '')) : '—';
+      const slipBase = API_BASE + '/api/customers/' + cust + '/advances/' + a.id + '/slip';
       return `<tr>
       <td>${esc((a.paidAt||'').slice(0,10)||'—')}</td>
       <td>${money(a.amount)}</td>
       <td>${esc((a.paymentMode||'').toUpperCase())}</td>
       <td>${qLabel}</td>
       <td>${esc([a.reference,a.note].filter(Boolean).join(' · ')||'—')}</td>
+      <td style="white-space:nowrap">
+        <a class="btn ghost sm" href="${slipBase}.pdf" target="_blank" title="Advance slip PDF">PDF</a>
+        <a class="btn ghost sm" href="${slipBase}.pdf" target="_blank" title="Print slip">Print</a>
+        <a class="btn ghost sm" href="${slipBase}.xlsx" title="Advance slip Excel">Excel</a>
+      </td>
       <td><button class="btn ghost sm" data-del-adv="${a.id}" type="button">✕</button></td>
     </tr>`;
     }).join('')
@@ -5747,6 +5825,26 @@ function renderAdvances(rows) {
     } catch(e) { toast(e.message); }
   });
 }
+async function uploadCustomerMedia(kind, fileInputId, imgId) {
+  const inp = $(fileInputId); if (!inp) return;
+  inp.onchange = async (ev) => {
+    const name = state.selectedCustomer || ($('cpName') && $('cpName').value.trim());
+    if (!name) { toast('Open a customer first'); return; }
+    const f = ev.target.files[0]; if (!f) return;
+    const fd = new FormData(); fd.append('file', f);
+    try {
+      await api('/api/customers/'+encodeURIComponent(name)+'/'+kind, {method:'POST', body: fd});
+      toast('Customer '+kind+' uploaded');
+      const img = $(imgId);
+      if (img) {
+        img.src = API_BASE+'/api/customers/'+encodeURIComponent(name)+'/'+kind+'?t='+Date.now();
+        img.style.display = '';
+      }
+    } catch(e) { if ($('cpErr')) $('cpErr').textContent = e.message; toast(e.message); }
+  };
+}
+uploadCustomerMedia('stamp', 'cpStampFile', 'cpStampImg');
+uploadCustomerMedia('signature', 'cpSignFile', 'cpSignImg');
 if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
   const name = state.selectedCustomer || ($('cpName').value||'').trim();
   if (!name) { $('cpErr').textContent = 'Open or save a customer first'; return; }

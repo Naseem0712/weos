@@ -1700,6 +1700,47 @@ def api_get_company_logo() -> Response:
     return Response(content=lf.read_bytes(), media_type=mime)
 
 
+def _media_response(owner: str, kind: str, customer: str | None = None) -> Response:
+    from WEOS.factory.media_assets import media_bytes
+
+    raw, mime = media_bytes(owner, kind, customer)  # type: ignore[arg-type]
+    if not raw:
+        raise HTTPException(status_code=404, detail=f"No {kind} uploaded")
+    return Response(content=raw, media_type=mime or "application/octet-stream")
+
+
+@app.post("/api/company/stamp")
+async def api_upload_company_stamp(file: UploadFile = File(...)) -> dict[str, Any]:
+    from WEOS.factory.media_assets import save_media
+
+    raw = await file.read()
+    try:
+        return save_media(raw, owner="company", kind="stamp", filename=file.filename, content_type=file.content_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/company/stamp")
+def api_get_company_stamp() -> Response:
+    return _media_response("company", "stamp")
+
+
+@app.post("/api/company/signature")
+async def api_upload_company_signature(file: UploadFile = File(...)) -> dict[str, Any]:
+    from WEOS.factory.media_assets import save_media
+
+    raw = await file.read()
+    try:
+        return save_media(raw, owner="company", kind="signature", filename=file.filename, content_type=file.content_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/company/signature")
+def api_get_company_signature() -> Response:
+    return _media_response("company", "signature")
+
+
 # ── Customer profiles + accounts ─────────────────────────────────────────────
 
 @app.get("/api/customers")
@@ -1797,7 +1838,7 @@ def api_delete_customer_advance(customer: str, advance_id: int) -> dict[str, Any
 
 @app.get("/api/customers/{customer}/ledger.pdf")
 def api_customer_ledger_pdf(customer: str) -> Response:
-    from WEOS.factory.company_store import load_company
+    from WEOS.factory.company_store import company_branding, load_company, logo_file
     from WEOS.factory.ledger_pdf import ledger_filename, render_ledger_pdf
     from WEOS.factory.ledger_store import build_ledger
 
@@ -1805,11 +1846,179 @@ def api_customer_ledger_pdf(customer: str) -> Response:
         ledger = build_ledger(customer)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    pdf = render_ledger_pdf(ledger, load_company())
+    co = dict(load_company() or {})
+    branding = company_branding()
+    co.update({k: v for k, v in branding.items() if v})
+    lf = logo_file()
+    if lf:
+        co["logoPath"] = str(lf)
+    pdf = render_ledger_pdf(ledger, co)
     fname = ledger_filename(customer, ledger.get("asOf"))
     return Response(
         content=pdf,
         media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@app.get("/api/customers/{customer}/ledger.xlsx")
+def api_customer_ledger_xlsx(customer: str) -> Response:
+    from WEOS.factory.company_store import load_company
+    from WEOS.factory.export_xlsx import export_ledger_xlsx, safe_xlsx_name
+    from WEOS.factory.ledger_store import build_ledger
+
+    try:
+        ledger = build_ledger(customer)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    raw = export_ledger_xlsx(ledger, load_company())
+    fname = safe_xlsx_name(customer, "ledger")
+    return Response(
+        content=raw,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@app.post("/api/customers/{customer}/stamp")
+async def api_upload_customer_stamp(customer: str, file: UploadFile = File(...)) -> dict[str, Any]:
+    from WEOS.factory.media_assets import save_media
+
+    raw = await file.read()
+    try:
+        return save_media(
+            raw, owner="customer", kind="stamp", customer=customer, filename=file.filename, content_type=file.content_type
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/customers/{customer}/stamp")
+def api_get_customer_stamp(customer: str) -> Response:
+    return _media_response("customer", "stamp", customer)
+
+
+@app.post("/api/customers/{customer}/signature")
+async def api_upload_customer_signature(customer: str, file: UploadFile = File(...)) -> dict[str, Any]:
+    from WEOS.factory.media_assets import save_media
+
+    raw = await file.read()
+    try:
+        return save_media(
+            raw,
+            owner="customer",
+            kind="signature",
+            customer=customer,
+            filename=file.filename,
+            content_type=file.content_type,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/customers/{customer}/signature")
+def api_get_customer_signature(customer: str) -> Response:
+    return _media_response("customer", "signature", customer)
+
+
+def _find_advance(customer: str, advance_id: int) -> dict[str, Any]:
+    from WEOS.factory.ledger_store import list_advances
+
+    for row in list_advances(customer):
+        if int(row.get("id") or 0) == int(advance_id):
+            return row
+    raise FileNotFoundError(f"Advance {advance_id} not found")
+
+
+@app.get("/api/customers/{customer}/advances/{advance_id}/slip.pdf")
+def api_advance_slip_pdf(customer: str, advance_id: int) -> Response:
+    from WEOS.factory.advance_slip_pdf import advance_slip_filename, render_advance_slip_pdf
+    from WEOS.factory.company_store import company_branding, load_company, logo_file
+    from WEOS.factory.ledger_store import build_ledger
+
+    try:
+        adv = _find_advance(customer, advance_id)
+        ledger = build_ledger(customer)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    co = dict(load_company() or {})
+    co.update({k: v for k, v in company_branding().items() if v})
+    lf = logo_file()
+    if lf:
+        co["logoPath"] = str(lf)
+    # Prefer linked quote display when present on advance
+    for p in ledger.get("projects") or []:
+        if str(p.get("projectId") or "") and str(p.get("projectId")) == str(adv.get("projectId") or ""):
+            adv = {**adv, "projectName": p.get("name"), "linkedQuote": p}
+            break
+    pdf = render_advance_slip_pdf(adv, company=co, ledger=ledger, customer=customer)
+    fname = advance_slip_filename(customer, adv)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@app.get("/api/customers/{customer}/advances/{advance_id}/slip.xlsx")
+def api_advance_slip_xlsx(customer: str, advance_id: int) -> Response:
+    from WEOS.factory.company_store import load_company
+    from WEOS.factory.export_xlsx import export_advance_xlsx, safe_xlsx_name
+    from WEOS.factory.ledger_store import build_ledger
+
+    try:
+        adv = _find_advance(customer, advance_id)
+        ledger = build_ledger(customer)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    raw = export_advance_xlsx(adv, company=load_company(), ledger=ledger, customer=customer)
+    fname = safe_xlsx_name(customer, "advance", str(advance_id))
+    return Response(
+        content=raw,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@app.get("/api/projects/{project_id}/customer.xlsx")
+def api_customer_quote_xlsx(project_id: str, brand: str | None = Query(None)) -> Response:
+    """Excel export mirroring the customer quote PDF section order."""
+    from WEOS.factory.company_store import company_branding, load_company
+    from WEOS.factory.export_xlsx import export_quote_xlsx, safe_xlsx_name
+    from WEOS.factory.project_store import load_project
+
+    try:
+        doc = load_project(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    # Prefer last calculation payload when present
+    calc = doc.get("lastCalculation") if isinstance(doc.get("lastCalculation"), dict) else {}
+    payload = {
+        "quotationId": doc.get("quotationId") or (calc or {}).get("quotationId"),
+        "customer": doc.get("customer"),
+        "name": doc.get("name"),
+        "quoteDate": doc.get("createdAt"),
+        "lines": (calc or {}).get("lines") or doc.get("lines") or [],
+        "price": (calc or {}).get("price") or {},
+        "combined": (calc or {}).get("combined") or {},
+        "terms": doc.get("terms"),
+        "description": doc.get("description"),
+    }
+    co = dict(load_company() or {})
+    co.update({k: v for k, v in company_branding().items() if v})
+    raw = export_quote_xlsx(payload, co)
+    fname = safe_xlsx_name(payload.get("quotationId") or project_id, doc.get("customer") or "quote")
+    return Response(
+        content=raw,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
 

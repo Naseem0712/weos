@@ -22,10 +22,10 @@ def _money(v: Any) -> str:
     return money_text(v)
 
 
-def _set_font(c, size: float, *, bold: bool = False) -> None:
+def _set_font(c, size: float, *, bold: bool = False) -> str:
     from WEOS.factory.pdf_fonts import set_font
 
-    set_font(c, size, bold=bold)
+    return set_font(c, size, bold=bold)
 
 
 def _area_sqft(w: float, h: float) -> float:
@@ -52,6 +52,45 @@ def _draw_fit(c, text: str, x: float, y: float, max_width: float, base: float, *
     size = _fit_font_size(c, text, max_width, base, bold=bold, minimum=minimum)
     _set_font(c, size, bold=bold)
     c.drawString(x, y, text)
+
+
+def _wrap_text(c, text: str, max_width: float, font_size: float = 7.0, *, bold: bool = False) -> list[str]:
+    """Word-wrap ``text`` so each line fits within ``max_width`` (no mid-word hard truncate)."""
+    face = "Helvetica-Bold" if bold else "Helvetica"
+    try:
+        face = _set_font(c, font_size, bold=bold) or face
+    except Exception:
+        pass
+    raw = str(text or "").strip()
+    if not raw:
+        return []
+    out: list[str] = []
+    for para in raw.split("\n"):
+        words = para.split()
+        if not words:
+            continue
+        line = words[0]
+        for word in words[1:]:
+            trial = f"{line} {word}"
+            if c.stringWidth(trial, face, font_size) <= max_width:
+                line = trial
+            else:
+                out.append(line)
+                if c.stringWidth(word, face, font_size) > max_width:
+                    chunk = ""
+                    for ch in word:
+                        t2 = chunk + ch
+                        if chunk and c.stringWidth(t2, face, font_size) > max_width:
+                            out.append(chunk)
+                            chunk = ch
+                        else:
+                            chunk = t2
+                    line = chunk
+                else:
+                    line = word
+        if line:
+            out.append(line)
+    return out
 
 
 def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: float, *, track_count: int = 2):
@@ -211,14 +250,26 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
 
     # The live canvas is rendered by svg_export.render_svg_string. To guarantee the
     # PDF matches the canvas 1:1 (same geometry, labels, hinges, mullions, arrows,
-    # grid cell labels, fold L/R leaves), embed that SAME SVG as a VECTOR drawing.
+    # grid cell labels, fold L/R leaves), embed that SAME SVG — prefer PNG of the
+    # canvas SVG for visual fidelity (svglib often drops rgba/markers), then vector.
     svg = elevation_svg_for_line(line, style="pdf")
     if not svg:
         prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
         svg = (prev or {}).get("svg")
 
     if svg:
-        # 1) Vector (crisp, identical to canvas) — preferred.
+        # 1) Raster of the canvas SVG (same look as live preview).
+        png = svg_to_png_bytes(str(svg), scale=2.5)
+        if png:
+            img = ImageReader(io.BytesIO(png))
+            iw, ih = img.getSize()
+            if iw > 0 and ih > 0:
+                scale = min(box_w / float(iw), box_h / float(ih))
+                dw, dh = iw * scale, ih * scale
+                c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
+                return True
+
+        # 2) Vector fallback (crisp when svglib supports the markup).
         try:
             drawing = svg_to_rl_drawing(str(svg))
             if drawing is not None and getattr(drawing, "width", 0) and getattr(drawing, "height", 0):
@@ -229,21 +280,10 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
                 dw, dh = dwid * scale, dhei * scale
                 drawing.scale(scale, scale)
                 drawing.width, drawing.height = dw, dh
-                renderPDF.draw(drawing, c, x + (box_w - dw) / 2.0, y + (box_h - dh))
+                renderPDF.draw(drawing, c, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0)
                 return True
         except Exception:
-            _log.exception("svg vector embed failed; trying raster/model fallback")
-
-        # 2) Raster fallback (still the canvas SVG, just rasterised).
-        png = svg_to_png_bytes(str(svg), scale=2.0)
-        if png:
-            img = ImageReader(io.BytesIO(png))
-            iw, ih = img.getSize()
-            if iw > 0 and ih > 0:
-                scale = min(box_w / float(iw), box_h / float(ih))
-                dw, dh = iw * scale, ih * scale
-                c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh), width=dw, height=dh, mask="auto")
-                return True
+            _log.exception("svg vector embed failed; trying model fallback")
 
     # 3) ReportLab model re-draw (only if the SVG path is unavailable).
     try:
@@ -342,9 +382,58 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
 
     lines = [
         str(line.get("description") or line.get("displayName") or line.get("product") or "Window"),
+        f"SIZE = {w:g} × {h:g} mm",
         f"W = {w:g} mm; H = {h:g} mm",
         f"Area = {_area_sqft(w, h)} Sq.Ft.",
     ]
+    # SHUTTER count from layout / options (glass shutters, not mesh)
+    glass_n = (
+        (layout or {}).get("glassCount")
+        or opts.get("glassShutters")
+        or opts.get("glassCount")
+        or line.get("glassShutters")
+    )
+    mesh_n = (layout or {}).get("meshCount") or opts.get("meshShutters") or opts.get("meshCount") or 0
+    opening = (layout or {}).get("opening") or opts.get("opening") or ""
+    try:
+        glass_n_i = int(float(glass_n)) if glass_n is not None else 0
+    except (TypeError, ValueError):
+        glass_n_i = 0
+    if glass_n_i <= 0:
+        panels_tmp = list((layout or {}).get("panels") or [])
+        glass_n_i = sum(1 for p in panels_tmp if str(p.get("role") or "").lower() in ("sliding", "glass", "openable", ""))
+        if glass_n_i <= 0 and panels_tmp:
+            glass_n_i = len(panels_tmp)
+    if glass_n_i > 0:
+        shut = f"SHUTTER = {glass_n_i} Nos"
+        if opening:
+            shut += f" · opening {opening}"
+        try:
+            if int(float(mesh_n or 0)) > 0:
+                shut += f" · mesh {int(float(mesh_n))} Nos"
+        except (TypeError, ValueError):
+            pass
+        lines.append(shut)
+
+    # JOINT = interlock / meeting stile (catalogue) or explicit jointTypes
+    joint_bits: list[str] = []
+    if section.get("interlock"):
+        joint_bits.append(str(section["interlock"]))
+    if section.get("meeting"):
+        joint_bits.append(f"Meeting {section['meeting']}")
+    jt = opts.get("jointTypes") or line.get("jointTypes") or []
+    if isinstance(jt, (list, tuple)):
+        for j in jt:
+            if j and str(j).strip():
+                joint_bits.append(str(j).replace("_", " ").title())
+    elif jt:
+        joint_bits.append(str(jt).replace("_", " ").title())
+    if joint_bits:
+        lines.append("JOINT = " + " · ".join(joint_bits))
+    elif section.get("sash"):
+        # Sash/shutter frame is the closest catalogue joint partner when interlock absent
+        lines.append(f"JOINT / Sash = {section['sash']}")
+
     panels = list((layout or {}).get("panels") or [])
     if panels:
         panel_bits = []
@@ -414,7 +503,7 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
         elif tc:
             lines.append(f"Track = {float(tc):g}-track")
     if section.get("sash"):
-        lines.append(f"Sash = {section['sash']}")
+        lines.append(f"Sash / Shutter frame = {section['sash']}")
     if section.get("interlock"):
         lines.append(f"Interlock = {section['interlock']}")
     handle = opts.get("handle")
@@ -455,7 +544,7 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
         if bits:
             lines.append("Section sizes = " + " · ".join(bits))
 
-    # Rich section details from Series Setup / catalogue (name, dims, weight, std length)
+    # Rich section details — prefer track-matching + sash/interlock/meeting only
     detail_rows = list(line.get("sectionDetails") or [])
     if not detail_rows and isinstance(section.get("sections"), list):
         for sec in section.get("sections") or []:
@@ -470,11 +559,37 @@ def _spec_lines(line: Mapping[str, Any]) -> list[str]:
                     "wallMm": sec.get("wallThicknessMm") or sec.get("wallMm"),
                     "weightKgPerM": sec.get("weightKgPerM"),
                     "stdLengthMm": sec.get("stdLengthMm") or sec.get("standardLengthMm"),
+                    "trackCount": sec.get("trackCount"),
                 }
             )
-    for sec in detail_rows[:12]:
+    try:
+        tc_f = float(tc) if tc is not None else float(opts.get("trackCount") or 0) or None
+    except (TypeError, ValueError):
+        tc_f = None
+    filtered: list[Mapping[str, Any]] = []
+    for sec in detail_rows:
         if not isinstance(sec, Mapping):
             continue
+        use = str(sec.get("use") or sec.get("usage") or "").lower()
+        if use in ("sash", "interlock", "meeting", "shutter"):
+            filtered.append(sec)
+            continue
+        if "track" in use or use in ("frame", "outer"):
+            stc = sec.get("trackCount")
+            if tc_f is None or stc is None:
+                filtered.append(sec)
+            else:
+                try:
+                    if abs(float(stc) - tc_f) < 0.05:
+                        filtered.append(sec)
+                except (TypeError, ValueError):
+                    filtered.append(sec)
+        elif not use:
+            filtered.append(sec)
+    # If filter removed everything, keep original (better than blank)
+    if not filtered:
+        filtered = [s for s in detail_rows if isinstance(s, Mapping)]
+    for sec in filtered[:10]:
         name = sec.get("name") or sec.get("use") or "Section"
         bits = [str(name)]
         if sec.get("use") and sec.get("name"):
@@ -528,10 +643,10 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     lines = list(payload.get("lines") or [])
     _rs = rupee_prefix()
 
-    def _draw_logo(cx: float, top_y: float, max_w: float, max_h: float) -> float:
-        """Draw company logo if configured. Returns drawn height (0 if none)."""
+    def _draw_logo(cx: float, top_y: float, max_w: float, max_h: float) -> tuple[float, float]:
+        """Draw company logo if configured. Returns (drawn_width, drawn_height)."""
         if not logo_path:
-            return 0.0
+            return 0.0, 0.0
         try:
             from reportlab.lib.utils import ImageReader
 
@@ -541,50 +656,52 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
 
                 png = svg_to_png_bytes(open(lp, "r", encoding="utf-8").read(), scale=1.0)
                 if not png:
-                    return 0.0
+                    return 0.0, 0.0
                 img = ImageReader(io.BytesIO(png))
             else:
                 img = ImageReader(lp)
             iw, ih = img.getSize()
             if iw <= 0 or ih <= 0:
-                return 0.0
+                return 0.0, 0.0
             scale = min(max_w / float(iw), max_h / float(ih))
             dw, dh = iw * scale, ih * scale
             c.drawImage(img, cx, top_y - dh, width=dw, height=dh, mask="auto")
-            return dh
+            return dw, dh
         except Exception:
-            return 0.0
+            return 0.0, 0.0
 
     # —— Cover letter page ——
     M = MARGIN
-    # Logo — larger header size, aspect preserved, capped to a sensible box.
-    logo_h = _draw_logo(M, H - M, 210, 74)
-    text_x = M + (205 if logo_h else 0)
+    # Logo — compact gap to company text (actual drawn width + 10pt, not a fixed 205pt).
+    logo_w, logo_h = _draw_logo(M, H - M, 120, 64)
+    text_x = M + ((logo_w + 10) if logo_h else 0)
     name_avail = (W - M) - text_x  # keep company name inside the right margin
     c.setFillColorRGB(*primary)
-    _draw_fit(c, company, text_x, H - 52, name_avail, 18, bold=True, minimum=10)
+    _draw_fit(c, company, text_x, H - 48, name_avail, 16, bold=True, minimum=10)
     c.setFillColorRGB(0.3, 0.3, 0.3)
-    set_font(c, 9)
-    c.drawString(text_x, H - 68, (branding.get("tagline") or "Windows and Doors Quotation")[:90])
-    header_extra = H - 82
+    set_font(c, 8)
+    c.drawString(text_x, H - 62, (branding.get("tagline") or "Windows and Doors Quotation")[:90])
+    header_extra = H - 74
     if address:
         set_font(c, 8)
         c.setFillColorRGB(0.35, 0.35, 0.35)
-        c.drawString(text_x, header_extra, address[:110])
-        header_extra -= 11
+        for al in _wrap_text(c, address, name_avail, 8):
+            c.drawString(text_x, header_extra, al)
+            header_extra -= 10
     contact_bits = " · ".join(x for x in (phone, email, website) if x)
     if contact_bits:
         set_font(c, 8)
         c.setFillColorRGB(0.35, 0.35, 0.35)
-        c.drawString(text_x, header_extra, contact_bits[:110])
-        header_extra -= 11
+        for cl in _wrap_text(c, contact_bits, name_avail, 8):
+            c.drawString(text_x, header_extra, cl)
+            header_extra -= 10
     if gst:
         set_font(c, 8)
         c.setFillColorRGB(0.35, 0.35, 0.35)
         c.drawString(text_x, header_extra, f"GSTIN: {gst}")
         header_extra -= 11
     # Divider under the company header so the cover never reads as "blank".
-    header_bottom = min(H - 108, header_extra - 6, (H - M - logo_h - 8) if logo_h else H - 108)
+    header_bottom = min(H - 96, header_extra - 6, (H - M - logo_h - 8) if logo_h else H - 96)
     c.setStrokeColorRGB(*primary)
     c.setLineWidth(1)
     c.line(M, header_bottom, W - M, header_bottom)
@@ -687,16 +804,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     c.drawString(M + 10, y, "a) Design / Specifications / Value")
     y -= 12
     c.drawString(M + 10, y, "b) Terms & Conditions")
-    y -= 30
-    if phone or email or address:
-        set_font(c, 8)
-        c.setFillColorRGB(0.35, 0.35, 0.35)
-        if address:
-            c.drawString(M, y, address[:120])
-            y -= 12
-        contact = " · ".join(x for x in (phone, email) if x)
-        if contact:
-            c.drawString(M, y, contact[:120])
+    # Company address lives in the letterhead only — do not repeat at cover bottom.
     set_font(c, 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
     c.drawString(M, M / 2 + 8, "powered by WEOS — page 1")
@@ -708,6 +816,8 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     col_qty = W - 165
     col_rate = W - 105
     col_amt = W - M
+    # Keep descriptions clear of the QTY column (right-edge of wrapped text).
+    spec_max_w = max(80.0, col_qty - col_spec - 14)
 
     def header(page_no: int):
         c.setFillColorRGB(*primary)
@@ -742,12 +852,23 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     total_qty = 0
     grand = 0.0
 
-    # Elevation cell sized so THREE window rows fit per page with clean margins.
-    draw_w, draw_h = 200, 185
+    # Elevation cell — tall enough for canvas SVG (plan + elevation) without stubbing.
+    draw_w, draw_h = 200, 210
     bottom_limit = M + 30  # keep clear of footer + bottom margin
 
     for idx, line in enumerate(lines):
-        need = draw_h + 24
+        # Specs first so we know how tall the text block is (wrap may exceed draw_h).
+        try:
+            specs = _spec_lines(line)
+        except Exception:
+            _log.exception("marqt spec build failed for line %d; using name only", idx)
+            specs = [str(line.get("displayName") or line.get("product") or "Window")]
+        wrapped: list[str] = []
+        for s in specs[:22]:
+            wrapped.extend(_wrap_text(c, s, spec_max_w, 7))
+        wrapped = wrapped[:40]
+        text_h = max(len(wrapped) * 9, 24)
+        need = max(draw_h, text_h) + 24
         if y < bottom_limit + need:
             set_font(c, 7)
             c.setFillColorRGB(0.5, 0.5, 0.5)
@@ -799,17 +920,12 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         except Exception:
             _log.exception("marqt elevation draw failed for line %d; leaving cell blank", idx)
 
-        # Specs (no sell-rate line — rate is in RATE column only)
-        try:
-            specs = _spec_lines(line)
-        except Exception:
-            _log.exception("marqt spec build failed for line %d; using name only", idx)
-            specs = [str(line.get("displayName") or line.get("product") or "Window")]
+        # Specs — wrap inside the SPECIFICATIONS column; never overflow into QTY/RATE/AMOUNT
         c.setFillColorRGB(0, 0, 0)
         set_font(c, 7)
         sy = y
-        for s in specs[:18]:
-            c.drawString(col_spec, sy, s[:50])
+        for s in wrapped:
+            c.drawString(col_spec, sy, s)
             sy -= 9
 
         # Qty / Rate / Amount — currency symbol via Unicode font
@@ -821,7 +937,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         c.drawRightString(col_amt, y, f"{float(amount):,.2f}")
 
         # row separator
-        row_bottom = min(sy, y - draw_h - 10)
+        row_bottom = min(sy - 2, y - draw_h - 10)
         c.setStrokeColorRGB(0.85, 0.85, 0.85)
         c.setLineWidth(0.5)
         c.line(M, row_bottom, W - M, row_bottom)

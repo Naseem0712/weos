@@ -47,19 +47,34 @@ def _ensure_ready() -> None:
 
 # ── quote number generation ──────────────────────────────────────────────────
 
-def _next_quote_number(session: Any) -> str:
-    from WEOS.db.models import Quote
-
-    year = datetime.now(timezone.utc).year
-    prefix = f"WQ-{year}-"
-    # Count existing quotes this year → next sequence. Good enough for this scale.
+def _next_quote_number(session: Any, *, company_name: str | None = None) -> str:
+    """Allocate ``PREFIX-YY/SERIAL/A1`` from seller company name + annual counter."""
     from sqlalchemy import func, select
 
-    like = f"{prefix}%"
+    from WEOS.db.models import Quote
+    from WEOS.factory.quote_number import (
+        company_quote_prefix,
+        format_quote_number,
+        resolve_company_name,
+    )
+
+    year = datetime.now(timezone.utc).year
+    yy = f"{year % 100:02d}"
+    name = resolve_company_name(company_name)
+    pref = company_quote_prefix(name)
+    like = f"{pref}-{yy}/%"
+    # Count rows already using this company prefix this year.
     count = session.execute(
-        select(func.count()).select_from(Quote).where(Quote.quote_number.like(like))
+        select(func.count()).select_from(Quote).where(Quote.quote_number.ilike(like))
     ).scalar_one()
-    return f"{prefix}{int(count) + 1:05d}"
+    serial = int(count or 0) + 1
+    return format_quote_number(
+        prefix=pref,
+        year=year,
+        serial=serial,
+        version=1,
+        serial_width=5,
+    )
 
 
 # ── customers / mobile login ──────────────────────────────────────────────────
@@ -276,16 +291,27 @@ def create_quote(payload: dict[str, Any], *, created_by: str | None = None) -> d
         if wanted_number and customer_id:
             from sqlalchemy import select
 
-            existing = s.execute(
-                select(Quote)
-                .where(Quote.quote_number == wanted_number, Quote.customer_id == int(customer_id))
-                .order_by(Quote.updated_at.desc())
-            ).scalars().first()
+            from WEOS.factory.quote_number import bump_quote_version, parse_quote_number, quote_number_base
+
+            want_base = quote_number_base(wanted_number)
+            existing = None
+            for row in s.execute(
+                select(Quote).where(Quote.customer_id == int(customer_id)).order_by(Quote.updated_at.desc())
+            ).scalars().all():
+                if quote_number_base(row.quote_number) == want_base or (
+                    str(row.quote_number or "").strip().upper() == wanted_number.upper()
+                ):
+                    existing = row
+                    break
             if existing is not None:
-                # Version bump on the existing quote (same customer + number).
+                # Version bump on the existing quote (same customer + number family).
                 before = _snapshot(existing)
                 _apply_payload(existing, payload)
-                existing.quote_number = wanted_number
+                parsed = parse_quote_number(existing.quote_number or wanted_number)
+                if parsed and parsed.get("style") == "company":
+                    existing.quote_number = bump_quote_version(existing.quote_number or wanted_number)
+                else:
+                    existing.quote_number = wanted_number
                 existing.version = int(existing.version or 1) + 1
                 if payload.get("lines") is not None:
                     for it in list(existing.items):
@@ -336,7 +362,10 @@ def create_quote(payload: dict[str, Any], *, created_by: str | None = None) -> d
             created_by=created_by or payload.get("createdBy"),
         )
         _apply_payload(quote, payload)
-        quote.quote_number = wanted_number or _next_quote_number(s)
+        _co_name = payload.get("companyName")
+        if not _co_name and isinstance(payload.get("branding"), dict):
+            _co_name = (payload.get("branding") or {}).get("companyName")
+        quote.quote_number = wanted_number or _next_quote_number(s, company_name=_co_name)
         s.add(quote)
         s.flush()
 

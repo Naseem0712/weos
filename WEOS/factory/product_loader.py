@@ -263,10 +263,26 @@ def resolve_engine_product_id(doc: Mapping[str, Any] | None, product_id: str | N
     return pid
 
 
+_REQUIRED_GLASS_KEYS = (
+    "handleSideOverlap",
+    "interlockSideOverlap",
+    "topOverlap",
+    "bottomOverlap",
+    "thicknessMm",
+    "densityKgPerM3",
+)
+
+
+def _glass_rules_complete(glass: Mapping[str, Any] | None) -> bool:
+    if not isinstance(glass, Mapping) or not glass:
+        return False
+    return all(k in glass for k in _REQUIRED_GLASS_KEYS)
+
+
 def _ensure_renderable(doc: dict[str, Any]) -> None:
     """Fill missing engineering sections so the geometry engine can draw a
     catalogue/imported product. Mutates ``doc`` in place. Best-effort/no-raise."""
-    if _has_renderable_geometry(doc):
+    if _has_renderable_geometry(doc) and _glass_rules_complete(doc.get("glass") if isinstance(doc.get("glass"), Mapping) else None):
         return
     base_id = DEFAULT_PRODUCT_ID
     linked = doc.get("linkedProductId")
@@ -275,49 +291,64 @@ def _ensure_renderable(doc: dict[str, Any]) -> None:
     try:
         base = load_product(base_id, strict=False)
     except Exception:
-        if base_id != DEFAULT_PRODUCT_ID:
-            try:
-                base = load_product(DEFAULT_PRODUCT_ID, strict=False)
-            except Exception:
+        base = {}
+    # Linked catalogue stubs often ship incomplete glass (options only). Fall back
+    # to the default manufacturing product so elevation/PDF never lose overlaps.
+    if (not _has_renderable_geometry(base) or not _glass_rules_complete(base.get("glass") if isinstance(base.get("glass"), Mapping) else None)) and base_id != DEFAULT_PRODUCT_ID:
+        try:
+            base = load_product(DEFAULT_PRODUCT_ID, strict=False)
+            base_id = DEFAULT_PRODUCT_ID
+        except Exception:
+            if not base:
                 return
-        else:
-            return
+    if not base:
+        return
     # Borrow any engineering section the catalogue product lacks (keep its own
     # identity, catalogue block, specifications and stub quotation).
     for sec in ("glass", "dimensioning", "weight", "hardware", "brush", "trackRail", "cutList", "bomExtras"):
         if not doc.get(sec):
             doc[sec] = copy.deepcopy(base.get(sec))
-    base_geom = dict(base.get("geometry") or {})
-    cat = doc.get("catalogue") if isinstance(doc.get("catalogue"), Mapping) else {}
-    profiles = cat.get("profiles") if isinstance(cat, Mapping) else None
-    geom = dict(base_geom)
-    fw = _catalogue_width(profiles, ("sash", "shutter"))
-    iw = _catalogue_width(profiles, ("interlock", "meeting"))
-    tw = _catalogue_width(profiles, ("track", "frame"))
-    if fw:
-        geom["frameWidth"] = fw
-    if iw:
-        geom["interlockWidth"] = iw
-    if tw:
-        geom["trackWidth"] = tw
-    # Track count from the product/catalogue if present (name-parse when Excel
-    # fields were never written onto stale section JSON).
-    tc = _catalogue_track_count(cat if isinstance(cat, Mapping) else None, profiles)
-    try:
-        geom["trackCount"] = float(tc if tc is not None else geom.get("trackCount") or 2)
-    except (TypeError, ValueError):
-        geom["trackCount"] = float(base_geom.get("trackCount") or 2)
-    # Sanitise so geometry_engine invariants hold (0 <= overlap < trackWidth, etc.).
-    try:
-        tw_v = float(geom.get("trackWidth") or base_geom.get("trackWidth") or 40)
-        ov_v = float(geom.get("overlap") or base_geom.get("overlap") or 18)
-        geom["overlap"] = max(0.0, min(ov_v, tw_v * 0.9))
-        geom.setdefault("glassClip", float(base_geom.get("glassClip") or 6))
-        geom.setdefault("shutterCount", float(base_geom.get("shutterCount") or 2))
-    except (TypeError, ValueError):
-        pass
-    doc["geometry"] = geom
-    doc["_synthesizedGeometry"] = True
+    # Merge required glass overlap keys even when a partial glass.json exists
+    # (e.g. 35mm_sliding has thickness/options but no handleSideOverlap).
+    glass = dict(doc.get("glass") or {})
+    base_glass = dict(base.get("glass") or {})
+    for key in _REQUIRED_GLASS_KEYS:
+        if key not in glass and key in base_glass:
+            glass[key] = base_glass[key]
+    if glass:
+        doc["glass"] = glass
+    if not _has_renderable_geometry(doc):
+        base_geom = dict(base.get("geometry") or {})
+        cat = doc.get("catalogue") if isinstance(doc.get("catalogue"), Mapping) else {}
+        profiles = cat.get("profiles") if isinstance(cat, Mapping) else None
+        geom = dict(base_geom)
+        fw = _catalogue_width(profiles, ("sash", "shutter"))
+        iw = _catalogue_width(profiles, ("interlock", "meeting"))
+        tw = _catalogue_width(profiles, ("track", "frame"))
+        if fw:
+            geom["frameWidth"] = fw
+        if iw:
+            geom["interlockWidth"] = iw
+        if tw:
+            geom["trackWidth"] = tw
+        # Track count from the product/catalogue if present (name-parse when Excel
+        # fields were never written onto stale section JSON).
+        tc = _catalogue_track_count(cat if isinstance(cat, Mapping) else None, profiles)
+        try:
+            geom["trackCount"] = float(tc if tc is not None else geom.get("trackCount") or 2)
+        except (TypeError, ValueError):
+            geom["trackCount"] = float(base_geom.get("trackCount") or 2)
+        # Sanitise so geometry_engine invariants hold (0 <= overlap < trackWidth, etc.).
+        try:
+            tw_v = float(geom.get("trackWidth") or base_geom.get("trackWidth") or 40)
+            ov_v = float(geom.get("overlap") or base_geom.get("overlap") or 18)
+            geom["overlap"] = max(0.0, min(ov_v, tw_v * 0.9))
+            geom.setdefault("glassClip", float(base_geom.get("glassClip") or 6))
+            geom.setdefault("shutterCount", float(base_geom.get("shutterCount") or 2))
+        except (TypeError, ValueError):
+            pass
+        doc["geometry"] = geom
+        doc["_synthesizedGeometry"] = True
     doc["_engineProductId"] = base_id
 
 

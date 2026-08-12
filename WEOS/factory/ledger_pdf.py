@@ -25,7 +25,10 @@ def _txt(v: Any) -> str:
 
 def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | None = None) -> bytes:
     from reportlab.lib.pagesizes import A4
+    from reportlab.lib.utils import ImageReader
     from reportlab.pdfgen import canvas
+
+    from WEOS.factory.media_assets import draw_stamp_signature_block, resolve_doc_images
 
     company = company or {}
     profile = ledger.get("profile") or {}
@@ -42,20 +45,47 @@ def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | No
     c = canvas.Canvas(buf, pagesize=A4)
     W, H = A4
     M = 40
+    primary = (0.12, 0.22, 0.38)
     y = H - M
+
+    def ensure_space(need: float = 60) -> None:
+        nonlocal y
+        if y < need:
+            c.showPage()
+            y = H - M
 
     def line(txt: str, *, size: int = 10, bold: bool = False, dy: float = 14) -> None:
         nonlocal y
-        if y < 60:
-            c.showPage()
-            y = H - M
+        ensure_space(60)
         c.setFont("Helvetica-Bold" if bold else "Helvetica", size)
         c.drawString(M, y, txt[:110])
         y -= dy
 
-    # ── Company letterhead ────────────────────────────────────────────────
+    # ── Company letterhead (tight logo gap) ───────────────────────────────
+    logo_w = logo_h = 0.0
+    logo_path = company.get("logoPath")
+    if logo_path:
+        try:
+            from pathlib import Path
+
+            lp = Path(str(logo_path))
+            if lp.is_file():
+                img = ImageReader(str(lp))
+                iw, ih = img.getSize()
+                if iw > 0 and ih > 0:
+                    scale = min(110 / float(iw), 56 / float(ih))
+                    logo_w, logo_h = iw * scale, ih * scale
+                    c.drawImage(img, M, y - logo_h, width=logo_w, height=logo_h, mask="auto")
+        except Exception:
+            logo_w = logo_h = 0.0
+    text_x = M + ((logo_w + 10) if logo_h else 0)
     co_name = (_txt(company.get("companyName")) or "WEOS").upper()
-    line(co_name, size=16, bold=True, dy=18)
+    c.setFillColorRGB(*primary)
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(text_x, y - 16, co_name[:70])
+    c.setFillColorRGB(0.35, 0.35, 0.35)
+    c.setFont("Helvetica", 8)
+    ty = y - 30
     for bit in (
         _txt(company.get("address")),
         " · ".join(
@@ -68,14 +98,15 @@ def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | No
             if x
         ),
         f"GSTIN: {_txt(company.get('gstNo'))}" if _txt(company.get("gstNo")) else "",
-        _txt(company.get("bankDetails")),
     ):
         if bit:
-            line(bit, size=8, dy=11)
-
-    y -= 6
-    c.setStrokeColorRGB(0.2, 0.2, 0.2)
-    c.line(M, y + 8, W - M, y + 8)
+            c.drawString(text_x, ty, bit[:95])
+            ty -= 11
+    y = min(y - max(logo_h, 48) - 10, ty - 4)
+    c.setStrokeColorRGB(*primary)
+    c.setLineWidth(1)
+    c.line(M, y + 6, W - M, y + 6)
+    c.setFillColorRGB(0, 0, 0)
     line("CUSTOMER ACCOUNT LEDGER", size=13, bold=True, dy=18)
 
     cust = _txt(ledger.get("customer") or profile.get("name"))
@@ -97,7 +128,6 @@ def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | No
         if bit:
             line(bit, size=9, dy=12)
 
-    # ── Running quotes + totals ───────────────────────────────────────────
     y -= 4
     line("Running quotes / projects", bold=True, dy=16)
     if not projects:
@@ -124,7 +154,6 @@ def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | No
                     dy=10,
                 )
 
-    # ── Advance breakdown ─────────────────────────────────────────────────
     y -= 4
     line("Advance breakdown", bold=True, dy=16)
     if not advances:
@@ -149,8 +178,8 @@ def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | No
                 dy=12,
             )
 
-    # ── Footer totals (up to date) ────────────────────────────────────────
     y -= 8
+    ensure_space(140)
     c.line(M, y + 10, W - M, y + 10)
     total_value = totals.get("value", totals.get("billed"))
     line(f"Total advance:  {_inr(totals.get('advances'))}", bold=True)
@@ -160,6 +189,19 @@ def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | No
     note = _txt((totals or {}).get("note"))
     if note:
         line(note, size=8, dy=11)
+
+    ensure_space(120)
+    imgs = resolve_doc_images(customer=cust)
+    draw_stamp_signature_block(
+        c,
+        x=M,
+        y=min(y - 8, 130),
+        width=W - 2 * M,
+        company_name=co_name,
+        customer_name=cust,
+        stamp_path=imgs.get("authImage"),
+        signature_path=imgs.get("recvImage"),
+    )
 
     c.showPage()
     c.save()

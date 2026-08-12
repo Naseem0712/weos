@@ -134,7 +134,10 @@ def new_project_id() -> str:
     return f"PRJ-{year}-{_next_seq(year):05d}"
 
 
-def new_quotation_id() -> str:
+def new_quotation_id(company_name: str | None = None) -> str:
+    """Allocate next company-prefixed quote number: ``AK-26/00001/A1``."""
+    from WEOS.factory.quote_number import format_quote_number, resolve_company_name
+
     year = datetime.now(timezone.utc).year
     data = _load_counter()
     if int(data.get("year", 0)) != year:
@@ -142,7 +145,16 @@ def new_quotation_id() -> str:
     data["quote_seq"] = int(data.get("quote_seq", 0)) + 1
     data["year"] = year
     _save_counter(data)
-    return f"QT-{year}-{data['quote_seq']:06d}"
+    name = resolve_company_name(company_name)
+    # Preserve historical width when counter already past 5 digits; else 5.
+    width = 5 if int(data["quote_seq"]) < 100000 else 6
+    return format_quote_number(
+        company_name=name,
+        year=year,
+        serial=int(data["quote_seq"]),
+        version=1,
+        serial_width=width,
+    )
 
 
 def project_path(project_id: str) -> Path:
@@ -279,7 +291,18 @@ def _norm_company_gst(value: Any) -> str:
 
 
 def _norm_quote_number(value: Any) -> str:
+    """Normalise for exact-id compares; prefer base key for version-family matches."""
     return re.sub(r"\s+", "", str(value or "").strip()).upper()
+
+
+def _quote_match_key(value: Any) -> str:
+    """Match quote families ignoring A1/A2 suffix (and legacy exact ids)."""
+    try:
+        from WEOS.factory.quote_number import quote_number_base
+
+        return quote_number_base(value)
+    except Exception:
+        return _norm_quote_number(value)
 
 
 def _belongs_to_company(doc: Mapping[str, Any] | dict[str, Any], company_gst: str | None, *, include_unscoped: bool) -> bool:
@@ -310,8 +333,10 @@ def find_project_by_quotation_id(
     gst = _norm_company_gst(company_gst) if company_gst else ""
     rows = list_projects(include_archived=False, company_gst=gst or None, include_unscoped=bool(gst))
     matches: list[dict[str, Any]] = []
+    want = _quote_match_key(qid)
     for row in rows:
-        if _norm_quote_number(row.get("quotationId")) != qid:
+        row_key = _quote_match_key(row.get("quotationId"))
+        if row_key != want and _norm_quote_number(row.get("quotationId")) != qid:
             continue
         if exclude_project_id and str(row.get("projectId")) == str(exclude_project_id):
             continue
@@ -378,7 +403,19 @@ def apply_quote_number_versioning(doc: dict[str, Any]) -> tuple[dict[str, Any], 
         if key in doc and doc[key] is not None:
             merged[key] = doc[key]
     merged["projectId"] = existing["projectId"]
-    merged["quotationId"] = doc.get("quotationId") or existing.get("quotationId") or qid
+    # Bump company-style VERSION (A1→A2) when the same quote family is reused.
+    prev_qid = str(existing.get("quotationId") or doc.get("quotationId") or qid)
+    bumped = prev_qid
+    try:
+        from WEOS.factory.quote_number import bump_quote_version, parse_quote_number
+
+        parsed = parse_quote_number(prev_qid)
+        if parsed and parsed.get("style") == "company":
+            bumped = bump_quote_version(prev_qid)
+    except Exception:
+        bumped = doc.get("quotationId") or existing.get("quotationId") or qid
+    merged["quotationId"] = bumped
+    doc["quotationId"] = bumped
     if company_gst:
         merged["companyGst"] = company_gst
     merged["_quoteNumberMergedFrom"] = orphan_id or None

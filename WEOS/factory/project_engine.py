@@ -911,7 +911,17 @@ def calculate_project(project: Mapping[str, Any], *, optimize: bool = True) -> d
         clean = {k: v for k, v in r.items() if not str(k).startswith("_")}
         public_lines.append(clean)
 
-    quotation_id = project.get("quotationId") or new_quotation_id()
+    quotation_id = project.get("quotationId")
+    if not quotation_id:
+        co = str(project.get("companyName") or "").strip()
+        if not co:
+            try:
+                from WEOS.factory.company_store import load_company
+
+                co = str((load_company() or {}).get("companyName") or "").strip()
+            except Exception:
+                co = ""
+        quotation_id = new_quotation_id(co or None)
     price_total = combined.get("commercialGrandTotal", combined["grandTotal"])
     return {
         "projectId": project.get("projectId"),
