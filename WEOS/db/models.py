@@ -23,6 +23,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
 )
@@ -385,6 +386,77 @@ class LibraryFile(Base):
             "relPath": self.rel_path,
             "productId": self.product_id,
             "kind": self.kind,
+            "updatedAt": _iso(self.updated_at),
+        }
+
+
+class DurableRecord(Base):
+    """Ephemeral-filesystem escape hatch for company / customer / project JSON.
+
+    Railway containers lose ``data_dir()`` on every redeploy. Anything the UI
+    treats as "setup" (company identity, customer bill-to profiles, PRJ-* project
+    documents, project counters) is mirrored here keyed by a stable string so
+    boot can rehydrate the filesystem from Postgres.
+    """
+
+    __tablename__ = "durable_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(400), unique=True, index=True, nullable=False)
+    kind: Mapped[str] = mapped_column(String(40), default="json", index=True)
+    payload: Mapped[Any] = mapped_column(JSON, nullable=True)
+    blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    blob_content_type: Mapped[str | None] = mapped_column(String(80))
+    blob_filename: Mapped[str | None] = mapped_column(String(200))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self, *, include_blob: bool = False) -> dict:
+        data = {
+            "id": self.id,
+            "key": self.key,
+            "kind": self.kind,
+            "payload": self.payload,
+            "blobContentType": self.blob_content_type,
+            "blobFilename": self.blob_filename,
+            "hasBlob": bool(self.blob),
+            "updatedAt": _iso(self.updated_at),
+        }
+        if include_blob and self.blob is not None:
+            data["blob"] = self.blob
+        return data
+
+
+class CustomerAdvance(Base):
+    """Payment received against a customer account (ledger advances)."""
+
+    __tablename__ = "customer_advances"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    customer_key: Mapped[str] = mapped_column(String(200), index=True, nullable=False)
+    customer_name: Mapped[str | None] = mapped_column(String(200))
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    payment_mode: Mapped[str] = mapped_column(String(40), default="cash")
+    reference: Mapped[str | None] = mapped_column(String(200))
+    note: Mapped[str | None] = mapped_column(Text)
+    project_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    quote_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "customerKey": self.customer_key,
+            "customerName": self.customer_name,
+            "amount": self.amount,
+            "paymentMode": self.payment_mode,
+            "reference": self.reference,
+            "note": self.note,
+            "projectId": self.project_id,
+            "quoteId": self.quote_id,
+            "paidAt": _iso(self.paid_at),
+            "createdAt": _iso(self.created_at),
             "updatedAt": _iso(self.updated_at),
         }
 

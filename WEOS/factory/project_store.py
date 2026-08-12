@@ -1,8 +1,14 @@
-"""Project persistence — save / reload / version / archive WEOS projects."""
+"""Project persistence — save / reload / version / archive WEOS projects.
+
+Filesystem under ``projects_dir()`` is a working cache. When DATABASE_URL is
+available, every project JSON (and the ID counter) is mirrored to Postgres so
+Project Setup / quotes survive Railway redeploys.
+"""
 
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,11 +16,78 @@ from typing import Any
 
 from WEOS.paths import PACKAGE_ROOT, projects_dir
 
+_log = logging.getLogger("weos.project_store")
+
 WEOS_ROOT = PACKAGE_ROOT
 PROJECTS_DIR = projects_dir()
 ARCHIVE_DIR = PROJECTS_DIR / "archived"
 COUNTER_FILE = PROJECTS_DIR / "_counter.json"
 HISTORY_DIR = PROJECTS_DIR / "history"
+
+_COUNTER_KEY = "projects:counter"
+
+
+def _project_db_key(project_id: str, *, archived: bool = False) -> str:
+    prefix = "project_archived" if archived else "project"
+    return f"{prefix}:{project_id}"
+
+
+def _db_put_project(doc: dict[str, Any], *, archived: bool = False) -> bool:
+    pid = str(doc.get("projectId") or "").strip()
+    if not pid:
+        return False
+    try:
+        from WEOS.db.durable_store import put_json
+
+        clean = {k: v for k, v in doc.items() if not str(k).startswith("_")}
+        kind = "project_archived" if archived else "project"
+        return put_json(_project_db_key(pid, archived=archived), kind, clean)
+    except Exception:
+        _log.exception("project DB put failed for %s", pid)
+        return False
+
+
+def _db_get_project(project_id: str) -> dict[str, Any] | None:
+    try:
+        from WEOS.db.durable_store import get_json
+
+        for archived in (False, True):
+            payload = get_json(_project_db_key(project_id, archived=archived))
+            if isinstance(payload, dict):
+                return payload
+        return None
+    except Exception:
+        _log.exception("project DB get failed for %s", project_id)
+        return None
+
+
+def _db_delete_project(project_id: str) -> None:
+    try:
+        from WEOS.db.durable_store import delete_key
+
+        delete_key(_project_db_key(project_id, archived=False))
+        delete_key(_project_db_key(project_id, archived=True))
+    except Exception:
+        _log.exception("project DB delete failed for %s", project_id)
+
+
+def _db_put_counter(data: dict[str, Any]) -> None:
+    try:
+        from WEOS.db.durable_store import put_json
+
+        put_json(_COUNTER_KEY, "counter", data)
+    except Exception:
+        _log.exception("project counter DB put failed")
+
+
+def _db_get_counter() -> dict[str, Any] | None:
+    try:
+        from WEOS.db.durable_store import get_json
+
+        payload = get_json(_COUNTER_KEY)
+        return payload if isinstance(payload, dict) else None
+    except Exception:
+        return None
 
 
 def ensure_projects_dir() -> Path:
@@ -25,15 +98,33 @@ def ensure_projects_dir() -> Path:
     return PROJECTS_DIR
 
 
-def _next_seq(year: int) -> int:
+def _load_counter() -> dict[str, Any]:
     ensure_projects_dir()
-    data: dict[str, Any] = {"year": year, "seq": 0}
-    if COUNTER_FILE.is_file():
-        data = json.loads(COUNTER_FILE.read_text(encoding="utf-8"))
+    data: dict[str, Any] = {"year": 0, "seq": 0, "quote_seq": 0}
+    db = _db_get_counter()
+    if isinstance(db, dict):
+        data.update(db)
+    elif COUNTER_FILE.is_file():
+        try:
+            data.update(json.loads(COUNTER_FILE.read_text(encoding="utf-8")))
+        except Exception:
+            pass
+    return data
+
+
+def _save_counter(data: dict[str, Any]) -> None:
+    ensure_projects_dir()
+    COUNTER_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    _db_put_counter(data)
+
+
+def _next_seq(year: int) -> int:
+    data = _load_counter()
     if int(data.get("year", 0)) != year:
         data = {"year": year, "seq": 0, "quote_seq": int(data.get("quote_seq", 0))}
     data["seq"] = int(data.get("seq", 0)) + 1
-    COUNTER_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    data["year"] = year
+    _save_counter(data)
     return int(data["seq"])
 
 
@@ -44,14 +135,12 @@ def new_project_id() -> str:
 
 def new_quotation_id() -> str:
     year = datetime.now(timezone.utc).year
-    ensure_projects_dir()
-    data: dict[str, Any] = {"year": year, "seq": 0, "quote_seq": 0}
-    if COUNTER_FILE.is_file():
-        data = json.loads(COUNTER_FILE.read_text(encoding="utf-8"))
+    data = _load_counter()
     if int(data.get("year", 0)) != year:
         data = {"year": year, "seq": int(data.get("seq", 0)), "quote_seq": 0}
     data["quote_seq"] = int(data.get("quote_seq", 0)) + 1
-    COUNTER_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    data["year"] = year
+    _save_counter(data)
     return f"QT-{year}-{data['quote_seq']:06d}"
 
 
@@ -109,6 +198,16 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
     # strip runtime
     out = {k: v for k, v in doc.items() if k != "_path"}
     path.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    archived = str(doc.get("status") or "") == "archived"
+    _db_put_project(out, archived=archived)
+    if archived:
+        # Active key must not linger after archive.
+        try:
+            from WEOS.db.durable_store import delete_key
+
+            delete_key(_project_db_key(pid, archived=False))
+        except Exception:
+            pass
     _append_history(pid, action, ver)
     doc["_path"] = path.as_posix()
     return doc
@@ -121,7 +220,15 @@ def load_project(project_id: str) -> dict[str, Any]:
         if archived.is_file():
             path = archived
         else:
-            raise FileNotFoundError(f"Project not found: {project_id}")
+            # Rehydrate from durable DB after a redeploy wiped the volume.
+            db_doc = _db_get_project(project_id)
+            if db_doc is None:
+                raise FileNotFoundError(f"Project not found: {project_id}")
+            ensure_projects_dir()
+            status = str(db_doc.get("status") or "active")
+            dest = ARCHIVE_DIR / f"{project_id}.json" if status == "archived" else project_path(project_id)
+            dest.write_text(json.dumps(db_doc, indent=2), encoding="utf-8")
+            path = dest
     doc = json.loads(path.read_text(encoding="utf-8"))
     doc["_path"] = path.as_posix()
     return doc
@@ -204,7 +311,15 @@ def archive_project(project_id: str) -> dict[str, Any]:
 def restore_project(project_id: str) -> dict[str, Any]:
     archived = ARCHIVE_DIR / f"{project_id}.json"
     if not archived.is_file():
-        raise FileNotFoundError(f"Archived project not found: {project_id}")
+        # Try DB-only archived project.
+        db_doc = _db_get_project(project_id)
+        if db_doc is None:
+            raise FileNotFoundError(f"Archived project not found: {project_id}")
+        ensure_projects_dir()
+        dest = project_path(project_id)
+        db_doc["status"] = "active"
+        dest.write_text(json.dumps(db_doc, indent=2), encoding="utf-8")
+        return save_project(db_doc, bump_version=True, action="restore")
     dest = project_path(project_id)
     shutil.move(str(archived), str(dest))
     doc = json.loads(dest.read_text(encoding="utf-8"))
@@ -221,11 +336,64 @@ def delete_project(project_id: str, *, hard: bool = False) -> dict[str, Any]:
             snap = PROJECTS_DIR / "versions" / f"{project_id}_deleted.json"
             shutil.copy2(path, snap)
             path.unlink()
+            _db_delete_project(project_id)
+            _append_history(project_id, "delete", -1)
+            return {"deleted": True, "projectId": project_id}
+        # DB-only hard delete
+        if _db_get_project(project_id) is not None:
+            _db_delete_project(project_id)
             _append_history(project_id, "delete", -1)
             return {"deleted": True, "projectId": project_id}
         raise FileNotFoundError(project_id)
     return archive_project(project_id)
 
+
+def bootstrap_projects() -> dict[str, Any]:
+    """Rehydrate project JSON files + counter from durable DB on boot."""
+    ensure_projects_dir()
+    restored = 0
+    try:
+        from WEOS.db.durable_store import list_payloads
+
+        counter = _db_get_counter()
+        if isinstance(counter, dict):
+            COUNTER_FILE.write_text(json.dumps(counter, indent=2), encoding="utf-8")
+
+        rows = list_payloads(kind="project") + list_payloads(kind="project_archived")
+        for row in rows:
+            doc = row.get("payload")
+            if not isinstance(doc, dict):
+                continue
+            pid = str(doc.get("projectId") or "").strip()
+            if not pid:
+                continue
+            archived = (row.get("kind") == "project_archived") or str(doc.get("status") or "") == "archived"
+            dest = (ARCHIVE_DIR / f"{pid}.json") if archived else project_path(pid)
+            if archived:
+                ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+            dest.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+            restored += 1
+    except Exception:
+        _log.exception("project bootstrap failed")
+    # Seed DB from any files present that are not yet mirrored (first deploy).
+    seeded = 0
+    try:
+        for p in list(PROJECTS_DIR.glob("PRJ-*.json")) + list(ARCHIVE_DIR.glob("PRJ-*.json")):
+            try:
+                doc = json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            archived = p.parent == ARCHIVE_DIR or str(doc.get("status") or "") == "archived"
+            if _db_put_project(doc, archived=archived):
+                seeded += 1
+        if COUNTER_FILE.is_file() and _db_get_counter() is None:
+            try:
+                _db_put_counter(json.loads(COUNTER_FILE.read_text(encoding="utf-8")))
+            except Exception:
+                pass
+    except Exception:
+        _log.exception("project seed-to-DB failed")
+    return {"ok": True, "restored": restored, "seeded": seeded}
 
 def project_history(project_id: str) -> list[dict[str, Any]]:
     ensure_projects_dir()

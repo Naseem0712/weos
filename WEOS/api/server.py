@@ -330,6 +330,17 @@ class CustomerProfileBody(BaseModel):
     notes: str | None = None
 
 
+class AdvanceBody(BaseModel):
+    amount: float
+    paymentMode: str | None = "cash"
+    reference: str | None = None
+    note: str | None = None
+    projectId: str | None = None
+    quoteId: str | None = None
+    paidAt: str | None = None
+    customerName: str | None = None
+
+
 class TemplateBody(BaseModel):
     model_config = {"extra": "allow"}
 
@@ -1612,6 +1623,61 @@ def api_customer_quotes(customer: str) -> dict[str, Any]:
     from WEOS.factory.customer_store import customer_quotes
 
     return customer_quotes(customer)
+
+
+@app.get("/api/customers/{customer}/ledger")
+def api_customer_ledger(customer: str) -> dict[str, Any]:
+    from WEOS.factory.ledger_store import build_ledger
+
+    try:
+        return build_ledger(customer)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/customers/{customer}/advances")
+def api_add_customer_advance(customer: str, body: AdvanceBody) -> dict[str, Any]:
+    from WEOS.factory.ledger_store import add_advance
+
+    payload = body.model_dump(exclude_none=True)
+    payload.setdefault("customerName", customer)
+    try:
+        return add_advance(customer, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.delete("/api/customers/{customer}/advances/{advance_id}")
+def api_delete_customer_advance(customer: str, advance_id: int) -> dict[str, Any]:
+    from WEOS.factory.ledger_store import delete_advance
+
+    try:
+        return delete_advance(customer, advance_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/customers/{customer}/ledger.pdf")
+def api_customer_ledger_pdf(customer: str) -> Response:
+    from WEOS.factory.company_store import load_company
+    from WEOS.factory.ledger_pdf import ledger_filename, render_ledger_pdf
+    from WEOS.factory.ledger_store import build_ledger
+
+    try:
+        ledger = build_ledger(customer)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    pdf = render_ledger_pdf(ledger, load_company())
+    fname = ledger_filename(customer, ledger.get("asOf"))
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 @app.get("/api/sections")
@@ -3149,6 +3215,25 @@ def _weos_init_database() -> None:
         _log.info("Product Library store: %s", _product_bootstrap())
     except Exception:
         _log.exception("Product Library rehydrate failed on startup")
+    # Company / customers / projects — same ephemeral-volume problem as products.
+    try:
+        from WEOS.factory.company_store import bootstrap_company
+
+        _log.info("Company store: %s", bootstrap_company())
+    except Exception:
+        _log.exception("Company rehydrate failed on startup")
+    try:
+        from WEOS.factory.customer_store import bootstrap_customers
+
+        _log.info("Customer store: %s", bootstrap_customers())
+    except Exception:
+        _log.exception("Customer rehydrate failed on startup")
+    try:
+        from WEOS.factory.project_store import bootstrap_projects
+
+        _log.info("Project store: %s", bootstrap_projects())
+    except Exception:
+        _log.exception("Project rehydrate failed on startup")
 
 
 @app.on_event("startup")

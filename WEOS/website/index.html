@@ -1011,8 +1011,36 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           <div class="row" style="margin-top:.6rem">
             <button class="btn sm" id="btnCpSave">Save details</button>
             <button class="btn ghost sm" id="btnCpNewQuote">New quote for customer</button>
+            <a class="btn ghost sm" id="btnCpLedgerPdf" href="#" target="_blank" style="display:none">Download ledger PDF</a>
           </div>
           <div class="err" id="cpErr" style="margin-top:.4rem"></div>
+          <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
+          <strong style="font-size:.9rem">Account / Ledger</strong>
+          <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">Totals use quote grand totals (same as PDFs). Balance = billed − advances.</p>
+          <div id="cpLedgerKpis" class="row" style="gap:.7rem;flex-wrap:wrap;margin-bottom:.6rem">
+            <div class="kpi"><label class="l">Total billed</label><div class="big" style="font-size:1.05rem" id="cpTotBilled">₹ —</div></div>
+            <div class="kpi"><label class="l">Advances</label><div class="big" style="font-size:1.05rem" id="cpTotAdv">₹ —</div></div>
+            <div class="kpi"><label class="l">Balance</label><div class="big" style="font-size:1.05rem" id="cpTotBal">₹ —</div></div>
+          </div>
+          <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.55rem">
+            <div><label class="l">Advance ₹</label><input id="cpAdvAmt" type="number" min="0" step="0.01" style="width:110px"/></div>
+            <div><label class="l">Mode</label>
+              <select id="cpAdvMode" style="width:110px">
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+                <option value="neft">NEFT</option>
+                <option value="rtgs">RTGS</option>
+                <option value="cheque">Cheque</option>
+                <option value="card">Card</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div><label class="l">Date</label><input id="cpAdvDate" type="date" style="width:140px"/></div>
+            <div class="grow"><label class="l">Ref / note</label><input id="cpAdvRef" placeholder="cheque no / UTR / note"/></div>
+            <div><label class="l">Project</label><select id="cpAdvProject" style="min-width:140px"><option value="">— any —</option></select></div>
+            <button class="btn sm" id="btnCpAdvAdd" type="button">Add advance</button>
+          </div>
+          <div id="cpAdvances" style="margin-bottom:.8rem"></div>
           <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
           <strong style="font-size:.9rem">Quotes &amp; versions <span class="muted" id="cpQuoteCount" style="font-weight:400;font-size:.8rem"></span></strong>
           <div id="cpQuotes" style="margin-top:.6rem"></div>
@@ -5265,8 +5293,10 @@ if ($('btnCoSave')) $('btnCoSave').onclick = async () => {
       bankDetails: $('coBank').value,
       terms: ($('coTerms') && $('coTerms').value) || '',
     };
-    await api('/api/company', {method:'PUT', body});
-    toast('Company saved');
+    const saved = await api('/api/company', {method:'PUT', body});
+    toast(saved && saved.persisted === false
+      ? 'Company saved locally only — set DATABASE_URL for durable storage'
+      : 'Company saved');
   } catch(e) { $('coErr').textContent = e.message; }
 };
 if ($('coLogoFile')) $('coLogoFile').onchange = async (ev) => {
@@ -5319,8 +5349,90 @@ async function openCustomer(name) {
     $('cpStateCode').value = p.stateCode || '';
     renderCustomerQuotes(acc.quotes || []);
     $('cpQuoteCount').textContent = `(${acc.quoteCount||0})`;
+    await loadCustomerLedger(name, acc.quotes || []);
   } catch(e) { $('cpErr').textContent = e.message; }
 }
+async function loadCustomerLedger(name, quotesFallback) {
+  const pdf = $('btnCpLedgerPdf');
+  if (pdf) {
+    pdf.style.display = 'inline-flex';
+    pdf.href = API_BASE + '/api/customers/' + encodeURIComponent(name) + '/ledger.pdf';
+  }
+  if ($('cpAdvDate') && !$('cpAdvDate').value) {
+    try { $('cpAdvDate').value = new Date().toISOString().slice(0,10); } catch(_){}
+  }
+  const sel = $('cpAdvProject');
+  if (sel) {
+    const quotes = quotesFallback || [];
+    sel.innerHTML = '<option value="">— any —</option>' + quotes.map(q =>
+      `<option value="${esc(q.projectId)}">${esc(q.projectId)} · ${esc(q.name||'')}</option>`
+    ).join('');
+  }
+  try {
+    const led = await api('/api/customers/'+encodeURIComponent(name)+'/ledger');
+    const t = led.totals || {};
+    if ($('cpTotBilled')) $('cpTotBilled').textContent = money(t.billed);
+    if ($('cpTotAdv')) $('cpTotAdv').textContent = money(t.advances);
+    if ($('cpTotBal')) $('cpTotBal').textContent = money(t.balance);
+    renderAdvances(led.advances || []);
+    if (sel && (led.projects||[]).length) {
+      sel.innerHTML = '<option value="">— any —</option>' + (led.projects||[]).map(q =>
+        `<option value="${esc(q.projectId)}">${esc(q.projectId)} · ${esc(q.name||'')}</option>`
+      ).join('');
+    }
+  } catch(e) {
+    if ($('cpTotBilled')) $('cpTotBilled').textContent = '₹ —';
+    if ($('cpAdvances')) $('cpAdvances').innerHTML = `<p class="muted" style="font-size:.8rem">${esc(e.message)}</p>`;
+  }
+}
+function renderAdvances(rows) {
+  if (!$('cpAdvances')) return;
+  if (!rows.length) {
+    $('cpAdvances').innerHTML = '<p class="muted" style="font-size:.8rem">No advances yet</p>';
+    return;
+  }
+  $('cpAdvances').innerHTML = `<table><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Ref / note</th><th>Project</th><th></th></tr></thead><tbody>${
+    rows.map(a => `<tr>
+      <td>${esc((a.paidAt||'').slice(0,10)||'—')}</td>
+      <td>${money(a.amount)}</td>
+      <td>${esc((a.paymentMode||'').toUpperCase())}</td>
+      <td>${esc([a.reference,a.note].filter(Boolean).join(' · ')||'—')}</td>
+      <td>${esc(a.projectId||a.quoteId||'—')}</td>
+      <td><button class="btn ghost sm" data-del-adv="${a.id}" type="button">✕</button></td>
+    </tr>`).join('')
+  }</tbody></table>`;
+  $('cpAdvances').querySelectorAll('[data-del-adv]').forEach(b => b.onclick = async () => {
+    if (!state.selectedCustomer) return;
+    try {
+      await api('/api/customers/'+encodeURIComponent(state.selectedCustomer)+'/advances/'+b.dataset.delAdv, {method:'DELETE'});
+      toast('Advance removed');
+      await loadCustomerLedger(state.selectedCustomer);
+    } catch(e) { toast(e.message); }
+  });
+}
+if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
+  const name = state.selectedCustomer || ($('cpName').value||'').trim();
+  if (!name) { $('cpErr').textContent = 'Open or save a customer first'; return; }
+  const amount = +(($('cpAdvAmt') && $('cpAdvAmt').value) || 0);
+  if (!(amount > 0)) { toast('Enter advance amount'); return; }
+  try {
+    await api('/api/customers/'+encodeURIComponent(name)+'/advances', {
+      method:'POST',
+      body: {
+        amount,
+        paymentMode: ($('cpAdvMode') && $('cpAdvMode').value) || 'cash',
+        paidAt: ($('cpAdvDate') && $('cpAdvDate').value) || null,
+        reference: ($('cpAdvRef') && $('cpAdvRef').value) || '',
+        projectId: ($('cpAdvProject') && $('cpAdvProject').value) || null,
+        customerName: name,
+      },
+    });
+    if ($('cpAdvAmt')) $('cpAdvAmt').value = '';
+    if ($('cpAdvRef')) $('cpAdvRef').value = '';
+    toast('Advance saved');
+    await loadCustomerLedger(name);
+  } catch(e) { $('cpErr').textContent = e.message; toast(e.message); }
+};
 function renderCustomerQuotes(quotes) {
   if (!quotes.length) { $('cpQuotes').innerHTML = '<p class="muted">No quotes yet for this customer</p>'; return; }
   $('cpQuotes').innerHTML = quotes.map(q => {
