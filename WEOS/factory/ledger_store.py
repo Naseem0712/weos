@@ -1,6 +1,13 @@
 """Customer account ledger — projects totals, advances, balance.
 
-Balance = sum(project quote grand totals) − sum(advances).
+**Totals rule (documented):**
+Account billed = sum of *latest* quote grand totals **per quotation number**.
+Each project version is retained under ``projects/versions/``; only the live
+project row for a given quotation number counts toward billed / project value.
+When a quote number is reused, versioning folds into the same project so the
+account total stays live (no orphan double-count).
+
+Balance = billed − advances.
 Grand totals follow the existing quote calculation (same figure shown on
 Projects / Customer account); treat as tax-inclusive when the quote engine
 included GST in ``price.total``.
@@ -18,6 +25,13 @@ from WEOS.db.engine import db_available, init_db, session_scope
 _log = logging.getLogger("weos.ledger")
 
 PAYMENT_MODES = ("cash", "cheque", "upi", "neft", "rtgs", "card", "other")
+
+TOTALS_BASIS = "latest_per_quotation_number"
+TOTALS_NOTE = (
+    "Billed = sum of latest quote grand totals per quotation number "
+    "(versions retained as history; live project value updates when a new version is saved). "
+    "Balance = billed − advances."
+)
 
 
 def _slug(name: str) -> str:
@@ -141,7 +155,29 @@ def _money(n: Any) -> float:
         return 0.0
 
 
-def build_ledger(customer: str) -> dict[str, Any]:
+def _norm_qid(value: Any) -> str:
+    return re.sub(r"\s+", "", str(value or "").strip()).upper()
+
+
+def _latest_per_quotation(quotes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep one live row per quotation number (most recently updated).
+
+    Projects without a quotation id are each counted separately (keyed by projectId).
+    """
+    best: dict[str, dict[str, Any]] = {}
+    for q in quotes:
+        qid = _norm_qid(q.get("quotationId"))
+        key = qid or f"PROJECT:{q.get('projectId')}"
+        prev = best.get(key)
+        if prev is None:
+            best[key] = q
+            continue
+        if str(q.get("updatedAt") or "") >= str(prev.get("updatedAt") or ""):
+            best[key] = q
+    return list(best.values())
+
+
+def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, Any]:
     """Full account view: profile, projects, advances, totals, balance."""
     from WEOS.factory.customer_store import customer_quotes, load_customer_profile
 
@@ -149,13 +185,14 @@ def build_ledger(customer: str) -> dict[str, Any]:
     if not cust:
         raise ValueError("Customer name required")
 
-    account = customer_quotes(cust)
+    account = customer_quotes(cust, company_gst=company_gst)
     profile = account.get("profile") or load_customer_profile(cust)
     quotes = list(account.get("quotes") or [])
+    live = _latest_per_quotation(quotes)
 
     projects = []
     total_billed = 0.0
-    for q in quotes:
+    for q in live:
         amt = _money(q.get("grandTotal"))
         total_billed += amt
         projects.append(
@@ -169,6 +206,8 @@ def build_ledger(customer: str) -> dict[str, Any]:
                 "createdAt": q.get("createdAt"),
                 "grandTotal": amt if q.get("grandTotal") is not None else None,
                 "lineCount": q.get("lineCount"),
+                "versionCount": q.get("versionCount"),
+                "versions": q.get("versions") or [],
             }
         )
 
@@ -192,6 +231,7 @@ def build_ledger(customer: str) -> dict[str, Any]:
         "profile": profile,
         "projects": projects,
         "projectCount": len(projects),
+        "allQuoteRows": len(quotes),
         "advances": advances,
         "advanceCount": len(advances),
         "totals": {
@@ -199,8 +239,8 @@ def build_ledger(customer: str) -> dict[str, Any]:
             "advances": total_advances,
             "balance": balance,
             "currency": "INR",
-            "basis": "quote_grand_total",
-            "note": "Billed = sum of project quote grand totals (same as quote PDFs). Balance = billed − advances.",
+            "basis": TOTALS_BASIS,
+            "note": TOTALS_NOTE,
         },
         "asOf": as_of,
         "paymentModes": list(PAYMENT_MODES),

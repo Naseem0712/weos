@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from WEOS.paths import PACKAGE_ROOT, projects_dir
 
@@ -161,9 +162,25 @@ def _append_history(project_id: str, action: str, version: int) -> None:
 
 def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str = "save") -> dict[str, Any]:
     ensure_projects_dir()
+    # Same quotation number for this customer/company → fold into canonical project as a new version.
+    doc, versioned = apply_quote_number_versioning(doc)
+    if versioned and action == "save":
+        action = "quote_number_version"
     pid = doc.get("projectId") or new_project_id()
     doc["projectId"] = pid
     doc.setdefault("status", "active")  # active | draft | archived
+    # Stamp seller GST from active workspace when missing.
+    if not _norm_company_gst(doc.get("companyGst")):
+        try:
+            from WEOS.factory.company_store import get_active_gst
+
+            active = get_active_gst()
+            if active:
+                doc["companyGst"] = active
+        except Exception:
+            pass
+    elif doc.get("companyGst"):
+        doc["companyGst"] = _norm_company_gst(doc.get("companyGst"))
     now = datetime.now(timezone.utc).isoformat()
     if "createdAt" not in doc:
         doc["createdAt"] = now
@@ -210,7 +227,136 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
             pass
     _append_history(pid, action, ver)
     doc["_path"] = path.as_posix()
+    if versioned:
+        doc["quoteNumberVersioned"] = True
     return doc
+
+
+def _norm_company_gst(value: Any) -> str:
+    try:
+        from WEOS.factory.company_store import normalise_gstin
+
+        return normalise_gstin(str(value or ""))
+    except Exception:
+        return re.sub(r"[^A-Za-z0-9]", "", str(value or "")).upper()
+
+
+def _norm_quote_number(value: Any) -> str:
+    return re.sub(r"\s+", "", str(value or "").strip()).upper()
+
+
+def _belongs_to_company(doc: Mapping[str, Any] | dict[str, Any], company_gst: str | None, *, include_unscoped: bool) -> bool:
+    if not company_gst:
+        return True
+    row_gst = _norm_company_gst(doc.get("companyGst"))
+    if row_gst == company_gst:
+        return True
+    if include_unscoped and not row_gst:
+        return True
+    return False
+
+
+def find_project_by_quotation_id(
+    quotation_id: str,
+    *,
+    customer: str | None = None,
+    company_gst: str | None = None,
+    exclude_project_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Canonical live project for a quotation number within customer/company scope."""
+    qid = _norm_quote_number(quotation_id)
+    if not qid:
+        return None
+    cust_slug = None
+    if customer:
+        cust_slug = re.sub(r"[^a-zA-Z0-9]+", "_", customer.strip().lower()).strip("_")
+    gst = _norm_company_gst(company_gst) if company_gst else ""
+    rows = list_projects(include_archived=False, company_gst=gst or None, include_unscoped=bool(gst))
+    matches: list[dict[str, Any]] = []
+    for row in rows:
+        if _norm_quote_number(row.get("quotationId")) != qid:
+            continue
+        if exclude_project_id and str(row.get("projectId")) == str(exclude_project_id):
+            continue
+        if cust_slug:
+            rc = re.sub(r"[^a-zA-Z0-9]+", "_", str(row.get("customer") or "").strip().lower()).strip("_")
+            if rc and rc != cust_slug:
+                continue
+        matches.append(row)
+    if not matches:
+        return None
+    matches.sort(key=lambda r: str(r.get("updatedAt") or ""), reverse=True)
+    try:
+        return load_project(str(matches[0]["projectId"]))
+    except FileNotFoundError:
+        return None
+
+
+def apply_quote_number_versioning(doc: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """If quotationId already exists for this customer/company, merge into that project.
+
+    Old versions remain under ``projects/versions/{projectId}_vN.json``.
+    Returns ``(doc, True)`` when merged onto an existing quote number.
+    """
+    qid = _norm_quote_number(doc.get("quotationId"))
+    if not qid:
+        return doc, False
+    customer = str(doc.get("customer") or "").strip()
+    company_gst = _norm_company_gst(doc.get("companyGst"))
+    if not company_gst:
+        try:
+            from WEOS.factory.company_store import get_active_gst
+
+            company_gst = get_active_gst() or ""
+        except Exception:
+            company_gst = ""
+    existing = find_project_by_quotation_id(
+        qid,
+        customer=customer or None,
+        company_gst=company_gst or None,
+        exclude_project_id=str(doc.get("projectId") or "") or None,
+    )
+    if existing is None:
+        return doc, False
+    if str(existing.get("projectId")) == str(doc.get("projectId") or ""):
+        return doc, False
+
+    orphan_id = str(doc.get("projectId") or "")
+    # Fold incoming content into the canonical project (keep its id / createdAt).
+    merged = dict(existing)
+    for key in (
+        "name",
+        "customer",
+        "customerMobile",
+        "customerAddress",
+        "customerGst",
+        "description",
+        "terms",
+        "lines",
+        "status",
+        "lastCalculation",
+        "companyGst",
+        "pdfBrand",
+    ):
+        if key in doc and doc[key] is not None:
+            merged[key] = doc[key]
+    merged["projectId"] = existing["projectId"]
+    merged["quotationId"] = doc.get("quotationId") or existing.get("quotationId") or qid
+    if company_gst:
+        merged["companyGst"] = company_gst
+    merged["_quoteNumberMergedFrom"] = orphan_id or None
+    # Soft-remove orphan draft so it does not double-count in ledgers.
+    if orphan_id and orphan_id != merged["projectId"]:
+        try:
+            op = project_path(orphan_id)
+            if op.is_file():
+                snap = PROJECTS_DIR / "versions" / f"{orphan_id}_merged_into_{merged['projectId']}.json"
+                shutil.copy2(op, snap)
+                op.unlink()
+            _db_delete_project(orphan_id)
+        except Exception:
+            _log.exception("failed cleaning orphan project %s after quote-number merge", orphan_id)
+    return merged, True
 
 
 def load_project(project_id: str) -> dict[str, Any]:
@@ -241,11 +387,44 @@ def list_projects(
     sort: str = "updatedAt",
     order: str = "desc",
     include_archived: bool = False,
+    company_gst: str | None = None,
+    include_unscoped: bool = False,
 ) -> list[dict[str, Any]]:
     ensure_projects_dir()
     files = list(PROJECTS_DIR.glob("PRJ-*.json"))
     if include_archived or status == "archived":
         files += list(ARCHIVE_DIR.glob("PRJ-*.json"))
+    # Also surface DB-only projects that have not been rehydrated to disk yet.
+    try:
+        from WEOS.db.durable_store import list_payloads
+
+        seen_ids = {p.stem for p in files}
+        for row in list_payloads(kind="project") + (
+            list_payloads(kind="project_archived") if include_archived or status == "archived" else []
+        ):
+            doc = row.get("payload") or {}
+            if not isinstance(doc, dict):
+                continue
+            pid = str(doc.get("projectId") or "").strip()
+            if not pid or pid in seen_ids:
+                continue
+            # Write through to cache so subsequent loads work.
+            try:
+                dest = (
+                    ARCHIVE_DIR / f"{pid}.json"
+                    if str(doc.get("status") or "") == "archived"
+                    else project_path(pid)
+                )
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                if not dest.is_file():
+                    dest.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+                    files.append(dest)
+                    seen_ids.add(pid)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    gst = _norm_company_gst(company_gst) if company_gst else ""
     out: list[dict[str, Any]] = []
     for p in files:
         try:
@@ -254,6 +433,8 @@ def list_projects(
             if status and st != status:
                 continue
             if not include_archived and status != "archived" and st == "archived" and p.parent == ARCHIVE_DIR:
+                continue
+            if gst and not _belongs_to_company(d, gst, include_unscoped=include_unscoped):
                 continue
             row = {
                 "projectId": d.get("projectId", p.stem),
@@ -267,6 +448,7 @@ def list_projects(
                 "lineCount": len(d.get("lines") or []),
                 "quotationId": d.get("quotationId"),
                 "grandTotal": (d.get("lastCalculation") or {}).get("price", {}).get("total"),
+                "companyGst": d.get("companyGst") or "",
             }
             if q:
                 blob = f"{row['projectId']} {row['name']} {row['customer']} {row.get('quotationId')}".lower()

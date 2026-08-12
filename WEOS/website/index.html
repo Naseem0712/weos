@@ -257,6 +257,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
         <div class="row" style="margin-bottom:.6rem;align-items:flex-end;gap:.5rem .7rem;flex-wrap:wrap">
           <div class="grow"><label class="l">Customer address (prints on quote)</label><input id="projCustAddress" placeholder="optional"/></div>
           <div class="grow"><label class="l">Customer GSTIN</label><input id="projCustGst" placeholder="optional"/></div>
+          <div class="grow"><label class="l">Quote number (reuse = new version)</label><input id="projQuoteNo" placeholder="optional — leave blank to auto"/></div>
         </div>
         <div class="row" style="margin-bottom:.6rem;flex-wrap:wrap;gap:.5rem .7rem">
           <div class="grow" style="flex-basis:100%"><label class="l">Quote description (prints on quote)</label><textarea id="projDescription" rows="2" placeholder="Optional note that prints on the customer quotation" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
@@ -1016,7 +1017,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           <div class="err" id="cpErr" style="margin-top:.4rem"></div>
           <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
           <strong style="font-size:.9rem">Account / Ledger</strong>
-          <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">Totals use quote grand totals (same as PDFs). Balance = billed − advances.</p>
+          <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">Billed = latest grand total per quote number (versions kept as history). Balance = billed − advances.</p>
           <div id="cpLedgerKpis" class="row" style="gap:.7rem;flex-wrap:wrap;margin-bottom:.6rem">
             <div class="kpi"><label class="l">Total billed</label><div class="big" style="font-size:1.05rem" id="cpTotBilled">₹ —</div></div>
             <div class="kpi"><label class="l">Advances</label><div class="big" style="font-size:1.05rem" id="cpTotAdv">₹ —</div></div>
@@ -1048,12 +1049,61 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
       </div>
     </section>
 
-    <!-- COMPANY SETUP -->
+    <!-- COMPANY SETUP / GST WORKSPACE -->
     <section id="view-company" class="grid hidden">
+      <div class="panel" id="coGstLoginPanel" style="margin-bottom:1rem">
+        <strong>Company workspace login (GSTIN)</strong>
+        <p class="muted" style="margin:.2rem 0 .7rem;font-size:.82rem">Enter your company GST number to open the seller workspace — customers, projects, accounts &amp; ledgers in one place. First time creates the workspace.</p>
+        <div class="row" style="align-items:flex-end;gap:.5rem;flex-wrap:wrap">
+          <div class="grow"><label class="l">Seller GSTIN</label><input id="coGstLogin" placeholder="e.g. 22AAAAA0000A1Z5" style="text-transform:uppercase"/></div>
+          <div class="grow"><label class="l">Company name (first-time)</label><input id="coGstLoginName" style="text-transform:uppercase" placeholder="optional on return"/></div>
+          <button class="btn" id="btnCoGstOpen" type="button">Open workspace</button>
+          <button class="btn ghost sm" id="btnCoGstRefresh" type="button">Refresh hub</button>
+        </div>
+        <div class="err" id="coGstErr" style="margin-top:.4rem"></div>
+        <p class="muted" id="coGstStatus" style="margin:.45rem 0 0;font-size:.8rem"></p>
+      </div>
+
+      <div class="panel hidden" id="coHubPanel" style="margin-bottom:1rem">
+        <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+          <div>
+            <strong id="coHubTitle">Company hub</strong>
+            <p class="muted" id="coHubSub" style="margin:.15rem 0 0;font-size:.8rem"></p>
+          </div>
+          <div class="row" style="gap:.4rem;flex-wrap:wrap">
+            <button class="btn sm" id="btnHubNewProject" type="button">New Project Setup</button>
+            <button class="btn sec sm" id="btnHubNewQuote" type="button">New quote</button>
+            <button class="btn ghost sm" id="btnHubCustomers" type="button">Customers</button>
+          </div>
+        </div>
+        <div class="row" id="coHubKpis" style="gap:.7rem;flex-wrap:wrap;margin:0.8rem 0">
+          <div class="kpi"><label class="l">Customers</label><div class="big" style="font-size:1.05rem" id="hubCustCount">—</div></div>
+          <div class="kpi"><label class="l">Projects</label><div class="big" style="font-size:1.05rem" id="hubProjCount">—</div></div>
+          <div class="kpi"><label class="l">Total billed</label><div class="big" style="font-size:1.05rem" id="hubBilled">₹ —</div></div>
+          <div class="kpi"><label class="l">Advances</label><div class="big" style="font-size:1.05rem" id="hubAdv">₹ —</div></div>
+          <div class="kpi"><label class="l">Balance</label><div class="big" style="font-size:1.05rem" id="hubBal">₹ —</div></div>
+        </div>
+        <p class="muted" id="coHubRule" style="font-size:.75rem;margin:0 0 .6rem"></p>
+        <div class="tabs" id="hubTabs" style="margin-bottom:.5rem">
+          <button class="tab active" data-hubtab="customers" type="button">Customers</button>
+          <button class="tab" data-hubtab="projects" type="button">Projects</button>
+          <button class="tab" data-hubtab="accounts" type="button">Accounts / Ledgers</button>
+        </div>
+        <div id="hub-customers" style="overflow:auto">
+          <table><thead><tr><th>Customer</th><th>Projects</th><th>Quote versions</th><th>Advance</th><th>Balance</th><th></th></tr></thead><tbody id="hubCustBody"></tbody></table>
+        </div>
+        <div id="hub-projects" class="hidden" style="overflow:auto">
+          <table><thead><tr><th>Project</th><th>Customer</th><th>Quote #</th><th>Ver</th><th>Total</th><th></th></tr></thead><tbody id="hubProjBody"></tbody></table>
+        </div>
+        <div id="hub-accounts" class="hidden" style="overflow:auto">
+          <table><thead><tr><th>Account</th><th>Billed</th><th>Advances</th><th>Balance</th><th></th></tr></thead><tbody id="hubAccBody"></tbody></table>
+        </div>
+      </div>
+
       <div class="two">
         <div class="panel">
           <strong>Company Setup</strong>
-          <p class="muted" style="margin:.2rem 0 .8rem;font-size:.82rem">Saved once — auto-applied to every quote header &amp; branding. Company name prints in UPPERCASE.</p>
+          <p class="muted" style="margin:.2rem 0 .8rem;font-size:.82rem">Saved once — auto-applied to every quote header &amp; branding. Company name prints in UPPERCASE. Use GST login above to switch workspace.</p>
           <div class="row">
             <div class="grow"><label class="l">Company name</label><input id="coName" style="text-transform:uppercase"/></div>
             <div class="grow"><label class="l">GST No</label><input id="coGst"/></div>
@@ -1613,6 +1663,8 @@ const state = {
   builderBundle: null,
   customerMemory: null,
   memoryAskedFor: null,
+  companyGst: null,
+  workspace: null,
   railShape: 'straight',
   railMode: 'normal',
   railStep: 'design',
@@ -1662,7 +1714,7 @@ function setView(v) {
     product:['Product Details','Specs from Product JSON only'],
     admin:['Admin · Product Library','Every product editable — catalogue, materials, formulas, rules'],
     customers:['Customers','Details auto-fill quotes · all quotes & versions per customer'],
-    company:['Company Setup','One company identity auto-applied to every quote'],
+    company:['Company Setup','GST workspace login — customers, projects & ledgers'],
     learning:['Learning Engine','Upload → Review → Approve → Knowledge Base (never auto-production)'],
     formulas:['Formula Builder','Safe expressions over width, height, shutterCount, glassArea…'],
     templates:['Template Designer','Drag blocks → JSON → Customer & Factory PDFs per brand'],
@@ -1990,13 +2042,19 @@ const PRODUCT_TYPE_CATEGORY = {
 function systemForProduct(p) {
   if (!p) return null;
   const t = String(p.system || p.windowSystem || p.windowType || p.productType || p.type || '').toLowerCase();
-  if (!t) return null;
-  if (t.includes('rail')) return null; // railing world — no window system
+  const cat = String(p.category || '').toLowerCase();
+  if (!t && !cat) return null;
+  if (t.includes('rail') || cat.includes('rail')) return null; // railing world — no window system
   if (t.includes('casement') || t.includes('openable') || t.includes('opening')) return 'casement';
   if (t.includes('bifold') || t.includes('fold')) return 'bifold';
   if (t.includes('grid') || t.includes('partition')) return 'grid';
-  if (t.includes('slid') || t.includes('tele') || t.includes('sync') || t === 'windows' || t === 'door' || t === 'style') return 'sliding';
-  return null; // section_series / unknown → leave current selection
+  // Catalogue section series + Windows/Doors category → sliding elevation (not placeholder).
+  if (
+    t.includes('slid') || t.includes('tele') || t.includes('sync') || t.includes('section_series')
+    || t === 'windows' || t === 'door' || t === 'style' || t === 'window'
+    || cat.includes('window') || cat.includes('door')
+  ) return 'sliding';
+  return null; // unknown → leave current selection
 }
 function selectedProductMeta() {
   const sel = $('lineProduct');
@@ -2058,6 +2116,21 @@ function applyProductWorld() {
     applySystemUiRules({ applyFoldPreset: sys === 'bifold' });
   } else {
     applySystemUiRules();
+  }
+  // Catalogue / series products: auto-bind section series so preview gets track options.
+  if (p && $('lineSeries')) {
+    const sid = p.sectionSeries || (p.catalogue && p.catalogue.sectionSeries) || null;
+    if (sid && !$('lineSeries').value) {
+      const has = Array.from($('lineSeries').options || []).some(o => o.value === sid);
+      if (has) $('lineSeries').value = sid;
+    }
+  }
+  // Default track from catalogue when present.
+  if (p && $('lineTrack')) {
+    const tc = (p.catalogue && (p.catalogue.trackCount || (p.catalogue.trackOptions || [])[0])) || null;
+    if (tc != null && (!$('lineTrack').value || $('lineTrack').value === '2')) {
+      $('lineTrack').value = String(tc);
+    }
   }
   const sizes = p && p.catalogue && p.catalogue.sectionSizes;
   if (sizes && typeof sizes === 'object') {
@@ -2131,9 +2204,16 @@ function currentLineDraft() {
   applySystemUiRules();
   const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
   const finish = ($('lineHandleFinish') && $('lineHandleFinish').value) || 'auto';
+  const p = selectedProductMeta();
+  let sectionSeries = ($('lineSeries') && $('lineSeries').value) || null;
+  if (!sectionSeries && p) {
+    sectionSeries = p.sectionSeries || (p.catalogue && p.catalogue.sectionSeries) || null;
+  }
   return {
     product: $('lineProduct').value,
-    sectionSeries: ($('lineSeries') && $('lineSeries').value) || null,
+    sectionSeries,
+    productType: (p && p.productType) || null,
+    category: (p && p.category) || null,
     width: +$('lineW').value,
     height: +$('lineH').value,
     qty: +$('lineQty').value || 1,
@@ -2585,9 +2665,11 @@ async function refreshPreview() {
         extra.push(['Sections', `Top ${s.topRail} · Bot ${s.bottomRail} · Jamb ${s.leftJamb}/${s.rightJamb} · Leaf ${s.leafStile}`]);
       }
     } else {
-      extra.push(['System', `Sliding · ${prev.glassShutters||'?'} glass${prev.meshShutters?(' + '+prev.meshShutters+' mesh'):''}`]);
-      if (prev.mesh) extra.push(['Mesh', `Yes · ${prev.trackCount}-track`]);
-      else if (prev.trackCount) extra.push(['Track', `${prev.trackCount}-track`]);
+      const gCount = prev.glassShutters != null ? prev.glassShutters : (ln.glassShutters != null ? ln.glassShutters : null);
+      const mCount = prev.meshShutters != null ? prev.meshShutters : (ln.meshShutters != null ? ln.meshShutters : null);
+      extra.push(['System', `Sliding · ${gCount != null ? gCount : '?'} glass${mCount ? (' + ' + mCount + ' mesh') : ''}`]);
+      if (prev.mesh) extra.push(['Mesh', `Yes · ${prev.trackCount || ln.trackCount || '?'}-track`]);
+      else if (prev.trackCount || ln.trackCount) extra.push(['Track', `${prev.trackCount || ln.trackCount}-track`]);
     }
     if (prev.notes && prev.notes.length) extra.push(['Note', prev.notes.join('; ')]);
     // Never paint window series metadata when this line is actually a railing.
@@ -2675,6 +2757,7 @@ async function applySetupFromProject(setupId){
   if ($('projMobile')) $('projMobile').value = doc.customerMobile || '';
   if ($('projCustAddress')) $('projCustAddress').value = doc.customerAddress || '';
   if ($('projCustGst')) $('projCustGst').value = doc.customerGst || '';
+  if ($('projQuoteNo')) $('projQuoteNo').value = doc.quotationId || '';
   if ($('projDescription')) $('projDescription').value = doc.description || '';
   if ($('projTerms')) $('projTerms').value = doc.terms || '';
   // Only sync project name when applying the active project's own saved setup.
@@ -2705,13 +2788,17 @@ async function ensureExportSetupApplied(){
 function projectBillTo() {
   const val = id => ($(id) && $(id).value.trim()) || '';
   // Send empty strings (not null) so clearing a field also persists/clears it.
-  return {
+  const out = {
     customerMobile: val('projMobile'),
     customerAddress: val('projCustAddress'),
     customerGst: val('projCustGst'),
     description: ($('projDescription') && $('projDescription').value) || '',
     terms: ($('projTerms') && $('projTerms').value) || '',
   };
+  const qno = val('projQuoteNo');
+  if (qno) out.quotationId = qno;
+  if (state.companyGst) out.companyGst = state.companyGst;
+  return out;
 }
 
 async function ensureProject() {
@@ -2756,6 +2843,7 @@ async function openProject(id) {
   if ($('projMobile')) $('projMobile').value = doc.customerMobile || '';
   if ($('projCustAddress')) $('projCustAddress').value = doc.customerAddress || '';
   if ($('projCustGst')) $('projCustGst').value = doc.customerGst || '';
+  if ($('projQuoteNo')) $('projQuoteNo').value = doc.quotationId || '';
   if ($('projDescription')) $('projDescription').value = doc.description || '';
   if ($('projTerms')) $('projTerms').value = doc.terms || '';
   state.memoryAskedFor = null;
@@ -2781,7 +2869,15 @@ async function calculate() {
     }
     await saveProject(true);
     const t0 = performance.now();
-    const result = await api('/api/projects/'+state.projectId+'/calculate', {method:'POST', body:{optimize:true}});
+    const calcBody = {optimize:true};
+    const qno = ($('projQuoteNo') && $('projQuoteNo').value.trim()) || '';
+    if (qno) calcBody.quotationId = qno;
+    const result = await api('/api/projects/'+state.projectId+'/calculate', {method:'POST', body:calcBody});
+    if (result.projectId && result.projectId !== state.projectId) {
+      state.projectId = result.projectId;
+    }
+    if (result.quotationId && $('projQuoteNo')) $('projQuoteNo').value = result.quotationId;
+    if (result.quoteNumberVersioned) toast('Quote number matched — saved as new version');
     const ms = Math.round(performance.now()-t0);
     state.lastResult = result;
     // Refresh cart line labels/rates from calculated results (fixes stale staircase titles).
@@ -3842,7 +3938,7 @@ function syncProjectCustomer(){
   });
 });
 // New bill-to + quote-text fields persist via autosave (they print on the quote).
-['projCustAddress','projCustGst','projDescription','projTerms','cartName'].forEach(id => {
+['projCustAddress','projCustGst','projQuoteNo','projDescription','projTerms','cartName'].forEach(id => {
   const el = $(id); if (!el) return;
   el.addEventListener('input', () => { if (id === 'cartName') refreshSetupSummary(); });
   el.addEventListener('change', () => {
@@ -3865,7 +3961,7 @@ $('btnNewFromDash').onclick = $('btnNewProj').onclick = async () => {
   if ($('cartCustomer')) $('cartCustomer').value='';
   if ($('projCustName')) $('projCustName').value='';
   if ($('projMobile')) $('projMobile').value='';
-  ['projCustAddress','projCustGst','projDescription','projTerms'].forEach(id => { if ($(id)) $(id).value=''; });
+  ['projCustAddress','projCustGst','projQuoteNo','projDescription','projTerms'].forEach(id => { if ($(id)) $(id).value=''; });
   $('cartTotal').textContent='₹ —'; renderCart();
   refreshSetupSummary();
   setView('setup'); await ensureProject(); scheduleLivePrice();
@@ -5251,11 +5347,15 @@ if ($('btnMemLookup')) $('btnMemLookup').onclick = async () => {
   } catch(e) { $('memOut').textContent = e.message; }
 };
 
-/* ── Company Setup ─────────────────────────────────────────────────────────── */
+/* ── Company Setup + GST workspace hub ─────────────────────────────────────── */
 async function initCompany() {
   try {
     const c = await api('/api/company');
     state.company = c;
+    if (c.gstNo) {
+      state.companyGst = c.gstNo;
+      if ($('coGstLogin')) $('coGstLogin').value = c.gstNo;
+    }
     $('coName').value = c.companyName || '';
     $('coGst').value = c.gstNo || '';
     $('coAddress').value = c.address || '';
@@ -5270,6 +5370,7 @@ async function initCompany() {
     renderCompanyPreview();
     const img = $('coLogoImg');
     if (img) { img.src = API_BASE+'/api/company/logo?t='+Date.now(); img.onload = () => img.style.display=''; img.onerror = () => img.style.display='none'; }
+    if (c.gstNo) await refreshCompanyHub(c.gstNo);
   } catch(e) { $('coErr').textContent = e.message; }
 }
 function renderCompanyPreview() {
@@ -5294,9 +5395,11 @@ if ($('btnCoSave')) $('btnCoSave').onclick = async () => {
       terms: ($('coTerms') && $('coTerms').value) || '',
     };
     const saved = await api('/api/company', {method:'PUT', body});
+    if (saved && saved.gstNo) state.companyGst = saved.gstNo;
     toast(saved && saved.persisted === false
       ? 'Company saved locally only — set DATABASE_URL for durable storage'
       : 'Company saved');
+    if (saved && saved.gstNo) await refreshCompanyHub(saved.gstNo);
   } catch(e) { $('coErr').textContent = e.message; }
 };
 if ($('coLogoFile')) $('coLogoFile').onchange = async (ev) => {
@@ -5309,6 +5412,143 @@ if ($('coLogoFile')) $('coLogoFile').onchange = async (ev) => {
     if (img) { img.src = API_BASE+'/api/company/logo?t='+Date.now(); img.style.display=''; }
   } catch(e) { $('coErr').textContent = e.message; }
 };
+
+function renderCompanyHub(ws) {
+  const hub = $('coHubPanel');
+  if (!hub) return;
+  hub.classList.remove('hidden');
+  const co = ws.company || {};
+  const t = ws.totals || {};
+  if ($('coHubTitle')) $('coHubTitle').textContent = (co.companyName || 'Company hub').toUpperCase();
+  if ($('coHubSub')) $('coHubSub').textContent = 'GSTIN ' + (ws.gstNo || co.gstNo || '') + ' · ' + (ws.customerCount||0) + ' customers · ' + (ws.projectCount||0) + ' projects';
+  if ($('hubCustCount')) $('hubCustCount').textContent = String(ws.customerCount ?? '—');
+  if ($('hubProjCount')) $('hubProjCount').textContent = String(ws.projectCount ?? '—');
+  if ($('hubBilled')) $('hubBilled').textContent = money(t.billed);
+  if ($('hubAdv')) $('hubAdv').textContent = money(t.advances);
+  if ($('hubBal')) $('hubBal').textContent = money(t.balance);
+  if ($('coHubRule')) $('coHubRule').textContent = ws.totalsRule || (t.note || '');
+  if ($('hubCustBody')) {
+    $('hubCustBody').innerHTML = (ws.customers||[]).map(c => `
+      <tr>
+        <td><strong>${esc(c.name)}</strong><div class="muted" style="font-size:.72rem">${esc(c.phone||c.gstNo||'')}</div></td>
+        <td>${c.projectCount||0}</td>
+        <td>${c.quoteVersionCount||0}</td>
+        <td>${money(c.totalAdvances)}</td>
+        <td>${money(c.balance)}</td>
+        <td style="white-space:nowrap">
+          <button class="btn ghost sm" data-hub-cust="${esc(c.name)}" type="button">Open</button>
+          <a class="btn ghost sm" href="${API_BASE}${c.ledgerPdfUrl}" target="_blank">Ledger PDF</a>
+          <button class="btn sm" data-hub-quote="${esc(c.name)}" type="button">New quote</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="6" class="muted">No customers yet — start a Project Setup</td></tr>';
+    $('hubCustBody').querySelectorAll('[data-hub-cust]').forEach(b => b.onclick = () => {
+      state.selectedCustomer = b.dataset.hubCust;
+      setView('customers');
+      openCustomer(b.dataset.hubCust);
+    });
+    $('hubCustBody').querySelectorAll('[data-hub-quote]').forEach(b => b.onclick = () => hubNewQuoteForCustomer(b.dataset.hubQuote));
+  }
+  if ($('hubProjBody')) {
+    $('hubProjBody').innerHTML = (ws.projects||[]).map(p => `
+      <tr>
+        <td>${esc(p.projectId)}<div class="muted" style="font-size:.72rem">${esc(p.name||'')}</div></td>
+        <td>${esc(p.customer||'')}</td>
+        <td>${esc(p.quotationId||'—')}</td>
+        <td>v${p.version||1}</td>
+        <td>${p.grandTotal!=null?money(p.grandTotal):'—'}</td>
+        <td><button class="btn ghost sm" data-hub-open="${esc(p.projectId)}" type="button">Open</button></td>
+      </tr>`).join('') || '<tr><td colspan="6" class="muted">No projects yet</td></tr>';
+    $('hubProjBody').querySelectorAll('[data-hub-open]').forEach(b => b.onclick = async () => {
+      await openProject(b.dataset.hubOpen); setView('cart');
+    });
+  }
+  if ($('hubAccBody')) {
+    $('hubAccBody').innerHTML = (ws.accounts||[]).map(a => `
+      <tr>
+        <td>${esc(a.customer)}</td>
+        <td>${money(a.billed)}</td>
+        <td>${money(a.advances)}</td>
+        <td>${money(a.balance)}</td>
+        <td><a class="btn ghost sm" href="${API_BASE}${a.ledgerPdfUrl}" target="_blank">Download ledger</a></td>
+      </tr>`).join('') || '<tr><td colspan="5" class="muted">No accounts yet</td></tr>';
+  }
+}
+async function refreshCompanyHub(gst) {
+  try {
+    const qs = gst ? ('?gst='+encodeURIComponent(gst)) : '';
+    const ws = await api('/api/company/workspace'+qs);
+    state.workspace = ws;
+    state.companyGst = ws.gstNo || state.companyGst;
+    renderCompanyHub(ws);
+    if ($('coGstStatus')) $('coGstStatus').textContent = 'Workspace open · GSTIN ' + (ws.gstNo||'');
+  } catch(e) {
+    if ($('coHubPanel')) $('coHubPanel').classList.add('hidden');
+    if ($('coGstStatus')) $('coGstStatus').textContent = '';
+  }
+}
+async function hubNewQuoteForCustomer(name) {
+  state.projectId=null; state.lines=[]; state.lastResult=null;
+  $('cartName').value = (name || 'Customer') + ' — new quote';
+  if ($('projCustName')) $('projCustName').value = name || '';
+  if ($('cartCustomer')) $('cartCustomer').value = name || '';
+  if ($('projQuoteNo')) $('projQuoteNo').value = '';
+  setView('setup');
+  await ensureProject();
+  toast('New quote for ' + (name||'customer'));
+}
+if ($('btnCoGstOpen')) $('btnCoGstOpen').onclick = async () => {
+  if ($('coGstErr')) $('coGstErr').textContent = '';
+  const gst = (($('coGstLogin') && $('coGstLogin').value) || ($('coGst') && $('coGst').value) || '').trim();
+  if (!gst) { if ($('coGstErr')) $('coGstErr').textContent = 'Enter GSTIN'; return; }
+  try {
+    const body = {
+      gstNo: gst,
+      companyName: (($('coGstLoginName') && $('coGstLoginName').value) || ($('coName') && $('coName').value) || '').trim() || undefined,
+      create: true,
+    };
+    const ws = await api('/api/company/workspace/open', {method:'POST', body});
+    state.workspace = ws;
+    state.companyGst = ws.gstNo;
+    state.company = ws.company || state.company;
+    if (ws.company) {
+      const c = ws.company;
+      if ($('coName')) $('coName').value = c.companyName || '';
+      if ($('coGst')) $('coGst').value = c.gstNo || gst;
+      if ($('coAddress') && c.address) $('coAddress').value = c.address;
+      if ($('coPhone') && c.phone) $('coPhone').value = c.phone;
+      if ($('coEmail') && c.email) $('coEmail').value = c.email;
+      if ($('coTagline') && c.tagline) $('coTagline').value = c.tagline;
+      if ($('coTerms') && c.terms) $('coTerms').value = c.terms;
+      renderCompanyPreview();
+    }
+    renderCompanyHub(ws);
+    toast(ws.created ? 'Company workspace created' : 'Company workspace opened');
+    if ($('coGstStatus')) $('coGstStatus').textContent = (ws.created ? 'Created · ' : 'Opened · ') + 'GSTIN ' + ws.gstNo;
+  } catch(e) {
+    if ($('coGstErr')) $('coGstErr').textContent = e.message;
+    toast(e.message);
+  }
+};
+if ($('btnCoGstRefresh')) $('btnCoGstRefresh').onclick = () => refreshCompanyHub(state.companyGst || (($('coGstLogin')&&$('coGstLogin').value)||''));
+if ($('hubTabs')) $('hubTabs').querySelectorAll('[data-hubtab]').forEach(btn => {
+  btn.onclick = () => {
+    $('hubTabs').querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    ['customers','projects','accounts'].forEach(k => {
+      const el = $('hub-'+k);
+      if (el) el.classList.toggle('hidden', btn.dataset.hubtab !== k);
+    });
+  };
+});
+if ($('btnHubNewProject')) $('btnHubNewProject').onclick = () => {
+  if ($('btnNewProj')) $('btnNewProj').click();
+  else setView('setup');
+};
+if ($('btnHubNewQuote')) $('btnHubNewQuote').onclick = () => {
+  if ($('btnNewProj')) $('btnNewProj').click();
+  else setView('setup');
+};
+if ($('btnHubCustomers')) $('btnHubCustomers').onclick = () => setView('customers');
 
 /* ── Customers (accounts + quotes + versions) ─────────────────────────────── */
 async function initCustomers() {

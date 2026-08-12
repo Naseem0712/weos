@@ -247,7 +247,11 @@ def _add_event_obj(session: Any, quote_pk: int, event_type: str, message: str, d
 # ── quote CRUD ────────────────────────────────────────────────────────────────
 
 def create_quote(payload: dict[str, Any], *, created_by: str | None = None) -> dict[str, Any]:
-    """Create a persistent quote (+ initial version, calculation, BOM, audit event)."""
+    """Create a persistent quote (+ initial version, calculation, BOM, audit event).
+
+    If ``quoteNumber`` already exists for the same customer, bump that quote as a
+    new version instead of creating an orphan row.
+    """
     _ensure_ready()
     from WEOS.db.models import Quote, QuoteBom, QuoteCalculation, QuoteItem
 
@@ -268,6 +272,61 @@ def create_quote(payload: dict[str, Any], *, created_by: str | None = None) -> d
                 s.flush()
             customer_id = cust.id
 
+        wanted_number = (payload.get("quoteNumber") or "").strip()
+        if wanted_number and customer_id:
+            from sqlalchemy import select
+
+            existing = s.execute(
+                select(Quote)
+                .where(Quote.quote_number == wanted_number, Quote.customer_id == int(customer_id))
+                .order_by(Quote.updated_at.desc())
+            ).scalars().first()
+            if existing is not None:
+                # Version bump on the existing quote (same customer + number).
+                before = _snapshot(existing)
+                _apply_payload(existing, payload)
+                existing.quote_number = wanted_number
+                existing.version = int(existing.version or 1) + 1
+                if payload.get("lines") is not None:
+                    for it in list(existing.items):
+                        s.delete(it)
+                    for i, line in enumerate(payload.get("lines") or []):
+                        s.add(
+                            QuoteItem(
+                                quote_id=existing.id,
+                                line_no=i,
+                                product=line.get("product"),
+                                width_mm=_num(line.get("width")),
+                                height_mm=_num(line.get("height")),
+                                quantity=int(line.get("qty") or line.get("quantity") or 1),
+                                payload=line,
+                                line_total=_num((line.get("price") or {}).get("total")),
+                            )
+                        )
+                if payload.get("calculation") is not None or payload.get("grandTotal") is not None:
+                    s.add(
+                        QuoteCalculation(
+                            quote_id=existing.id,
+                            result=payload.get("calculation") or {},
+                            grand_total=existing.grand_total,
+                        )
+                    )
+                if existing.bom is not None:
+                    s.add(QuoteBom(quote_id=existing.id, bom=existing.bom))
+                _record_version(s, existing, created_by)
+                _add_event_obj(
+                    s,
+                    existing.id,
+                    "quote_number_version",
+                    f"Quote {existing.quote_number} new version (v{existing.version})",
+                    {"version": existing.version, "beforeVersion": before.get("version")},
+                    created_by,
+                )
+                s.flush()
+                data = existing.to_dict(include_children=True)
+                data["quoteNumberVersioned"] = True
+                return data
+
         quote = Quote(
             quote_id=payload.get("quoteId") or f"Q-{uuid.uuid4().hex[:12]}",
             customer_id=customer_id,
@@ -277,7 +336,7 @@ def create_quote(payload: dict[str, Any], *, created_by: str | None = None) -> d
             created_by=created_by or payload.get("createdBy"),
         )
         _apply_payload(quote, payload)
-        quote.quote_number = payload.get("quoteNumber") or _next_quote_number(s)
+        quote.quote_number = wanted_number or _next_quote_number(s)
         s.add(quote)
         s.flush()
 

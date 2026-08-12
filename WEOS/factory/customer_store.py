@@ -40,6 +40,7 @@ _FIELDS = (
     "stateCode",
     "site",
     "notes",
+    "companyGst",
 )
 
 
@@ -68,8 +69,29 @@ def _empty(customer: str = "") -> dict[str, Any]:
         "stateCode": "",
         "site": "",
         "notes": "",
+        "companyGst": "",
         "updatedAt": None,
     }
+
+
+def _norm_company_gst(value: Any) -> str:
+    try:
+        from WEOS.factory.company_store import normalise_gstin
+
+        return normalise_gstin(str(value or ""))
+    except Exception:
+        return re.sub(r"[^A-Za-z0-9]", "", str(value or "")).upper()
+
+
+def _belongs_to_company(doc: Mapping[str, Any], company_gst: str | None, *, include_unscoped: bool) -> bool:
+    if not company_gst:
+        return True
+    row_gst = _norm_company_gst(doc.get("companyGst"))
+    if row_gst == company_gst:
+        return True
+    if include_unscoped and not row_gst:
+        return True
+    return False
 
 
 def _db_get(customer: str) -> dict[str, Any] | None:
@@ -140,6 +162,18 @@ def save_customer_profile(customer: str, payload: Mapping[str, Any]) -> dict[str
             doc[key] = str(payload[key])
     doc["name"] = name
     doc["slug"] = _slug(name)
+    # Stamp active seller GST when missing so the customer lands in the open workspace.
+    if not _norm_company_gst(doc.get("companyGst")):
+        try:
+            from WEOS.factory.company_store import get_active_gst
+
+            active = get_active_gst()
+            if active:
+                doc["companyGst"] = active
+        except Exception:
+            pass
+    else:
+        doc["companyGst"] = _norm_company_gst(doc.get("companyGst"))
     doc["updatedAt"] = datetime.now(timezone.utc).isoformat()
     profile_path(name).write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     ok = _db_put(doc)
@@ -165,9 +199,14 @@ def save_customer_profile(customer: str, payload: Mapping[str, Any]) -> dict[str
     return doc
 
 
-def list_customer_profiles() -> list[dict[str, Any]]:
+def list_customer_profiles(
+    *,
+    company_gst: str | None = None,
+    include_unscoped: bool = False,
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
+    gst = _norm_company_gst(company_gst) if company_gst else ""
 
     # Prefer durable DB rows (survive redeploy).
     try:
@@ -176,6 +215,8 @@ def list_customer_profiles() -> list[dict[str, Any]]:
         for row in list_payloads(kind="customer", prefix="customer:"):
             doc = row.get("payload") or {}
             if not isinstance(doc, dict):
+                continue
+            if gst and not _belongs_to_company(doc, gst, include_unscoped=include_unscoped):
                 continue
             name = str(doc.get("name") or "").strip()
             if not name:
@@ -191,6 +232,7 @@ def list_customer_profiles() -> list[dict[str, Any]]:
                     "gstNo": doc.get("gstNo"),
                     "phone": doc.get("phone"),
                     "email": doc.get("email"),
+                    "companyGst": doc.get("companyGst") or "",
                     "updatedAt": doc.get("updatedAt") or row.get("updatedAt"),
                 }
             )
@@ -206,6 +248,10 @@ def list_customer_profiles() -> list[dict[str, Any]]:
             doc = json.loads(p.read_text(encoding="utf-8-sig"))
         except Exception:
             continue
+        if not isinstance(doc, dict):
+            continue
+        if gst and not _belongs_to_company(doc, gst, include_unscoped=include_unscoped):
+            continue
         name = doc.get("name") or d.name
         slug = doc.get("slug") or d.name
         if slug in seen:
@@ -218,11 +264,12 @@ def list_customer_profiles() -> list[dict[str, Any]]:
                 "gstNo": doc.get("gstNo"),
                 "phone": doc.get("phone"),
                 "email": doc.get("email"),
+                "companyGst": doc.get("companyGst") or "",
                 "updatedAt": doc.get("updatedAt"),
             }
         )
         # Migrate file → DB.
-        if isinstance(doc, dict) and doc.get("name"):
+        if doc.get("name"):
             _db_put(doc)
     out.sort(key=lambda r: str(r.get("name") or "").lower())
     return out
@@ -264,13 +311,18 @@ def _matches_customer(row: Mapping[str, Any], target_slug: str, target_name: str
     return False
 
 
-def customer_quotes(customer: str) -> dict[str, Any]:
+def customer_quotes(customer: str, *, company_gst: str | None = None) -> dict[str, Any]:
     """All projects/quotes for a customer, each with its saved version history."""
     from WEOS.factory.project_store import list_projects
 
     cust = (customer or "").strip()
     target = _slug(cust)
-    rows = list_projects(include_archived=True)
+    gst = _norm_company_gst(company_gst) if company_gst else ""
+    rows = list_projects(
+        include_archived=True,
+        company_gst=gst or None,
+        include_unscoped=bool(gst),
+    )
     quotes: list[dict[str, Any]] = []
     for row in rows:
         if not _matches_customer(row, target, cust):
@@ -290,6 +342,7 @@ def customer_quotes(customer: str) -> dict[str, Any]:
                 "lineCount": row.get("lineCount"),
                 "quotationId": row.get("quotationId"),
                 "grandTotal": row.get("grandTotal"),
+                "companyGst": row.get("companyGst"),
                 "versions": versions,
                 "versionCount": len(versions) + 1,
             }

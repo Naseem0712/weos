@@ -1,8 +1,12 @@
-"""Company profile store — single company identity used across all quotes.
+"""Company profile store — seller identity keyed by GSTIN (multi-tenant).
 
 Persisted to Postgres (``durable_records``) when DATABASE_URL is available, with
 a local filesystem cache under ``data_dir()/company`` for fast reads and offline
 dev. Company name renders in UPPERCASE on documents.
+
+* ``company:gst:{GSTIN}`` — durable per-workspace seller profile (source of truth)
+* ``company:profile`` — active workspace mirror (PDF branding / legacy API)
+* ``company:active_gst`` — which GSTIN is currently open
 """
 
 from __future__ import annotations
@@ -10,6 +14,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -19,7 +24,21 @@ from WEOS.paths import data_dir, website_dir
 _log = logging.getLogger("weos.company_store")
 
 _COMPANY_KEY = "company:profile"
+_ACTIVE_GST_KEY = "company:active_gst"
 _LOGO_KEY = "company:logo"
+
+
+def normalise_gstin(gst: str | None) -> str:
+    """Uppercase alphanumeric GSTIN (strip spaces / dashes). Empty if blank."""
+    raw = re.sub(r"[^A-Za-z0-9]", "", (gst or "").strip()).upper()
+    return raw
+
+
+def company_gst_key(gst: str) -> str:
+    g = normalise_gstin(gst)
+    if not g:
+        raise ValueError("GSTIN required")
+    return f"company:gst:{g}"
 
 _LOGO_EXT = {
     "image/png": ".png",
@@ -96,32 +115,115 @@ def _write_file(doc: dict[str, Any]) -> None:
     company_path().write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def _db_put(doc: dict[str, Any]) -> bool:
+def _db_put(doc: dict[str, Any], *, key: str = _COMPANY_KEY) -> bool:
     try:
         from WEOS.db.durable_store import put_json
 
-        clean = {k: v for k, v in doc.items() if k != "persisted"}
-        return put_json(_COMPANY_KEY, "company", clean)
+        clean = {k: v for k, v in doc.items() if k not in ("persisted", "storage")}
+        return put_json(key, "company", clean)
     except Exception:
         _log.exception("company DB put failed")
         return False
 
 
-def _db_get() -> dict[str, Any] | None:
+def _db_get(key: str = _COMPANY_KEY) -> dict[str, Any] | None:
     try:
         from WEOS.db.durable_store import get_json
 
-        payload = get_json(_COMPANY_KEY)
+        payload = get_json(key)
         return payload if isinstance(payload, dict) else None
     except Exception:
         _log.exception("company DB get failed")
         return None
 
 
+def get_active_gst() -> str | None:
+    try:
+        from WEOS.db.durable_store import get_json
+
+        payload = get_json(_ACTIVE_GST_KEY)
+        if isinstance(payload, dict):
+            g = normalise_gstin(payload.get("gstNo"))
+            return g or None
+    except Exception:
+        pass
+    # Fall back to active profile GST.
+    doc = _db_get(_COMPANY_KEY) or _read_file() or {}
+    g = normalise_gstin(doc.get("gstNo") if isinstance(doc, dict) else "")
+    return g or None
+
+
+def set_active_gst(gst: str) -> str:
+    g = normalise_gstin(gst)
+    if not g:
+        raise ValueError("GSTIN required")
+    try:
+        from WEOS.db.durable_store import put_json
+
+        put_json(_ACTIVE_GST_KEY, "company_active", {"gstNo": g})
+    except Exception:
+        _log.exception("set_active_gst failed")
+    # Keep legacy active profile in sync for PDF /api/company.
+    by_gst = load_company_by_gst(g)
+    if by_gst:
+        clean = {k: v for k, v in by_gst.items() if k not in ("persisted", "storage")}
+        _write_file(clean)
+        _db_put(clean, key=_COMPANY_KEY)
+    return g
+
+
+def load_company_by_gst(gst: str) -> dict[str, Any] | None:
+    g = normalise_gstin(gst)
+    if not g:
+        return None
+    payload = _db_get(company_gst_key(g))
+    if isinstance(payload, dict):
+        base = _empty()
+        base.update(payload)
+        base["gstNo"] = g
+        base["persisted"] = True
+        base["storage"] = "db"
+        return base
+    return None
+
+
+def save_company_by_gst(gst: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+    g = normalise_gstin(gst) or normalise_gstin(payload.get("gstNo"))
+    if not g:
+        raise ValueError("GSTIN required to save company workspace")
+    doc = load_company_by_gst(g) or _empty()
+    for key in _FIELDS:
+        if key in payload and payload[key] is not None:
+            doc[key] = str(payload[key])
+    doc["gstNo"] = g
+    if payload.get("logoPath") is not None:
+        doc["logoPath"] = str(payload["logoPath"]) or None
+    if payload.get("logoUrl") is not None:
+        doc["logoUrl"] = str(payload["logoUrl"]) or None
+    doc["updatedAt"] = datetime.now(timezone.utc).isoformat()
+    clean = {k: v for k, v in doc.items() if k not in ("persisted", "storage")}
+    ok = _db_put(clean, key=company_gst_key(g))
+    # Mirror to active profile + filesystem for branding.
+    _write_file(clean)
+    _db_put(clean, key=_COMPANY_KEY)
+    try:
+        from WEOS.db.durable_store import put_json
+
+        put_json(_ACTIVE_GST_KEY, "company_active", {"gstNo": g})
+    except Exception:
+        pass
+    doc["persisted"] = ok
+    doc["storage"] = "db" if ok else "file"
+    return doc
+
+
 def load_company() -> dict[str, Any]:
-    """Load company profile — prefer durable DB, then filesystem cache."""
+    """Load active company profile — prefer GST workspace, then legacy key/file."""
     base = _empty()
-    db_doc = _db_get()
+    active_gst = get_active_gst()
+    db_doc = load_company_by_gst(active_gst) if active_gst else None
+    if db_doc is None:
+        db_doc = _db_get()
     file_doc = _read_file()
     source = None
     if db_doc:
@@ -129,22 +231,39 @@ def load_company() -> dict[str, Any]:
         source = "db"
         # Keep filesystem cache warm for logo_file / PDF paths.
         try:
-            _write_file({k: v for k, v in base.items() if k != "persisted"})
+            _write_file({k: v for k, v in base.items() if k not in ("persisted", "storage")})
         except Exception:
             pass
         _ensure_logo_cache()
+        # Promote legacy profile into GST key when GSTIN is present.
+        g = normalise_gstin(base.get("gstNo"))
+        if g and load_company_by_gst(g) is None:
+            _db_put({k: v for k, v in base.items() if k not in ("persisted", "storage")}, key=company_gst_key(g))
+            source = "db+promoted"
     elif file_doc:
         base.update(file_doc)
         source = "file"
         # Migrate legacy file → DB when possible.
         if _db_put(base):
             source = "file+migrated"
-    base["persisted"] = source in ("db", "file+migrated")
+        g = normalise_gstin(base.get("gstNo"))
+        if g:
+            _db_put({k: v for k, v in base.items() if k not in ("persisted", "storage")}, key=company_gst_key(g))
+    base["persisted"] = source in ("db", "file+migrated", "db+promoted")
     base["storage"] = source or "empty"
+    if base.get("gstNo"):
+        base["gstNo"] = normalise_gstin(base.get("gstNo"))
     return base
 
 
 def save_company(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Save active company; when GSTIN present, also upsert the GST workspace."""
+    gst = normalise_gstin(payload.get("gstNo") if payload.get("gstNo") is not None else None)
+    if not gst:
+        gst = normalise_gstin((load_company() or {}).get("gstNo") or "")
+    if gst:
+        return save_company_by_gst(gst, payload)
+
     doc = load_company()
     for key in _FIELDS:
         if key in payload and payload[key] is not None:

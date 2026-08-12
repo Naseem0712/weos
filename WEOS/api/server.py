@@ -213,6 +213,8 @@ class ProjectCreate(BaseModel):
     customerGst: str | None = None
     description: str | None = None
     terms: str | None = None
+    quotationId: str | None = None
+    companyGst: str | None = None
 
 
 class ProjectUpdate(BaseModel):
@@ -225,10 +227,13 @@ class ProjectUpdate(BaseModel):
     customerGst: str | None = None
     description: str | None = None
     terms: str | None = None
+    quotationId: str | None = None
+    companyGst: str | None = None
 
 
 class ProjectCalculateOpts(BaseModel):
     optimize: bool = True
+    quotationId: str | None = None
 
 
 class PreviewRequest(BaseModel):
@@ -317,6 +322,23 @@ class CompanyBody(BaseModel):
     terms: str | None = None
 
 
+class CompanyWorkspaceOpenBody(BaseModel):
+    gstNo: str
+    companyName: str | None = None
+    address: str | None = None
+    website: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    tagline: str | None = None
+    state: str | None = None
+    stateCode: str | None = None
+    pan: str | None = None
+    bankDetails: str | None = None
+    cin: str | None = None
+    terms: str | None = None
+    create: bool = True
+
+
 class CustomerProfileBody(BaseModel):
     name: str | None = None
     address: str | None = None
@@ -328,6 +350,7 @@ class CustomerProfileBody(BaseModel):
     stateCode: str | None = None
     site: str | None = None
     notes: str | None = None
+    companyGst: str | None = None
 
 
 class AdvanceBody(BaseModel):
@@ -888,7 +911,7 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
         }
     try:
         from WEOS.factory.layout_options import resolve_mesh_track
-        from WEOS.factory.product_loader import load_product
+        from WEOS.factory.product_loader import load_product, resolve_engine_product_id
         from WEOS.factory.svg_export import layout_summary_for_job
 
         meta = load_product(body.product, strict=False)
@@ -897,12 +920,17 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
         # elevation instead of a placeholder. We only fall back to the catalogue
         # image if the product genuinely cannot be rendered.
         is_stub = bool(meta.get("_stub") or meta.get("status") == "stub")
+        # Catalogue products are their own section series — use that when the
+        # optional Series dropdown is empty so track/mesh resolution still works.
+        section_series = body.sectionSeries or meta.get("sectionSeries") or (
+            body.product if is_stub else None
+        )
         series_doc = None
-        if body.sectionSeries:
+        if section_series:
             try:
                 from WEOS.factory.section_catalogue import get_series
 
-                series_doc = get_series(str(body.sectionSeries))
+                series_doc = get_series(str(section_series))
             except Exception:
                 series_doc = None
         mesh_res = resolve_mesh_track(
@@ -910,30 +938,47 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             track_count=body.trackCount,
             series=series_doc,
         )
-        job = generate_job(
-            body.width,
-            body.height,
-            body.product,
-            glass=body.glass,
-            colour=body.colour,
-            handle=body.handle,
-            partitions=body.partitions,
-            mesh=bool(body.mesh),
-            track_count=mesh_res["trackCount"],
-            section_series=body.sectionSeries,
-            glass_count=body.glassShutters,
-            mesh_count=body.meshShutters,
-            opening=body.opening,
-            fixed_shutters=body.fixShutters,
-            system=body.system,
-            fold_left=body.foldLeft,
-            fold_right=body.foldRight,
-            section_sizes=body.sectionSizes,
-            handle_finish=body.handleFinish,
-            handle_level=body.handleLevel,
-            handle_overrides=body.handleOverrides,
-            grid=body.grid if str(body.system or "").lower() == "grid" else None,
-        )
+        engine_ids = [body.product]
+        linked = resolve_engine_product_id(meta, body.product)
+        if linked and linked not in engine_ids:
+            engine_ids.append(linked)
+        if "29mm_sliding" not in engine_ids and is_stub:
+            engine_ids.append("29mm_sliding")
+
+        last_exc: Exception | None = None
+        job = None
+        for engine_id in engine_ids:
+            try:
+                job = generate_job(
+                    body.width,
+                    body.height,
+                    engine_id,
+                    glass=body.glass,
+                    colour=body.colour,
+                    handle=body.handle,
+                    partitions=body.partitions,
+                    mesh=bool(body.mesh),
+                    track_count=mesh_res["trackCount"],
+                    section_series=section_series,
+                    glass_count=body.glassShutters,
+                    mesh_count=body.meshShutters,
+                    opening=body.opening,
+                    fixed_shutters=body.fixShutters,
+                    system=body.system or "sliding",
+                    fold_left=body.foldLeft,
+                    fold_right=body.foldRight,
+                    section_sizes=body.sectionSizes,
+                    handle_finish=body.handleFinish,
+                    handle_level=body.handleLevel,
+                    handle_overrides=body.handleOverrides,
+                    grid=body.grid if str(body.system or "").lower() == "grid" else None,
+                )
+                break
+            except Exception as exc:  # try next engine id
+                last_exc = exc
+                job = None
+        if job is None:
+            raise last_exc or RuntimeError("preview generate_job failed")
         pf = getattr(body, "panelFill", None)
         if not pf and getattr(body, "features", None):
             try:
@@ -948,9 +993,10 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             from WEOS.factory.panel_fills import attach_fill_to_drawing
 
             attach_fill_to_drawing(job.drawing, pf)
+        colour_raw = str(body.colour or "white")
         svg = render_svg_string(
             job.drawing,
-            colour=body.colour.lower().replace(" ", "_"),
+            colour=colour_raw.lower().replace(" ", "_"),
             annotations=True,
             include_plan=True,
             grid=body.grid if str(body.system or "").lower() != "grid" else None,
@@ -958,6 +1004,9 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
         layout = layout_summary_for_job(
             width=body.width, height=body.height, layout_meta=job.layout_meta
         )
+        glass_shutters = job.layout_meta.get("glass_count")
+        if glass_shutters is None:
+            glass_shutters = body.glassShutters
         return {
             "product": body.product,
             "stub": False,
@@ -968,14 +1017,15 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             "meshTrack": mesh_res,
             "trackCount": mesh_res["trackCount"],
             "mesh": bool(job.layout_meta.get("mesh")),
-            "system": job.layout_meta.get("system"),
-            "glassShutters": job.layout_meta.get("glass_count"),
+            "system": job.layout_meta.get("system") or body.system or "sliding",
+            "glassShutters": glass_shutters,
             "meshShutters": job.layout_meta.get("mesh_count"),
             "foldLeft": job.layout_meta.get("fold_left"),
             "foldRight": job.layout_meta.get("fold_right"),
             "notes": job.layout_meta.get("notes"),
             "heroImage": meta.get("heroImage"),
             "specifications": meta.get("specifications"),
+            "sectionSeries": section_series,
         }
     except Exception as exc:
         # A catalogue/stub product that still cannot be drawn falls back to its
@@ -987,6 +1037,10 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
                 "stub": True,
                 "svg": None,
                 "heroImage": _meta.get("heroImage"),
+                "system": body.system or "sliding",
+                "glassShutters": body.glassShutters,
+                "meshShutters": body.meshShutters,
+                "trackCount": body.trackCount,
                 "message": f"Catalogue product — preview unavailable ({exc})",
             }
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1080,7 +1134,7 @@ def api_create_project(body: ProjectCreate) -> dict[str, Any]:
     doc = empty_project(name=body.name, customer=body.customer)
     doc["status"] = body.status or "draft"
     doc["lines"] = [ln.model_dump() for ln in body.lines]
-    for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms"):
+    for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms", "quotationId", "companyGst"):
         _val = getattr(body, _fld, None)
         if _val is not None:
             doc[_fld] = _val
@@ -1109,7 +1163,7 @@ def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
         doc["status"] = body.status
     if body.lines is not None:
         doc["lines"] = [ln.model_dump() for ln in body.lines]
-    for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms"):
+    for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms", "quotationId", "companyGst"):
         _val = getattr(body, _fld, None)
         if _val is not None:
             doc[_fld] = _val
@@ -1176,6 +1230,8 @@ def api_project_calculate(project_id: str, body: ProjectCalculateOpts | None = N
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     optimize = True if body is None else body.optimize
+    if body is not None and body.quotationId:
+        doc["quotationId"] = body.quotationId
     result = calculate_project(doc, optimize=optimize)
     doc["quotationId"] = result["quotationId"]
     doc["status"] = "active"
@@ -1189,7 +1245,9 @@ def api_project_calculate(project_id: str, body: ProjectCalculateOpts | None = N
     for i, ln in enumerate(doc.get("lines") or []):
         if i < len(result["lines"]):
             ln["lineId"] = result["lines"][i].get("lineId", ln.get("lineId"))
-    save_project(doc, action="calculate")
+    saved = save_project(doc, action="calculate")
+    # If quote-number versioning folded into another project, surface the live id.
+    live_id = saved.get("projectId") or project_id
     try:
         from WEOS.learning.commercial_agent import observe_quote
         from WEOS.learning.engineering_agent import observe_engineering
@@ -1198,7 +1256,7 @@ def api_project_calculate(project_id: str, body: ProjectCalculateOpts | None = N
         lines = result.get("lines") or []
         observe_quote(
             customer=doc.get("customer"),
-            project_id=project_id,
+            project_id=live_id,
             quotation_id=result.get("quotationId"),
             lines=lines,
             terms=doc.get("terms"),
@@ -1212,7 +1270,7 @@ def api_project_calculate(project_id: str, body: ProjectCalculateOpts | None = N
         )
         observe_engineering(
             lines=lines,
-            project_id=project_id,
+            project_id=live_id,
             quotation_id=result.get("quotationId"),
             customer=doc.get("customer"),
             source="calculate",
@@ -1223,15 +1281,19 @@ def api_project_calculate(project_id: str, body: ProjectCalculateOpts | None = N
     except Exception:
         pass
     result["project"] = {
-        "projectId": doc["projectId"],
-        "version": doc["version"],
-        "name": doc.get("name"),
-        "status": doc.get("status"),
+        "projectId": saved.get("projectId"),
+        "version": saved.get("version"),
+        "name": saved.get("name"),
+        "status": saved.get("status"),
+        "quoteNumberVersioned": bool(saved.get("quoteNumberVersioned")),
     }
+    result["projectId"] = saved.get("projectId")
+    result["version"] = saved.get("version")
+    result["quoteNumberVersioned"] = bool(saved.get("quoteNumberVersioned"))
     result["links"] = {
-        "quotation": f"/api/projects/{project_id}/quotation",
-        "customerPdf": f"/api/projects/{project_id}/customer-pdf",
-        "factoryPdf": f"/api/projects/{project_id}/factory-pdf",
+        "quotation": f"/api/projects/{live_id}/quotation",
+        "customerPdf": f"/api/projects/{live_id}/customer-pdf",
+        "factoryPdf": f"/api/projects/{live_id}/factory-pdf",
     }
     return result
 
@@ -1536,7 +1598,7 @@ def api_save_customer_rate(body: CustomerRateBody) -> dict[str, Any]:
     )
 
 
-# ── Company Setup ────────────────────────────────────────────────────────────
+# ── Company Setup / GST workspace ────────────────────────────────────────────
 
 @app.get("/api/company")
 def api_get_company() -> dict[str, Any]:
@@ -1551,6 +1613,45 @@ def api_save_company(body: CompanyBody) -> dict[str, Any]:
     from WEOS.factory.company_store import save_company
 
     return save_company(body.model_dump(exclude_none=True))
+
+
+@app.post("/api/company/workspace/open")
+def api_company_workspace_open(body: CompanyWorkspaceOpenBody) -> dict[str, Any]:
+    """GST-based seller login: open (or create) the company workspace."""
+    from WEOS.factory.company_workspace import open_workspace
+
+    profile = body.model_dump(exclude_none=True)
+    gst = profile.pop("gstNo", None)
+    create = bool(profile.pop("create", True))
+    try:
+        return open_workspace(str(gst or ""), profile=profile or None, create=create)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/company/workspace")
+def api_company_workspace(gst: str | None = None) -> dict[str, Any]:
+    """Return the open (or specified) company workspace hub payload."""
+    from WEOS.factory.company_store import get_active_gst, load_company, load_company_by_gst, normalise_gstin
+    from WEOS.factory.company_workspace import TOTALS_RULE, build_workspace_summary
+
+    g = normalise_gstin(gst) if gst else (get_active_gst() or "")
+    if not g:
+        company = load_company()
+        g = normalise_gstin(company.get("gstNo") or "")
+    if not g:
+        raise HTTPException(status_code=400, detail="Open a company workspace with GSTIN first.")
+    company = load_company_by_gst(g) or load_company()
+    summary = build_workspace_summary(g)
+    return {
+        "ok": True,
+        "gstNo": g,
+        "company": company,
+        "totalsRule": TOTALS_RULE,
+        **summary,
+    }
 
 
 @app.post("/api/company/logo")
