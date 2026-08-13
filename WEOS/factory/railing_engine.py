@@ -258,6 +258,100 @@ def side_stud_column_xs(
     return gx0 + inset_eff, gx1 - inset_eff
 
 
+def _parse_section_mm(raw: Any, default: float = 50.0) -> float:
+    """First millimetre figure from sizes like ``50×50``, ``Ø38``, ``100x45``."""
+    s = str(raw or "").replace("×", "x").replace("*", "x").replace("Ø", " ").replace("ø", " ")
+    num = ""
+    for ch in s:
+        if ch.isdigit() or ch == ".":
+            num += ch
+        elif num:
+            break
+    v = _f(num, 0.0)
+    return v if v >= 8.0 else default
+
+
+def _spigot_dims(*, section_mm: float = 50.0) -> dict[str, float]:
+    """Floor-spigot elevation: square base plate + slotted post. Glass sits in the slot."""
+    post_w = max(min(_f(section_mm, 50.0), 72.0), 36.0)
+    plate_w = max(post_w * 1.75, 72.0)
+    plate_h = max(plate_w * 0.48, 36.0)  # foreshortened square (simple 3/4)
+    post_h = max(post_w * 2.15, 100.0)
+    slot_w = min(max(post_w * 0.30, 14.0), 22.0)
+    slot_d = max(post_h * 0.40, 42.0)
+    return {
+        "plate_w": plate_w,
+        "plate_h": plate_h,
+        "post_w": post_w,
+        "post_h": post_h,
+        "slot_w": slot_w,
+        "slot_d": slot_d,
+        "glass_y0": plate_h + post_h - slot_d,
+    }
+
+
+def _solid_sw(sw: float) -> str:
+    return (
+        f'stroke-width="{max(float(sw), 1.15):.2f}" stroke-dasharray="none" '
+        f'stroke-linecap="square" stroke-linejoin="miter"'
+    )
+
+
+def _draw_floor_spigot(
+    p: list[str],
+    *,
+    cx: float,
+    X,
+    Y,
+    floor_y: float = 0.0,
+    dims: Mapping[str, float] | None = None,
+    sw: float = 1.4,
+    stroke: str = "#14181c",
+) -> None:
+    """2D elevation of a floor spigot: square base + 4 bolt holes + U-slot post."""
+    d = dims or _spigot_dims()
+    plate_w = float(d["plate_w"])
+    plate_h = float(d["plate_h"])
+    post_w = float(d["post_w"])
+    post_h = float(d["post_h"])
+    slot_w = float(d["slot_w"])
+    slot_d = float(d["slot_d"])
+    solid = f'stroke="{stroke}" {_solid_sw(sw)}'
+    px0 = cx - plate_w / 2.0
+    p.append(
+        f'<rect x="{X(px0):.1f}" y="{Y(floor_y + plate_h):.1f}" width="{plate_w:.1f}" height="{plate_h:.1f}" '
+        f'fill="#f2f3f5" {solid} data-spigot="1" data-spigot-plate="1"/>'
+    )
+    inset_x = max(plate_w * 0.18, 8.0)
+    inset_y = max(plate_h * 0.22, 6.0)
+    r_hole = max(min(plate_w, plate_h) * 0.10, 3.4)
+    for sx in (-1.0, 1.0):
+        for sy in (inset_y, plate_h - inset_y):
+            hx = cx + sx * (plate_w / 2.0 - inset_x)
+            hy = floor_y + sy
+            p.append(
+                f'<circle cx="{X(hx):.1f}" cy="{Y(hy):.1f}" r="{r_hole:.1f}" fill="#ffffff" {solid} '
+                f'data-spigot-bolt="1"/>'
+            )
+    post_y0 = floor_y + plate_h
+    post_y1 = post_y0 + post_h
+    slot_y0 = post_y1 - slot_d
+    leg_w = max((post_w - slot_w) / 2.0, 6.0)
+    web_h = max(post_h - slot_d, 8.0)
+    p.append(
+        f'<rect x="{X(cx - post_w / 2.0):.1f}" y="{Y(post_y1):.1f}" width="{leg_w:.1f}" height="{post_h:.1f}" '
+        f'fill="#ececee" {solid} data-spigot-post="1"/>'
+    )
+    p.append(
+        f'<rect x="{X(cx + post_w / 2.0 - leg_w):.1f}" y="{Y(post_y1):.1f}" width="{leg_w:.1f}" height="{post_h:.1f}" '
+        f'fill="#ececee" {solid} data-spigot-post="1"/>'
+    )
+    p.append(
+        f'<rect x="{X(cx - post_w / 2.0):.1f}" y="{Y(slot_y0):.1f}" width="{post_w:.1f}" height="{web_h:.1f}" '
+        f'fill="#ececee" {solid} data-spigot-web="1"/>'
+    )
+
+
 def _draw_side_stud_plate(
     p: list[str],
     *,
@@ -2007,7 +2101,6 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
     if Hgt <= 1.0:
         return _svg_missing_size_error(kind="height")
     rail_h = _f(g.get("railH"), 40.0)
-    hand_h = rail_h if g.get("handrail") else 0.0
     post_w = max(min(L * 0.01, 40.0), 18.0)
     gap = _f(g.get("gap"), 12.0)
     wall_gap = _f(g.get("wallGap"), 12.0)
@@ -2023,6 +2116,8 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
     mount = str(q.get("mountType") or "top_mount")
     bottom_kind = str(q.get("bottomKind") or "").lower()
     side_studs = mount == "side_mount" or bottom_kind == "studs"
+    continuous = str(bottom_kind) == "continuous" or bool(q.get("continuousRail"))
+    spigots_on = (not side_studs) and (not continuous)
     overlap = _f(q.get("beamOverlapMm")) if side_studs else 0.0
     extra_below = (overlap + 70.0) if overlap > 0 else 0.0
     pad = max(L, Hgt) * 0.16 + 120.0
@@ -2036,8 +2131,8 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
     def Y(my: float) -> float:
         return oy + (Hgt - my)
 
-    sw = max(0.50, min(max(L, Hgt) / 2000.0, 1.15))
-    stroke, glass, glass_stroke, dim = "#14181c", "#e6eef6", "#2f6db0", "#8c1f18"
+    sw = max(1.35, min(max(L, Hgt) / 1400.0, 2.40))
+    stroke, glass, glass_stroke, dim = "#14181c", "#e6eef6", "#14181c", "#8c1f18"
     fs = max(vb_w, vb_h) * 0.018
     p: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb_w:.1f} {vb_h:.1f}" font-family="Segoe UI, Arial, sans-serif">',
@@ -2045,9 +2140,12 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
         '<defs><pattern id="beamHatch" patternUnits="userSpaceOnUse" width="8" height="8">'
         '<path d="M0,8 L8,0" stroke="#b8c0c8" stroke-width="0.8"/></pattern></defs>',
     ]
-    continuous = str(bottom_kind) == "continuous" or bool(q.get("continuousRail"))
     br_sz = str(q.get("bottomSize") or (cfg or {}).get("bottomSize") or "").strip()
     hr_sz = str(q.get("handrailSize") or (cfg or {}).get("handrailSize") or "").strip()
+    spigot = _spigot_dims(section_mm=_parse_section_mm(br_sz or q.get("pillarSize") or (cfg or {}).get("pillarSize"), 50.0))
+    hand_h = 0.0
+    if g.get("handrail") or q.get("handrail"):
+        hand_h = 24.0 if spigots_on else rail_h
     try:
         from WEOS.factory.fmt import mm_n, rft_str
 
@@ -2056,36 +2154,32 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
     except Exception:
         L_mm = int(round(L))
         rft_lbl = f"{(q.get('lengthRft') or 0)} RFT"
-    if not side_studs:
+    if continuous:
         p.append(
             f'<rect x="{X(0):.1f}" y="{Y(rail_h):.1f}" width="{L:.1f}" height="{rail_h:.1f}" '
-            f'fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
+            f'fill="none" stroke="{stroke}" {_solid_sw(sw)} data-bottom-rail="1"/>'
         )
         br_txt = "Bottom rail" + (f" {br_sz}" if br_sz else "") + f" · {L_mm} mm · {rft_lbl}"
         p.append(
             f'<text x="{X(L / 2):.1f}" y="{Y(rail_h * 0.45):.1f}" text-anchor="middle" '
             f'font-size="{fs * 0.62:.1f}" fill="#333">{escape(br_txt)}</text>'
         )
-    if hand_h > 0:
-        p.append(f'<rect x="{X(0):.1f}" y="{Y(Hgt):.1f}" width="{L:.1f}" height="{hand_h:.1f}" fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>')
-        hr_txt = "Handrail" + (f" {hr_sz}" if hr_sz else "") + f" · {L_mm} mm · {rft_lbl}"
-        p.append(
-            f'<text x="{X(L / 2):.1f}" y="{Y(Hgt - hand_h * 0.35):.1f}" text-anchor="middle" '
-            f'font-size="{fs * 0.62:.1f}" fill="#333">{escape(hr_txt)}</text>'
-        )
-    # Continuous rail: no end pillars / posts — only the rails + glass + wall ticks.
-    if not side_studs and not continuous:
-        for px in (0.0, L - post_w):
-            p.append(f'<rect x="{X(px):.1f}" y="{Y(Hgt):.1f}" width="{post_w:.1f}" height="{Hgt:.1f}" fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>')
 
     x = wall_gap if wall_left else 0.0
-    glass_y0 = (-overlap) if (side_studs and overlap > 0) else rail_h
+    if side_studs and overlap > 0:
+        glass_y0 = -overlap
+    elif continuous:
+        glass_y0 = rail_h
+    elif spigots_on:
+        glass_y0 = float(spigot["glass_y0"])
+    else:
+        glass_y0 = rail_h
     glass_y1 = Hgt - hand_h
     if side_studs and overlap > 0:
         slab_h = min(max(overlap * 0.55, 90.0), 160.0)
         p.append(
             f'<rect x="{X(-24):.1f}" y="{Y(0):.1f}" width="{L + 48:.1f}" height="{slab_h:.1f}" '
-            f'fill="url(#beamHatch)" stroke="#6a7380" stroke-width="{sw * 0.7:.2f}"/>'
+            f'fill="url(#beamHatch)" stroke="#6a7380" {_solid_sw(sw * 0.7)}/>'
         )
         p.append(
             f'<text x="{X(L + 28):.1f}" y="{Y(-slab_h * 0.45):.1f}" font-size="{fs * 0.65:.1f}" fill="#555">BEAM / SLAB</text>'
@@ -2094,8 +2188,10 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
     panel_start = _i((segs[0] if segs else {}).get("panelStartIndex"), 1)
     for i, w in enumerate(widths):
         gx0, gx1 = x, x + w
-        p.append(f'<rect x="{X(gx0):.1f}" y="{Y(glass_y1):.1f}" width="{(gx1-gx0):.1f}" height="{(glass_y1-glass_y0):.1f}" '
-                 f'fill="{glass}" stroke="{glass_stroke}" stroke-width="{sw*0.8:.2f}"/>')
+        p.append(
+            f'<rect x="{X(gx0):.1f}" y="{Y(glass_y1):.1f}" width="{(gx1-gx0):.1f}" height="{(glass_y1-glass_y0):.1f}" '
+            f'fill="{glass}" stroke="{glass_stroke}" {_solid_sw(sw)} data-glass="1"/>'
+        )
         pno = panel_start + i
         p.append(f'<text x="{X((gx0+gx1)/2):.1f}" y="{Y((glass_y0+glass_y1)/2):.1f}" text-anchor="middle" font-size="{fs:.1f}" fill="#173a63">G{pno}</text>')
         _dim_h(p, X(gx0), X(gx1), Y(0) + fs * 1.6, f'{(gx1-gx0):.0f}', dim, sw, fs)
@@ -2128,26 +2224,34 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
                     drawn += 1
                 if drawn >= target:
                     break
-        elif n_sup:
-            for bx in _pillar_positions_along(w, n_sup):
-                cx = gx0 + bx
-                bw = post_w
-                p.append(f'<rect x="{X(cx-bw/2):.1f}" y="{Y(rail_h*1.4):.1f}" width="{bw:.1f}" height="{rail_h*1.4:.1f}" '
-                         f'fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>')
+        elif spigots_on and n_sup:
+            for bx in _pillar_positions_along(w, n_sup, edge_mm=PILLAR_EDGE_MM):
+                _draw_floor_spigot(p, cx=gx0 + bx, X=X, Y=Y, dims=spigot, sw=sw, stroke=stroke)
         if n_sup:
-            kind = "studs" if side_studs else "supports"
+            kind = "studs" if side_studs else ("pillars" if spigots_on else "supports")
             p.append(f'<text x="{X((gx0+gx1)/2):.1f}" y="{Y(glass_y1) + fs*0.9:.1f}" text-anchor="middle" '
                      f'font-size="{fs*0.6:.1f}" fill="#444">G{pno}: {n_sup} {kind}</text>')
         x = gx1 + gap
 
+    if hand_h > 0:
+        p.append(
+            f'<rect x="{X(0):.1f}" y="{Y(Hgt):.1f}" width="{L:.1f}" height="{hand_h:.1f}" '
+            f'fill="none" stroke="{stroke}" {_solid_sw(sw)} data-handrail="1"/>'
+        )
+        hr_txt = "Handrail" + (f" {hr_sz}" if hr_sz else "") + f" · {L_mm} mm · {rft_lbl}"
+        p.append(
+            f'<text x="{X(L / 2):.1f}" y="{Y(Hgt - hand_h * 0.35):.1f}" text-anchor="middle" '
+            f'font-size="{fs * 0.62:.1f}" fill="#333">{escape(hr_txt)}</text>'
+        )
+
     # End caps / wall ticks
     if wall_left:
-        p.append(f'<rect x="{X(-40):.1f}" y="{Y(Hgt):.1f}" width="30" height="{Hgt:.1f}" fill="#dfe6ea" stroke="{stroke}" stroke-width="{sw*0.6:.2f}"/>')
+        p.append(f'<rect x="{X(-40):.1f}" y="{Y(Hgt):.1f}" width="30" height="{Hgt:.1f}" fill="#dfe6ea" stroke="{stroke}" {_solid_sw(sw*0.7)}/>')
         p.append(f'<text x="{X(-25):.1f}" y="{Y(Hgt/2):.1f}" text-anchor="middle" font-size="{fs*0.7:.1f}" fill="#444" transform="rotate(-90 {X(-25):.1f} {Y(Hgt/2):.1f})">Wall</text>')
     elif q.get("endCapCount"):
-        p.append(f'<circle cx="{X(0):.1f}" cy="{Y(Hgt-hand_h/2 if hand_h else Hgt):.1f}" r="{post_w*0.45:.1f}" fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>')
+        p.append(f'<circle cx="{X(0):.1f}" cy="{Y(Hgt-hand_h/2 if hand_h else Hgt):.1f}" r="{post_w*0.45:.1f}" fill="none" stroke="{stroke}" {_solid_sw(sw)}/>')
     if wall_right:
-        p.append(f'<rect x="{X(L+10):.1f}" y="{Y(Hgt):.1f}" width="30" height="{Hgt:.1f}" fill="#dfe6ea" stroke="{stroke}" stroke-width="{sw*0.6:.2f}"/>')
+        p.append(f'<rect x="{X(L+10):.1f}" y="{Y(Hgt):.1f}" width="30" height="{Hgt:.1f}" fill="#dfe6ea" stroke="{stroke}" {_solid_sw(sw*0.7)}/>')
         p.append(f'<text x="{X(L+25):.1f}" y="{Y(Hgt/2):.1f}" text-anchor="middle" font-size="{fs*0.7:.1f}" fill="#444" transform="rotate(-90 {X(L+25):.1f} {Y(Hgt/2):.1f})">Wall</text>')
 
     _dim_h(p, X(0), X(L), Y(0) + fs * 3.4, f'{L_mm} mm  ·  {rft_lbl}', dim, sw, fs)
@@ -2164,15 +2268,17 @@ def _svg_elevation_span(
     *, L: float, Hgt: float, widths: list[float], gap: float, wall_gap: float,
     wall_left: bool, wall_right: bool, handrail: bool, blocks_per_glass: int,
     panel_start: int, title: str, ox: float, oy: float, scale: float = 1.0,
+    continuous: bool = False, pillar_size_mm: float = 50.0,
 ) -> tuple[list[str], float, float]:
     """Draw one span elevation into SVG fragments; returns (parts, width, height) in SVG units."""
     rail_h = max(min(Hgt * 0.06, 60.0), 25.0)
-    hand_h = rail_h if handrail else 0.0
-    post_w = max(min(L * 0.01, 40.0), 18.0)
-    stroke, glass, glass_stroke, dim = "#14181c", "#e6eef6", "#2f6db0", "#8c1f18"
-    sw = max(0.50, min(max(L, Hgt) / 2000.0, 1.15))
+    spigots_on = (not continuous) and blocks_per_glass > 0
+    hand_h = (24.0 if spigots_on else rail_h) if handrail else 0.0
+    stroke, glass, glass_stroke, dim = "#14181c", "#e6eef6", "#14181c", "#8c1f18"
+    sw = max(1.35, min(max(L, Hgt) / 1400.0, 2.40))
     fs = max(L, Hgt) * 0.022 * scale
     pad_x, pad_y = 80.0, 70.0
+    spigot = _spigot_dims(section_mm=pillar_size_mm)
 
     def X(mx: float) -> float:
         return ox + pad_x + mx
@@ -2182,21 +2288,23 @@ def _svg_elevation_span(
 
     parts: list[str] = [
         f'<text x="{ox + pad_x:.1f}" y="{oy + fs*1.1:.1f}" font-size="{fs*1.05:.1f}" fill="#111" font-weight="600">{escape(title)}</text>',
-        f'<rect x="{X(0):.1f}" y="{Y(rail_h):.1f}" width="{L:.1f}" height="{rail_h:.1f}" fill="#f0f2f4" stroke="{stroke}" stroke-width="{sw:.2f}"/>',
     ]
-    if hand_h > 0:
-        parts.append(f'<line x1="{X(0):.1f}" y1="{Y(Hgt):.1f}" x2="{X(L):.1f}" y2="{Y(Hgt):.1f}" '
-                     f'stroke="#6b3fa0" stroke-width="{sw*2:.2f}"/>')
+    if continuous:
+        parts.append(
+            f'<rect x="{X(0):.1f}" y="{Y(rail_h):.1f}" width="{L:.1f}" height="{rail_h:.1f}" '
+            f'fill="#f0f2f4" stroke="{stroke}" {_solid_sw(sw)} data-bottom-rail="1"/>'
+        )
 
     x = wall_gap if wall_left else 0.0
-    glass_y0, glass_y1 = rail_h, Hgt - hand_h
+    glass_y0 = rail_h if continuous else (float(spigot["glass_y0"]) if spigots_on else rail_h)
+    glass_y1 = Hgt - hand_h
     for i, w in enumerate(widths):
         if w <= 0:
             continue
         gx0, gx1 = x, x + w
         parts.append(
             f'<rect x="{X(gx0):.1f}" y="{Y(glass_y1):.1f}" width="{(gx1-gx0):.1f}" height="{(glass_y1-glass_y0):.1f}" '
-            f'fill="{glass}" stroke="{glass_stroke}" stroke-width="{sw*0.8:.2f}"/>'
+            f'fill="{glass}" stroke="{glass_stroke}" {_solid_sw(sw)} data-glass="1"/>'
         )
         pno = panel_start + i
         parts.append(
@@ -2209,18 +2317,20 @@ def _svg_elevation_span(
                 f'<text x="{X(gx1 + gap/2):.1f}" y="{Y(glass_y1)-fs*0.25:.1f}" text-anchor="middle" '
                 f'font-size="{fs*0.6:.1f}" fill="#666">{gap:.0f}</text>'
             )
-        for bx in _pillar_positions_along(w, blocks_per_glass):
-            cx = gx0 + bx
-            parts.append(
-                f'<rect x="{X(cx-post_w/2):.1f}" y="{Y(rail_h*1.5):.1f}" width="{post_w:.1f}" height="{rail_h*1.5:.1f}" '
-                f'fill="#fff" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
-            )
+        if spigots_on:
+            for bx in _pillar_positions_along(w, blocks_per_glass, edge_mm=PILLAR_EDGE_MM):
+                _draw_floor_spigot(parts, cx=gx0 + bx, X=X, Y=Y, dims=spigot, sw=sw, stroke=stroke)
         x = gx1 + gap
 
+    if hand_h > 0:
+        parts.append(
+            f'<rect x="{X(0):.1f}" y="{Y(Hgt):.1f}" width="{L:.1f}" height="{hand_h:.1f}" '
+            f'fill="none" stroke="{stroke}" {_solid_sw(sw)} data-handrail="1"/>'
+        )
     if wall_left:
-        parts.append(f'<rect x="{X(-36):.1f}" y="{Y(Hgt):.1f}" width="28" height="{Hgt:.1f}" fill="#dfe6ea" stroke="{stroke}" stroke-width="{sw*0.5:.2f}"/>')
+        parts.append(f'<rect x="{X(-36):.1f}" y="{Y(Hgt):.1f}" width="28" height="{Hgt:.1f}" fill="#dfe6ea" stroke="{stroke}" {_solid_sw(sw*0.7)}/>')
     if wall_right:
-        parts.append(f'<rect x="{X(L+8):.1f}" y="{Y(Hgt):.1f}" width="28" height="{Hgt:.1f}" fill="#dfe6ea" stroke="{stroke}" stroke-width="{sw*0.5:.2f}"/>')
+        parts.append(f'<rect x="{X(L+8):.1f}" y="{Y(Hgt):.1f}" width="28" height="{Hgt:.1f}" fill="#dfe6ea" stroke="{stroke}" {_solid_sw(sw*0.7)}/>')
     _dim_h(parts, X(0), X(L), Y(0) + fs * 3.0, f'{L:.0f} mm', dim, sw, fs * 0.9)
     _dim_v(parts, Y(0), Y(Hgt), X(0) - fs * 1.4, f'{Hgt:.0f}', dim, sw, fs * 0.85)
     drawn_w = L + pad_x * 2 + 40
@@ -2267,8 +2377,9 @@ def _svg_shop_drawing_multi(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
         parts, dw, dh = _svg_elevation_span(
             L=L, Hgt=Hgt, widths=widths, gap=gap, wall_gap=wall_gap,
             wall_left=bool(seg.get("wallStart")), wall_right=bool(seg.get("wallEnd")),
-            handrail=handrail, blocks_per_glass=bpg, panel_start=pstart,
-            title=title, ox=20.0, oy=elev_y,
+            handrail=handrail, blocks_per_glass=0 if continuous else bpg, panel_start=pstart,
+            title=title, ox=20.0, oy=elev_y, continuous=continuous,
+            pillar_size_mm=_parse_section_mm(br_sz or q.get("pillarSize") or cfg.get("pillarSize"), 50.0),
         )
         elev_parts_all.extend(parts)
         elev_y += dh + 30.0
@@ -2326,7 +2437,7 @@ def _svg_plan_polyline(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
     def Y(my: float) -> float:
         return oy - my
 
-    sw = max(0.50, min(max(span_x, span_y) / 900.0, 1.20))
+    sw = max(1.20, min(max(span_x, span_y) / 900.0, 2.20))
     stroke, dim, bend_c, rail_c = "#14181c", "#8c1f18", "#0a5a48", "#2f6db0"
     fs = max(vb_w, vb_h) * 0.016
     p: list[str] = [
@@ -2335,8 +2446,8 @@ def _svg_plan_polyline(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
     ]
     # Path polyline
     d = " ".join(f'{"M" if i == 0 else "L"}{X(x):.1f},{Y(y):.1f}' for i, (x, y) in enumerate(pts))
-    p.append(f'<path d="{d}" fill="none" stroke="{rail_c}" stroke-width="{sw*2.2:.2f}" stroke-linecap="round" stroke-linejoin="round"/>')
-    p.append(f'<path d="{d}" fill="none" stroke="{stroke}" stroke-width="{sw*0.9:.2f}" stroke-linecap="round" stroke-linejoin="round"/>')
+    p.append(f'<path d="{d}" fill="none" stroke="{rail_c}" {_solid_sw(sw*2.2)}/>')
+    p.append(f'<path d="{d}" fill="none" stroke="{stroke}" {_solid_sw(sw*0.9)}/>')
 
     segs = g.get("segments") or []
     for i in range(len(pts) - 1):
@@ -2353,7 +2464,7 @@ def _svg_plan_polyline(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
             t = s / L if L else 0
             px, py = x0 + dx * t, y0 + dy * t
             p.append(f'<rect x="{X(px)-sw*3:.1f}" y="{Y(py)-sw*3:.1f}" width="{sw*6:.1f}" height="{sw*6:.1f}" '
-                     f'fill="#fff" stroke="{stroke}" stroke-width="{sw*0.7:.2f}"/>')
+                     f'fill="#fff" stroke="{stroke}" {_solid_sw(sw*0.7)}/>')
         # Bend marker at corner (end of segment except last)
         if i < len(pts) - 2:
             p.append(f'<circle cx="{X(x1):.1f}" cy="{Y(y1):.1f}" r="{sw*4:.1f}" fill="#e7f3ee" stroke="{bend_c}" stroke-width="{sw*0.8:.2f}"/>')
@@ -2466,9 +2577,9 @@ def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
         # Continuous slope line through nosings for glass baseline.
         return (rise / run) * x_h
 
-    sw = max(0.50, min(max(total_w, total_h) / 2000.0, 1.15))
-    stroke, dim, rail_c = "#14181c", "#8c1f18", "#2f6db0"
-    glass, glass_stroke = "#dceaf6", "#2f6db0"
+    sw = max(1.35, min(max(total_w, total_h) / 1400.0, 2.40))
+    stroke, dim, rail_c = "#14181c", "#8c1f18", "#14181c"
+    glass, glass_stroke = "#dceaf6", "#14181c"
     fs = max(vb_w, vb_h) * 0.014
     p: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb_w:.1f} {vb_h:.1f}" font-family="Segoe UI, Arial, sans-serif">',
@@ -2539,7 +2650,7 @@ def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
             (X(x0), Y(y0 + hl)),
         ]
         poly = " ".join(f"{a:.1f},{b:.1f}" for a, b in pts)
-        p.append(f'<polygon points="{poly}" fill="{glass}" fill-opacity="0.85" stroke="{glass_stroke}" stroke-width="{sw*0.85:.2f}"/>')
+        p.append(f'<polygon points="{poly}" fill="{glass}" fill-opacity="0.85" stroke="{glass_stroke}" {_solid_sw(sw)} data-glass="1"/>')
         mx = (x0 + x1) / 2
         my = nosing_y_at(mx) + (hl + hr) / 4
         pno = panel.get("index") or ""
@@ -2584,13 +2695,13 @@ def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
         hl = _f(panel.get("leftGlassHeight"), guard)
         p.append(
             f'<rect x="{X(lx0):.1f}" y="{Y(total_h + hl):.1f}" width="{w:.1f}" height="{hl:.1f}" '
-            f'fill="{glass}" fill-opacity="0.85" stroke="{glass_stroke}" stroke-width="{sw*0.85:.2f}"/>'
+            f'fill="{glass}" fill-opacity="0.85" stroke="{glass_stroke}" {_solid_sw(sw)} data-glass="1"/>'
         )
 
     # Top rail along slope (no vertical poles through glass)
     p.append(
         f'<line x1="{X(0):.1f}" y1="{Y(guard):.1f}" x2="{X(total_w):.1f}" y2="{Y(total_h + guard):.1f}" '
-        f'stroke="{rail_c}" stroke-width="{sw*2:.2f}" stroke-linecap="round"/>'
+        f'stroke="{rail_c}" {_solid_sw(sw*1.6)} data-handrail="1"/>'
     )
 
     _dim_h(p, X(0), X(total_w), Y(0) + fs * 2.0, f'tread {run:.0f} × {steps} = {total_w:.0f} run', dim, sw, fs)

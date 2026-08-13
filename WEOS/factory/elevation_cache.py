@@ -76,7 +76,7 @@ def line_export_fingerprint(line: Mapping[str, Any] | None, *, extra: str = "") 
             }
             if isinstance(rail, Mapping)
             else None,
-            "slim": "canvas-v1",
+            "slim": "solid-print-v2",
             "svgLen": len(svg),
             "svgHead": svg[:240],
         }
@@ -197,7 +197,7 @@ def png_for_line(
         from WEOS.factory.image_engine import svg_to_png_bytes
 
         # Never use slow svglib+renderPM — it blocks quote PDF and fattens strokes.
-        png = svg_to_png_bytes(str(svg), scale=float(scale) or 1.0, allow_slow=False)
+        png = svg_to_png_bytes(str(svg), scale=float(scale) or 1.0, allow_slow=False, max_px=1100)
     except Exception:
         _log.debug("svg rasterize skipped", exc_info=True)
         png = None

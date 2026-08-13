@@ -366,7 +366,7 @@ def _railing_weight_summary(
     return out
 
 
-def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
+def _railing_line_result(line: Mapping[str, Any], *, include_preview: bool = True) -> dict[str, Any]:
     """Price a railing line from its own designer config (no window geometry).
 
     Uses :func:`railing_engine.compute_railing` for the cost breakdown and the
@@ -483,7 +483,7 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
             "saleUnit": sale_unit,
         },
     }
-    svg = railing_svg(cfg, quote=q)
+    svg = railing_svg(cfg, quote=q) if include_preview else ""
     selling = {
         "saleUnit": sale_unit,
         "saleUnitLabel": f"Per {sale_unit.upper()}",
@@ -546,7 +546,7 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _shower_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
+def _shower_line_result(line: Mapping[str, Any], *, include_preview: bool = True) -> dict[str, Any]:
     """Price a shower partition from designer config (unified canvas + PDF)."""
     from WEOS.factory.shower_engine import (
         compute_shower,
@@ -582,7 +582,7 @@ def _shower_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
         unit_total = round(float(q.get("sellingPerUnit") or 0) * float(q.get("areaSqft") or 0) * qty, 2)
     subtotal = round(unit_total, 2)
     sale_unit = str(q.get("saleUnit") or line.get("saleUnit") or "sqft").lower()
-    svg = shower_svg(cfg, quote=q)
+    svg = shower_svg(cfg, quote=q) if include_preview else ""
     description = format_shower_description(q, cfg)
     opts_out = {
         "shower": cfg,
@@ -647,7 +647,7 @@ def _shower_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _ventilator_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
+def _ventilator_line_result(line: Mapping[str, Any], *, include_preview: bool = True) -> dict[str, Any]:
     """Price a bathroom ventilator from designer config (unified canvas + PDF)."""
     from WEOS.factory.ventilator_engine import (
         compute_ventilator,
@@ -681,7 +681,7 @@ def _ventilator_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
         unit_total = round(float(q.get("sellingPerUnit") or 0) * float(q.get("areaSqft") or 0) * qty, 2)
     subtotal = round(unit_total, 2)
     sale_unit = str(q.get("saleUnit") or line.get("saleUnit") or "sqft").lower()
-    svg = ventilator_svg(cfg, quote=q)
+    svg = ventilator_svg(cfg, quote=q) if include_preview else ""
     description = format_ventilator_description(q, cfg)
     opts_out = {
         "ventilator": cfg,
@@ -761,12 +761,12 @@ def _attach_location(src: Mapping[str, Any] | None, result: Mapping[str, Any] | 
     return out
 
 
-def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
+def calculate_line(line: Mapping[str, Any], *, include_preview: bool = True) -> dict[str, Any]:
     """Calculate one cart line (product × size × qty × options)."""
-    return _attach_location(line, _calculate_line_raw(line))
+    return _attach_location(line, _calculate_line_raw(line, include_preview=include_preview))
 
 
-def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
+def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True) -> dict[str, Any]:
     """Calculate one cart line (product × size × qty × options)."""
     from WEOS.factory.live_pricing import apply_selling_to_line_result
 
@@ -782,19 +782,19 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
     # Railing lines are self-priced from their designer config.
     if _is_railing_cart_line(line):
         try:
-            return _railing_line_result(line)
+            return _railing_line_result(line, include_preview=include_preview)
         except Exception as exc:  # pragma: no cover - keep the quote rendering
             _log.exception("railing line calc failed: %s", exc)
             return _error_line_result(line, f"railing calc failed: {exc}")
     if _is_ventilator_cart_line(line):
         try:
-            return _ventilator_line_result(line)
+            return _ventilator_line_result(line, include_preview=include_preview)
         except Exception as exc:  # pragma: no cover
             _log.exception("ventilator line calc failed: %s", exc)
             return _error_line_result(line, f"ventilator calc failed: {exc}")
     if _is_shower_cart_line(line):
         try:
-            return _shower_line_result(line)
+            return _shower_line_result(line, include_preview=include_preview)
         except Exception as exc:  # pragma: no cover
             _log.exception("shower line calc failed: %s", exc)
             return _error_line_result(line, f"shower calc failed: {exc}")
@@ -810,7 +810,7 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
         enriched.setdefault("productType", "bathroom_ventilator")
         enriched.setdefault("category", product.get("category") or "Bathrooms")
         try:
-            return _ventilator_line_result(enriched)
+            return _ventilator_line_result(enriched, include_preview=include_preview)
         except Exception as exc:  # pragma: no cover
             _log.exception("ventilator line calc failed: %s", exc)
             return _error_line_result(enriched, f"ventilator calc failed: {exc}")
@@ -819,7 +819,7 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
         enriched.setdefault("productType", "shower_partition")
         enriched.setdefault("category", product.get("category") or "Bathrooms")
         try:
-            return _shower_line_result(enriched)
+            return _shower_line_result(enriched, include_preview=include_preview)
         except Exception as exc:  # pragma: no cover
             _log.exception("shower line calc failed: %s", exc)
             return _error_line_result(enriched, f"shower calc failed: {exc}")
@@ -828,7 +828,7 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
         enriched.setdefault("productType", product.get("productType") or world)
         enriched.setdefault("category", product.get("category") or "Railings")
         try:
-            return _railing_line_result(enriched)
+            return _railing_line_result(enriched, include_preview=include_preview)
         except Exception as exc:  # pragma: no cover
             _log.exception("railing line calc failed: %s", exc)
             return _error_line_result(enriched, f"railing calc failed: {exc}")
@@ -878,11 +878,15 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
                 from WEOS.factory.panel_fills import attach_fill_to_drawing
 
                 attach_fill_to_drawing(job.drawing, lo.get("panelFill"))
-            result["preview"] = preview_svgs_for_drawing(
-                job.drawing,
-                colour=str(colour).lower().replace(" ", "_"),
-                grid=grid,
-                include_plan=True,
+            result["preview"] = (
+                preview_svgs_for_drawing(
+                    job.drawing,
+                    colour=str(colour).lower().replace(" ", "_"),
+                    grid=grid,
+                    include_plan=True,
+                )
+                if include_preview
+                else {"svg": None}
             )
             result["layout"] = layout_summary_for_job(
                 width=width, height=height, layout_meta=job.layout_meta
@@ -972,11 +976,15 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
     weight = job.weight.as_dict() if job.weight else {}
     colour = (line.get("colour") or "white")
     grid = line.get("grid") or (line.get("options") or {}).get("grid") or (line.get("options") or {}).get("grille")
-    preview_pack = preview_svgs_for_drawing(
-        job.drawing,
-        colour=str(colour).lower().replace(" ", "_"),
-        grid=grid,
-        include_plan=True,
+    preview_pack = (
+        preview_svgs_for_drawing(
+            job.drawing,
+            colour=str(colour).lower().replace(" ", "_"),
+            grid=grid,
+            include_plan=True,
+        )
+        if include_preview
+        else {"svg": None}
     )
     svg = preview_pack.get("svg")
     layout = layout_summary_for_job(width=width, height=height, layout_meta=job.layout_meta)
@@ -1163,13 +1171,18 @@ def combine_lines(line_results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def calculate_project(project: Mapping[str, Any], *, optimize: bool = True) -> dict[str, Any]:
+def calculate_project(
+    project: Mapping[str, Any],
+    *,
+    optimize: bool = True,
+    include_preview: bool = True,
+) -> dict[str, Any]:
     """Full project calculation: each line → combine → material optimization."""
     lines = project.get("lines") or []
     results: list[dict[str, Any]] = []
     for idx, ln in enumerate(lines):
         try:
-            results.append(calculate_line(ln))
+            results.append(calculate_line(ln, include_preview=include_preview))
         except Exception as exc:
             # One bad line must NEVER blank the whole quotation/PDF — log the real
             # traceback and keep the row with an error note so the rest render.

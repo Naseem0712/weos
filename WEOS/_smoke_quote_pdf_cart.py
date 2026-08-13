@@ -115,6 +115,7 @@ def main() -> None:
     sw_pdf = _re.findall(r'stroke-width="([\d.]+)"', svg_l)[:8]
     sw_prev = _re.findall(r'stroke-width="([\d.]+)"', svg_l_prev)[:8]
     _ok(sw_pdf == sw_prev and sw_pdf, f"PDF strokes match canvas slim {sw_pdf} vs {sw_prev}")
+    _ok("stroke-dasharray=\"" not in svg_l or svg_l.count('stroke-dasharray="none"') >= svg_l.count("stroke-dasharray="), "PDF vectors not dashed")
 
     # Immediate PDF from 8+ mixed in-memory lines (no wait / stale snapshot)
     lines = [
@@ -148,7 +149,15 @@ def main() -> None:
         {"quotationId": "QT-CART-8", "customer": "Cart Test", "lines": lines, "price": {"total": 1}},
     )
     _ok(pdf.startswith(b"%PDF"), "PDF bytes")
+    _ok(len(pdf) > 12000, f"PDF not empty stub ({len(pdf)} bytes)")
     _ok(b"shutter_0_glass" not in pdf, "PDF has no shutter_0_glass")
+    pdf2 = render_marqt_pdf(
+        {"branding": {"companyName": "TEST CO", "primaryColor": [0.1, 0.2, 0.3]}},
+        {"quotationId": "QT-CART-NOPREV", "customer": "Cart Test", "lines": [
+            {k: v for k, v in ln.items() if k != "preview"} for ln in lines[:4]
+        ], "price": {"total": 1}},
+    )
+    _ok(pdf2.startswith(b"%PDF") and len(pdf2) > 8000, f"PDF without preview.svg still generates ({len(pdf2)} bytes)")
 
     # Overlay calculate_project uses in-memory lines even if saved project is empty-ish
     doc = empty_project(name="Live Cart", customer="Cart Test")

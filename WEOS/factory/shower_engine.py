@@ -766,7 +766,7 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
     glass_fill = "rgba(170, 205, 230, 0.22)"
     slide_fill = "rgba(120, 170, 210, 0.30)"
     open_fill = "rgba(210, 190, 140, 0.26)"
-    sw = 0.65  # slim 2D CAD strokes (keep dark colour, not beige-on-beige)
+    sw = 1.20  # slim but print-safe (hairlines RIP as dotted)
 
     # 16×45 mm slim leaf / 22×50 chokhat face in elevation
     frame_face_mm = 45.0
@@ -851,7 +851,7 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
         parts.append(
             f'<line x1="{x0 + 4:.1f}" y1="{ty + cover_h + track_h * 0.45:.1f}" '
             f'x2="{x0 + elev_w - 4:.1f}" y2="{ty + cover_h + track_h * 0.45:.1f}" '
-            f'stroke="#666" stroke-width="0.6" stroke-dasharray="4 2"/>'
+            f'stroke="#666" stroke-width="1.05" stroke-dasharray="none"/>'
         )
         parts.append(
             f'<text x="{x0 + elev_w / 2:.1f}" y="{ty + cover_h + track_h * 0.82:.1f}" text-anchor="middle" '
@@ -1169,7 +1169,7 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
         if op == "sliding":
             parts.append(
                 f'<line x1="{t0:.1f}" y1="{front_y - 5:.1f}" x2="{t1:.1f}" y2="{front_y - 5:.1f}" '
-                f'stroke="#0b3d7a" stroke-width="0.7" stroke-dasharray="3 2"/>'
+                f'stroke="#0b3d7a" stroke-width="1.05" stroke-dasharray="none"/>'
             )
             parts.append(
                 f'<text x="{mid:.1f}" y="{front_y - 8:.1f}" text-anchor="middle" font-size="9" '
@@ -1183,7 +1183,7 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
             sweep = 1 if hinge_side == "right" else 0
             parts.append(
                 f'<path d="M {sx:.1f},{front_y:.1f} A {r:.1f},{r:.1f} 0 0 {sweep} {hx:.1f},{front_y - r:.1f}" '
-                f'fill="none" stroke="#0b3d7a" stroke-width="0.8" stroke-dasharray="3 2" data-swing="1"/>'
+                f'fill="none" stroke="#0b3d7a" stroke-width="1.10" stroke-dasharray="none" data-swing="1"/>'
             )
             parts.append(
                 f'<text x="{mid:.1f}" y="{front_y - r - 6:.1f}" text-anchor="middle" font-size="9" '

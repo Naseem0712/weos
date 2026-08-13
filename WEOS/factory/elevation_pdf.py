@@ -102,7 +102,7 @@ def _draw_grid_pdf(c, *, px, py, scale, meta, W, H, finish, stroke, dim, glass_s
             gx0, gy0, gx1, gy1 = float(g["x0"]), float(g["y0"]), float(g["x1"]), float(g["y1"])
             c.setFillColorRGB(0.88, 0.93, 0.97)
             c.setStrokeColorRGB(*glass_stroke)
-            c.setLineWidth(0.5)
+            c.setLineWidth(0.55)
             c.rect(px(gx0), py(gy0), (gx1 - gx0) * scale, (gy1 - gy0) * scale, fill=1, stroke=1)
         for sx in cell.get("sashLines") or []:
             c.setStrokeColorRGB(*stroke)
@@ -111,16 +111,12 @@ def _draw_grid_pdf(c, *, px, py, scale, meta, W, H, finish, stroke, dim, glass_s
         m = cell.get("mesh")
         if isinstance(m, _Mapping):
             c.setStrokeColorRGB(0.15, 0.45, 0.30)
-            c.setDash(2.2, 1.6)
-            c.setLineWidth(0.6)
+            c.setLineWidth(0.55)
             c.rect(px(float(m["x0"])), py(float(m["y0"])), (float(m["x1"]) - float(m["x0"])) * scale, (float(m["y1"]) - float(m["y0"])) * scale, fill=0, stroke=1)
-            c.setDash()
         for d in cell.get("diagonals") or []:
             c.setStrokeColorRGB(*role_rgb.get(role, (0.1, 0.1, 0.1)))
-            c.setDash(2, 1.6)
-            c.setLineWidth(0.5)
+            c.setLineWidth(0.50)
             c.line(px(float(d[0])), py(float(d[1])), px(float(d[2])), py(float(d[3])))
-            c.setDash()
         for a in cell.get("arrows") or []:
             c.setStrokeColorRGB(0.05, 0.24, 0.48)
             c.setLineWidth(0.75)
@@ -247,14 +243,18 @@ def draw_model_elevation(
     def py(my: float) -> float:
         return oy + my * scale
 
-    stroke = (0.08, 0.08, 0.10)
+    stroke = (0.07, 0.07, 0.08)  # solid black frames
     dim = (0.55, 0.12, 0.10)
-    glass_stroke = (0.18, 0.42, 0.68)
+    glass_stroke = (0.07, 0.07, 0.08)  # solid black glass edge
+    try:
+        c.setDash()
+    except Exception:
+        pass
 
     # White plate behind drawing
     c.setFillColorRGB(1, 1, 1)
     c.setStrokeColorRGB(0.85, 0.85, 0.85)
-    c.setLineWidth(0.35)
+    c.setLineWidth(0.40)
     c.rect(x, y, box_w, box_h, fill=1, stroke=1)
 
     # Partition/grid designer — dedicated clean 2D from metadata (matches canvas)
@@ -273,7 +273,7 @@ def draw_model_elevation(
         path.close()
         c.setFillColorRGB(0.88, 0.93, 0.97)  # very light
         c.setStrokeColorRGB(*glass_stroke)
-        c.setLineWidth(0.35)
+        c.setLineWidth(0.55)
         c.drawPath(path, fill=1, stroke=1)
 
     # Closed profile outlines (no fill)
@@ -286,14 +286,14 @@ def draw_model_elevation(
             path.lineTo(px(p.x), py(p.y))
         path.close()
         c.setStrokeColorRGB(*stroke)
-        c.setLineWidth(0.5)  # sleek profile outline
+        c.setLineWidth(0.72)  # slim print-safe profile (not hairline RIP dots)
         c.drawPath(path, fill=0, stroke=1)
 
     for pl in model.polylines:
         if pl.closed or pl.layer == "GLASS" or len(pl.points) < 2:
             continue
         c.setStrokeColorRGB(*stroke)
-        c.setLineWidth(0.4)
+        c.setLineWidth(0.62)
         for a, b in zip(pl.points, pl.points[1:]):
             c.line(px(a.x), py(a.y), px(b.x), py(b.y))
 
@@ -301,11 +301,11 @@ def draw_model_elevation(
         lname = (seg.name or "").lower()
         is_il = "interlock" in lname or "meeting" in lname
         if is_il:
-            c.setStrokeColorRGB(0.05, 0.28, 0.55)
-            c.setLineWidth(0.6)
+            c.setStrokeColorRGB(0.05, 0.05, 0.06)
+            c.setLineWidth(0.80)
         else:
-            c.setStrokeColorRGB(*stroke if seg.layer == "PROFILES" else (0.45, 0.45, 0.45))
-            c.setLineWidth(0.38)
+            c.setStrokeColorRGB(*stroke if seg.layer == "PROFILES" else (0.20, 0.20, 0.22))
+            c.setLineWidth(0.62)
         c.line(px(seg.start.x), py(seg.start.y), px(seg.end.x), py(seg.end.y))
 
     # Hardware — casement hinge capsules + lever handles (outline)
@@ -548,20 +548,15 @@ def draw_model_elevation(
             for s in mesh_meta:
                 mx0, mx1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
                 c.setStrokeColorRGB(0.15, 0.45, 0.30)
-                c.setDash(2, 1.5)
-                c.setLineWidth(1.2)
+                c.setLineWidth(1.0)
                 c.line(px(mx0), int_y - band * 0.5, px(mx1), int_y - band * 0.5)
-                c.setDash()
             for pos, s in enumerate(glass_meta):
                 sx0, sx1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
                 is_front = int(s.get("depth") or 1) == dmin
                 yy = int_y if is_front else ext_y
                 c.setStrokeColorRGB(0.05, 0.24, 0.48)
                 c.setLineWidth(1.0)
-                if is_front:
-                    c.setDash(3, 2)
                 c.line(px(sx0), yy, px(sx1), yy)
-                c.setDash()
                 for ex in (sx0, sx1):
                     c.line(px(ex), yy - 2, px(ex), yy + 2)
                 cxp = (sx0 + sx1) / 2.0

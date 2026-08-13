@@ -308,6 +308,41 @@ def main() -> int:
         fails.append(f"continuous-only missing spaced anchors {keys}")
     if "epdmBottom" not in keys:
         fails.append(f"continuous-only missing bottom EPDM {keys}")
+    cont_svg = railing_svg({
+        **cfg, "blocksPerGlass": 0, "bottomKind": "continuous", "continuousRail": True,
+        "mountType": "top_mount",
+        "installComponents": {"bottomRail": True, "block": False, "ssPillar": False, "handrail": False, "glass": True},
+    }, quote=cont)
+    if 'data-spigot="1"' in cont_svg:
+        fails.append("continuous pdf svg still has spigots")
+
+    pillar_cfg = {
+        "shape": "straight", "lengthMm": 2400, "heightMm": 1000, "panels": 1,
+        "bottomKind": "ss_pillar", "blocksPerGlass": 3, "handrail": True,
+        "continuousRail": False, "handrailSize": "50×50",
+        "installComponents": {"bottomRail": False, "block": False, "ssPillar": True, "handrail": True, "glass": True},
+    }
+    pq = compute_railing(pillar_cfg)
+    psvg = railing_svg(pillar_cfg, quote=pq)
+    if psvg.count('data-spigot="1"') != 3:
+        fails.append(f"1 glass 3 pillars spigots {psvg.count('data-spigot=\"1\"')} != 3")
+    if psvg.count('data-spigot-bolt="1"') != 12:
+        fails.append(f"3 spigots should show 12 bolt holes, got {psvg.count('data-spigot-bolt=\"1\"')}")
+    if 'data-handrail="1"' not in psvg:
+        fails.append("ss pillar svg missing solid handrail outline")
+    if 'data-side-stud="1"' in psvg:
+        fails.append("ss pillar svg used studs placement")
+    line_p = calculate_line({
+        "product": "railing", "productType": "railing", "width": 2400, "height": 1000, "qty": 1,
+        "options": {"railing": pillar_cfg, "railingQuote": pq},
+    })
+    prev_svg = str((line_p.get("preview") or {}).get("svg") or "")
+    elev_pdf = elevation_svg_for_line(line_p, style="pdf") or ""
+    elev_prev = elevation_svg_for_line(line_p, style="preview") or ""
+    if prev_svg and elev_pdf and prev_svg != elev_pdf:
+        fails.append("railing canvas SVG != PDF SVG")
+    if elev_pdf and elev_prev and elev_pdf != elev_prev:
+        fails.append("railing preview style SVG != pdf style SVG")
 
     # Stairs engine: no bottom rail
     stair = compute_railing({

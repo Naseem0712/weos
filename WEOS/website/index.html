@@ -5651,8 +5651,19 @@ function _exportFingerprint(kind) {
   } catch (e) { return String(Date.now()); }
 }
 function _liveExportBody(brand) {
+  const slimLines = (state.lines || []).map((l) => {
+    if (!l || typeof l !== 'object') return l;
+    const copy = { ...l };
+    if (copy.preview && typeof copy.preview === 'object') {
+      const p = { ...copy.preview };
+      delete p.svg;
+      delete p.pdfSvg;
+      copy.preview = p;
+    }
+    return copy;
+  });
   return {
-    lines: state.lines,
+    lines: slimLines,
     customer: ($('cartCustomer') && $('cartCustomer').value) || ($('projCustName') && $('projCustName').value) || '',
     name: ($('cartName') && $('cartName').value) || undefined,
     ...projectBillTo(),

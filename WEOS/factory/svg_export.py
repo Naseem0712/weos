@@ -11,6 +11,14 @@ from WEOS.factory.geometry import casement_hinge_svg
 from WEOS.factory.types import DrawingModel, Polyline
 
 
+def _solid_sw(sw: float) -> str:
+    """Print-safe solid stroke — no dasharray (RIP/svglib hairlines look dotted)."""
+    return (
+        f'stroke-width="{float(sw):.2f}" stroke-dasharray="none" '
+        f'stroke-linecap="square" stroke-linejoin="miter"'
+    )
+
+
 def _parse_grid(grid: Any) -> tuple[int, int] | None:
     """Return (cols, rows) muntin divisions, or None.
 
@@ -364,7 +372,7 @@ def _draw_grid_svg(
     # Outer frame
     parts.append(
         f'<rect x="{tx(0):.2f}" y="{ty(H):.2f}" width="{tx(W)-tx(0):.2f}" height="{ty(0)-ty(H):.2f}" '
-        f'fill="none" stroke="{frame_stroke}" stroke-width="{sw:.2f}"/>'
+        f'fill="none" stroke="{frame_stroke}" {_solid_sw(sw)}/>'
     )
 
     for cell in cells:
@@ -374,34 +382,34 @@ def _draw_grid_svg(
         # Cell frame (mullion)
         parts.append(
             f'<rect x="{tx(x0):.2f}" y="{ty(y1):.2f}" width="{tx(x1)-tx(x0):.2f}" height="{ty(y0)-ty(y1):.2f}" '
-            f'fill="none" stroke="{frame_stroke}" stroke-width="{sw:.2f}"/>'
+            f'fill="none" stroke="{frame_stroke}" {_solid_sw(sw)}/>'
         )
         # Glass lites
         for g in cell.get("glass") or []:
             gx0, gy0, gx1, gy1 = float(g["x0"]), float(g["y0"]), float(g["x1"]), float(g["y1"])
             parts.append(
                 f'<rect x="{tx(gx0):.2f}" y="{ty(gy1):.2f}" width="{tx(gx1)-tx(gx0):.2f}" height="{ty(gy0)-ty(gy1):.2f}" '
-                f'fill="{glass_fill}" stroke="{glass_stroke}" stroke-width="{sw*0.7:.2f}"/>'
+                f'fill="{glass_fill}" stroke="{glass_stroke}" {_solid_sw(sw*0.7)}/>'
             )
         # Sash division lines (sliding)
         for sx in cell.get("sashLines") or []:
             parts.append(
                 f'<line x1="{tx(float(sx)):.2f}" y1="{ty(y0):.2f}" x2="{tx(float(sx)):.2f}" y2="{ty(y1):.2f}" '
-                f'stroke="{frame_stroke}" stroke-width="{sw*0.9:.2f}"/>'
+                f'stroke="{frame_stroke}" {_solid_sw(sw*0.9)}/>'
             )
-        # Mesh (one sliding-panel width, dashed green)
+        # Mesh (one sliding-panel width) — solid green, never dashed in print
         m = cell.get("mesh")
         if isinstance(m, Mapping):
             parts.append(
                 f'<rect x="{tx(float(m["x0"])):.2f}" y="{ty(float(m["y1"])):.2f}" '
                 f'width="{tx(float(m["x1"]))-tx(float(m["x0"])):.2f}" height="{ty(float(m["y0"]))-ty(float(m["y1"])):.2f}" '
-                f'fill="none" stroke="#2a6a4a" stroke-width="{sw*0.7:.2f}" stroke-dasharray="{5*k:.1f},{3*k:.1f}"/>'
+                f'fill="none" stroke="#2a6a4a" {_solid_sw(sw*0.7)}/>'
             )
-        # Openable diagonals
+        # Openable diagonals — solid (print RIP stipples dashes)
         for d in cell.get("diagonals") or []:
             parts.append(
                 f'<line x1="{tx(float(d[0])):.2f}" y1="{ty(float(d[1])):.2f}" x2="{tx(float(d[2])):.2f}" y2="{ty(float(d[3])):.2f}" '
-                f'stroke="{rc}" stroke-width="{sw*0.6:.2f}" stroke-dasharray="{4*k:.1f},{3*k:.1f}"/>'
+                f'stroke="{rc}" {_solid_sw(sw*0.6)}/>'
             )
         # Arrows (sliding)
         for a in cell.get("arrows") or []:
@@ -532,24 +540,23 @@ def _draw_plan(
         f'font-family="Segoe UI, Arial, sans-serif" font-size="{12 * stroke_scale:.0f}" fill="#0b3d7a">Internal</text>'
     )
 
-    # Mesh sash (frontmost/internal) — dashed line
+    # Mesh sash (frontmost/internal) — solid green (print must not stipple)
     for s in meshes:
         x0, x1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
         parts.append(
             f'<line x1="{tx(x0):.2f}" y1="{ty(int_y - band * 0.5):.2f}" x2="{tx(x1):.2f}" y2="{ty(int_y - band * 0.5):.2f}" '
-            f'stroke="#2a6a4a" stroke-width="{2.0 * stroke_scale:.2f}" stroke-dasharray="{4 * stroke_scale:.1f},{3 * stroke_scale:.1f}"/>'
+            f'stroke="#2a6a4a" {_solid_sw(2.0 * stroke_scale)}/>'
         )
 
-    # One offset track bar per glass sash: front→internal (dashed), back→external (solid)
+    # One offset track bar per glass sash: internal + external both solid
     for pos, s in enumerate(glass):
         x0, x1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
         depth = int(s.get("depth") or 1)
         is_front = depth == dmin
         yy = int_y if is_front else ext_y
-        dash = f' stroke-dasharray="{5 * stroke_scale:.1f},{3 * stroke_scale:.1f}"' if is_front else ""
         parts.append(
             f'<line x1="{tx(x0):.2f}" y1="{ty(yy):.2f}" x2="{tx(x1):.2f}" y2="{ty(yy):.2f}" '
-            f'stroke="#0b3d7a" stroke-width="{1.8 * stroke_scale:.2f}"{dash} stroke-linecap="round"/>'
+            f'stroke="#0b3d7a" {_solid_sw(1.8 * stroke_scale)}/>'
         )
         # End ticks
         for ex in (x0, x1):
@@ -669,18 +676,17 @@ def render_svg_string(
     # Very light glass tint — clear 2D, not solid dark. Same fill for canvas + PDF
     # so Quote/Print match the live slim drawing (no PDF-only darkening).
     glass_fill = "rgba(186, 214, 235, 0.28)"
-    glass_stroke = "#1a4f86"
+    glass_stroke = "#111111"  # solid black glass edge (print-safe, not blue dash)
     dim_stroke = "#8b1e1a"
-    # Slim 2D CAD strokes in model-mm. Dark colour stays readable on light
-    # glass; weight stays hairline so miters / handles don't become fat bars.
-    # (0170314 contrast scaled up to ~11 mm — far too heavy.)
-    # Quote PDF / Print MUST use the same weights as live canvas — never ×1.15.
-    sw_outer = max(1.15, min(ref * 0.0015, 2.10))
-    sw_inner = max(0.90, sw_outer * 0.82)
+    # Slim 2D CAD strokes in model-mm. Dark + solid. Floor is ~1.45× Cairo PNG
+    # into a ~200 pt PDF cell — hairlines (~1 mm) RIP as dotted. Keep slim
+    # (old fat contrast was ~11 mm) but above print-safe minimum.
+    sw_outer = max(2.00, min(ref * 0.0024, 3.40))
+    sw_inner = max(1.55, sw_outer * 0.82)
     sw_profile = sw_inner
     sw_seg = sw_inner
-    sw_grid = max(0.70, sw_inner * 0.72)
-    sw_interlock = max(1.00, sw_outer * 0.90)
+    sw_grid = max(1.15, sw_inner * 0.72)
+    sw_interlock = max(1.70, sw_outer * 0.90)
     dim_font = 36.0 * k
     label_font = 26.0 * k
 
@@ -763,7 +769,7 @@ def render_svg_string(
             pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
             parts.append(
                 f'<polygon points="{pts}" fill="{glass_fill}" stroke="{glass_stroke}" '
-                f'stroke-width="{sw_profile * 0.75:.2f}"/>'
+                f'{_solid_sw(sw_profile * 0.85)}/>'
             )
 
     for pl in model.polylines:
@@ -775,11 +781,11 @@ def render_svg_string(
         sw_pl = sw_outer if is_outer else sw_inner
         if pl.closed:
             parts.append(
-                f'<polygon points="{pts}" fill="none" stroke="{frame_stroke}" stroke-width="{sw_pl:.2f}"/>'
+                f'<polygon points="{pts}" fill="none" stroke="{frame_stroke}" {_solid_sw(sw_pl)}/>'
             )
         else:
             parts.append(
-                f'<polyline points="{pts}" fill="none" stroke="{frame_stroke}" stroke-width="{sw_pl * 0.9:.2f}"/>'
+                f'<polyline points="{pts}" fill="none" stroke="{frame_stroke}" {_solid_sw(sw_pl * 0.9)}/>'
             )
 
     for seg in model.segments:
@@ -790,7 +796,7 @@ def render_svg_string(
         parts.append(
             f'<line x1="{tx(seg.start.x):.2f}" y1="{ty(seg.start.y):.2f}" '
             f'x2="{tx(seg.end.x):.2f}" y2="{ty(seg.end.y):.2f}" '
-            f'stroke="{stroke}" stroke-width="{lw:.2f}"/>'
+            f'stroke="{stroke}" {_solid_sw(lw)}/>'
         )
 
     glasses = _glass_panels(model)

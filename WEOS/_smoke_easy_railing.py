@@ -3,7 +3,12 @@ from __future__ import annotations
 
 from WEOS.factory.marqt_pdf import _spec_lines
 from WEOS.factory.project_engine import calculate_line
-from WEOS.factory.railing_engine import compute_railing
+from WEOS.factory.railing_engine import (
+    PILLAR_EDGE_MM,
+    _pillar_positions_along,
+    compute_railing,
+    railing_svg,
+)
 
 
 def main() -> int:
@@ -77,6 +82,14 @@ def main() -> int:
         fails.append(f"manual rate not applied: {cont.get('sellingPerUnit')}")
     if cont.get("wastageEnabled") is not False:
         fails.append("normal should disable wastage")
+    pos3 = [round(x) for x in _pillar_positions_along(1000.0, 3, edge_mm=PILLAR_EDGE_MM)]
+    if pos3 != [100, 500, 900]:
+        fails.append(f"3 pillar spacing {pos3} != [100, 500, 900]")
+    pos2 = [round(x) for x in _pillar_positions_along(1000.0, 2, edge_mm=PILLAR_EDGE_MM)]
+    if pos2 != [100, 900]:
+        fails.append(f"2 pillar spacing {pos2} != [100, 900]")
+    if csvg and 'data-spigot="1"' in csvg:
+        fails.append("continuous svg still draws pillars/spigots")
 
     # 2) Normal aluminium block
     blk = compute_railing({
@@ -101,6 +114,25 @@ def main() -> int:
         fails.append("block path should not BOM continuous bottom")
     if int(blk.get("pillarCount") or 0) < 1:
         fails.append(f"block pillarCount {blk.get('pillarCount')}")
+    bsvg = railing_svg({
+        "shape": "straight", "lengthMm": 3000, "heightMm": 1000, "panels": 3,
+        "bottomKind": "block", "blocksPerGlass": 2, "continuousRail": False,
+        "handrail": True,
+        "installComponents": {
+            "bottomRail": False, "block": True, "ssPillar": False,
+            "handrail": True, "glass": True,
+        },
+    }, quote=blk)
+    if bsvg.count('data-spigot="1"') != 6:
+        fails.append(f"block 2/glass × 3 panels spigots {bsvg.count('data-spigot=\"1\"')} != 6")
+    if bsvg.count('data-spigot-bolt="1"') != 24:
+        fails.append(f"block spigot 4-hole plates {bsvg.count('data-spigot-bolt=\"1\"')} != 24")
+    if 'data-handrail="1"' not in bsvg:
+        fails.append("block svg missing solid black handrail")
+    if 'data-side-stud="1"' in bsvg:
+        fails.append("block svg used studs placement")
+    if 'data-bottom-rail="1"' in bsvg:
+        fails.append("block svg still draws continuous bottom rail")
 
     # 3) Normal SS pillar
     ss = compute_railing({

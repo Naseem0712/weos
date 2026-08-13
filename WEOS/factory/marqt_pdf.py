@@ -223,21 +223,54 @@ def line_elevation_png_bytes(line: Mapping[str, Any], *, scale: float = 0.55, ma
         return None
 
 
-def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
-    """Draw the live-canvas SVG (or user-uploaded design photo) into the design column.
+def _special_line_svg(line: Mapping[str, Any]) -> str:
+    """Railing / shower / ventilator SVG for PDF when preview was skipped."""
+    prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
+    live = str((prev or {}).get("svg") or (prev or {}).get("pdfSvg") or "").strip()
+    if live and "<svg" in live.lower():
+        return live
+    try:
+        from WEOS.factory.line_kind import is_shower_cart_line, is_ventilator_cart_line
 
-    Photo wins when uploaded; otherwise the same SVG as the live preview.
-    Returns True when the real elevation was drawn.
+        if _line_is_railing(line):
+            from WEOS.factory.railing_engine import railing_svg
+
+            cfg, q = _railing_cfg_and_quote(line)
+            return str(railing_svg(cfg or {}, quote=q) or "")
+        if is_shower_cart_line(line):
+            from WEOS.factory.shower_engine import compute_shower, ensure_shower_dims, shower_svg
+
+            opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+            cfg = ensure_shower_dims((opts or {}).get("shower") or {}, width=line.get("width"), height=line.get("height"))
+            return str(shower_svg(cfg, quote=compute_shower(cfg)) or "")
+        if is_ventilator_cart_line(line):
+            from WEOS.factory.ventilator_engine import compute_ventilator, ensure_ventilator_dims, ventilator_svg
+
+            opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+            cfg = ensure_ventilator_dims((opts or {}).get("ventilator") or {}, width=line.get("width"), height=line.get("height"))
+            return str(ventilator_svg(cfg, quote=compute_ventilator(cfg)) or "")
+    except Exception:
+        _log.debug("special-line svg rebuild skipped", exc_info=True)
+    return ""
+
+
+def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
+    """Draw the design column. Windows use ReportLab model elevation (reliable).
+
+    Canvas-SVG → Cairo/svglib was hanging Quote PDF (huge mm viewBox + dasharray
+    ``none``). Photo still wins; railing/shower/vent use a size-capped PNG.
     """
     from reportlab.lib.utils import ImageReader
 
-    from WEOS.factory.image_engine import svg_to_png_bytes, svg_to_rl_drawing
-    from WEOS.factory.svg_export import elevation_svg_for_line
+    from WEOS.factory.line_kind import is_shower_cart_line, is_ventilator_cart_line
 
     w = float(line.get("width") or 0)
     h = float(line.get("height") or 0)
+    try:
+        c.setDash()
+    except Exception:
+        pass
 
-    # User-uploaded design photo prints instead of canvas when present.
     photo_raw, _photo_ct = _line_design_photo_bytes(line)
     if photo_raw:
         try:
@@ -249,55 +282,47 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
                 c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
                 return True
         except Exception:
-            _log.exception("design photo embed failed; falling back to canvas SVG")
+            _log.exception("design photo embed failed; falling back to elevation")
 
-    # One elevation path: live canvas SVG (shower / railing / window).
-    # Prefer quote-session cache / calculate_line preview so we do not
-    # regenerate factory geometry for every PDF line.
-    png = None
-    try:
-        from WEOS.factory.elevation_cache import png_for_line, svg_for_line
+    is_rail = _line_is_railing(line)
+    is_special = is_rail or is_shower_cart_line(line) or is_ventilator_cart_line(line)
 
-        png = png_for_line(line, scale=1.45)
-        svg = svg_for_line(line, style="preview")
-    except Exception:
-        svg = elevation_svg_for_line(line, style="preview")
-        png = None
-    if not svg:
-        prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
-        svg = (prev or {}).get("svg") or (prev or {}).get("pdfSvg")
-
-    if svg:
-        # 1) Fast Cairo PNG of the slim canvas SVG (same strokes as live preview).
-        if not png:
-            png = svg_to_png_bytes(str(svg), scale=1.45, allow_slow=False)
-        if png:
-            img = ImageReader(io.BytesIO(png))
-            iw, ih = img.getSize()
-            if iw > 0 and ih > 0:
-                scale = min(box_w / float(iw), box_h / float(ih))
-                dw, dh = iw * scale, ih * scale
-                c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
-                return True
-
-        # 2) Vector embed of the SAME slim SVG (no slow renderPM raster that fattens strokes).
+    # Windows / doors / casement / fold: known-good ReportLab path (miters, handles).
+    if not is_special:
         try:
-            drawing = svg_to_rl_drawing(str(svg))
-            if drawing is not None and getattr(drawing, "width", 0) and getattr(drawing, "height", 0):
-                from reportlab.graphics import renderPDF
+            from WEOS.factory.elevation_pdf import draw_line_model_elevation
 
-                dwid, dhei = float(drawing.width), float(drawing.height)
-                scale = min(box_w / dwid, box_h / dhei)
-                dw, dh = dwid * scale, dhei * scale
-                drawing.scale(scale, scale)
-                drawing.width, drawing.height = dw, dh
-                renderPDF.draw(drawing, c, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0)
+            if draw_line_model_elevation(c, line, x, y, box_w, box_h):
                 return True
         except Exception:
-            _log.exception("svg vector embed failed; trying model fallback")
+            _log.exception("reportlab model elevation failed")
 
-    # Railing must never fall through to a window stub.
-    if _line_is_railing(line):
+    svg = _special_line_svg(line) if is_special else ""
+    if not svg and not is_special:
+        try:
+            from WEOS.factory.svg_export import elevation_svg_for_line
+
+            svg = elevation_svg_for_line(line, style="preview") or ""
+        except Exception:
+            svg = ""
+
+    if svg:
+        try:
+            from WEOS.factory.image_engine import svg_to_png_bytes
+
+            png = svg_to_png_bytes(str(svg), scale=1.0, allow_slow=False, max_px=1100)
+            if png:
+                img = ImageReader(io.BytesIO(png))
+                iw, ih = img.getSize()
+                if iw > 0 and ih > 0:
+                    scale = min(box_w / float(iw), box_h / float(ih))
+                    dw, dh = iw * scale, ih * scale
+                    c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
+                    return True
+        except Exception:
+            _log.debug("capped svg png skipped", exc_info=True)
+
+    if is_rail:
         rail_cfg, rail_q = _railing_cfg_and_quote(line)
         c.setStrokeColorRGB(0.35, 0.35, 0.35)
         c.setFillColorRGB(0.96, 0.96, 0.97)
@@ -310,14 +335,14 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
         c.drawCentredString(x + box_w / 2, y + box_h / 2 - 8, f"{shape} · {w:g}×{h:g} mm")
         return True
 
-    # 3) ReportLab model re-draw (only if the SVG path is unavailable).
-    try:
-        from WEOS.factory.elevation_pdf import draw_line_model_elevation
+    if not is_special:
+        try:
+            from WEOS.factory.elevation_pdf import draw_line_model_elevation
 
-        if draw_line_model_elevation(c, line, x, y, box_w, box_h):
-            return True
-    except Exception:
-        _log.exception("reportlab model elevation fallback failed")
+            if draw_line_model_elevation(c, line, x, y, box_w, box_h):
+                return True
+        except Exception:
+            _log.exception("reportlab model elevation retry failed")
 
     layout = line.get("layout") if isinstance(line.get("layout"), Mapping) else {}
     panels = list((layout or {}).get("panels") or [])

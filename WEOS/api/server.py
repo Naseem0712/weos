@@ -775,7 +775,11 @@ def _pdf_response(
                 _log.exception("pdf-flush save failed for %s; continuing with in-memory lines", project_id)
     try:
         # Customer PDF does not need factory cut/glass nesting — that was a multi-second wait.
-        result = calculate_project(doc, optimize=(kind == "factory"))
+        result = calculate_project(
+            doc,
+            optimize=(kind == "factory"),
+            include_preview=False,
+        )
     except Exception:
         # Never 500 the export because a calculation edge-case failed — log the
         # real traceback and still produce a (header-only) PDF for the customer.
