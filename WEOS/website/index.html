@@ -301,7 +301,12 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <div><label class="l">W (mm)</label><input id="lineW" type="number" value="2050" style="width:90px"/></div>
             <div><label class="l">H (mm)</label><input id="lineH" type="number" value="1970" style="width:90px"/></div>
             <div><label class="l">Qty</label><input id="lineQty" type="number" value="1" min="1" style="width:70px"/></div>
-            <div class="grow"><label class="l">Glass</label><select id="lineGlass" title="Full catalogue — Engines → Glass Library to add more"><option value="5mm_clear">5mm Clear</option><option value="8mm_toughened" selected>8mm Toughened</option><option value="10mm_toughened">10mm Toughened</option></select></div>
+            <div class="grow"><label class="l">Glass</label>
+              <div style="display:flex;gap:.35rem;align-items:flex-end;flex-wrap:wrap">
+                <select id="lineGlass" title="Full catalogue — Engines → Glass Library to add more" style="min-width:160px;flex:1"><option value="5mm_clear">5mm Clear</option><option value="8mm_toughened" selected>8mm Toughened</option><option value="10mm_toughened">10mm Toughened</option></select>
+                <button class="btn ghost sm" type="button" id="btnAddGlass" title="Save a custom glass to the library">+ glass</button>
+              </div>
+            </div>
           </div>
           <div class="row" style="margin-top:.5rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
             <div><label class="l">Fix / partition</label>
@@ -318,11 +323,11 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <div class="grow" id="partChips" style="display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;min-height:1.8rem"></div>
           </div>
           <div class="row" style="margin-top:.45rem;align-items:flex-end;gap:.7rem">
-            <label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;cursor:pointer">
+            <label id="wrapMeshChk" style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;cursor:pointer">
               <input id="lineMesh" type="checkbox"/> Apply mesh
             </label>
             <div id="wrapMeshName" style="display:none"><label class="l">Mesh name</label><input id="lineMeshName" type="text" placeholder="e.g. SS304 mesh" style="width:150px"/></div>
-            <div><label class="l">Track</label>
+            <div id="wrapTrack"><label class="l">Track</label>
               <select id="lineTrack" style="width:110px">
                 <option value="2" selected>2 track</option>
                 <option value="2.5">2.5 track</option>
@@ -330,6 +335,26 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
               </select>
             </div>
             <div class="muted" id="meshHint" style="font-size:.78rem;flex:1"></div>
+          </div>
+          <div id="casementPanelBox" style="display:none;margin-top:.45rem;padding:.5rem .6rem;border:1px dashed var(--line);border-radius:10px;background:rgba(0,0,0,.02)">
+            <strong style="font-size:.82rem">Partitions / panels</strong>
+            <p class="muted" style="font-size:.72rem;margin:.15rem 0 .35rem">Click a panel on the drawing (or edit below): Fix vs Openable · handle L/R</p>
+            <div id="casementPanelList"></div>
+          </div>
+          <div id="customGlassBox" style="display:none;margin-top:.4rem;padding:.5rem .6rem;border:1px dashed var(--line);border-radius:10px">
+            <strong style="font-size:.8rem">Custom glass → Glass Library</strong>
+            <div class="row" style="margin-top:.35rem;flex-wrap:wrap;gap:.4rem .6rem;align-items:flex-end">
+              <div><label class="l">Makeup</label>
+                <select id="cgMakeup" style="width:110px"><option value="single">Single</option><option value="dgu">DGU</option><option value="laminated">Laminated</option></select>
+              </div>
+              <div><label class="l">Thk mm</label><input id="cgThk" type="number" step="0.1" value="8" style="width:64px"/></div>
+              <div><label class="l">Colour</label><input id="cgColour" type="text" value="clear" style="width:90px"/></div>
+              <label class="chk" style="font-size:.78rem"><input id="cgTuff" type="checkbox" checked/> Toughened</label>
+              <div><label class="l">Rate ₹/sft</label><input id="cgRate" type="number" step="0.01" value="" style="width:72px"/></div>
+              <div class="grow"><label class="l">Name</label><input id="cgName" placeholder="e.g. 8mm grey tuff" style="width:100%"/></div>
+              <button class="btn sm" type="button" id="btnSaveGlass">Save to library</button>
+              <button class="btn ghost sm" type="button" id="btnCancelGlass">Cancel</button>
+            </div>
           </div>
           <div class="row" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
             <!-- System is now implied by the selected Product (merged into Product).
@@ -341,6 +366,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                 <option value="casement">Casement / Openable</option>
                 <option value="bifold">Fold &amp; Sliding</option>
                 <option value="grid">Partition grid (mixed)</option>
+                <option value="shower">Shower partition</option>
               </select>
             </div>
             <div id="wrapGlassShutters"><label class="l" id="glassCountLbl">Glass shutters</label><input id="lineGlassShutters" type="number" min="1" value="2" style="width:90px"/></div>
@@ -383,7 +409,10 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           </div>
           <div class="row" style="margin-top:.5rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
             <div class="grow"><label class="l">Colour / Powder-coat</label>
-              <select id="lineColour"><option value="white">White</option><option value="black_texture" selected>Black Texture</option><option value="wood_oak">Wood Oak</option></select>
+              <div style="display:flex;gap:.35rem;align-items:flex-end;flex-wrap:wrap">
+                <select id="lineColour" style="min-width:140px;flex:1"><option value="white">White</option><option value="black_texture" selected>Black Texture</option><option value="wood_oak">Wood Oak</option></select>
+                <button class="btn ghost sm" type="button" id="btnAddColour" title="Add a colour name">+ colour</button>
+              </div>
             </div>
             <div><label class="l">Handle (type · finish · name)</label>
               <div style="display:flex;gap:.35rem;flex-wrap:wrap">
@@ -602,6 +631,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                     <button type="button" data-bottom="continuous" class="active">Continuous rail</button>
                     <button type="button" data-bottom="block">Aluminium block</button>
                     <button type="button" data-bottom="ss_pillar">SS pillar</button>
+                    <button type="button" data-bottom="studs">SS studs</button>
                   </div>
                   <div class="rt-row" id="wrapRailBottomCont" style="margin-top:.35rem">
                     <div><label class="l">Size / section *</label><input id="rBottomSize" type="text" placeholder="e.g. 50×10 mm" style="width:110px" required/></div>
@@ -791,6 +821,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                   <div><label class="l">Install</label><input id="rInstall" type="number" value="0" style="width:56px"/></div>
                   <div><label class="l">Transport</label><input id="rTransport" type="number" value="0" style="width:56px"/></div>
                   <div><label class="l">Your rate / unit</label><input id="rManual" type="number" step="0.01" placeholder="auto → Total" style="width:88px"/></div>
+                  <div><label class="l">HW brand</label><input id="rHwBrand" placeholder="optional" style="width:100px"/></div>
                 </div>
                 <div class="rt-row" style="align-items:flex-end">
                   <div class="grow"><label class="l">Hardware preset</label>
@@ -810,6 +841,95 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
               <div class="err" id="railingErr" style="margin-top:.2rem;font-size:.75rem"></div>
             </div>
           </div>
+          <div id="showerTools" class="rail-tools hidden">
+            <div class="rt-head">
+              <strong style="font-size:.82rem">Shower partition</strong>
+              <div class="row" style="gap:.3rem;margin:0">
+                <button class="btn sm" type="button" id="btnShowerCalc">Update</button>
+                <button class="btn sec sm" type="button" id="btnShowerAdd">Add</button>
+              </div>
+            </div>
+            <div class="rt-body">
+              <div class="rt-row">
+                <span class="l" style="margin:0">Design</span>
+                <div class="rt-shapes" id="shShapeBtns">
+                  <button type="button" data-sh-shape="straight" class="active">Straight</button>
+                  <button type="button" data-sh-shape="L">L</button>
+                  <button type="button" data-sh-shape="U">U</button>
+                </div>
+              </div>
+              <div class="rt-row">
+                <span class="l" style="margin:0">Opening</span>
+                <div class="rt-shapes" id="shOpBtns">
+                  <button type="button" data-sh-op="sliding" class="active">Sliding 1+1</button>
+                  <button type="button" data-sh-op="hinged">Hinged / openable</button>
+                  <button type="button" data-sh-op="fixed">Fix only</button>
+                </div>
+              </div>
+              <div class="rt-row" id="wrapShSlideSide">
+                <div><label class="l">Sliding half</label>
+                  <select id="shSlideSide" style="width:90px"><option value="right" selected>Right</option><option value="left">Left</option></select>
+                </div>
+                <div id="wrapShDoorW" style="display:none"><label class="l">Door W mm</label><input id="shDoorW" type="number" value="700" style="width:72px"/></div>
+                <div id="wrapShHinges" style="display:none">
+                  <label class="l">Hinges / door</label>
+                  <select id="shHinges" style="width:56px"><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select>
+                </div>
+              </div>
+              <div class="rt-row">
+                <div><label class="l">W mm *</label><input id="shW" type="number" value="1200" style="width:80px"/></div>
+                <div><label class="l">H mm *</label><input id="shH" type="number" value="2000" style="width:80px"/></div>
+                <div id="wrapShDepth"><label class="l">Return mm</label><input id="shDepth" type="number" value="900" style="width:72px"/></div>
+                <div id="wrapShDepthB" style="display:none"><label class="l">Return R mm</label><input id="shDepthB" type="number" value="900" style="width:72px"/></div>
+                <div><label class="l">Qty</label><input id="shQty" type="number" min="1" value="1" style="width:48px"/></div>
+              </div>
+              <div class="rt-row">
+                <div><label class="l">Colour</label>
+                  <select id="shColour" style="min-width:120px">
+                    <option value="matt_black" selected>Matt black</option>
+                    <option value="brush_gold">Brush gold</option>
+                    <option value="gold">Gold</option>
+                    <option value="grey">Grey</option>
+                    <option value="rose_gold">Rose gold</option>
+                  </select>
+                </div>
+                <button class="btn ghost sm" type="button" id="btnShAddColour">+ colour</button>
+                <div><label class="l">Glass</label>
+                  <select id="shGlass" style="min-width:160px">
+                    <option value="fluted_8_clear_tuff">8mm Fluted clear tuff</option>
+                    <option value="fluted_5_clear_tuff">5mm Fluted clear tuff</option>
+                    <option value="fluted_8_grey_tuff">8mm Fluted grey tuff</option>
+                    <option value="fluted_8_brown_tuff">8mm Fluted brown tuff</option>
+                    <option value="8mm_grey_toughened" selected>8mm Tinted grey tuff</option>
+                    <option value="8mm_brown_toughened">8mm Tinted brown tuff</option>
+                    <option value="8mm_toughened">8mm Clear tuff</option>
+                    <option value="10mm_toughened">10mm Clear tuff</option>
+                    <option value="6mm_grey_toughened">6mm Tinted grey tuff</option>
+                    <option value="5mm_grey_toughened">5mm Tinted grey tuff</option>
+                  </select>
+                </div>
+                <button class="btn ghost sm" type="button" id="btnShAddGlass">+ glass</button>
+              </div>
+              <div class="rt-row">
+                <label class="chk" style="font-size:.78rem"><input id="shFrameless" type="checkbox"/> Frameless</label>
+                <label class="chk" style="font-size:.78rem"><input id="shHandle" type="checkbox" checked/> Handle</label>
+                <div><label class="l">Handle name</label><input id="shHandleName" value="D-type" style="width:100px"/></div>
+                <label class="chk" style="font-size:.78rem"><input id="shLock" type="checkbox"/> Lock</label>
+                <div><label class="l">Origin</label>
+                  <select id="shOrigin" style="width:100px"><option value="">—</option><option value="indian">Indian</option><option value="imported">Imported</option></select>
+                </div>
+              </div>
+              <div class="rt-row">
+                <div><label class="l">HW brand</label><input id="shHwBrand" placeholder="optional" style="width:110px"/></div>
+                <div><label class="l">Sale unit</label>
+                  <select id="shSaleUnit" style="width:80px"><option value="sqft" selected>sft</option><option value="opening">opening</option></select>
+                </div>
+                <div><label class="l">Selling rate *</label><input id="shSellRate" type="number" step="0.01" placeholder="₹ / unit" style="width:88px"/></div>
+              </div>
+              <div id="showerBom" class="rt-bom"></div>
+              <div class="err" id="showerErr" style="font-size:.75rem"></div>
+            </div>
+          </div>
           <div class="preview" id="livePreview"><span class="muted">SVG / hero</span></div>
           <div class="specs" id="lineSpecs" style="margin-top:.8rem"></div>
         </div>
@@ -821,7 +941,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
       <div class="panel">
         <div class="row" style="margin-bottom:.8rem">
           <div class="grow"><label class="l">Filter category</label>
-            <select id="libCat"><option value="">All</option><option>Windows</option><option>Doors</option><option>Pergola</option><option>Facades</option><option>Railings</option></select>
+            <select id="libCat"><option value="">All</option><option>Windows</option><option>Doors</option><option>Pergola</option><option>Facades</option><option>Railings</option><option>Bathrooms</option></select>
           </div>
           <button class="btn sm" id="btnLibAdmin" style="margin-top:1rem">Open Admin Editor</button>
         </div>
@@ -899,6 +1019,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                 <option value="fold">Fold &amp; sliding</option>
                 <option value="sliding">Sliding</option>
                 <option value="style">Style / slide door</option>
+                <option value="shower_partition">Shower partition</option>
               </select>
             </div>
             <div><label class="l">Category</label><input id="adCat" style="width:140px"/></div>
@@ -1697,11 +1818,16 @@ const state = {
   railShape: 'straight',
   railMode: 'normal',
   railStep: 'design',
-  railBottomKind: 'continuous', // continuous | block | ss_pillar
+  railBottomKind: 'continuous', // continuous | block | ss_pillar | studs
   railStairBottom: 'block', // block | topiller
   railStairMount: 'step', // step | side
   railingMode: false,
   railing: null,
+  showerMode: false,
+  shShape: 'straight',
+  shOp: 'sliding',
+  draftCasementPanels: [],
+  selectedCasementPanel: null,
 };
 const $ = (id) => document.getElementById(id);
 const toast = (m) => { const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); };
@@ -1921,6 +2047,7 @@ async function loadProducts() {
     }
     try { applyProductSystem(); } catch (_) {}
     try { await loadCartGlassOptions(); } catch (_) {}
+    try { await loadCartColourOptions(); } catch (_) {}
   }
   try {
     const sec = await api('/api/sections');
@@ -1969,6 +2096,120 @@ async function loadCartGlassOptions(preferId) {
   if (prev && cleaned.some(o => o.id === prev)) sel.value = prev;
   else if (cleaned.some(o => o.id === '8mm_toughened')) sel.value = '8mm_toughened';
   else if (cleaned.length) sel.value = cleaned[0].id;
+  if ($('shGlass')) {
+    const shPrev = $('shGlass').value;
+    const existing = new Set([...$('shGlass').options].map(o => o.value));
+    for (const o of cleaned) {
+      if (existing.has(o.id)) continue;
+      const opt = document.createElement('option'); opt.value = o.id; opt.textContent = o.label;
+      $('shGlass').appendChild(opt);
+    }
+    if (preferId && [...$('shGlass').options].some(o => o.value === preferId)) $('shGlass').value = preferId;
+    else if (shPrev) $('shGlass').value = shPrev;
+  }
+}
+
+async function loadCartColourOptions(preferId) {
+  const sel = $('lineColour');
+  if (!sel) return;
+  const prev = preferId || sel.value;
+  let opts = [];
+  try {
+    const d = await api('/api/finishes');
+    opts = d.options || (d.finishes || []).map(f => ({ id: f.id, label: f.name || f.label || f.id }));
+  } catch (_) {}
+  if (!opts.length) return;
+  const seen = new Set();
+  const cleaned = [];
+  for (const o of opts) {
+    const id = String((o && (o.id || o.value)) || '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    cleaned.push({ id, label: o.label || o.name || id.replace(/_/g, ' ') });
+  }
+  sel.innerHTML = cleaned.map(o => `<option value="${o.id}">${o.label}</option>`).join('');
+  if (prev && cleaned.some(o => o.id === prev)) sel.value = prev;
+  else if (cleaned.some(o => o.id === 'black_texture')) sel.value = 'black_texture';
+  else if (cleaned.length) sel.value = cleaned[0].id;
+}
+
+function ensureCasementPanels() {
+  const n = Math.max(parseInt(($('lineGlassShutters') && $('lineGlassShutters').value) || '2', 10) || 2, 1);
+  let panels = Array.isArray(state.draftCasementPanels) ? state.draftCasementPanels.slice() : [];
+  while (panels.length < n) {
+    const i = panels.length;
+    const side = i === 0 ? 'right' : 'left';
+    panels.push({ index: i, role: 'openable', handleSide: side });
+  }
+  panels = panels.slice(0, n).map((p, i) => ({
+    index: i,
+    role: (p && p.role) === 'fix' ? 'fix' : 'openable',
+    handleSide: (p && p.handleSide) === 'left' ? 'left' : 'right',
+  }));
+  state.draftCasementPanels = panels;
+  const fixIdx = panels.filter(p => p.role === 'fix').map(p => p.index + 1);
+  if ($('lineFixShutters')) $('lineFixShutters').value = fixIdx.join(',');
+  state.draftHandleOverrides = state.draftHandleOverrides || {};
+  panels.forEach((p, i) => {
+    state.draftHandleOverrides[i] = Object.assign({}, state.draftHandleOverrides[i] || {}, {
+      role: p.role,
+      side: p.role === 'fix' ? 'none' : p.handleSide,
+    });
+  });
+  renderCasementPanelList();
+}
+
+function renderCasementPanelList() {
+  const host = $('casementPanelList');
+  if (!host) return;
+  const panels = state.draftCasementPanels || [];
+  const sel = state.selectedCasementPanel;
+  if (!panels.length) {
+    host.innerHTML = '<span class="muted" style="font-size:.75rem">Set sash count, then click a panel</span>';
+    return;
+  }
+  host.innerHTML = panels.map((p, i) => {
+    const active = sel === i ? ' style="outline:2px solid var(--accent,#b33)"' : '';
+    return `<div class="row" data-cp="${i}"${active} style="gap:.4rem;align-items:center;margin:.2rem 0;flex-wrap:wrap">
+      <button type="button" class="btn ghost sm" data-cp-pick="${i}">P${i + 1}</button>
+      <select data-cp-role="${i}" style="width:110px">
+        <option value="fix"${p.role === 'fix' ? ' selected' : ''}>Fix</option>
+        <option value="openable"${p.role !== 'fix' ? ' selected' : ''}>Openable</option>
+      </select>
+      <select data-cp-side="${i}" style="width:90px"${p.role === 'fix' ? ' disabled' : ''}>
+        <option value="left"${p.handleSide === 'left' ? ' selected' : ''}>Handle L</option>
+        <option value="right"${p.handleSide !== 'left' ? ' selected' : ''}>Handle R</option>
+      </select>
+    </div>`;
+  }).join('');
+  host.querySelectorAll('[data-cp-pick]').forEach(btn => {
+    btn.onclick = () => { state.selectedCasementPanel = +btn.dataset.cpPick; renderCasementPanelList(); };
+  });
+  host.querySelectorAll('[data-cp-role]').forEach(selEl => {
+    selEl.onchange = () => {
+      const i = +selEl.dataset.cpRole;
+      state.draftCasementPanels[i].role = selEl.value;
+      ensureCasementPanels();
+      refreshPreview();
+      scheduleLivePrice();
+    };
+  });
+  host.querySelectorAll('[data-cp-side]').forEach(selEl => {
+    selEl.onchange = () => {
+      const i = +selEl.dataset.cpSide;
+      state.draftCasementPanels[i].handleSide = selEl.value;
+      ensureCasementPanels();
+      refreshPreview();
+      scheduleLivePrice();
+    };
+  });
+}
+
+function selectCasementPanel(i) {
+  ensureCasementPanels();
+  if (i < 0 || i >= (state.draftCasementPanels || []).length) return;
+  state.selectedCasementPanel = i;
+  renderCasementPanelList();
 }
 
 function renderPartChips() {
@@ -2095,14 +2336,20 @@ function applySystemUiRules(opts) {
   const bifold = sys === 'bifold';
   const casement = sys === 'casement';
   const grid = sys === 'grid';
+  const shower = sys === 'shower';
+  const hasTracks = productHasTracks(selectedProductMeta(), state.lines[state.selectedLine], sys);
   const show = (id, on) => { const el = $(id); if (el) el.style.display = on ? '' : 'none'; };
   show('bifoldRow', bifold);
   show('gridRow', grid);
-  show('wrapGlassShutters', !bifold && !grid);
-  show('wrapMeshShutters', !bifold && !casement && !grid);
-  show('wrapFixShutters', !bifold && !grid);
+  show('wrapGlassShutters', !bifold && !grid && !shower);
+  show('wrapMeshShutters', hasTracks && !bifold && !casement && !grid && !shower);
+  show('wrapFixShutters', !bifold && !grid && !casement && !shower);
+  show('wrapTrack', hasTracks && !casement && !shower);
+  show('wrapMeshChk', hasTracks && !casement && !shower);
+  show('casementPanelBox', casement);
+  if (casement) ensureCasementPanels();
   if (grid) ensureGridUI();
-  const gl = $('glassCountLbl'); if (gl) gl.textContent = casement ? 'Sashes' : 'Glass shutters';
+  const gl = $('glassCountLbl'); if (gl) gl.textContent = casement ? 'Sashes / partitions' : 'Glass shutters';
   const hint = $('handleHint');
   if (hint) hint.textContent = casement
     ? 'Openable: drag the handle anywhere on a sash — hinges auto-move to the opposite stile.'
@@ -2124,7 +2371,7 @@ function applySystemUiRules(opts) {
 const PRODUCT_TYPE_CATEGORY = {
   railing: 'Railings', staircase_railing: 'Railings', windows: 'Windows', door: 'Doors',
   casements: 'Windows', pergolas: 'Pergolas', synchron: 'Windows', telescopic: 'Windows',
-  fold: 'Windows', sliding: 'Windows', style: 'Doors',
+  fold: 'Windows', sliding: 'Windows', style: 'Doors', shower_partition: 'Bathrooms',
 };
 function systemForProduct(p) {
   if (!p) return null;
@@ -2132,9 +2379,10 @@ function systemForProduct(p) {
   const cat = String(p.category || '').toLowerCase();
   if (!t && !cat) return null;
   if (t.includes('rail') || cat.includes('rail')) return null; // railing world — no window system
+  if (t.includes('shower') || cat.includes('shower') || cat.includes('bathroom')) return 'shower';
   if (t.includes('casement') || t.includes('openable') || t.includes('opening')) return 'casement';
   if (t.includes('bifold') || t.includes('fold')) return 'bifold';
-  if (t.includes('grid') || t.includes('partition')) return 'grid';
+  if (t.includes('grid') || (t.includes('partition') && !t.includes('shower'))) return 'grid';
   // Catalogue section series + Windows/Doors category → sliding elevation (not placeholder).
   if (
     t.includes('slid') || t.includes('tele') || t.includes('sync') || t.includes('section_series')
@@ -2152,6 +2400,7 @@ function productWorldOf(p, ln) {
   const typ = String((p && p.productType) || (ln && ln.productType) || (ln && ln.options && ln.options.productType) || '').toLowerCase();
   if (typ === 'staircase_railing' || typ === 'staircase') return 'staircase_railing';
   if (typ.includes('rail')) return 'railing';
+  if (typ.includes('shower')) return 'shower';
   if (productLooksLikeRailing(p)) {
     if (typ.includes('stair') || String((p && p.category) || '').toLowerCase().includes('stair')) return 'staircase_railing';
     return 'railing';
@@ -2162,7 +2411,19 @@ function productWorldOf(p, ln) {
   }
   const pid = String((p && p.id) || (ln && ln.product) || '').toLowerCase();
   if (pid.includes('rail')) return 'railing';
+  if (pid.includes('shower') || String((p && p.category) || (ln && ln.category) || '').toLowerCase().includes('bathroom')) return 'shower';
   return 'window';
+}
+function productHasTracks(p, ln, sys) {
+  const s = String(sys || (ln && ln.system) || '').toLowerCase();
+  if (s === 'casement' || s === 'openable' || s === 'opening' || s === 'shower' || s === 'railing' || s === 'grid') return false;
+  if (s === 'sliding' || s === 'telescopic' || s === 'synchron' || s === 'style' || s === 'bifold' || s.indexOf('fold') >= 0) return true;
+  const world = productWorldOf(p, ln);
+  if (world === 'railing' || world === 'staircase_railing' || world === 'shower') return false;
+  const typ = String((p && p.productType) || (ln && ln.productType) || '').toLowerCase();
+  if (typ.includes('casement') || typ.includes('shower') || typ.includes('rail') || typ.includes('pergola')) return false;
+  if (typ.includes('slid') || typ.includes('tele') || typ.includes('sync') || typ.includes('fold') || typ === 'windows' || typ === 'door' || typ === 'style') return true;
+  return s ? (s.indexOf('slid') >= 0 || s.indexOf('fold') >= 0) : false;
 }
 function applyProductWorld() {
   const p = selectedProductMeta();
@@ -2170,6 +2431,20 @@ function applyProductWorld() {
   const world = productWorldOf(p, ln);
   const win = $('windowCartTools');
   const addBtn = $('btnAddLine');
+  if (world === 'shower') {
+    state.showerMode = true;
+    state.railingMode = false;
+    if ($('lineSystem')) $('lineSystem').value = 'shower';
+    if (win) win.classList.add('hidden');
+    showRailTools(false);
+    showShowerTools(true);
+    if (addBtn) addBtn.textContent = 'Add shower to cart';
+    if ($('lineSeries')) $('lineSeries').value = '';
+    showerCalc();
+    return;
+  }
+  state.showerMode = false;
+  showShowerTools(false);
   if (world === 'railing' || world === 'staircase_railing') {
     state.railingMode = true;
     // Product-type lock: staircase_railing forces stairs. Generic railing must NOT
@@ -2274,6 +2549,35 @@ function syncDraftFromLine(ln) {
     if ($('gridCols')) $('gridCols').value = state.draftGrid.cols.join(',');
     if ($('gridRows')) $('gridRows').value = state.draftGrid.rows.join(',');
   }
+  if (Array.isArray(ln.casementPanels) && ln.casementPanels.length) {
+    state.draftCasementPanels = ln.casementPanels.map((p, i) => ({
+      index: i,
+      role: (p && p.role) === 'fix' ? 'fix' : 'openable',
+      handleSide: (p && (p.handleSide || p.side) === 'left') ? 'left' : 'right',
+    }));
+  } else if (ln.system === 'casement' && ln.handleOverrides && typeof ln.handleOverrides === 'object') {
+    const ov = ln.handleOverrides;
+    const n = Math.max(parseInt(ln.glassShutters, 10) || Object.keys(ov).length || 2, 1);
+    state.draftCasementPanels = [];
+    for (let i = 0; i < n; i++) {
+      const o = ov[i] || ov[String(i)] || {};
+      state.draftCasementPanels.push({
+        index: i,
+        role: o.role === 'fix' ? 'fix' : 'openable',
+        handleSide: (o.side === 'left' || o.handleSide === 'left') ? 'left' : 'right',
+      });
+    }
+  }
+  if (ln.options && ln.options.shower && typeof ln.options.shower === 'object') {
+    const sh = ln.options.shower;
+    if (sh.shape) state.shShape = sh.shape;
+    if (sh.operation || sh.openingType) state.shOp = sh.operation || sh.openingType;
+    const setSh = (id, v) => { if ($(id) && v != null && v !== '') $(id).value = v; };
+    setSh('shW', sh.widthMm || ln.width); setSh('shH', sh.heightMm || ln.height);
+    setSh('shDepth', sh.depthMm); setSh('shDepthB', sh.depthBMm);
+    setSh('shSlideSide', sh.slidingSide); setSh('shColour', sh.colour);
+    setSh('shSellRate', sh.manualRatePerUnit || sh.sellingRate || ln.sellingRate);
+  }
   renderPartChips();
   applyMeshTrackRules();
   applySystemUiRules(); // visibility only — do not re-apply fold preset over saved values
@@ -2313,7 +2617,11 @@ function currentLineDraft() {
     description: ($('lineDesc') && $('lineDesc').value.trim()) || null,
     partitions: (state.draftPartitions || []).slice(),
     mesh: !!( $('lineMesh') && $('lineMesh').checked ),
-    trackCount: $('lineTrack') ? parseFloat($('lineTrack').value) || 2 : 2,
+    trackCount: (function(){
+      const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
+      if (!productHasTracks(selectedProductMeta(), null, sys)) return null;
+      return $('lineTrack') ? parseFloat($('lineTrack').value) || 2 : 2;
+    })(),
     system: sys,
     glassShutters: $('lineGlassShutters') ? (parseInt($('lineGlassShutters').value) || 2) : 2,
     meshShutters: $('lineMeshShutters') ? (parseInt($('lineMeshShutters').value) || 0) : 0,
@@ -2322,7 +2630,6 @@ function currentLineDraft() {
     foldRight: $('lineFoldRight') ? (parseInt($('lineFoldRight').value) || 0) : 0,
     sectionSizes: sys === 'bifold' ? currentSectionSizes() : null,
     handleLevel: $('lineHandleLevel') ? (parseInt($('lineHandleLevel').value) || 50) / 100 : 0.5,
-    handleOverrides: (state.draftHandleOverrides && Object.keys(state.draftHandleOverrides).length) ? {...state.draftHandleOverrides} : null,
     grid: currentGridSpec(),
     handleName: ($('lineHandleName') && $('lineHandleName').value.trim()) || null,
     meshName: ($('lineMeshName') && $('lineMeshName').value.trim()) || null,
@@ -2330,6 +2637,19 @@ function currentLineDraft() {
     powderCoatName: colourLabel(),
     panelFill: currentPanelFill(),
     features: currentPanelFill() ? [{ type: 'panel_fill', ...currentPanelFill() }] : null,
+    casementPanels: (sys === 'casement') ? (state.draftCasementPanels || []).slice() : null,
+    handleOverrides: (function(){
+      const base = (state.draftHandleOverrides && Object.keys(state.draftHandleOverrides).length) ? {...state.draftHandleOverrides} : null;
+      if (sys !== 'casement' || !(state.draftCasementPanels || []).length) return base;
+      const ov = base ? {...base} : {};
+      (state.draftCasementPanels || []).forEach((p, i) => {
+        ov[i] = Object.assign({}, ov[i] || {}, {
+          role: p.role || 'openable',
+          side: (p.role === 'fix') ? 'none' : (p.handleSide || 'right'),
+        });
+      });
+      return ov;
+    })(),
   };
 }
 
@@ -2621,6 +2941,21 @@ function attachHandleDrag(container, meta, system) {
     g.addEventListener('mousedown', start);
     g.addEventListener('touchstart', start, {passive:false});
   });
+  if (_hdrag.casement) {
+    let down = null;
+    svg.addEventListener('mousedown', (ev) => {
+      down = { x: ev.clientX, y: ev.clientY };
+    });
+    svg.addEventListener('click', (ev) => {
+      if (down && (Math.abs(ev.clientX - down.x) > 6 || Math.abs(ev.clientY - down.y) > 6)) return;
+      const ctm = svg.getScreenCTM(); if (!ctm) return;
+      const pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
+      const u = pt.matrixTransform(ctm.inverse());
+      const mx = u.x + _hdrag.minX, my = _hdrag.maxY - u.y;
+      const sash = _hdrag.sashes.find(s => mx >= Math.min(s.x0, s.nx0) && mx <= Math.max(s.x1, s.nx1) && my >= s.y0 && my <= s.y1);
+      if (sash) selectCasementPanel(sash.i);
+    });
+  }
 }
 
 function initHandleDrag() {
@@ -2677,6 +3012,14 @@ function renderRailingLineSpecs(q, cfg) {
 }
 
 async function refreshPreview() {
+  if (state.showerMode || isShowerMode()) {
+    try {
+      await showerCalc();
+    } catch (e) {
+      if ($('livePreview')) $('livePreview').innerHTML = '<span class="muted">Shower preview failed</span>';
+    }
+    return;
+  }
   // Railing mode: shared livePreview shows railing 2D drawing (never window geometry).
   if (isRailingMode()) {
     try {
@@ -2712,7 +3055,8 @@ async function refreshPreview() {
       colour: ln.colour||'white', glass: ln.glass||'5mm_clear', handle: ln.handle||'standard',
       partitions: ln.partitions || [],
       mesh: !!ln.mesh,
-      trackCount: ln.trackCount != null ? ln.trackCount : 2,
+      trackCount: productHasTracks(selectedProductMeta(), ln, ln.system) ? (ln.trackCount != null ? ln.trackCount : 2) : null,
+      casementPanels: ln.casementPanels || state.draftCasementPanels || null,
       sectionSeries: ln.sectionSeries || null,
       system: ln.system || 'sliding',
       glassShutters: ln.glassShutters != null ? ln.glassShutters : null,
@@ -2731,12 +3075,13 @@ async function refreshPreview() {
       panelFill: ln.panelFill || currentPanelFill() || null,
       features: ln.features || null,
       productType: ln.productType || null,
+      shower: (ln.system === 'shower' || state.showerMode) ? showerConfig() : null,
     }});
     if (prev.meshTrack && prev.meshTrack.shifted && $('lineTrack')) {
       $('lineTrack').value = String(prev.trackCount || 3);
       if ($('meshHint')) $('meshHint').textContent = prev.meshTrack.reason || 'Track shifted for mesh';
     }
-    if (prev.svg) { $('livePreview').innerHTML = prev.svg; attachHandleDrag($('livePreview'), (prev.layout && prev.layout.meta) || prev.meta || null, ln.system || 'sliding'); }
+    if (prev.svg) { $('livePreview').innerHTML = prev.svg; attachHandleDrag($('livePreview'), (prev.layout && prev.layout.meta) || prev.meta || null, ln.system || prev.system || 'sliding'); }
     else if (prev.heroImage) $('livePreview').innerHTML = `<img src="${prev.heroImage}" alt=""/>`;
     else $('livePreview').innerHTML = '<span class="muted">No preview</span>';
     const specs = prev.specifications || {};
@@ -2751,12 +3096,19 @@ async function refreshPreview() {
         const s = layout.sectionSizes;
         extra.push(['Sections', `Top ${s.topRail} · Bot ${s.bottomRail} · Jamb ${s.leftJamb}/${s.rightJamb} · Leaf ${s.leafStile}`]);
       }
+    } else if (prev.system === 'casement' || ln.system === 'casement') {
+      extra.push(['System', 'Casement / Openable']);
+      if (state.draftCasementPanels && state.draftCasementPanels.length) {
+        extra.push(['Partitions', state.draftCasementPanels.map((p,i) => `P${i+1} ${p.role}${p.role==='fix'?'':' · H '+(p.handleSide==='left'?'L':'R')}`).join('; ')]);
+      }
+    } else if (prev.system === 'shower') {
+      extra.push(['System', `Shower · ${(prev.shower && prev.shower.shape) || ''}`]);
     } else {
       const gCount = prev.glassShutters != null ? prev.glassShutters : (ln.glassShutters != null ? ln.glassShutters : null);
       const mCount = prev.meshShutters != null ? prev.meshShutters : (ln.meshShutters != null ? ln.meshShutters : null);
       extra.push(['System', `Sliding · ${gCount != null ? gCount : '?'} glass${mCount ? (' + ' + mCount + ' mesh') : ''}`]);
       if (prev.mesh) extra.push(['Mesh', `Yes · ${prev.trackCount || ln.trackCount || '?'}-track`]);
-      else if (prev.trackCount || ln.trackCount) extra.push(['Track', `${prev.trackCount || ln.trackCount}-track`]);
+      else if (productHasTracks(selectedProductMeta(), ln, ln.system) && (prev.trackCount || ln.trackCount)) extra.push(['Track', `${prev.trackCount || ln.trackCount}-track`]);
     }
     if (prev.notes && prev.notes.length) extra.push(['Note', prev.notes.join('; ')]);
     // Never paint window series metadata when this line is actually a railing.
@@ -3009,6 +3361,7 @@ $('btnAddLine').onclick = () => {
   // Product-type lock: railing world never pushes a window draft into the cart
   // (that caused PDF to print Track/Fold window drawings while canvas showed railing).
   if (isRailingMode()) { railingAdd(); return; }
+  if (isShowerMode() || state.showerMode) { showerAdd(); return; }
   const draft = currentLineDraft();
   const p = selectedProductMeta();
   if (p && p.productType) draft.productType = p.productType;
@@ -3066,6 +3419,7 @@ function railInstallFlags() {
       bottomRail: false,
       block: (state.railStairBottom || 'block') === 'block',
       ssPillar: (state.railStairBottom || 'block') === 'topiller',
+      studs: false,
       glass: true,
       handrail: !!(!$('rHandrail') || $('rHandrail').checked),
     };
@@ -3075,6 +3429,7 @@ function railInstallFlags() {
     bottomRail: kind === 'continuous',
     block: kind === 'block',
     ssPillar: kind === 'ss_pillar',
+    studs: kind === 'studs',
     glass: true,
     handrail: !!(!$('rHandrail') || $('rHandrail').checked),
   };
@@ -3137,7 +3492,7 @@ function syncRailBottomUi() {
     if ($('rInstBottom')) { $('rInstBottom').type = 'hidden'; $('rInstBottom').value = cont ? '1' : '0'; }
     if ($('rInstBlock')) { $('rInstBlock').type = 'hidden'; $('rInstBlock').value = kind === 'block' ? '1' : '0'; }
     if ($('rInstSS')) { $('rInstSS').type = 'hidden'; $('rInstSS').value = kind === 'ss_pillar' ? '1' : '0'; }
-    if ($('rPillar')) $('rPillar').value = kind === 'ss_pillar' ? 'ss' : 'block';
+    if ($('rPillar')) $('rPillar').value = kind === 'ss_pillar' ? 'ss' : (kind === 'studs' ? 'stud' : 'block');
     if (cont && $('rBlocks')) $('rBlocks').value = '0';
   } else {
     const sb = state.railStairBottom || 'block';
@@ -3223,6 +3578,8 @@ function populateRailTools(cfg) {
     state.railStairMount = cfg.stairMountType || (String(cfg.mountType||'').includes('step') ? 'step' : 'side');
   } else if (cfg.bottomKind) {
     state.railBottomKind = cfg.bottomKind;
+  } else if (cfg.installComponents && cfg.installComponents.studs) {
+    state.railBottomKind = 'studs';
   } else if (cfg.continuousRail || (cfg.installComponents && cfg.installComponents.bottomRail && !cfg.installComponents.block && !cfg.installComponents.ssPillar)) {
     state.railBottomKind = 'continuous';
   } else if (cfg.installComponents && cfg.installComponents.ssPillar) {
@@ -3443,10 +3800,10 @@ function railingConfig(){
   const stairMount = state.railStairMount || 'step';
   const studsPerGlass = stairs
     ? (stairMount === 'side' ? num('rStudsPerGlassSide', 4) : num('rStudsPerGlassStep', 3))
-    : 0;
+    : (flags.studs ? num('rBlocks', 2) : 0);
   const studRate = stairs
     ? (stairMount === 'side' ? num('rRStudSide', 80) : num('rRStudStep', 80))
-    : num('rRStud', 0);
+    : num('rRStud', num('rRBlock', 80));
   const blockRate = stairs ? num('rRBlockStair', num('rRBlock', 100)) : num('rRBlock', 0);
   if ($('rRStud')) $('rRStud').value = studRate;
   const cfg = {
@@ -3516,6 +3873,7 @@ function railingConfig(){
     },
     extras: (num('rExtraAmt',0) > 0) ? [{ name: ($('rExtraName')&&$('rExtraName').value)||'Extra', amount: num('rExtraAmt',0) }] : [],
     manualRatePerUnit: ($('rManual')&&$('rManual').value!=='') ? +$('rManual').value : null,
+    hardwareBrand: ($('rHwBrand') && $('rHwBrand').value.trim()) || undefined,
   };
   if (shape === 'polyline') {
     const segs = parseSegmentList($('rSegments') && $('rSegments').value);
@@ -3753,6 +4111,162 @@ async function railingAdd(){
   state.railingMode = true;
   renderCart(); scheduleSave(); refreshPreview(); toast('Railing added to cart');
 }
+
+function isShowerMode() {
+  const p = selectedProductMeta();
+  const ln = state.lines[state.selectedLine];
+  return productWorldOf(p, ln) === 'shower' || !!state.showerMode;
+}
+function showShowerTools(on) {
+  const el = $('showerTools');
+  if (!el) return;
+  el.classList.toggle('hidden', !on);
+  if (on) syncShowerUi();
+}
+function syncShowerUi() {
+  const shape = state.shShape || 'straight';
+  const op = state.shOp || 'sliding';
+  document.querySelectorAll('#shShapeBtns [data-sh-shape]').forEach(b => {
+    b.classList.toggle('active', b.dataset.shShape === shape);
+  });
+  document.querySelectorAll('#shOpBtns [data-sh-op]').forEach(b => {
+    b.classList.toggle('active', b.dataset.shOp === op);
+  });
+  if ($('wrapShDepth')) $('wrapShDepth').style.display = (shape === 'L' || shape === 'U') ? '' : 'none';
+  if ($('wrapShDepthB')) $('wrapShDepthB').style.display = shape === 'U' ? '' : 'none';
+  const slideHalf = $('wrapShSlideSide') && $('wrapShSlideSide').querySelector('div');
+  if (slideHalf) slideHalf.style.display = op === 'sliding' ? '' : 'none';
+  if ($('wrapShDoorW')) $('wrapShDoorW').style.display = op === 'hinged' ? '' : 'none';
+  const frameless = !!( $('shFrameless') && $('shFrameless').checked );
+  if ($('wrapShHinges')) $('wrapShHinges').style.display = (op === 'hinged' && !frameless) ? '' : 'none';
+}
+function parseShowerGlass(id) {
+  const s = String(id || '');
+  const flut = /flut/i.test(s);
+  const m = s.match(/(\d+(?:\.\d+)?)\s*mm/i) || s.match(/fluted_(\d+)/i) || s.match(/(\d+)/);
+  const thk = m ? parseFloat(m[1]) : 8;
+  let colour = 'clear';
+  if (/grey|gray/i.test(s)) colour = 'grey';
+  else if (/brown/i.test(s)) colour = 'brown';
+  else if (/black/i.test(s)) colour = 'black';
+  const opt = $('shGlass') && $('shGlass').options[$('shGlass').selectedIndex];
+  return {
+    glassKind: flut ? 'fluted' : 'tinted',
+    glassThicknessMm: thk || 8,
+    glassColour: colour,
+    glassToughened: /tuff|tough/i.test(s) || true,
+    glassLabel: (opt && opt.textContent && opt.textContent.trim()) || s.replace(/_/g, ' '),
+    glassId: s,
+  };
+}
+function showerConfig() {
+  const g = parseShowerGlass(($('shGlass') && $('shGlass').value) || '8mm_grey_toughened');
+  const rateRaw = $('shSellRate') ? $('shSellRate').value : '';
+  const rate = rateRaw === '' ? null : +rateRaw;
+  return {
+    shape: state.shShape || 'straight',
+    operation: state.shOp || 'sliding',
+    widthMm: ($('shW') && +$('shW').value) || 1200,
+    heightMm: ($('shH') && +$('shH').value) || 2000,
+    depthMm: ($('shDepth') && +$('shDepth').value) || 900,
+    depthBMm: ($('shDepthB') && +$('shDepthB').value) || 900,
+    slidingSide: ($('shSlideSide') && $('shSlideSide').value) || 'right',
+    doorWidthMm: ($('shDoorW') && +$('shDoorW').value) || 700,
+    hingesPerDoor: ($('shHinges') && +$('shHinges').value) || 3,
+    colour: ($('shColour') && $('shColour').value) || 'matt_black',
+    frameless: !!( $('shFrameless') && $('shFrameless').checked ),
+    handle: !!( !$('shHandle') || $('shHandle').checked ),
+    handleName: ($('shHandleName') && $('shHandleName').value.trim()) || 'D-type',
+    lock: !!( $('shLock') && $('shLock').checked ),
+    hardwareOrigin: ($('shOrigin') && $('shOrigin').value) || '',
+    hardwareBrand: ($('shHwBrand') && $('shHwBrand').value.trim()) || '',
+    saleUnit: ($('shSaleUnit') && $('shSaleUnit').value) || 'sqft',
+    sellingRate: rate,
+    manualRatePerUnit: rate,
+    qty: ($('shQty') && +$('shQty').value) || 1,
+    ...g,
+  };
+}
+function renderShowerBom(q) {
+  if (!$('showerBom')) return;
+  const money0 = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  const rows = (q.items || []).map(it =>
+    `<tr><td>${it.label || it.key}</td><td style="text-align:right">${it.qty} ${it.unit}</td><td style="text-align:right">${money0(it.amount)}</td></tr>`
+  ).join('');
+  $('showerBom').innerHTML = `
+    <div>${q.shape || 'straight'} · ${q.operation || ''} · ${q.widthMm || 0}×${q.heightMm || 0} mm · ${q.areaSqft || 0} sft</div>
+    <table><tbody>${rows || '<tr><td class="muted" colspan="3">Set size + selling rate</td></tr>'}</tbody></table>
+    <div style="margin-top:.25rem"><b>Amount:</b> ${money0(q.sellingTotal)}
+      <span class="muted">(${money0(q.sellingPerUnit)} / ${String(q.saleUnit || 'sqft').toUpperCase()})</span></div>`;
+}
+function renderShowerLineSpecs(q, cfg) {
+  if (!$('lineSpecs')) return;
+  const c = cfg || {};
+  const rows = [
+    ['Type', `${(q && q.shape) || c.shape || 'straight'} · ${(q && q.operation) || c.operation || ''}`],
+    ['Size', `${(q && q.widthMm) || c.widthMm || 0} × ${(q && q.heightMm) || c.heightMm || 0} mm`],
+    ['Plan', (q && q.footprint && (q.footprint.kind === 'L'
+      ? `L · front ${q.footprint.frontMm} · return ${q.footprint.returnMm}`
+      : q.footprint.kind === 'U'
+        ? `U · front ${q.footprint.frontMm} · L ${q.footprint.leftMm} · R ${q.footprint.rightMm}`
+        : `Straight · ${q.footprint.frontMm}`)) || 'Straight'],
+    ['Glass', (q && q.glassLabel) || c.glassLabel || ''],
+    ['Colour', String((q && q.colour) || c.colour || '').replace(/_/g, ' ')],
+    ['Handle', (q && q.handle) ? (q.handleName || 'D-type') : 'No'],
+    ['Lock', (q && q.lock) ? 'Yes' : 'No'],
+    ['Sale', `₹${(q && q.sellingPerUnit) != null ? q.sellingPerUnit : '—'} / ${String((q && q.saleUnit) || 'sqft').toUpperCase()}`],
+    ['Amount', (q && q.sellingTotal) != null ? `₹${q.sellingTotal}` : '—'],
+  ];
+  $('lineSpecs').innerHTML = rows.map(([k, v]) =>
+    `<div><span class="muted">${k}</span><div>${v ?? '—'}</div></div>`
+  ).join('');
+}
+async function showerCalc() {
+  if ($('showerErr')) $('showerErr').textContent = '';
+  try {
+    state.showerMode = true;
+    showShowerTools(true);
+    syncShowerUi();
+    const cfg = showerConfig();
+    const res = await api('/api/shower/quote', { method: 'POST', body: cfg });
+    const q = res.quote || {};
+    state.shower = { cfg, quote: q };
+    $('previewLabel').textContent = `Shower · ${q.shape || cfg.shape} · ${q.operation || ''} · ${q.widthMm || 0}×${q.heightMm || 0}`;
+    if ($('livePreview')) $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
+    renderShowerBom(q);
+    renderShowerLineSpecs(q, cfg);
+    return res;
+  } catch (e) {
+    if ($('showerErr')) $('showerErr').textContent = e.message || String(e);
+    if ($('livePreview')) $('livePreview').innerHTML = '<span class="muted">Shower preview failed</span>';
+  }
+}
+async function showerAdd() {
+  const res = await showerCalc();
+  if (!res || !state.shower) return;
+  const { cfg, quote: q } = state.shower;
+  const prod = (($('lineProduct') && $('lineProduct').value) || 'shower_partition');
+  const p = (state.products || []).find(x => x && x.id === prod);
+  const qty = (cfg && cfg.qty) || 1;
+  state.lines.push({
+    product: (p && p.id) || 'shower_partition',
+    productType: 'shower_partition',
+    category: 'Bathrooms',
+    displayName: (p && p.displayName) || 'Shower Partition',
+    width: q.widthMm, height: q.heightMm, qty,
+    saleUnit: q.saleUnit, sellingRate: q.sellingPerUnit,
+    colour: q.colour || cfg.colour,
+    glass: cfg.glassId || cfg.glassLabel,
+    description: `Shower · ${q.shape || 'straight'} · ${q.operation || ''} · ${q.widthMm}×${q.heightMm} mm · ${q.glassLabel || ''} · ₹${q.sellingPerUnit}/${String(q.saleUnit || 'sqft').toUpperCase()}`,
+    options: { shower: cfg, showerQuote: q, productType: 'shower_partition' },
+    shower: cfg,
+  });
+  delete state.lines[state.lines.length - 1].sectionSeries;
+  delete state.lines[state.lines.length - 1].trackCount;
+  state.selectedLine = state.lines.length - 1;
+  state.showerMode = true;
+  renderCart(); scheduleSave(); refreshPreview(); toast('Shower added to cart');
+}
 function applyRailingModeFromProduct() {
   applyProductWorld();
 }
@@ -3774,6 +4288,90 @@ if ($('btnRailCollapse')) $('btnRailCollapse').onclick = () => {
 };
 if ($('btnRailCalc')) $('btnRailCalc').onclick = railingCalc;
 if ($('btnRailAdd')) $('btnRailAdd').onclick = railingAdd;
+if ($('btnShowerCalc')) $('btnShowerCalc').onclick = showerCalc;
+if ($('btnShowerAdd')) $('btnShowerAdd').onclick = showerAdd;
+document.querySelectorAll('#shShapeBtns [data-sh-shape]').forEach(btn => {
+  btn.onclick = () => { state.shShape = btn.dataset.shShape; state.showerMode = true; syncShowerUi(); showerCalc(); };
+});
+document.querySelectorAll('#shOpBtns [data-sh-op]').forEach(btn => {
+  btn.onclick = () => { state.shOp = btn.dataset.shOp; state.showerMode = true; syncShowerUi(); showerCalc(); };
+});
+['shW','shH','shDepth','shDepthB','shQty','shColour','shGlass','shSlideSide','shDoorW','shHinges','shHandleName','shOrigin','shHwBrand','shSaleUnit','shSellRate'].forEach(id => {
+  const el = $(id); if (!el) return;
+  const go = () => { if (state.showerMode || isShowerMode()) showerCalc(); };
+  el.addEventListener('change', go);
+  el.addEventListener('input', () => { clearTimeout(state._shT); state._shT = setTimeout(go, 280); });
+});
+['shFrameless','shHandle','shLock'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('change', () => { syncShowerUi(); if (state.showerMode || isShowerMode()) showerCalc(); });
+});
+async function saveCustomColour(name, kind) {
+  const n = String(name || '').trim();
+  if (!n) return null;
+  const rec = await api('/api/finishes', { method: 'POST', body: { name: n, kind: kind || 'powder_coat' } });
+  await loadCartColourOptions((rec.finish && rec.finish.id) || n);
+  if ($('shColour')) {
+    const fid = (rec.finish && rec.finish.id) || n.toLowerCase().replace(/\s+/g, '_');
+    const lab = (rec.finish && rec.finish.name) || n;
+    if (![...$('shColour').options].some(o => o.value === fid)) {
+      const opt = document.createElement('option'); opt.value = fid; opt.textContent = lab;
+      $('shColour').appendChild(opt);
+    }
+    $('shColour').value = fid;
+  }
+  toast('Colour added');
+  return rec.finish;
+}
+if ($('btnAddColour')) $('btnAddColour').onclick = async () => {
+  const name = window.prompt('Colour / powder-coat name');
+  if (!name) return;
+  try { await saveCustomColour(name, 'powder_coat'); } catch (e) { toast(e.message || 'Colour save failed'); }
+};
+if ($('btnShAddColour')) $('btnShAddColour').onclick = async () => {
+  const name = window.prompt('Shower colour name');
+  if (!name) return;
+  try { await saveCustomColour(name, 'shower'); if (state.showerMode) showerCalc(); } catch (e) { toast(e.message || 'Colour save failed'); }
+};
+if ($('btnAddGlass')) $('btnAddGlass').onclick = () => {
+  const box = $('customGlassBox'); if (!box) return;
+  box.style.display = box.style.display === 'none' || !box.style.display ? '' : 'none';
+};
+if ($('btnShAddGlass')) $('btnShAddGlass').onclick = () => {
+  const box = $('customGlassBox'); if (box) box.style.display = '';
+  if ($('windowCartTools')) $('windowCartTools').classList.remove('hidden');
+  toast('Fill custom glass below, then Save to library');
+};
+if ($('btnCancelGlass')) $('btnCancelGlass').onclick = () => { if ($('customGlassBox')) $('customGlassBox').style.display = 'none'; };
+if ($('btnSaveGlass')) $('btnSaveGlass').onclick = async () => {
+  const name = ($('cgName') && $('cgName').value.trim()) || '';
+  const thk = ($('cgThk') && +$('cgThk').value) || 8;
+  const colour = ($('cgColour') && $('cgColour').value.trim()) || 'clear';
+  const makeup = ($('cgMakeup') && $('cgMakeup').value) || 'single';
+  const toughened = !!( $('cgTuff') && $('cgTuff').checked );
+  const rateRaw = $('cgRate') ? $('cgRate').value : '';
+  try {
+    const rec = await api('/api/glass/library', { method: 'POST', body: {
+      name: name || `${thk}mm ${colour}${toughened ? ' tuff' : ''}`,
+      makeup, thicknessMm: thk, colour, toughened,
+      rate: rateRaw === '' ? null : +rateRaw,
+    }});
+    const g = rec.glass || rec;
+    const gid = g.id || rec.id;
+    await loadCartGlassOptions(gid);
+    if ($('shGlass') && gid) {
+      const lab = g.name || rec.name || gid;
+      if (![...$('shGlass').options].some(o => o.value === gid)) {
+        const opt = document.createElement('option'); opt.value = gid; opt.textContent = lab;
+        $('shGlass').appendChild(opt);
+      }
+      $('shGlass').value = gid;
+    }
+    if ($('customGlassBox')) $('customGlassBox').style.display = 'none';
+    toast('Glass saved to library');
+    refreshPreview();
+  } catch (e) { toast(e.message || 'Glass save failed'); }
+};
 if ($('btnRailNext')) $('btnRailNext').onclick = railWizardNext;
 if ($('btnRailPrev')) $('btnRailPrev').onclick = railWizardPrev;
 document.querySelectorAll('#railModeBtns [data-mode]').forEach(btn => {
@@ -3926,9 +4524,9 @@ if ($('adminSectionsFile')) $('adminSectionsFile').onchange = async (ev) => {
 };
 ['lineW','lineH','lineQty','lineColour','lineGlass','lineProduct','lineSeries','lineSaleUnit','lineSellRate','lineHandle','lineDesc','cartCustomer','lineTrack','partSize'].forEach(id => {
   const el = $(id); if (!el) return;
-  el.addEventListener('input', () => { if (id === 'lineProduct') { applyProductSystem(); loadCartGlassOptions(); } scheduleLivePrice(); if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','partSize'].includes(id)) refreshPreview(); });
+  el.addEventListener('input', () => { if (id === 'lineProduct') { applyProductSystem(); loadCartGlassOptions(); loadCartColourOptions(); } scheduleLivePrice(); if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','partSize'].includes(id)) refreshPreview(); });
   el.addEventListener('change', () => {
-    if (id === 'lineProduct') { applyProductSystem(); loadCartGlassOptions(); }
+    if (id === 'lineProduct') { applyProductSystem(); loadCartGlassOptions(); loadCartColourOptions(); }
     scheduleLivePrice();
     if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','lineSeries'].includes(id)) refreshPreview();
     if (id === 'cartCustomer') maybeAskCustomerMemory();
@@ -3956,6 +4554,7 @@ applyMeshNameVisibility();
     if (id === 'lineFoldPreset') applySystemUiRules({ applyFoldPreset: true });
     else if (id === 'lineSystem') applySystemUiRules({ applyFoldPreset: ($('lineSystem') && $('lineSystem').value) === 'bifold' });
     if (id === 'lineSystem' || id === 'lineGlassShutters') { state.draftHandleOverrides = {}; }
+    if (id === 'lineGlassShutters') ensureCasementPanels();
     if (id === 'lineHandleLevel') updateHandleLevelLabel();
     if (id === 'lineFoldLeft' || id === 'lineFoldRight') { if ($('lineFoldPreset')) $('lineFoldPreset').value = 'custom'; }
     refreshPreview();

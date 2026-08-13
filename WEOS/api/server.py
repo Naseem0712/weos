@@ -109,6 +109,8 @@ class CalculateRequest(BaseModel):
 
 
 class CartLine(BaseModel):
+    model_config = {"extra": "allow"}
+
     lineId: str | None = None
     product: str = "29mm_sliding"
     width: float
@@ -141,9 +143,15 @@ class CartLine(BaseModel):
     handleName: str | None = None
     meshName: str | None = None
     powderCoatName: str | None = None
+    productType: str | None = None
+    casementPanels: list[dict[str, Any]] | None = None
+    shower: dict[str, Any] | None = None
+    options: dict[str, Any] | None = None
 
 
 class LivePriceRequest(BaseModel):
+    model_config = {"extra": "allow"}
+
     product: str = "29mm_sliding"
     width: float = 1440
     height: float = 1800
@@ -160,6 +168,12 @@ class LivePriceRequest(BaseModel):
     partitions: list[dict[str, Any]] | None = None
     mesh: bool | None = None
     trackCount: float | None = None
+    productType: str | None = None
+    system: str | None = None
+    handleOverrides: dict[str, Any] | None = None
+    casementPanels: list[dict[str, Any]] | None = None
+    shower: dict[str, Any] | None = None
+    options: dict[str, Any] | None = None
 
 
 class CustomerRateBody(BaseModel):
@@ -237,6 +251,8 @@ class ProjectCalculateOpts(BaseModel):
 
 
 class PreviewRequest(BaseModel):
+    model_config = {"extra": "allow"}
+
     product: str = "29mm_sliding"
     width: float = 1440
     height: float = 1800
@@ -263,10 +279,12 @@ class PreviewRequest(BaseModel):
     sectionSeries: str | None = None
     grid: Any = None
     railing: dict[str, Any] | None = None
+    shower: dict[str, Any] | None = None
     productType: str | None = None
     category: str | None = None
     panelFill: dict[str, Any] | None = None
     features: list[dict[str, Any]] | None = None
+    casementPanels: list[dict[str, Any]] | None = None
 
 
 class FormulaPreviewRequest(BaseModel):
@@ -835,6 +853,43 @@ def api_product_detail(product_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@app.post("/api/shower/quote")
+def api_shower_quote(body: dict[str, Any]) -> dict[str, Any]:
+    """Shower partition calculator + 2D elevation / floor-plan SVG."""
+    try:
+        from WEOS.factory.shower_engine import compute_shower, ensure_shower_dims, shower_svg
+
+        raw = dict(body or {})
+        cfg = ensure_shower_dims(
+            raw,
+            width=float(raw.get("width") or raw.get("widthMm") or 0) or None,
+            height=float(raw.get("height") or raw.get("heightMm") or 0) or None,
+        )
+        quote = compute_shower(cfg)
+        svg = shower_svg(cfg, quote=quote)
+        return {"quote": quote, "svg": svg}
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=400, detail=f"shower quote failed: {exc}") from exc
+
+
+@app.get("/api/finishes")
+def api_finishes(kind: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.finish_catalogue import cart_colour_options, list_finishes
+
+    return {"finishes": list_finishes(kind=kind), "options": cart_colour_options(), "count": len(list_finishes(kind=kind))}
+
+
+@app.post("/api/finishes")
+def api_finishes_save(body: dict[str, Any]) -> dict[str, Any]:
+    from WEOS.factory.finish_catalogue import save_finish
+
+    name = str(body.get("name") or body.get("label") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Colour name required")
+    rec = save_finish(name, kind=str(body.get("kind") or "powder_coat"), finish_id=body.get("id"))
+    return {"ok": True, "finish": rec}
+
+
 @app.post("/api/railing/quote")
 def api_railing_quote(body: dict[str, Any]) -> dict[str, Any]:
     """Railing calculator + 2D designer preview.
@@ -863,15 +918,48 @@ def api_railing_quote(body: dict[str, Any]) -> dict[str, Any]:
 def api_preview(body: PreviewRequest) -> dict[str, Any]:
     """Fast SVG preview for live cart — uses geometry engine only path via generate_job."""
     # Railing is not a window — never route it through generate_job.
-    from WEOS.factory.line_kind import is_railing_product_type, product_world
+    from WEOS.factory.line_kind import is_railing_product_type, is_shower_product_type, product_world
 
     prod = str(getattr(body, "product", "") or "").lower()
     rail_cfg = getattr(body, "railing", None)
+    shower_cfg = getattr(body, "shower", None)
     world = product_world(
         getattr(body, "productType", None),
         category=getattr(body, "category", None),
         product_id=prod,
     )
+    if (
+        world == "shower"
+        or is_shower_product_type(getattr(body, "productType", None))
+        or "shower" in prod
+        or isinstance(shower_cfg, dict)
+    ):
+        from WEOS.factory.shower_engine import compute_shower, ensure_shower_dims, shower_svg
+
+        cfg = ensure_shower_dims(
+            dict(shower_cfg or {}),
+            width=float(getattr(body, "width", 0) or 0) or None,
+            height=float(getattr(body, "height", 0) or 0) or None,
+        )
+        if getattr(body, "colour", None) and not cfg.get("colour"):
+            cfg["colour"] = body.colour
+        q = compute_shower(cfg)
+        return {
+            "svg": shower_svg(cfg, quote=q),
+            "system": "shower",
+            "productType": "shower_partition",
+            "shower": q,
+            "specifications": {
+                "type": f"{q.get('shape')} · {q.get('operation')}",
+                "size": f"{q.get('widthMm')}×{q.get('heightMm')} mm",
+                "glass": q.get("glassLabel"),
+                "colour": q.get("colour"),
+                "areaSqft": q.get("areaSqft"),
+                "sellingPerUnit": q.get("sellingPerUnit"),
+            },
+            "layout": {"system": "shower", "panels": q.get("panels") or [], "footprint": q.get("footprint"), "trackCount": None},
+            "sectionSpecs": {},
+        }
     if (
         world in ("railing", "staircase_railing")
         or is_railing_product_type(getattr(body, "productType", None))

@@ -282,10 +282,24 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
     # layout.kind uses fold_and_sliding
     if system_raw is None and str((layout or {}).get("kind") or "") == "fold_and_sliding":
         system_raw = "bifold"
+    if system_raw is None:
+        try:
+            from WEOS.factory.line_kind import normalize_product_type
+
+            pt = normalize_product_type(pick("productType") or line.get("productType"))
+            if pt == "casements":
+                system_raw = "casement"
+            elif pt == "fold":
+                system_raw = "bifold"
+            elif pt == "shower_partition":
+                system_raw = "shower"
+        except Exception:
+            pass
     system = str(system_raw or "sliding").strip().lower()
     is_bifold = system in ("bifold", "fold", "fold_sliding", "fold_and_sliding")
     is_casement = system in ("casement", "openable", "opening")
     is_grid = system == "grid"
+    is_shower = system in ("shower", "shower_partition")
     if is_bifold:
         resolved_system = "bifold"
     elif is_casement:
@@ -318,10 +332,10 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
 
     return {
         "partitions": normalize_partitions(partitions),
-        "mesh": shutter_cfg["mesh"] and not is_bifold and not is_casement,
-        "trackCount": None if is_bifold else track_count,
+        "mesh": shutter_cfg["mesh"] and not is_bifold and not is_casement and not is_shower,
+        "trackCount": None if (is_bifold or is_casement or is_shower) else track_count,
         "glassCount": shutter_cfg["glassCount"],
-        "meshCount": 0 if (is_bifold or is_casement) else shutter_cfg["meshCount"],
+        "meshCount": 0 if (is_bifold or is_casement or is_shower) else shutter_cfg["meshCount"],
         "opening": shutter_cfg["opening"],
         "fixedShutters": shutter_cfg["fixedShutters"],
         # Raw (1-based / string) fix value — pass THIS to generate_job so it
@@ -342,6 +356,8 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
         "grid": line.get("grid") or (opts or {}).get("grid") or (opts or {}).get("grille"),
         "panelFill": _panel_fill_from_pick(line, opts),
         "features": (opts or {}).get("features") if isinstance((opts or {}).get("features"), (list, dict)) else line.get("features"),
+        "casementPanels": pick("casementPanels", "panelRoles"),
+        "productType": pick("productType") or line.get("productType"),
     }
 
 

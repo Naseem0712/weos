@@ -822,9 +822,37 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     want_bottom = bool(install.get("bottomRail", shape != "staircase")) and shape != "staircase"
     want_block = bool(install.get("block", False))
     want_ss = bool(install.get("ssPillar", False) or install.get("ss_pillar", False))
+    want_studs = bool(install.get("studs", False) or install.get("stud", False))
     want_pillars = want_block or want_ss
     want_handrail = bool(install.get("handrail", cfg.get("handrail", shape != "straight")))
     want_glass = bool(install.get("glass", True))
+    # Exactly one bottom system on normal railings: continuous | block | ss_pillar | studs
+    bottom_kind = str(cfg.get("bottomKind") or "").strip().lower().replace(" ", "_")
+    _bk_alias = {
+        "continuous_rail": "continuous", "rail": "continuous", "u_channel": "continuous",
+        "aluminium_block": "block", "alu_block": "block",
+        "ss": "ss_pillar", "pillar": "ss_pillar", "sspillar": "ss_pillar",
+        "stud": "studs", "ss_stud": "studs", "ss_studs": "studs",
+    }
+    bottom_kind = _bk_alias.get(bottom_kind, bottom_kind)
+    if shape != "staircase":
+        if bottom_kind not in ("continuous", "block", "ss_pillar", "studs"):
+            if want_studs:
+                bottom_kind = "studs"
+            elif want_ss:
+                bottom_kind = "ss_pillar"
+            elif want_block:
+                bottom_kind = "block"
+            elif want_bottom or cfg.get("continuousRail"):
+                bottom_kind = "continuous"
+            else:
+                bottom_kind = "block"
+        want_bottom = bottom_kind == "continuous"
+        want_block = bottom_kind == "block"
+        want_ss = bottom_kind == "ss_pillar"
+        want_studs = bottom_kind == "studs"
+        want_pillars = want_block or want_ss
+        cfg["bottomKind"] = bottom_kind
     if want_ss and not want_block:
         cfg["pillarType"] = "ss"
     elif want_block and not str(cfg.get("pillarType") or "").lower().startswith("ss"):
@@ -834,10 +862,16 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     blocks_per_glass = max(_i(cfg.get("blocksPerGlass"), 0), 0)
     if not want_pillars:
         blocks_per_glass = 0
+    if want_studs:
+        blocks_per_glass = 0
+        want_pillars = False
+        want_bottom = False
     pillar_edge = _f(cfg.get("pillarEdgeMm"), PILLAR_EDGE_MM)
     handrail_on = want_handrail
     handrail_max = _f(cfg.get("handrailMaxMm"), DEFAULT_HANDRAIL_MAX_MM)
     continuous_rail = bool(cfg.get("continuousRail", blocks_per_glass == 0 or (want_bottom and not want_pillars)))
+    if shape != "staircase":
+        continuous_rail = want_bottom and not want_studs
     span_cfgs = _span_overrides(cfg)
 
     # Color system: global color applied to whole railing, or per-component overrides.
@@ -846,6 +880,7 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     component_colors = cfg.get("componentColors") if isinstance(cfg.get("componentColors"), Mapping) else {}
     glass_type = str(cfg.get("glassType") or cfg.get("glassColour") or cfg.get("glassColor") or "clear")
     glass_brand = str(cfg.get("glassBrand") or "")
+    hardware_brand = str(cfg.get("hardwareBrand") or cfg.get("brand") or "")
     glass_thickness = _f(cfg.get("glassThicknessMm"), 12.0)
 
     # ── per-segment glass / pillars ─────────────────────────────────────────
@@ -947,6 +982,10 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
 
     panel_count = len(all_panel_widths)
     panel_widths_in = [round(w / MM_PER_IN, 2) for w in all_panel_widths]
+    normal_studs = 0
+    if shape != "staircase" and want_studs:
+        studs_per_n = max(_i(cfg.get("studsPerGlass") or cfg.get("blocksPerGlass"), 2), 1)
+        normal_studs = panel_count * studs_per_n
 
     if shape == "staircase" and stair_panels:
         glass_area_sqmm = sum(_f(p.get("netGlassAreaSqMm")) for p in stair_panels)
@@ -1099,8 +1138,8 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     anchors_per_rft = _f(cfg.get("anchorsPerRft"), 0.0)
     include_base = bool(cfg.get("includeBaseAnchors", False))
     base_anchors = math.ceil(length_rft * anchors_per_rft) if (include_base and anchors_per_rft) else 0
-    anchor_count = pillar_anchors + base_anchors + stair_stud_anchors
-    if anchor_count == 0 and not pillar_count and shape != "staircase":
+    anchor_count = pillar_anchors + base_anchors + stair_stud_anchors + (normal_studs if want_studs else 0)
+    if anchor_count == 0 and not pillar_count and shape != "staircase" and not want_studs:
         anchor_count = math.ceil(length_rft * (anchors_per_rft or 1.0))
 
     rail_unit_len = width_unit
@@ -1209,12 +1248,19 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         if shape == "staircase":
             label = f"Side-mount pillars (every 3 steps · {pillar_type})"
         add("blocks", label, pillar_count, "pc", r_block, material=block_mat, color_role="block")
-    if stair_studs:
-        mount_lbl = "step-mount" if stair_mount == "step" else f"side-mount Ø{stud_size}"
+    stud_qty = stair_studs or (normal_studs if want_studs else 0)
+    if stud_qty:
+        if shape == "staircase":
+            mount_lbl = "step-mount" if stair_mount == "step" else f"side-mount Ø{stud_size}"
+            stud_lbl = f"SS studs · {mount_lbl} · {studs_per_glass or 2}/glass × {(len(stair_panels) if stair_panels else panels_cfg) or 1}"
+        else:
+            sz = _i(cfg.get("studSizeMm"), 38)
+            per = max(_i(cfg.get("studsPerGlass") or cfg.get("blocksPerGlass"), 2), 1)
+            stud_lbl = f"SS studs · Ø{sz} · {per}/glass × {panel_count}"
         add(
             "studs",
-            f"SS studs · {mount_lbl} · {studs_per_glass or 2}/glass × {(len(stair_panels) if stair_panels else panels_cfg) or 1}",
-            stair_studs,
+            stud_lbl,
+            stud_qty,
             "pc",
             r_stud or r_block,
             material=_mat_for("stud"),
@@ -1315,6 +1361,8 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         manual_rate = None
     selling_per_unit = manual_rate if manual_rate is not None else per_unit_rate
     selling_total = round(selling_per_unit * width_unit, 2) if width_unit else round(total, 2)
+    if extras_total:
+        selling_total = round(selling_total + extras_total, 2)
 
     # Customer-facing commercial (only final rate) vs internal breakdown
     commercial = {
@@ -1394,6 +1442,7 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "glassType": glass_type,
         "glassColour": glass_type,
         "glassBrand": glass_brand or None,
+        "hardwareBrand": hardware_brand or None,
         "installComponents": {
             "bottomRail": want_bottom,
             "block": want_block,
@@ -1433,13 +1482,13 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "pillarCount": pillar_count, "anchorsPerPillar": anchors_per_pillar,
         "anchorCount": anchor_count, "baseAnchorCount": base_anchors,
         "handrail": handrail_on, "wallConnectors": wall_connectors,
-        "bendCount": bend_count, "connector180Count": connector_180, "endCapCount": end_caps,
+        "bendCount": bend_count, "connector90Count": bend_count, "connector180Count": connector_180, "endCapCount": end_caps,
         "stairPillars": stair_pillars, "stairStuds": stair_studs,
         "stairStudAnchors": stair_stud_anchors, "studSizeMm": stud_size,
         "studsPerGlass": studs_per_glass if shape == "staircase" else None,
         "stairMountType": stair_mount if shape == "staircase" else None,
         "stairBottomType": str(cfg.get("stairBottomType") or ("ss" if want_ss else "block")) if shape == "staircase" else None,
-        "bottomKind": str(cfg.get("bottomKind") or ("continuous" if continuous_rail else ("ss_pillar" if want_ss else "block"))) if shape != "staircase" else None,
+        "bottomKind": str(cfg.get("bottomKind") or ("continuous" if continuous_rail else ("studs" if want_studs else ("ss_pillar" if want_ss else "block")))) if shape != "staircase" else None,
         "bottomSize": str(cfg.get("bottomSize") or "") or None,
         "handrailSize": str(cfg.get("handrailSize") or "") or None,
         "studStations": stud_stations,

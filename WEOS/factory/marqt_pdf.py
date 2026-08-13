@@ -329,51 +329,108 @@ def _spec_rows(line: Mapping[str, Any]) -> list[tuple[str, str]]:
             return
         rows.append((str(label or "").strip().upper(), v))
 
-    # ── Railing lines: full BOM / materials detail block ─────────────────────
+    # ── Railing lines: product → bottom → handrail → glass → hardware → qty → amount
     if _line_is_railing(line):
         rail_cfg, q = _railing_cfg_and_quote(line)
         shape = q.get("shape") or (rail_cfg or {}).get("shape") or "straight"
         color_mode = (rail_cfg or {}).get("colorMode") or "global"
-        sys_color = (rail_cfg or {}).get("systemColor") or ""
-        glass_bits = [
-            f"{q.get('glassThicknessMm') or (rail_cfg or {}).get('glassThicknessMm') or 12} mm",
-            (rail_cfg or {}).get("glassType") or q.get("glassType") or "",
-            (rail_cfg or {}).get("glassColour") or q.get("glassColour") or "",
-        ]
-        glass_bits = [str(b) for b in glass_bits if b]
+        sys_color = (rail_cfg or {}).get("systemColor") or q.get("systemColor") or ""
         from WEOS.factory.railing_engine import format_railing_description
 
         title = format_railing_description(q, rail_cfg)
         add("", title)
         add("TYPE", f"{shape} · Mount {(q.get('mountType') or (rail_cfg or {}).get('mountType') or 'side_mount')}")
         add("SIZE", f"{q.get('lengthMm') or w:g} × {q.get('heightMm') or h:g} mm")
-        add(
-            "PANELS",
-            f"{q.get('panelCount') or 0} · Gap {q.get('gapMm') or 12} mm",
-        )
-        glass_val = " · ".join(glass_bits) or "—"
+
+        bom = list(q.get("bomDetails") or q.get("items") or [])
+        def _bom(key: str) -> Mapping[str, Any] | None:
+            for it in bom:
+                if isinstance(it, Mapping) and str(it.get("key") or "") == key:
+                    return it
+            return None
+
+        bottom_kind = str(q.get("bottomKind") or (rail_cfg or {}).get("bottomKind") or "").lower()
+        if shape == "staircase":
+            sbt = q.get("stairBottomType") or (rail_cfg or {}).get("stairBottomType") or "block"
+            bottom_kind = "ss_pillar" if str(sbt).lower() in ("topiller", "ss", "ss_pillar") else "block"
+        kind_label = {
+            "continuous": "Continuous rail",
+            "block": "Aluminium block",
+            "ss_pillar": "SS pillars",
+            "studs": "SS studs",
+        }.get(bottom_kind, bottom_kind.replace("_", " ").title() or "Bottom")
+        b_item = _bom("bottomRail") or _bom("blocks") or _bom("studs")
+        b_bits = [kind_label]
+        if sys_color:
+            b_bits.append(f"color {sys_color}")
+        elif b_item and b_item.get("color"):
+            b_bits.append(f"color {b_item.get('color')}")
+        if b_item:
+            b_bits.append(f"qty {b_item.get('qty')} {b_item.get('unit') or ''}".strip())
+            if b_item.get("sizeMm"):
+                b_bits.append(f"size {b_item.get('sizeMm')}")
+        elif q.get("lengthRft"):
+            b_bits.append(f"len {q.get('lengthRft')} rft")
+        add("BOTTOM", " · ".join(str(x) for x in b_bits if x))
+
+        if q.get("handrail") or (rail_cfg or {}).get("handrail") or _bom("handrail"):
+            hr = _bom("handrail") or {}
+            hr_bits = [
+                str((rail_cfg or {}).get("handrailSize") or q.get("handrailSize") or hr.get("sizeMm") or "Handrail"),
+                f"color {hr.get('color') or sys_color or '—'}",
+                f"len {hr.get('qty') or q.get('lengthRft') or q.get('widthUnit') or 0} {hr.get('unit') or q.get('saleUnit') or 'rft'}",
+            ]
+            add("HANDRAIL", " · ".join(str(x) for x in hr_bits if x))
+
+        glass_bits = [
+            f"{q.get('glassThicknessMm') or (rail_cfg or {}).get('glassThicknessMm') or 12} mm",
+            (rail_cfg or {}).get("glassType") or q.get("glassType") or "",
+            (rail_cfg or {}).get("glassColour") or q.get("glassColour") or "",
+        ]
+        g_item = _bom("glass")
+        if g_item and g_item.get("sizeMm") and not any("mm" in str(b).lower() for b in glass_bits[1:]):
+            pass
+        glass_val = " · ".join(str(b) for b in glass_bits if b) or "—"
+        if q.get("panelWidthsMm"):
+            glass_val += f" · sizes {', '.join(f'{x:g}' for x in (q.get('panelWidthsMm') or [])[:8])} mm"
         glass_val += (
             f" · net {q.get('netGlassAreaSqFt') or q.get('glassAreaSqft') or 0} sft"
             f" · purchased {q.get('purchasedGlassAreaSqFt') or 0} sft"
             f" · wastage {q.get('wastagePercent') or 0}%"
         )
         add("GLASS", glass_val)
+
+        hw_brand = q.get("hardwareBrand") or (rail_cfg or {}).get("hardwareBrand") or ""
+        hw_bits = []
+        if hw_brand:
+            hw_bits.append(str(hw_brand))
+        hw_bits.append(f"anchors {q.get('anchorCount') or 0}")
+        if q.get("endCapCount") or (rail_cfg or {}).get("endCaps"):
+            hw_bits.append(f"end caps {q.get('endCapCount') or 0}")
+        if q.get("wallConnectors"):
+            hw_bits.append(f"wall connectors {q.get('wallConnectors')}")
+        n90 = q.get("connector90Count") or q.get("bendCount") or 0
+        n180 = q.get("connector180Count") or 0
+        if n90 or n180:
+            grade = ""
+            c90 = _bom("modularBend") or _bom("connector180") or {}
+            if c90.get("grade"):
+                grade = f" · {c90.get('grade')}"
+            hw_bits.append(f"90° {n90} / 180° {n180}{grade}")
+        add("HARDWARE", " · ".join(hw_bits) or "—")
+
+        sale_u = str(q.get("saleUnit") or line.get("saleUnit") or "rft").upper()
         add(
-            "HARDWARE",
-            f"RFT {q.get('lengthRft') or q.get('widthUnit') or 0}"
-            f" · Pillars/blocks {q.get('pillarCount') or 0}"
-            f" · Anchors {q.get('anchorCount') or 0}"
-            f" · Bends {q.get('bendCount') or 0}"
-            f" · End caps {q.get('endCapCount') or 0}"
-            f" · Wall connectors {q.get('wallConnectors') or 0}"
-            f" · 180° {q.get('connector180Count') or 0}",
+            "QTY",
+            f"Area {q.get('netGlassAreaSqFt') or q.get('glassAreaSqft') or 0} sft"
+            f" · {sale_u} {q.get('widthUnit') or q.get('lengthRft') or q.get('lengthRmt') or 0}"
+            f" · qty {line.get('qty') or 1}",
         )
-        add(
-            "COLOUR",
-            f"{sys_color or 'per-part'} ({color_mode})"
-            f" · Sale {q.get('sellingPerUnit') or line.get('sellingRate') or 0}"
-            f" / {str(q.get('saleUnit') or line.get('saleUnit') or 'rft').upper()}",
-        )
+        rate = q.get("sellingPerUnit") or line.get("sellingRate") or 0
+        amt = q.get("sellingTotal") or line.get("commercialTotal") or (line.get("selling") or {}).get("sellingAmount")
+        add("AMOUNT", f"{rate} / {sale_u} → {amt}")
+        add("COLOUR", f"{sys_color or 'per-part'} ({color_mode})")
+
         sg = q.get("stairGeometry") if isinstance(q.get("stairGeometry"), Mapping) else {}
         if shape == "staircase" or sg:
             add(
@@ -385,8 +442,7 @@ def _spec_rows(line: Mapping[str, Any]) -> list[tuple[str, str]]:
             )
             if sg.get("riseMismatch"):
                 add("NOTE", str(sg.get("riseMismatchMessage") or "Rise mismatch vs floor height"))
-        bom = q.get("bomDetails") or q.get("items") or []
-        for it in bom[:14]:
+        for it in bom[:10]:
             if not isinstance(it, Mapping):
                 continue
             bits = [
@@ -403,6 +459,66 @@ def _spec_rows(line: Mapping[str, Any]) -> list[tuple[str, str]]:
                 bits.append(str(it["mountType"]))
             bits.append(f"@ {it.get('rate')} = {it.get('amount')}")
             add("BOM", " · ".join(bits))
+        return rows
+
+    try:
+        from WEOS.factory.line_kind import is_shower_cart_line
+    except Exception:
+        is_shower_cart_line = lambda _l: False  # noqa: E731
+    if is_shower_cart_line(line):
+        opts_s = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+        cfg_s = opts_s.get("shower") if isinstance(opts_s, Mapping) else None
+        cfg_s = dict(cfg_s) if isinstance(cfg_s, Mapping) else {}
+        q = opts_s.get("showerQuote") if isinstance(opts_s, Mapping) else None
+        if not isinstance(q, Mapping):
+            q = line.get("shower") if isinstance(line.get("shower"), Mapping) else {}
+        if (not q or not q.get("panels")) and cfg_s:
+            try:
+                from WEOS.factory.shower_engine import compute_shower, ensure_shower_dims
+
+                q = compute_shower(ensure_shower_dims(cfg_s, width=w or None, height=h or None))
+            except Exception:
+                q = q if isinstance(q, Mapping) else {}
+        from WEOS.factory.shower_engine import format_shower_description
+
+        add("", format_shower_description(q, cfg_s))
+        add("TYPE", f"{q.get('shape') or 'straight'} · {q.get('operation') or 'sliding'}"
+            + (f" · 1+1 slide {(q.get('slidingSide') or 'right')}" if q.get("operation") == "sliding" else ""))
+        add("SIZE", f"{q.get('widthMm') or w:g} × {q.get('heightMm') or h:g} mm")
+        fp = q.get("footprint") if isinstance(q.get("footprint"), Mapping) else {}
+        if fp:
+            if fp.get("kind") == "L":
+                add("PLAN", f"L · front {fp.get('frontMm')} · return {fp.get('returnMm')} mm")
+            elif fp.get("kind") == "U":
+                add("PLAN", f"U · front {fp.get('frontMm')} · L {fp.get('leftMm')} · R {fp.get('rightMm')} mm")
+            else:
+                add("PLAN", f"Straight · {fp.get('frontMm')} mm")
+        panels_s = q.get("panels") or []
+        if panels_s:
+            add("PANELS", "; ".join(
+                f"{p.get('label') or p.get('role')} {p.get('widthMm')}×{p.get('heightMm')}"
+                for p in panels_s if isinstance(p, Mapping)
+            ))
+        add("PROFILE", f"{q.get('verticalProfile') or '16×45'} vert"
+            + (f" · {q.get('horizontalProfile')} horiz" if q.get("horizontalProfile") else "")
+            + (f" · chokhat {q.get('chokhat')}" if q.get("chokhat") else " · frameless"))
+        add("GLASS", q.get("glassLabel") or f"{q.get('glassThicknessMm') or ''} mm {q.get('glassColour') or ''}")
+        hw_s = []
+        if q.get("hardwareBrand"):
+            hw_s.append(str(q.get("hardwareBrand")))
+        if q.get("hardwareOrigin"):
+            hw_s.append(str(q.get("hardwareOrigin")))
+        if q.get("handle"):
+            hw_s.append(f"handle {q.get('handleName') or 'D-type'}")
+        hw_s.append(f"lock {'yes' if q.get('lock') else 'no'}")
+        if q.get("hingesPerDoor"):
+            hw_s.append(f"{q.get('hingeType') or 'butterfly'} ×{q.get('hingesPerDoor')}/door")
+        add("HARDWARE", " · ".join(hw_s))
+        add("COLOUR", str(q.get("colour") or line.get("colour") or "").replace("_", " "))
+        add("AREA", f"{q.get('areaSqft') or 0} Sq.Ft. · qty {line.get('qty') or q.get('qty') or 1}")
+        sale_u = str(q.get("saleUnit") or line.get("saleUnit") or "sqft").upper()
+        add("AMOUNT", f"{q.get('sellingPerUnit') or line.get('sellingRate') or 0} / {sale_u} → "
+            f"{q.get('sellingTotal') or line.get('commercialTotal') or 0}")
         return rows
 
     title = str(line.get("description") or line.get("displayName") or line.get("product") or "Window")
@@ -463,10 +579,26 @@ def _spec_rows(line: Mapping[str, Any]) -> list[tuple[str, str]]:
             role = str(p.get("label") or p.get("role") or "").title()
             pw = p.get("widthMm")
             ph = p.get("heightMm")
+            hs = p.get("handleSide") or ""
+            extra = f" · handle {str(hs)[0].upper()}" if hs and str(p.get("role") or "").lower() in ("openable", "casement") else ""
             if pw is not None and ph is not None:
-                panel_bits.append(f"{pid} {role} {pw:g}×{ph:g}")
+                panel_bits.append(f"{pid} {role} {pw:g}×{ph:g}{extra}")
+            else:
+                panel_bits.append(f"{pid} {role}{extra}")
         if panel_bits:
             add("PANELS", "; ".join(panel_bits))
+    else:
+        cpanels = opts.get("casementPanels") or line.get("casementPanels") or []
+        if isinstance(cpanels, (list, tuple)) and cpanels:
+            bits = []
+            for i, p in enumerate(cpanels):
+                if not isinstance(p, Mapping):
+                    continue
+                role = str(p.get("role") or "openable")
+                hs = str(p.get("handleSide") or p.get("handle") or "")
+                bits.append(f"P{i + 1} {role}" + (f" · handle {hs[0].upper()}" if hs and role != "fix" else ""))
+            if bits:
+                add("PANELS", "; ".join(bits))
     if weight is not None and float(weight or 0) > 0:
         add("WEIGHT", f"{weight} kg")
 
@@ -536,10 +668,11 @@ def _spec_rows(line: Mapping[str, Any]) -> list[tuple[str, str]]:
     if section.get("seriesTitle"):
         add("SERIES", section["seriesTitle"])
 
-    system = str((layout or {}).get("system") or opts.get("system") or "").lower()
+    system = str((layout or {}).get("system") or opts.get("system") or line.get("productType") or "").lower()
     is_bifold = system in ("bifold", "fold", "fold_sliding", "fold_and_sliding") or (
         str((layout or {}).get("kind") or "") == "fold_and_sliding"
     )
+    is_casement = system in ("casement", "openable", "opening", "casements")
     fl = (layout or {}).get("foldLeft")
     fr = (layout or {}).get("foldRight")
     if fl is None:
@@ -548,7 +681,7 @@ def _spec_rows(line: Mapping[str, Any]) -> list[tuple[str, str]]:
         fr = opts.get("foldRight")
 
     tc = layout.get("trackCount") if layout else None
-    if not is_bifold:
+    if not is_bifold and not is_casement:
         if tc and section.get("track"):
             add("TRACK", f"{section['track']} (using {float(tc):g}-track)")
         elif section.get("track"):
@@ -686,7 +819,7 @@ def _draw_spec_rows(
     set_font,
     font_size: float = 7.0,
     label_col: float = 72.0,
-    line_h: float = 9.0,
+    line_h: float = 10.0,
 ) -> float:
     """Draw aligned LABEL: / value columns; returns y after last line."""
     value_x = x + label_col
@@ -714,6 +847,7 @@ def _draw_spec_rows(
                 sy -= line_h
                 if i >= 2:
                     break
+            sy -= 3.5  # small heading-to-heading gap (not a wall of text)
     return sy
 
 
@@ -724,11 +858,12 @@ def _measure_spec_rows(
     max_width: float,
     font_size: float = 7.0,
     label_col: float = 72.0,
-    line_h: float = 9.0,
+    line_h: float = 10.0,
 ) -> float:
     """Estimate vertical space for tabular specs."""
     value_w = max(36.0, max_width - label_col)
     lines = 0
+    extra = 0.0
     for label, value in rows[:22]:
         if label:
             wrapped = _wrap_text(c, value, value_w, font_size) or [""]
@@ -736,7 +871,8 @@ def _measure_spec_rows(
         else:
             wrapped = _wrap_text(c, value, max_width, font_size, bold=True) or [""]
             lines += min(len(wrapped), 3)
-    return max(lines * line_h, 24.0)
+            extra += 3.5
+    return max(lines * line_h + extra, 24.0)
 
 
 def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) -> bytes:

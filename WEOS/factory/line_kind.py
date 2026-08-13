@@ -22,6 +22,7 @@ PRODUCT_TYPE_CHOICES: tuple[tuple[str, str], ...] = (
     ("fold", "Fold & sliding"),
     ("sliding", "Sliding"),
     ("style", "Style / slide door"),
+    ("shower_partition", "Shower partition"),
 )
 
 PRODUCT_TYPES = frozenset(k for k, _ in PRODUCT_TYPE_CHOICES)
@@ -38,6 +39,7 @@ CATEGORY_FOR_TYPE: dict[str, str] = {
     "fold": "Windows",
     "sliding": "Windows",
     "style": "Doors",
+    "shower_partition": "Bathrooms",
 }
 
 # Series-setup form types (aluminium window systems) — not used for railing worlds.
@@ -62,6 +64,9 @@ _RAILING_TYPE_ALIASES = {
     "fold_sliding": "fold",
     "telescopic_sliding": "telescopic",
     "style_slide_door": "style",
+    "shower": "shower_partition",
+    "shower_partitions": "shower_partition",
+    "bathroom_shower": "shower_partition",
 }
 
 
@@ -83,6 +88,8 @@ def normalize_product_type(raw: Any) -> str | None:
         return "pergolas"
     if "casement" in t or "openable" in t:
         return "casements"
+    if "shower" in t:
+        return "shower_partition"
     if "fold" in t or "bifold" in t:
         return "fold"
     if "sync" in t:
@@ -115,25 +122,88 @@ def is_staircase_product_type(product_type: Any) -> bool:
 
 
 def product_world(product_type: Any = None, *, category: Any = None, product_id: Any = None) -> str:
-    """High-level cart world: ``railing`` | ``staircase_railing`` | ``window`` | ``other``."""
+    """High-level cart world: railing / staircase / shower / window / other."""
     pt = normalize_product_type(product_type)
     if pt == "staircase_railing":
         return "staircase_railing"
     if pt == "railing":
         return "railing"
+    if pt == "shower_partition":
+        return "shower"
     cat = str(category or "").lower()
     if "stair" in cat and "rail" in cat:
         return "staircase_railing"
     if "rail" in cat:
         return "railing"
+    if "shower" in cat or "bathroom" in cat:
+        return "shower"
     pid = str(product_id or "").lower()
     if "stair" in pid and "rail" in pid:
         return "staircase_railing"
     if "rail" in pid:
         return "railing"
+    if "shower" in pid:
+        return "shower"
     if pt in PRODUCT_TYPES:
         return "window"
     return "other"
+
+
+def is_shower_product_type(product_type: Any) -> bool:
+    return normalize_product_type(product_type) == "shower_partition"
+
+
+def is_casement_product_type(product_type: Any) -> bool:
+    return normalize_product_type(product_type) == "casements"
+
+
+def product_has_tracks(product_type: Any = None, *, system: Any = None, category: Any = None) -> bool:
+    """True when the Track UI / trackCount belongs on this product.
+
+    Sliding, telescopic, synchron, style slide-doors, and fold systems use tracks.
+    Casement, railing, shower, pergola, ACP/HPL/louvers do not.
+    """
+    sys = str(system or "").strip().lower()
+    if sys in ("casement", "openable", "opening", "shower", "railing", "grid"):
+        return False
+    if sys in ("sliding", "telescopic", "synchron", "style", "bifold", "fold", "fold_sliding", "fold_and_sliding"):
+        return True
+    pt = normalize_product_type(product_type)
+    if pt in ("casements", "railing", "staircase_railing", "shower_partition", "pergolas"):
+        return False
+    if pt in ("sliding", "telescopic", "synchron", "style", "fold", "windows", "door"):
+        return True
+    cat = str(category or "").lower()
+    if any(x in cat for x in ("rail", "shower", "bathroom", "pergola", "facade", "acp", "hpl", "louver")):
+        return False
+    if "casement" in cat or "openable" in cat:
+        return False
+    if sys:
+        return "slid" in sys or "fold" in sys or "tele" in sys or "sync" in sys
+    return False
+
+
+def is_shower_cart_line(line: Mapping[str, Any] | None) -> bool:
+    """True when a cart line is a shower partition (own geometry, not window)."""
+    if not isinstance(line, Mapping):
+        return False
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    if isinstance(opts, Mapping):
+        if isinstance(opts.get("shower"), Mapping):
+            return True
+        if is_shower_product_type(opts.get("productType")):
+            return True
+    if isinstance(line.get("shower"), Mapping):
+        return True
+    if is_shower_product_type(line.get("productType")):
+        return True
+    cat = str(line.get("category") or "").lower()
+    if "shower" in cat:
+        return True
+    pid = str(line.get("product") or line.get("productId") or "").lower()
+    if "shower" in pid:
+        return True
+    return False
 
 
 def is_railing_cart_line(line: Mapping[str, Any] | None) -> bool:

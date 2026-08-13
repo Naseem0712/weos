@@ -73,9 +73,15 @@ def _persist_window_options(
         if not any(isinstance(f, Mapping) and str(f.get("type") or "") == "panel_fill" for f in feats):
             feats.append({"type": "panel_fill", **dict(pf)})
         options["features"] = feats
-    # Fold lines must never carry a sliding trackCount that prints as "2-track"
-    if str(options.get("system") or "").lower() in ("bifold", "fold", "fold_sliding", "fold_and_sliding"):
+    # Fold / casement / shower must never carry a sliding trackCount that prints as "2-track"
+    sys_l = str(options.get("system") or "").lower()
+    if sys_l in ("bifold", "fold", "fold_sliding", "fold_and_sliding", "casement", "openable", "opening", "shower"):
         options.pop("trackCount", None)
+    cp = lo.get("casementPanels") or line.get("casementPanels") or (_opts_in or {}).get("casementPanels")
+    if isinstance(cp, (list, tuple)) and cp:
+        options["casementPanels"] = list(cp)
+    if lo.get("productType") or line.get("productType"):
+        options["productType"] = lo.get("productType") or line.get("productType")
     return options
 
 
@@ -519,12 +525,118 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _is_shower_cart_line(line: Mapping[str, Any]) -> bool:
+    from WEOS.factory.line_kind import is_shower_cart_line
+
+    return is_shower_cart_line(line)
+
+
+def _shower_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
+    """Price a shower partition from designer config (unified canvas + PDF)."""
+    from WEOS.factory.shower_engine import (
+        compute_shower,
+        ensure_shower_dims,
+        format_shower_description,
+        shower_svg,
+    )
+
+    opts_in = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    cfg = (opts_in or {}).get("shower") if isinstance(opts_in, Mapping) else {}
+    cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
+    if not cfg and isinstance(line.get("shower"), Mapping):
+        cfg = dict(line.get("shower") or {})
+    cfg = ensure_shower_dims(
+        cfg,
+        width=float(line.get("width") or 0) or None,
+        height=float(line.get("height") or 0) or None,
+    )
+    if line.get("colour") and not cfg.get("colour"):
+        cfg["colour"] = line.get("colour")
+    if line.get("glass") and not cfg.get("glassLabel"):
+        cfg["glassLabel"] = str(line.get("glass")).replace("_", " ")
+    if line.get("saleUnit") and not cfg.get("saleUnit"):
+        cfg["saleUnit"] = line.get("saleUnit")
+    # Cart selling rate is the commercial override when the designer didn't set manual.
+    if cfg.get("manualRatePerUnit") in (None, "") and line.get("sellingRate") not in (None, ""):
+        cfg["sellingRate"] = line.get("sellingRate")
+    q = compute_shower(cfg)
+    qty = int(line.get("qty") or line.get("quantity") or 1)
+    unit_total = float(q.get("sellingTotal") or 0.0)
+    # compute_shower already multiplies qty when saleUnit=opening; for sqft it uses area×qty.
+    if int(q.get("qty") or 1) == 1 and qty > 1 and str(q.get("saleUnit") or "sqft") == "sqft":
+        unit_total = round(float(q.get("sellingPerUnit") or 0) * float(q.get("areaSqft") or 0) * qty, 2)
+    subtotal = round(unit_total, 2)
+    sale_unit = str(q.get("saleUnit") or line.get("saleUnit") or "sqft").lower()
+    svg = shower_svg(cfg, quote=q)
+    description = format_shower_description(q, cfg)
+    opts_out = {
+        "shower": cfg,
+        "showerQuote": q,
+        "productType": "shower_partition",
+        "colour": q.get("colour") or line.get("colour"),
+        "glass": cfg.get("glassLabel") or line.get("glass"),
+    }
+    selling = {
+        "saleUnit": sale_unit,
+        "saleUnitLabel": f"Per {sale_unit.upper()}",
+        "sellingRate": float(q.get("sellingPerUnit") or 0.0),
+        "billableQty": float(q.get("billableQty") or q.get("areaSqft") or qty),
+        "sellingAmount": subtotal,
+        "qty": qty,
+    }
+    return {
+        "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
+        "product": str(line.get("product") or line.get("productId") or "shower_partition"),
+        "productType": "shower_partition",
+        "displayName": str(line.get("displayName") or "Shower Partition"),
+        "category": "Bathrooms",
+        "status": "shower",
+        "description": description,
+        "width": float(line.get("width") or q.get("widthMm") or 0),
+        "height": float(line.get("height") or q.get("heightMm") or 0),
+        "qty": qty,
+        "saleUnit": sale_unit,
+        "sellingRate": float(q.get("sellingPerUnit") or 0.0),
+        "selling": selling,
+        "commercialTotal": subtotal,
+        "shower": q,
+        "options": opts_out,
+        "sectionSeries": None,
+        "sectionSpecs": {},
+        "sectionDetails": [],
+        "layout": {"system": "shower", "kind": "shower_partition", "panels": q.get("panels") or [],
+                   "footprint": q.get("footprint"), "trackCount": None},
+        "specifications": {},
+        "glass": [{"spec": q.get("glassLabel"), "thicknessMm": q.get("glassThicknessMm"),
+                   "colour": q.get("glassColour"), "qty": 1}],
+        "hardware": q.get("items") or [],
+        "materials": [],
+        "brush": {"totalMeters": 0, "pieces": []},
+        "trackRail": [],
+        "cutList": [],
+        "bom": q.get("items") or [],
+        "weight": {"aluminiumKg": 0, "glassKg": 0, "hardwareKg": 0, "totalKg": 0},
+        "price": {
+            "currency": "INR",
+            "unitRate": float(q.get("sellingPerUnit") or 0.0),
+            "unitTotal": round(float(q.get("sellingPerUnit") or 0) * float(q.get("areaSqft") or 0), 2),
+            "subtotal": subtotal,
+            "markupPercent": 0,
+            "gstPercent": 0,
+            "total": subtotal,
+            "saleUnit": sale_unit,
+        },
+        "preview": {"svg": svg},
+        "note": "Shower partition — selling rate × billed unit (sft/opening).",
+    }
+
+
 def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
     """Calculate one cart line (product × size × qty × options)."""
     from WEOS.factory.live_pricing import apply_selling_to_line_result
 
     from WEOS.factory.layout_options import line_layout_options
-    from WEOS.factory.line_kind import is_railing_product_type, product_world
+    from WEOS.factory.line_kind import is_railing_product_type, is_shower_product_type, product_world
 
     product_id = str(line.get("product") or line.get("productId") or "29mm_sliding")
     # Railing lines are self-priced from their designer config.
@@ -534,6 +646,12 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
         except Exception as exc:  # pragma: no cover - keep the quote rendering
             _log.exception("railing line calc failed: %s", exc)
             return _error_line_result(line, f"railing calc failed: {exc}")
+    if _is_shower_cart_line(line):
+        try:
+            return _shower_line_result(line)
+        except Exception as exc:  # pragma: no cover
+            _log.exception("shower line calc failed: %s", exc)
+            return _error_line_result(line, f"shower calc failed: {exc}")
     product = load_product(product_id, strict=False)
     # Product Library type lock: even without options.railing yet, never run window geometry.
     world = product_world(
@@ -541,6 +659,15 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
         category=line.get("category") or product.get("category"),
         product_id=product_id,
     )
+    if world == "shower" or is_shower_product_type(product.get("productType")):
+        enriched = dict(line) if isinstance(line, Mapping) else {}
+        enriched.setdefault("productType", "shower_partition")
+        enriched.setdefault("category", product.get("category") or "Bathrooms")
+        try:
+            return _shower_line_result(enriched)
+        except Exception as exc:  # pragma: no cover
+            _log.exception("shower line calc failed: %s", exc)
+            return _error_line_result(enriched, f"shower calc failed: {exc}")
     if world in ("railing", "staircase_railing") or is_railing_product_type(product.get("productType")):
         enriched = dict(line) if isinstance(line, Mapping) else {}
         enriched.setdefault("productType", product.get("productType") or world)

@@ -327,6 +327,14 @@ def _starter_glass_specs() -> list[dict[str, Any]]:
                 "name": f"{thk:g}mm {colour.title()} Toughened",
                 "id": f"{int(thk)}mm_{colour}_toughened",
             })
+    # Fluted toughened (shower + custom)
+    for colour in ("clear", "grey", "brown"):
+        for thk in (5.0, 8.0):
+            starters.append({
+                "makeup": "single", "thicknessMm": thk, "colour": colour, "toughened": True,
+                "name": f"{thk:g}mm Fluted {colour.title()} Toughened",
+                "id": f"fluted_{int(thk)}_{colour}_tuff",
+            })
     # Laminated safety
     for overall, g1, pvb, g2, oid, label in (
         (11.52, 5.0, 1.52, 5.0, "lam_5_152_5", "Laminated 5+1.52+5"),

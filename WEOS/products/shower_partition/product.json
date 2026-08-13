@@ -1,0 +1,79 @@
+{
+  "id": "shower_partition",
+  "displayName": "Shower Partition",
+  "productType": "shower_partition",
+  "category": "Bathrooms",
+  "units": "mm",
+  "version": 1,
+  "status": "active",
+  "description": "Straight / L / U shower partitions — sliding 1+1 (fix + slide) or hinged. Designs on the live canvas and prints in the customer PDF.",
+  "tagline": "Shower partitions · slim 16×45 · gallery defaults overridable",
+  "warranty": "1 year",
+  "heroImage": "/static/products/placeholder.svg",
+  "gallery": ["/static/products/placeholder.svg"],
+  "specifications": {
+    "saleUnit": "sqft",
+    "verticalProfile": "16×45 mm slim",
+    "horizontalProfile": "16×45 mm (sliding only)",
+    "chokhat": "22×50 mm",
+    "giConnectorsPerDoor": 4,
+    "handleDefault": "D-type",
+    "hingeType": "butterfly",
+    "hingesPerDoor": 3,
+    "colours": ["matt_black", "brush_gold", "gold", "grey", "rose_gold"],
+    "glass": ["fluted 5/8 tuff", "tinted 5/6/8/10 tuff"]
+  },
+  "setup": {
+    "type": "shower",
+    "profiles": {
+      "vertical": "16x45",
+      "horizontal": "16x45",
+      "chokhat": "22x50"
+    },
+    "hardware": {
+      "giConnectorsPerDoor": 4,
+      "handleDefault": "D-type",
+      "handleOptional": true,
+      "lockOptional": true,
+      "hingesPerDoor": 3,
+      "hingeType": "butterfly",
+      "hingeMin": 2,
+      "hingeMax": 6
+    },
+    "colours": ["matt_black", "brush_gold", "gold", "grey", "rose_gold"],
+    "slidingFormat": "1+1"
+  },
+  "formulas": {
+    "areaSqft": "AreaSqft",
+    "lengthRft": "LengthRft"
+  },
+  "materials": [
+    {
+      "id": "vert_16x45",
+      "name": "Vertical slim 16×45",
+      "category": "profile",
+      "unit": "RFT",
+      "quantityFormula": "LengthRft",
+      "unitRate": 180,
+      "remarks": "On fix, sliding and openable — overridable in gallery"
+    },
+    {
+      "id": "horiz_16x45",
+      "name": "Top/bottom 16×45 (sliding)",
+      "category": "profile",
+      "unit": "RFT",
+      "quantityFormula": "LengthRft",
+      "unitRate": 160,
+      "remarks": "Sliding only"
+    },
+    {
+      "id": "gi_connector",
+      "name": "GI connector",
+      "category": "hardware",
+      "unit": "PC",
+      "quantityFormula": "4",
+      "unitRate": 35,
+      "remarks": "4 per door default"
+    }
+  ]
+}

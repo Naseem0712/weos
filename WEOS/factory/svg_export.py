@@ -921,7 +921,35 @@ def render_svg_string(
 
 def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> str | None:
     """Build quote/canvas SVG for a cart line from the same geometry engine as live preview."""
-    from WEOS.factory.line_kind import is_railing_cart_line
+    from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line
+
+    if is_shower_cart_line(line):
+        opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+        cfg = opts.get("shower") if isinstance(opts, Mapping) else None
+        cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
+        if not cfg and isinstance(line.get("shower"), Mapping):
+            cfg = dict(line.get("shower") or {})
+        try:
+            from WEOS.factory.shower_engine import compute_shower, ensure_shower_dims, shower_svg
+
+            cfg = ensure_shower_dims(
+                cfg,
+                width=float(line.get("width") or 0) or None,
+                height=float(line.get("height") or 0) or None,
+            )
+            q = opts.get("showerQuote") if isinstance(opts, Mapping) else None
+            if not isinstance(q, Mapping):
+                q = line.get("shower") if isinstance(line.get("shower"), Mapping) else None
+            if not isinstance(q, Mapping) or not q.get("panels"):
+                q = compute_shower(cfg)
+            svg = shower_svg(cfg, quote=q if isinstance(q, Mapping) else None)
+            if svg:
+                return str(svg)
+        except Exception:
+            pass
+        prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
+        svg = (prev or {}).get("svg")
+        return str(svg) if svg else None
 
     # Railing lines must NEVER call window generate_job (that printed windows on quotes).
     if is_railing_cart_line(line):
@@ -1065,6 +1093,7 @@ def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[
                 continue
             s_idx += 1
             fixed = not bool(s.get("operable", True))
+            hs = str(s.get("handleSide") or s.get("handle_side") or "").lower()
             if is_bifold:
                 pack = str(s.get("pack") or "").strip().lower()
                 if pack.startswith("r"):
@@ -1073,18 +1102,27 @@ def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[
                 else:
                     n = sum(1 for p in panels if str(p.get("id") or "").startswith("L")) + 1
                     role, label, pid = "leaf", "Fold (L)", f"L{n}"
+            elif system == "casement":
+                if fixed:
+                    role, label, pid = "fix", "Fix", f"S{s_idx}"
+                else:
+                    side_lbl = "L" if hs == "left" else ("R" if hs == "right" else "—")
+                    role, label, pid = "openable", f"Openable · handle {side_lbl}", f"S{s_idx}"
             elif fixed:
                 role, label, pid = "fix", "Fix (locked sash)", f"S{s_idx}"
             else:
                 role, label, pid = "sliding", "Sliding", f"S{s_idx}"
             panels.append(
                 {
-                    "id": pid, "role": role, "side": s.get("track") or s.get("pack"), "label": label,
+                    "id": pid, "role": role, "side": s.get("track") or s.get("pack") or hs or None,
+                    "label": label,
                     "track": s.get("track"), "depth": s.get("depth"), "pack": s.get("pack"),
                     "widthMm": round(float(s.get("widthMm") or 0), 1), "heightMm": round(shutter_h, 1),
                     "glassWidthMm": round(float(s.get("glassWidthMm") or 0), 1),
                     "glassHeightMm": round(float(s.get("glassHeightMm") or 0), 1),
                     "handle": bool(s.get("handle")),
+                    "handleSide": hs or None,
+                    "operable": not fixed,
                 }
             )
     else:
@@ -1108,6 +1146,8 @@ def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[
             clean_meta[k] = v
     if is_bifold:
         kind = "fold_and_sliding"
+    elif system == "casement":
+        kind = "casement"
     elif meta.get("partitions"):
         kind = "sliding_with_partitions"
     else:
@@ -1117,7 +1157,7 @@ def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[
         tc_val = float(tc_raw) if tc_raw is not None else None
     except (TypeError, ValueError):
         tc_val = None
-    if is_bifold:
+    if is_bifold or system == "casement":
         tc_val = None
     elif tc_val is None:
         tc_val = 2.0

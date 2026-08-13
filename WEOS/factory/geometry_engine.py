@@ -213,10 +213,14 @@ def _build_shutters(
                 xb = nom_x1 + overlap
         outer = Rect(xa, y0, xb, y1)
         glass = outer.inset(fw, fw, fw, fw)
-        is_fixed = i in fixed_set
-        operable = not is_fixed
-
         ov_cfg = overrides.get(i) or {}
+        role = str(ov_cfg.get("role") or "").strip().lower()
+        is_fixed = i in fixed_set
+        if role in ("fix", "fixed"):
+            is_fixed = True
+        elif role in ("openable", "open", "casement", "hinged"):
+            is_fixed = False
+        operable = not is_fixed
         handle_side = ov_cfg.get("side") if "side" in ov_cfg else default_handle_side(i, operable)
         x_frac = ov_cfg.get("x")
         try:

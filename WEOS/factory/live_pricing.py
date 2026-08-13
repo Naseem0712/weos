@@ -18,6 +18,8 @@ SALE_UNITS: dict[str, dict[str, str]] = {
     "sqm": {"label": "Per Sq.M.", "short": "₹/m²"},
     "opening": {"label": "Per Opening", "short": "₹/nos"},
     "rft": {"label": "Per Running Ft", "short": "₹/rft"},
+    "rmt": {"label": "Per Running M", "short": "₹/rmt"},
+    "pc": {"label": "Per Piece", "short": "₹/pc"},
 }
 
 
@@ -62,9 +64,12 @@ def default_sale_unit(product: Mapping[str, Any] | None = None) -> str:
         "m²": "sqm",
         "nos": "opening",
         "pcs": "opening",
+        "pc": "pc",
         "each": "opening",
         "running_ft": "rft",
         "rft": "rft",
+        "rmt": "rmt",
+        "running_m": "rmt",
     }
     return aliases.get(key, key if key in SALE_UNITS else "sqft")
 
@@ -90,6 +95,10 @@ def sell_amount(
         billable = metrics["areaSqm"] * q
     elif unit == "rft":
         billable = metrics["perimeterFt"] * q
+    elif unit == "rmt":
+        billable = metrics["perimeterM"] * q
+    elif unit == "pc":
+        billable = float(q)
     else:  # opening
         billable = float(q)
 
@@ -116,22 +125,15 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
     height = float(line.get("height") or 0)
     qty = int(line.get("qty") or line.get("quantity") or 1)
 
-    calc = calculate_line(
-        {
-            "product": product_id,
-            "width": width,
-            "height": height,
-            "qty": qty,
-            "glass": line.get("glass") or "5mm_clear",
-            "colour": line.get("colour") or "white",
-            "handle": line.get("handle") or "standard",
-            "sectionSeries": line.get("sectionSeries"),
-            "partitions": line.get("partitions"),
-            "mesh": line.get("mesh"),
-            "trackCount": line.get("trackCount"),
-            "lineId": line.get("lineId"),
-        }
-    )
+    payload = dict(line) if isinstance(line, Mapping) else {}
+    payload.setdefault("product", product_id)
+    payload.setdefault("width", width)
+    payload.setdefault("height", height)
+    payload.setdefault("qty", qty)
+    payload.setdefault("glass", line.get("glass") or "5mm_clear")
+    payload.setdefault("colour", line.get("colour") or "white")
+    payload.setdefault("handle", line.get("handle") or "standard")
+    calc = calculate_line(payload)
 
     cost_total = float((calc.get("price") or {}).get("total") or 0)
     cost_unit = float((calc.get("price") or {}).get("unitTotal") or (cost_total / max(qty, 1)))
@@ -211,11 +213,14 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
 
 def apply_selling_to_line_result(result: dict[str, Any], line: Mapping[str, Any]) -> dict[str, Any]:
     """Attach commercial selling fields onto a calculate_line result."""
-    from WEOS.factory.line_kind import is_railing_cart_line
+    from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line
 
-    # Railing lines already carry commercial totals from the designer — do not
+    # Railing / shower lines already carry commercial totals from the designer — do not
     # attach window sectionSpecs / series metadata or reprice via sqft sell_amount.
-    if is_railing_cart_line(result) or is_railing_cart_line(line):
+    if (
+        is_railing_cart_line(result) or is_railing_cart_line(line)
+        or is_shower_cart_line(result) or is_shower_cart_line(line)
+    ):
         out = dict(result)
         out.setdefault("sectionSeries", None)
         out.setdefault("sectionSpecs", {})

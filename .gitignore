@@ -46,7 +46,6 @@ _pdf_preview/
 _smoke_*.pdf
 _smoke_unify.py
 deta windows.xlsx
-WEOS/_smoke_upgrade.py
 _dbg.py
 _diag.py
 _diag2.py
