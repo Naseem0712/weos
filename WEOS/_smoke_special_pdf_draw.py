@@ -12,6 +12,11 @@ from WEOS.factory.project_engine import calculate_line
 from WEOS.factory.railing_engine import compute_railing
 from WEOS.factory.shower_engine import compute_shower
 from WEOS.factory.svg_export import elevation_svg_for_line
+from WEOS.factory.ventilator_engine import compute_ventilator
+
+
+def _has_drawing(pdf_bytes: bytes) -> bool:
+    return b"/Image" in pdf_bytes or b"IDAT" in pdf_bytes or b" re\n" in pdf_bytes or b" m\n" in pdf_bytes
 
 
 def _ok(cond: bool, msg: str, fails: list[str]) -> None:
@@ -144,7 +149,9 @@ def main() -> int:
     _ok("<svg" in rail_svg.lower(), "railing canvas SVG", fails)
     _ok(ok_draw, "railing draw_line_elevation returned True", fails)
     _ok(b"Railing design" not in pdf_cell, "no grey placeholder text in railing cell", fails)
-    _ok(b"/Image" in pdf_cell or b"IDAT" in pdf_cell, "railing cell embeds canvas PNG", fails)
+    _ok(_has_drawing(pdf_cell), "railing cell has PNG or ReportLab drawing", fails)
+    prev_svg = (calc_rail.get("preview") or {}).get("svg") or ""
+    _ok("<svg" in str(prev_svg).lower(), "include_preview=False still emits railing SVG", fails)
     _ok(pdf_cell.startswith(b"%PDF") or b"PDF" in pdf_cell[:20] or len(pdf_cell) > 200, f"cell pdf bytes {len(pdf_cell)}", fails)
 
     # 3) Shower L hinged draw
@@ -170,7 +177,7 @@ def main() -> int:
     c2.save()
     pdf_sh = buf2.getvalue()
     _ok(ok_sh, "shower draw_line_elevation returned True", fails)
-    _ok(b"/Image" in pdf_sh or b"IDAT" in pdf_sh, "shower cell embeds canvas PNG", fails)
+    _ok(_has_drawing(pdf_sh), "shower cell has PNG or ReportLab drawing", fails)
     sh_amt = customer_line_amount(sh_line) or customer_line_amount(calc_sh) or 0
     _ok(sh_amt > 0, f"shower live amount {sh_amt}", fails)
 
@@ -194,7 +201,42 @@ def main() -> int:
     ok_slide = draw_line_elevation(c3, slide_line, 20, 80, 200, 210)
     c3.save()
     _ok(ok_slide, "straight sliding shower PDF cell drew", fails)
-    _ok(b"/Image" in buf3.getvalue() or b"IDAT" in buf3.getvalue(), "sliding shower PNG not schematic", fails)
+    _ok(_has_drawing(buf3.getvalue()), "sliding shower has real drawing", fails)
+
+    # Staircase railing + bathroom ventilator
+    stair_cfg = {
+        "shape": "staircase", "lengthMm": 2800, "heightMm": 900, "steps": 12,
+        "stairBottomType": "block", "handrail": True, "saleUnit": "rft", "manualRatePerUnit": 2100,
+    }
+    stair_line = calculate_line({
+        "product": "staircase_railing", "productType": "staircase_railing",
+        "width": 2800, "height": 900, "qty": 1, "sellingRate": 2100, "saleUnit": "rft",
+        "options": {"railing": stair_cfg, "railingQuote": compute_railing(stair_cfg)},
+    }, include_preview=False)
+    buf_st = io.BytesIO()
+    cst = rl_canvas.Canvas(buf_st, pagesize=(400, 500))
+    ok_st = draw_line_elevation(cst, stair_line, 20, 80, 200, 210)
+    cst.save()
+    _ok(ok_st, "staircase railing draw_line_elevation True", fails)
+    _ok(_has_drawing(buf_st.getvalue()), "staircase railing DESIGN drawing", fails)
+
+    vent_cfg = {
+        "widthMm": 600, "heightMm": 450, "mode": "split", "louversFill": "louvers",
+        "remainFill": "top_hung", "exhaust": True, "sellingRate": 420,
+    }
+    vent_line = calculate_line({
+        "product": "bathroom_ventilator", "productType": "bathroom_ventilator",
+        "width": 600, "height": 450, "qty": 1, "sellingRate": 420, "saleUnit": "sqft",
+        "options": {"ventilator": vent_cfg, "ventilatorQuote": compute_ventilator(vent_cfg)},
+    }, include_preview=False)
+    vent_svg = elevation_svg_for_line(vent_line) or ""
+    _ok('data-model-system="ventilator"' in vent_svg, "ventilator canvas SVG", fails)
+    buf_v = io.BytesIO()
+    cv = rl_canvas.Canvas(buf_v, pagesize=(400, 500))
+    ok_v = draw_line_elevation(cv, vent_line, 20, 80, 200, 210)
+    cv.save()
+    _ok(ok_v, "ventilator draw_line_elevation True", fails)
+    _ok(_has_drawing(buf_v.getvalue()), "ventilator DESIGN drawing", fails)
 
     # 4) 15-line mixed quote PDF speed
     lines = [_win(i) for i in range(11)]
@@ -231,6 +273,28 @@ def main() -> int:
     _ok(b"Railing design" not in pdf, "full quote has no railing placeholder", fails)
     _ok(pdf_s < 8.0, f"15-line PDF {pdf_s:.2f}s (target <8s)", fails)
     print(f"OK mixed quote PDF {pdf_s:.2f}s · {len(pdf)} bytes")
+
+    # 5) ~50 window lines (~20+ PDF pages) — stable, same line count, no hang
+    big_lines = [_win(i) for i in range(50)] + [calc_rail, calc_sh, vent_line, stair_line]
+    _ok(len(big_lines) == 54, f"54 mixed lines got {len(big_lines)}", fails)
+    t1 = time.perf_counter()
+    pdf_big = render_marqt_pdf(
+        {"branding": {"companyName": "BIG CO", "primaryColor": [0.1, 0.2, 0.3]}},
+        {"quotationId": "QT-BIG-54", "customer": "Big", "lines": big_lines, "price": {"total": 1}},
+    )
+    big_s = time.perf_counter() - t1
+    _ok(pdf_big.startswith(b"%PDF"), "50+ line PDF bytes", fails)
+    _ok(len(pdf_big) > 40000, f"50+ line PDF not stub ({len(pdf_big)} bytes)", fails)
+    _ok(b"Railing design" not in pdf_big, "large quote has no railing placeholder", fails)
+    _ok(big_s < 45.0, f"54-line PDF {big_s:.2f}s (target <45s)", fails)
+    try:
+        from pypdf import PdfReader
+
+        n_pages = len(PdfReader(io.BytesIO(pdf_big)).pages)
+        _ok(n_pages >= 15, f"54-line PDF pages {n_pages} (expect 15+)", fails)
+        print(f"OK large quote PDF {big_s:.2f}s · {len(pdf_big)} bytes · {n_pages} pages")
+    except Exception:
+        print(f"OK large quote PDF {big_s:.2f}s · {len(pdf_big)} bytes (page count skipped)")
 
     if fails:
         print("FAIL:", "; ".join(fails))

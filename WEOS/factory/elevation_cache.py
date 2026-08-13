@@ -27,7 +27,7 @@ _PNG_CACHE: dict[str, bytes] = {}
 _MAX = 96
 
 # A4 design cell is ~200×210 pt — 1.4–1.6× SVG scale is enough locally.
-PDF_PNG_SCALE = 1.45
+PDF_PNG_SCALE = 1.0
 # Excel drawing column is ~118×78 px display — tiny thumbnail is enough.
 XLSX_PNG_SCALE = 0.55
 XLSX_MAX_PX = 220
@@ -76,7 +76,7 @@ def line_export_fingerprint(line: Mapping[str, Any] | None, *, extra: str = "") 
             }
             if isinstance(rail, Mapping)
             else None,
-            "slim": "canvas-print-v3",
+            "slim": "canvas-print-v4",
             "svgLen": len(svg),
             "svgHead": svg[:240],
         }
@@ -200,6 +200,13 @@ def png_for_line(
         if not png:
             # Pixel-normalized SVG is small enough for svglib when Cairo is missing.
             png = svg_to_png_bytes(str(svg), scale=1.0, allow_slow=True, max_px=900)
+        try:
+            from WEOS.factory.image_engine import png_has_ink
+
+            if png and not png_has_ink(png):
+                png = None
+        except Exception:
+            pass
     except Exception:
         _log.debug("svg rasterize skipped", exc_info=True)
         png = None

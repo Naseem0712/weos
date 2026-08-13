@@ -1,7 +1,8 @@
 """Project engine — multi-line cart calculate + combine + optimize.
 
 Single calc gate: ``line_world`` → railing / shower / ventilator / window.
-Preview SVG is optional (``include_preview``); PDF export keeps it False.
+Preview SVG: windows skip ``generate_job`` when ``include_preview=False`` (PDF).
+Railing / shower / ventilator still emit canvas SVG if the cart did not send one.
 """
 
 from __future__ import annotations
@@ -14,6 +15,37 @@ from typing import Any, Mapping
 from WEOS.factory.optimize_engine import CutPiece, GlassPiece, optimize_project_materials
 
 _log = logging.getLogger("weos.project_engine")
+
+
+def _existing_preview_svg(line: Mapping[str, Any] | None) -> str:
+    """Live-canvas SVG already on the cart line, if any."""
+    if not isinstance(line, Mapping):
+        return ""
+    prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
+    svg = str((prev or {}).get("svg") or (prev or {}).get("pdfSvg") or "").strip()
+    return svg if svg and "<svg" in svg.lower() else ""
+
+
+def _special_line_preview_svg(line: Mapping[str, Any], *, include_preview: bool, builder) -> str:
+    """Keep cart canvas SVG; PDF still builds railing/shower/vent if missing.
+
+    Window ``generate_job`` stays skipped when ``include_preview`` is False.
+    Designer SVG is cheap string geometry and Quote PDF DESIGN needs it.
+    """
+    if include_preview:
+        try:
+            return str(builder() or "") or _existing_preview_svg(line)
+        except Exception:
+            return _existing_preview_svg(line)
+    kept = _existing_preview_svg(line)
+    if kept:
+        return kept
+    try:
+        return str(builder() or "")
+    except Exception:
+        return ""
+
+
 from WEOS.factory.line_kind import is_railing_cart_line as _is_railing_cart_line  # noqa: F401 — smoke import
 from WEOS.factory.line_kind import line_world as _line_world
 from WEOS.factory.line_kind import quote_qty_breakdown as _quote_qty_breakdown
@@ -486,7 +518,9 @@ def _railing_line_result(line: Mapping[str, Any], *, include_preview: bool = Tru
             "saleUnit": sale_unit,
         },
     }
-    svg = railing_svg(cfg, quote=q) if include_preview else ""
+    svg = _special_line_preview_svg(
+        line, include_preview=include_preview, builder=lambda: railing_svg(cfg, quote=q)
+    )
     selling = {
         "saleUnit": sale_unit,
         "saleUnitLabel": f"Per {sale_unit.upper()}",
@@ -585,7 +619,9 @@ def _shower_line_result(line: Mapping[str, Any], *, include_preview: bool = True
         unit_total = round(float(q.get("sellingPerUnit") or 0) * float(q.get("areaSqft") or 0) * qty, 2)
     subtotal = round(unit_total, 2)
     sale_unit = str(q.get("saleUnit") or line.get("saleUnit") or "sqft").lower()
-    svg = shower_svg(cfg, quote=q) if include_preview else ""
+    svg = _special_line_preview_svg(
+        line, include_preview=include_preview, builder=lambda: shower_svg(cfg, quote=q)
+    )
     description = format_shower_description(q, cfg)
     opts_out = {
         "shower": cfg,
@@ -684,7 +720,9 @@ def _ventilator_line_result(line: Mapping[str, Any], *, include_preview: bool = 
         unit_total = round(float(q.get("sellingPerUnit") or 0) * float(q.get("areaSqft") or 0) * qty, 2)
     subtotal = round(unit_total, 2)
     sale_unit = str(q.get("saleUnit") or line.get("saleUnit") or "sqft").lower()
-    svg = ventilator_svg(cfg, quote=q) if include_preview else ""
+    svg = _special_line_preview_svg(
+        line, include_preview=include_preview, builder=lambda: ventilator_svg(cfg, quote=q)
+    )
     description = format_ventilator_description(q, cfg)
     opts_out = {
         "ventilator": cfg,

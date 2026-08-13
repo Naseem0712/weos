@@ -10,6 +10,7 @@ import logging
 import os
 import platform
 import sys
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
@@ -223,10 +224,13 @@ class CustomerMemoryApplyBody(BaseModel):
 
 
 class ProjectCreate(BaseModel):
+    model_config = {"extra": "allow"}
+
     name: str = "Untitled Project"
     customer: str = ""
     status: str = "draft"
-    lines: list[CartLine] = Field(default_factory=list)
+    # dicts — CartLine validation was dropping railing/shower/vent (missing width etc).
+    lines: list[dict[str, Any]] = Field(default_factory=list)
     # Bill-to (from Project Setup — mobile/name identify the customer) + quote text.
     customerMobile: str | None = None
     customerAddress: str | None = None
@@ -238,10 +242,12 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectUpdate(BaseModel):
+    model_config = {"extra": "allow"}
+
     name: str | None = None
     customer: str | None = None
     status: str | None = None
-    lines: list[CartLine] | None = None
+    lines: list[dict[str, Any]] | None = None
     customerMobile: str | None = None
     customerAddress: str | None = None
     customerGst: str | None = None
@@ -739,6 +745,23 @@ def _public_base_url(request: Request | None) -> str:
     return ""
 
 
+def _coerce_cart_lines(raw: Any) -> list[dict[str, Any]]:
+    """Keep every cart row; strip giant preview.svg so saves/PDF do not drop lines."""
+    out: list[dict[str, Any]] = []
+    for ln in raw or []:
+        if not isinstance(ln, Mapping):
+            continue
+        d = dict(ln)
+        prev = d.get("preview")
+        if isinstance(prev, Mapping):
+            p = dict(prev)
+            p.pop("svg", None)
+            p.pop("pdfSvg", None)
+            d["preview"] = p
+        out.append(d)
+    return out
+
+
 def _pdf_response(
     project_id: str,
     kind: str,
@@ -754,7 +777,10 @@ def _pdf_response(
     if overlay:
         # PDF must print the live cart payload, not a stale autosave snapshot.
         if overlay.get("lines") is not None:
-            doc["lines"] = list(overlay["lines"] or [])
+            overlay_lines = _coerce_cart_lines(overlay["lines"])
+            # Empty overlay must not wipe a saved cart. Non-empty overlay is the live cart (incl. deletes).
+            if overlay_lines:
+                doc["lines"] = overlay_lines
         for _fld in (
             "customer",
             "name",
@@ -773,6 +799,7 @@ def _pdf_response(
                 save_project(doc, action="pdf-flush")
             except Exception:
                 _log.exception("pdf-flush save failed for %s; continuing with in-memory lines", project_id)
+    src_n = len(doc.get("lines") or [])
     try:
         # Customer PDF does not need factory cut/glass nesting — that was a multi-second wait.
         result = calculate_project(
@@ -780,11 +807,19 @@ def _pdf_response(
             optimize=(kind == "factory"),
             include_preview=False,
         )
+        calc_lines = list(result.get("lines") or [])
+        if src_n and len(calc_lines) < src_n:
+            _log.warning(
+                "PDF calc returned %s lines, cart had %s — keeping extras",
+                len(calc_lines),
+                src_n,
+            )
+            result["lines"] = calc_lines + list((doc.get("lines") or [])[len(calc_lines) :])
     except Exception:
         # Never 500 the export because a calculation edge-case failed — log the
-        # real traceback and still produce a (header-only) PDF for the customer.
+        # real traceback and still print the live cart lines.
         _log.exception("calculate_project failed for %s during %s PDF export", project_id, kind)
-        result = {"lines": [], "combined": {}, "price": {}}
+        result = {"lines": list(doc.get("lines") or []), "combined": {}, "price": {}}
     created_at = doc.get("createdAt")
     updated_at = doc.get("updatedAt")
     version = int(doc.get("version") or 1)
@@ -1425,7 +1460,7 @@ def api_list_projects(
 def api_create_project(body: ProjectCreate) -> dict[str, Any]:
     doc = empty_project(name=body.name, customer=body.customer)
     doc["status"] = body.status or "draft"
-    doc["lines"] = [ln.model_dump() for ln in body.lines]
+    doc["lines"] = _coerce_cart_lines(body.lines)
     for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms", "quotationId", "companyGst"):
         _val = getattr(body, _fld, None)
         if _val is not None:
@@ -1454,7 +1489,12 @@ def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
     if body.status is not None:
         doc["status"] = body.status
     if body.lines is not None:
-        doc["lines"] = [ln.model_dump() for ln in body.lines]
+        incoming = _coerce_cart_lines(body.lines)
+        # Never persist an accidental empty wipe over a non-empty cart.
+        if incoming or not (doc.get("lines") or []):
+            doc["lines"] = incoming
+        else:
+            _log.warning("PUT %s ignored empty lines (saved cart has %s rows)", project_id, len(doc.get("lines") or []))
     for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms", "quotationId", "companyGst"):
         _val = getattr(body, _fld, None)
         if _val is not None:
@@ -2759,7 +2799,7 @@ def _customer_xlsx_response(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if overlay:
         if overlay.get("lines") is not None:
-            doc["lines"] = list(overlay["lines"] or [])
+            doc["lines"] = _coerce_cart_lines(overlay["lines"]) or list(overlay["lines"] or [])
         for _fld in (
             "customer",
             "name",

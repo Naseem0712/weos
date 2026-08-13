@@ -3804,7 +3804,7 @@ async function applySetupFromProject(setupId){
     await api('/api/projects/'+state.projectId, {method:'PUT', body:{
       name: ($('cartName') && $('cartName').value) || undefined,
       customer: ($('cartCustomer') && $('cartCustomer').value) || '',
-      lines: state.lines,
+      lines: slimCartLines(state.lines),
       ...projectBillTo()
     }});
   }
@@ -3836,42 +3836,145 @@ function projectBillTo() {
   return out;
 }
 
+const WEOS_CART_KEY = 'weos.cart.v1';
+function ensureLineId(ln) {
+  if (!ln || typeof ln !== 'object') return ln;
+  if (!ln.lineId) {
+    ln.lineId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID().replace(/-/g, '').slice(0, 10)
+      : ('L' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+  }
+  return ln;
+}
+function slimCartLine(ln) {
+  if (!ln || typeof ln !== 'object') return ln;
+  const copy = { ...ln };
+  if (copy.preview && typeof copy.preview === 'object') {
+    const p = { ...copy.preview };
+    delete p.svg;
+    delete p.pdfSvg;
+    copy.preview = p;
+  }
+  return copy;
+}
+function slimCartLines(lines) {
+  return (lines || []).map((ln) => slimCartLine(ensureLineId(ln)));
+}
+function persistCartSession() {
+  try {
+    (state.lines || []).forEach(ensureLineId);
+    sessionStorage.setItem(WEOS_CART_KEY, JSON.stringify({
+      projectId: state.projectId || null,
+      lines: slimCartLines(state.lines),
+      name: ($('cartName') && $('cartName').value) || '',
+      customer: ($('cartCustomer') && $('cartCustomer').value) || '',
+      bill: typeof projectBillTo === 'function' ? projectBillTo() : {},
+    }));
+  } catch (_) {}
+}
+function restoreCartSession() {
+  try {
+    const raw = sessionStorage.getItem(WEOS_CART_KEY);
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    if (!d || !Array.isArray(d.lines) || !d.lines.length) return false;
+    state.projectId = d.projectId || null;
+    state.lines = d.lines.map(ensureLineId);
+    if ($('cartName') && d.name) $('cartName').value = d.name;
+    if ($('cartCustomer') && d.customer) $('cartCustomer').value = d.customer;
+    const bill = d.bill || {};
+    if ($('projCustName') && (d.customer || bill.customer)) $('projCustName').value = d.customer || '';
+    if ($('projMobile') && bill.customerMobile != null) $('projMobile').value = bill.customerMobile;
+    if ($('projCustAddress') && bill.customerAddress != null) $('projCustAddress').value = bill.customerAddress;
+    if ($('projCustGst') && bill.customerGst != null) $('projCustGst').value = bill.customerGst;
+    if ($('projQuoteNo') && bill.quotationId) $('projQuoteNo').value = bill.quotationId;
+    if ($('projDescription') && bill.description != null) $('projDescription').value = bill.description;
+    if ($('projTerms') && bill.terms != null) $('projTerms').value = bill.terms;
+    return true;
+  } catch (_) { return false; }
+}
+function adoptServerLines(incoming, { allowShrink = false } = {}) {
+  const next = Array.isArray(incoming) ? incoming.map(ensureLineId) : [];
+  const local = (state.lines || []).map(ensureLineId);
+  if (!allowShrink && local.length > next.length) {
+    const byId = new Map(next.filter((l) => l && l.lineId).map((l) => [l.lineId, l]));
+    state.lines = local.map((ln, i) => {
+      const hit = (ln.lineId && byId.get(ln.lineId)) || next[i];
+      if (!hit) return ln;
+      return {
+        ...ln,
+        ...hit,
+        options: { ...(ln.options || {}), ...(hit.options || {}) },
+        preview: ln.preview || hit.preview,
+      };
+    });
+    return state.lines;
+  }
+  state.lines = next;
+  return state.lines;
+}
+
 async function ensureProject() {
   if (state.projectId) return state.projectId;
   const doc = await api('/api/projects', {method:'POST', body:{
     name: $('cartName').value || 'WEOS Project',
     customer: $('cartCustomer').value || '',
-    lines: state.lines,
+    lines: slimCartLines(state.lines),
     status: 'draft',
     ...projectBillTo()
   }});
   state.projectId = doc.projectId;
+  persistCartSession();
   updatePdfLinks();
   toast('Created '+doc.projectId);
   return doc.projectId;
 }
 
 async function saveProject(silent) {
-  await ensureProject();
-  const doc = await api('/api/projects/'+state.projectId, {method:'PUT', body:{
-    name: $('cartName').value, customer: $('cartCustomer').value, lines: state.lines,
-    ...projectBillTo()
-  }});
-  if (!silent) toast('Saved v'+doc.version);
-  updatePdfLinks();
-  refreshSetupSummary();
-  return doc;
+  if (state._saving) {
+    state._saveAgain = true;
+    return state._saveTail || Promise.resolve();
+  }
+  state._saving = true;
+  state._saveTail = (async () => {
+    let doc = null;
+    try {
+      do {
+        state._saveAgain = false;
+        (state.lines || []).forEach(ensureLineId);
+        persistCartSession();
+        await ensureProject();
+        doc = await api('/api/projects/'+state.projectId, {method:'PUT', body:{
+          name: $('cartName').value, customer: $('cartCustomer').value,
+          lines: slimCartLines(state.lines),
+          ...projectBillTo()
+        }});
+        if (!silent) toast('Saved v'+doc.version);
+        updatePdfLinks();
+        refreshSetupSummary();
+      } while (state._saveAgain);
+      return doc;
+    } finally {
+      state._saving = false;
+    }
+  })();
+  return state._saveTail;
 }
 
 function scheduleSave() {
   clearTimeout(state.saveTimer);
+  persistCartSession();
   state.saveTimer = setTimeout(() => saveProject(true).catch(e => $('cartErr').textContent=e.message), 450);
 }
 
 async function openProject(id) {
+  const same = state.projectId && id && String(state.projectId) === String(id);
+  const localLen = (state.lines || []).length;
   const doc = await api('/api/projects/'+id);
   state.projectId = doc.projectId;
-  state.lines = doc.lines || [];
+  if (same) adoptServerLines(doc.lines || [], { allowShrink: false });
+  else state.lines = (doc.lines || []).map(ensureLineId);
+  persistCartSession();
   $('cartName').value = doc.name || '';
   if ($('cartCustomer')) $('cartCustomer').value = doc.customer || '';
   if ($('projCustName')) $('projCustName').value = doc.customer || '';
@@ -3916,37 +4019,44 @@ async function calculate() {
     if (result.quoteNumberVersioned) toast('Quote number matched — saved as new version');
     const ms = Math.round(performance.now()-t0);
     state.lastResult = result;
-    // Refresh cart line labels/rates from calculated results (fixes stale staircase titles).
-    (result.lines || []).forEach((rl, idx) => {
-      if (!state.lines[idx] || !rl) return;
-      if (rl.description) state.lines[idx].description = rl.description;
-      if (rl.productType) state.lines[idx].productType = rl.productType;
-      if (rl.displayName) state.lines[idx].displayName = rl.displayName;
+    // Refresh labels/rates in place — never replace/shrink the local cart.
+    const byId = new Map((result.lines || []).filter((rl) => rl && rl.lineId).map((rl) => [rl.lineId, rl]));
+    (state.lines || []).forEach((ln, idx) => {
+      const rl = (ln && ln.lineId && byId.get(ln.lineId)) || (result.lines || [])[idx];
+      if (!ln || !rl) return;
+      if (rl.description) ln.description = rl.description;
+      if (rl.productType) ln.productType = rl.productType;
+      if (rl.displayName) ln.displayName = rl.displayName;
       if (rl.sellingRate != null) {
-        state.lines[idx].sellingRate = rl.sellingRate;
+        ln.sellingRate = rl.sellingRate;
         if (idx === state.selectedLine && $('lineSellRate')) $('lineSellRate').value = rl.sellingRate;
       }
       if (rl.commercialTotal != null || (rl.selling && rl.selling.sellingAmount != null)) {
-        state.lines[idx].commercialTotal = rl.commercialTotal || rl.selling.sellingAmount;
-        state.lines[idx].selling = rl.selling || state.lines[idx].selling;
+        ln.commercialTotal = rl.commercialTotal || rl.selling.sellingAmount;
+        ln.selling = rl.selling || ln.selling;
       }
-      stampLineAmount(state.lines[idx]);
+      stampLineAmount(ln);
       if (rl.options) {
-        state.lines[idx].options = {
-          ...(state.lines[idx].options || {}),
-          railing: rl.options.railing || (state.lines[idx].options || {}).railing,
+        ln.options = {
+          ...(ln.options || {}),
+          railing: rl.options.railing || (ln.options || {}).railing,
           railingQuote: rl.options.railingQuote,
+          shower: rl.options.shower || (ln.options || {}).shower,
+          showerQuote: rl.options.showerQuote,
+          ventilator: rl.options.ventilator || (ln.options || {}).ventilator,
+          ventilatorQuote: rl.options.ventilatorQuote,
           productType: rl.options.productType || rl.productType,
         };
       }
     });
+    persistCartSession();
     updateLiveCartTotal();
     if (result.price?.total != null) $('cartTotal').textContent = money(result.price.total);
     const c = result.combined || {};
     const gtxt = (c.qtyByGroup || []).length
       ? ' · ' + c.qtyByGroup.map(g => `${g.label} ${g.qty}`).join(' · ')
       : '';
-    $('cartMeta').textContent = `${c.lineCount} lines · ${c.totalItems} items${gtxt} · Alu ${c.weight?.aluminiumKg} kg · ${ms} ms`;
+    $('cartMeta').textContent = `${(state.lines || []).length} lines · ${c.totalItems || (state.lines || []).reduce((s,l)=>s+(+l.qty||0),0)} items${gtxt} · Alu ${c.weight?.aluminiumKg || '—'} kg · ${ms} ms`;
     const opt = result.optimization || {};
     $('optBox').textContent = JSON.stringify({
       quotationId: result.quotationId,
@@ -5477,8 +5587,8 @@ if ($('btnRailHwLoad')) $('btnRailHwLoad').onclick = () => {
 loadRailingMaterialsIntoTools();
 loadRailGlassLibrary();
 refreshRailHwPresetSelect();
-$('btnUndo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/undo',{method:'POST'}); state.lines=d.lines||[]; renderCart(); toast('Undo'); };
-$('btnRedo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/redo',{method:'POST'}); state.lines=d.lines||[]; renderCart(); toast('Redo'); };
+$('btnUndo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/undo',{method:'POST'}); state.lines=(d.lines||[]).map(ensureLineId); persistCartSession(); renderCart(); toast('Undo'); };
+$('btnRedo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/redo',{method:'POST'}); state.lines=(d.lines||[]).map(ensureLineId); persistCartSession(); renderCart(); toast('Redo'); };
 if ($('lineDesignPhoto')) $('lineDesignPhoto').onchange = async (ev) => {
   const f = ev.target.files && ev.target.files[0];
   if (!f) return;
@@ -5826,19 +5936,8 @@ function _exportFingerprint(kind) {
   } catch (e) { return String(Date.now()); }
 }
 function _liveExportBody(brand) {
-  const slimLines = (state.lines || []).map((l) => {
-    if (!l || typeof l !== 'object') return l;
-    const copy = { ...l };
-    if (copy.preview && typeof copy.preview === 'object') {
-      const p = { ...copy.preview };
-      delete p.svg;
-      delete p.pdfSvg;
-      copy.preview = p;
-    }
-    return copy;
-  });
   return {
-    lines: slimLines,
+    lines: slimCartLines(state.lines),
     customer: ($('cartCustomer') && $('cartCustomer').value) || ($('projCustName') && $('projCustName').value) || '',
     name: ($('cartName') && $('cartName').value) || undefined,
     ...projectBillTo(),
@@ -8491,12 +8590,23 @@ async function pingEngine(){
   try { await restoreCompanyWorkspace(); } catch (e) { console.warn(e); }
   await loadProducts();
   try { state.adminMeta = await api('/api/admin/meta'); } catch(_){}
-  state.lines = [
-    {product:'29mm_sliding', width:2050, height:1970, qty:4, glass:'8mm_toughened', colour:'black_texture', handle:'premium', saleUnit:'sqft', sellingRate:1100},
-    {product:'29mm_sliding', width:1500, height:1500, qty:6, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft', sellingRate:950},
-    {product:'casement_stub', width:900, height:1500, qty:2, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft'},
-    {product:'fixed_stub', width:1200, height:600, qty:8, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft'},
-  ];
+  const restoredCart = restoreCartSession();
+  if (!restoredCart) {
+    state.lines = [
+      {product:'29mm_sliding', width:2050, height:1970, qty:4, glass:'8mm_toughened', colour:'black_texture', handle:'premium', saleUnit:'sqft', sellingRate:1100},
+      {product:'29mm_sliding', width:1500, height:1500, qty:6, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft', sellingRate:950},
+      {product:'casement_stub', width:900, height:1500, qty:2, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft'},
+      {product:'fixed_stub', width:1200, height:600, qty:8, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft'},
+    ].map(ensureLineId);
+  } else if (state.projectId) {
+    api('/api/projects/'+state.projectId).then((doc) => {
+      if (!doc || state.projectId !== doc.projectId) return;
+      adoptServerLines(doc.lines || [], { allowShrink: false });
+      renderCart();
+      updatePdfLinks();
+    }).catch(() => {});
+  }
+  persistCartSession();
   setView(state.workspaceRestored ? 'company' : 'dashboard');
   scheduleLivePrice();
   try { weosMountAgentDock(); } catch(e){ console.warn('WEOS Agent dock failed to mount', e); }

@@ -119,6 +119,25 @@ def _force_solid_rl_strokes(drawing, *, min_width: float = 0.55):
     return drawing
 
 
+def png_has_ink(png: bytes | None, *, min_dark_frac: float = 0.004) -> bool:
+    """False when raster is missing or almost all-white (failed RIP / empty viewBox)."""
+    if not png or len(png) < 80:
+        return False
+    try:
+        from PIL import Image
+
+        im = Image.open(io.BytesIO(png))
+        im.load()
+        gray = im.convert("L")
+        gray.thumbnail((96, 96))
+        hist = gray.histogram()
+        total = sum(hist) or 1
+        dark = sum(hist[:230])
+        return (dark / float(total)) >= float(min_dark_frac)
+    except Exception:
+        return True
+
+
 def cairo_png_available() -> bool:
     try:
         import cairosvg  # noqa: F401
