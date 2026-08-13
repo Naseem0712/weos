@@ -273,7 +273,7 @@ class PdfExportBody(BaseModel):
     companyGst: str | None = None
     brand: str | None = None
     templateId: str | None = None
-    persist: bool = True
+    persist: bool = False
 
 
 class PreviewRequest(BaseModel):
@@ -768,13 +768,14 @@ def _pdf_response(
         ):
             if overlay.get(_fld) is not None:
                 doc[_fld] = overlay[_fld]
-        if overlay.get("persist", True) and overlay.get("lines") is not None:
+        if overlay.get("persist") and overlay.get("lines") is not None:
             try:
                 save_project(doc, action="pdf-flush")
             except Exception:
                 _log.exception("pdf-flush save failed for %s; continuing with in-memory lines", project_id)
     try:
-        result = calculate_project(doc, optimize=True)
+        # Customer PDF does not need factory cut/glass nesting — that was a multi-second wait.
+        result = calculate_project(doc, optimize=(kind == "factory"))
     except Exception:
         # Never 500 the export because a calculation edge-case failed — log the
         # real traceback and still produce a (header-only) PDF for the customer.
@@ -2737,9 +2738,13 @@ def api_advance_slip_xlsx(customer: str, advance_id: int) -> Response:
     )
 
 
-@app.get("/api/projects/{project_id}/customer.xlsx")
-def api_customer_quote_xlsx(project_id: str, brand: str | None = Query(None)) -> Response:
-    """Excel export mirroring the customer quote PDF (A4 + formulas, no factory BOM)."""
+def _customer_xlsx_response(
+    project_id: str,
+    *,
+    brand: str | None = None,
+    overlay: dict[str, Any] | None = None,
+    embed_drawings: str = "thumb",
+) -> Response:
     from WEOS.factory.export_xlsx import export_quote_xlsx, prepare_customer_export_payload, safe_xlsx_name
     from WEOS.factory.project_store import load_project
 
@@ -2747,6 +2752,29 @@ def api_customer_quote_xlsx(project_id: str, brand: str | None = Query(None)) ->
         doc = load_project(project_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if overlay:
+        if overlay.get("lines") is not None:
+            doc["lines"] = list(overlay["lines"] or [])
+        for _fld in (
+            "customer",
+            "name",
+            "customerMobile",
+            "customerAddress",
+            "customerGst",
+            "description",
+            "terms",
+            "quotationId",
+            "companyGst",
+        ):
+            if overlay.get(_fld) is not None:
+                doc[_fld] = overlay[_fld]
+        if overlay.get("persist") and overlay.get("lines") is not None:
+            try:
+                from WEOS.factory.project_store import save_project
+
+                save_project(doc, action="xlsx-flush")
+            except Exception:
+                _log.exception("xlsx-flush save failed for %s", project_id)
     payload, co = prepare_customer_export_payload(doc)
     if brand and not payload.get("brand"):
         payload["brand"] = brand
@@ -2759,12 +2787,40 @@ def api_customer_quote_xlsx(project_id: str, brand: str | None = Query(None)) ->
             ledger = build_ledger(cust, company_gst=str(doc.get("companyGst") or "") or None)
         except Exception:
             ledger = None
-    raw = export_quote_xlsx(payload, co, ledger=ledger)
+    raw = export_quote_xlsx(payload, co, ledger=ledger, embed_drawings=embed_drawings)
     fname = safe_xlsx_name(payload.get("quotationId") or project_id, doc.get("customer") or "quote")
     return Response(
         content=raw,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@app.get("/api/projects/{project_id}/customer.xlsx")
+def api_customer_quote_xlsx(
+    project_id: str,
+    brand: str | None = Query(None),
+    drawings: str | None = Query(None),
+) -> Response:
+    """Excel export mirroring the customer quote PDF (A4 + formulas, no factory BOM)."""
+    return _customer_xlsx_response(project_id, brand=brand, embed_drawings=drawings or "thumb")
+
+
+@app.post("/api/projects/{project_id}/customer.xlsx")
+def api_customer_quote_xlsx_post(
+    project_id: str,
+    body: PdfExportBody | None = None,
+    brand: str | None = Query(None),
+    drawings: str | None = Query(None),
+) -> Response:
+    """Live-cart Excel — same overlay as Quote PDF, thumbnail drawings (not full-res PNG)."""
+    overlay = (body.model_dump() if body is not None else {}) or {}
+    embed = drawings or overlay.get("embedDrawings") or overlay.get("drawings") or "thumb"
+    return _customer_xlsx_response(
+        project_id,
+        brand=brand or overlay.get("brand"),
+        overlay=overlay,
+        embed_drawings=str(embed or "thumb"),
     )
 
 

@@ -36,8 +36,11 @@ def main() -> int:
         fails.append("continuous should not BOM blocks")
     if "studs" in keys:
         fails.append("continuous should not BOM studs")
-    if "anchors" in keys:
-        fails.append("continuous should not BOM anchors/brackets")
+    if "anchors" not in keys:
+        fails.append("continuous should BOM spaced anchors (1/2 ft + 100 mm inset)")
+    # 3000 mm · default 2 ft spacing → 1 + floor((3000-200)/609.6) = 5
+    if int(cont.get("anchorCount") or 0) != 5:
+        fails.append(f"continuous default 2ft anchors {cont.get('anchorCount')} != 5")
     if int(cont.get("pillarCount") or 0) != 0:
         fails.append(f"continuous pillarCount {cont.get('pillarCount')}")
     br = next((it for it in (cont.get("items") or []) if it.get("key") == "bottomRail"), {})
@@ -334,6 +337,109 @@ def main() -> int:
         if n == 4 and "overlap 150" not in svg_n.lower() and "overlap 150 mm" not in svg_n.lower():
             if "overlap" not in svg_n.lower():
                 fails.append("side 4pc svg missing overlap dim")
+
+    # Gallery sizes + 2 ft anchors + 16 ft bars + EPDM + 180° on handrail only
+    from WEOS.factory.railing_engine import continuous_rail_anchor_count, _handrail_connectors, FT_16_MM
+
+    gal = compute_railing({
+        "shape": "straight",
+        "lengthMm": 5000,
+        "heightMm": 1100,
+        "panels": 3,
+        "bottomKind": "continuous",
+        "bottomSize": "100×45",
+        "handrailSize": "50×50",
+        "continuousRail": True,
+        "handrail": True,
+        "handrailBarLengthFt": 16,
+        "anchorSpacingFt": 2,
+        "installComponents": {
+            "bottomRail": True, "block": False, "ssPillar": False,
+            "handrail": True, "glass": True,
+        },
+        "rates": {
+            "glassPerSqft": 200, "bottomRailPerUnit": 90, "handrailPerUnit": 140,
+            "anchorPerPc": 40, "connector180PerPc": 80,
+            "epdmHandrailPerUnit": 18, "epdmBottomPerUnit": 18,
+            "handrailWeightPerUnit": 1.25, "bottomRailWeightPerUnit": 2.4,
+        },
+        "manualRatePerUnit": 520,
+    })
+    expect_anc = continuous_rail_anchor_count(5000, 2 * 304.8)
+    expect_180 = _handrail_connectors(5000, FT_16_MM)
+    if int(gal.get("anchorCount") or 0) != expect_anc:
+        fails.append(f"gallery anchors {gal.get('anchorCount')} != {expect_anc}")
+    if int(gal.get("connector180Count") or 0) != expect_180:
+        fails.append(f"gallery 180° {gal.get('connector180Count')} != {expect_180}")
+    gk = {it["key"] for it in gal.get("items") or []}
+    if "connector180" not in gk and expect_180:
+        fails.append("180° missing from handrail BOM")
+    if any("bottom" in str(it.get("label") or "").lower() and "180" in str(it.get("label") or "") for it in (gal.get("items") or [])):
+        fails.append("180° must not appear on bottom rail")
+    if "epdmHandrail" not in gk or "epdmBottom" not in gk:
+        fails.append(f"EPDM missing keys {gk}")
+    hr = next((it for it in (gal.get("items") or []) if it.get("key") == "handrail"), {})
+    br = next((it for it in (gal.get("items") or []) if it.get("key") == "bottomRail"), {})
+    if "50×50" not in str(hr.get("sizeMm") or hr.get("label") or "").replace("x", "×") and "50x50" not in str(hr.get("sizeMm") or "").lower().replace("×", "x"):
+        fails.append(f"handrail size not 50×50: {hr}")
+    if "100×45" not in str(br.get("sizeMm") or br.get("label") or "").replace("x", "×") and "100x45" not in str(br.get("sizeMm") or "").lower().replace("×", "x"):
+        fails.append(f"bottom size not 100×45: {br}")
+    if abs(float(hr.get("qty") or 0) - float(br.get("qty") or 0)) > 0.02:
+        fails.append(f"handrail RFT {hr.get('qty')} != bottom {br.get('qty')}")
+    if float(hr.get("weightKg") or 0) <= 0 or float(br.get("weightKg") or 0) <= 0:
+        fails.append(f"weight input not applied hr={hr.get('weightKg')} br={br.get('weightKg')}")
+    specs = " ".join(_spec_lines({
+        "product": "railing", "productType": "railing",
+        "width": 5000, "height": 1100, "qty": 1, "sellingRate": 520,
+        "options": {"railing": {
+            "shape": "straight", "lengthMm": 5000, "heightMm": 1100,
+            "bottomKind": "continuous", "bottomSize": "100×45", "handrailSize": "50×50",
+            "handrailBarLengthFt": 16, "anchorSpacingFt": 2, "handrail": True,
+        }, "railingQuote": gal},
+    })).lower()
+    if "100" not in specs.replace("×", "x") or "45" not in specs:
+        fails.append(f"PDF specs missing bottom 100×45: {specs[:240]}")
+    if "50" not in specs or "handrail" not in specs:
+        fails.append(f"PDF specs missing handrail 50×50: {specs[:240]}")
+    if "epdm" not in specs:
+        fails.append(f"PDF specs missing EPDM: {specs[:240]}")
+    if "180" not in specs:
+        fails.append(f"PDF specs missing 180°: {specs[:240]}")
+
+    # Custom bottom size + weight / RFT
+    custom = compute_railing({
+        "shape": "straight",
+        "lengthMm": 2400,
+        "heightMm": 1000,
+        "panels": 2,
+        "bottomKind": "continuous",
+        "bottomSize": "95×42 custom",
+        "handrailSize": "Ø35",
+        "continuousRail": True,
+        "handrail": True,
+        "handrailBarLengthFt": 12,
+        "anchorSpacingFt": 1,
+        "installComponents": {
+            "bottomRail": True, "block": False, "ssPillar": False,
+            "handrail": True, "glass": True,
+        },
+        "rates": {
+            "glassPerSqft": 180, "bottomRailPerUnit": 70, "handrailPerUnit": 110,
+            "anchorPerPc": 35, "bottomRailWeightPerUnit": 1.8, "handrailWeightPerUnit": 0.9,
+        },
+    })
+    cbr = next((it for it in (custom.get("items") or []) if it.get("key") == "bottomRail"), {})
+    if "95" not in str(cbr.get("sizeMm") or cbr.get("label") or ""):
+        fails.append(f"custom bottom size missing: {cbr}")
+    if float(cbr.get("weightKg") or 0) <= 0:
+        fails.append("custom bottom weight not applied")
+    expect_1ft = continuous_rail_anchor_count(2400, 304.8)
+    if int(custom.get("anchorCount") or 0) != expect_1ft:
+        fails.append(f"1ft anchors {custom.get('anchorCount')} != {expect_1ft}")
+    if int(custom.get("connector180Count") or 0) != 0:
+        fails.append(f"12ft bar on 2400mm should be 0 connectors, got {custom.get('connector180Count')}")
+    if int(custom.get("pillarCount") or 0) != 0:
+        fails.append("custom continuous still has pillars")
 
     if fails:
         print("FAIL:", "; ".join(fails))

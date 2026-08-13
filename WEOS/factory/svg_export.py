@@ -619,7 +619,7 @@ def render_svg_string(
 
     style:
       - preview: live cart look
-      - pdf: higher-contrast strokes/labels for ReportLab embedding
+      - pdf: same slim strokes as canvas (tighter margin only for the PDF column)
     """
     pdf = str(style or "preview").lower() == "pdf"
     grid_div = _parse_grid(grid)
@@ -666,22 +666,23 @@ def render_svg_string(
     # the live preview (~420px) or the quote PDF column.
     _ = colour  # kept for API / quote colour label; frames stay stroke-only
     frame_stroke = "#111111"
-    # Very light glass tint — clear 2D, not solid dark
-    glass_fill = "rgba(170, 205, 230, 0.20)" if pdf else "rgba(186, 214, 235, 0.28)"
+    # Very light glass tint — clear 2D, not solid dark. Same fill for canvas + PDF
+    # so Quote/Print match the live slim drawing (no PDF-only darkening).
+    glass_fill = "rgba(186, 214, 235, 0.28)"
     glass_stroke = "#1a4f86"
     dim_stroke = "#8b1e1a"
     # Slim 2D CAD strokes in model-mm. Dark colour stays readable on light
     # glass; weight stays hairline so miters / handles don't become fat bars.
     # (0170314 contrast scaled up to ~11 mm — far too heavy.)
-    sw_mul = 1.15 if pdf else 1.0
-    sw_outer = max(1.15, min(ref * 0.0015, 2.10)) * sw_mul
+    # Quote PDF / Print MUST use the same weights as live canvas — never ×1.15.
+    sw_outer = max(1.15, min(ref * 0.0015, 2.10))
     sw_inner = max(0.90, sw_outer * 0.82)
     sw_profile = sw_inner
     sw_seg = sw_inner
     sw_grid = max(0.70, sw_inner * 0.72)
     sw_interlock = max(1.00, sw_outer * 0.90)
-    dim_font = (44.0 if pdf else 36.0) * k
-    label_font = (32.0 if pdf else 26.0) * k
+    dim_font = 36.0 * k
+    label_font = 26.0 * k
 
     bg = "#ffffff"
     # Compact sash box table for interactive handle drag: "i;x0;x1;y0;y1;nx0;nx1|..."
@@ -729,8 +730,8 @@ def render_svg_string(
         _draw_grid_svg(
             parts, tx=tx, ty=ty, meta=_meta, k=k, W=float(model.width), H=float(model.height),
             glass_fill=glass_fill, glass_stroke=glass_stroke, frame_stroke=frame_stroke,
-            dim_stroke=dim_stroke, dim_font=(44.0 if pdf else 36.0) * k,
-            label_font=(32.0 if pdf else 26.0) * k, finish=_finish, annotations=annotations, sw=sw_profile,
+            dim_stroke=dim_stroke, dim_font=36.0 * k,
+            label_font=26.0 * k, finish=_finish, annotations=annotations, sw=sw_profile,
         )
         parts.append("</svg>")
         return "\n".join(parts)
@@ -976,9 +977,28 @@ def render_svg_string(
     return "\n".join(parts)
 
 
+def preview_svgs_for_drawing(
+    drawing,
+    *,
+    colour: str | None = None,
+    grid: Any = None,
+    include_plan: bool = True,
+) -> dict[str, str]:
+    """Render live-preview SVG once — PDF/Print reuse the same slim strokes."""
+    kwargs = dict(colour=colour, annotations=True, grid=grid, include_plan=include_plan)
+    svg = render_svg_string(drawing, style="preview", **kwargs)
+    return {"svg": svg, "pdfSvg": svg}
+
+
 def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> str | None:
     """Build quote/canvas SVG for a cart line from the same geometry engine as live preview."""
     from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line, is_ventilator_cart_line
+
+    prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
+    live_svg = str((prev or {}).get("svg") or (prev or {}).get("pdfSvg") or "").strip()
+    # Always prefer the live-canvas SVG (slim strokes). Never a thickened pdfSvg.
+    if live_svg and "<svg" in live_svg.lower():
+        return live_svg
 
     if is_ventilator_cart_line(line):
         opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}

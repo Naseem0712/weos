@@ -107,9 +107,14 @@ def main() -> None:
     svg_s = render_svg_string(job_small.drawing, annotations=True, include_plan=True, style="pdf")
     svg_l = render_svg_string(job_large.drawing, annotations=True, include_plan=True, style="pdf")
     svg_c = render_svg_string(job_cas.drawing, annotations=True, include_plan=True, style="pdf")
+    svg_l_prev = render_svg_string(job_large.drawing, annotations=True, include_plan=True, style="preview")
     _ok('data-visual-series="sliding35"' in svg_s and 'data-visual-series="sliding35"' in svg_l, "sliding visual 35")
     _ok('data-visual-series="casement50"' in svg_c, "casement visual 50")
     _ok("stroke-width=" in svg_l, "large window has strokes")
+    import re as _re
+    sw_pdf = _re.findall(r'stroke-width="([\d.]+)"', svg_l)[:8]
+    sw_prev = _re.findall(r'stroke-width="([\d.]+)"', svg_l_prev)[:8]
+    _ok(sw_pdf == sw_prev and sw_pdf, f"PDF strokes match canvas slim {sw_pdf} vs {sw_prev}")
 
     # Immediate PDF from 8+ mixed in-memory lines (no wait / stale snapshot)
     lines = [

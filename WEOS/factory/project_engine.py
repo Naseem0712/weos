@@ -18,7 +18,7 @@ from WEOS.factory.line_kind import line_location_name as _line_location_name
 from WEOS.factory.pipeline import generate_job
 from WEOS.factory.product_loader import load_product
 from WEOS.factory.project_store import new_quotation_id
-from WEOS.factory.svg_export import layout_summary_for_job, render_svg_string
+from WEOS.factory.svg_export import layout_summary_for_job, preview_svgs_for_drawing
 
 
 def _persist_window_options(
@@ -878,15 +878,12 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
                 from WEOS.factory.panel_fills import attach_fill_to_drawing
 
                 attach_fill_to_drawing(job.drawing, lo.get("panelFill"))
-            result["preview"] = {
-                "svg": render_svg_string(
-                    job.drawing,
-                    colour=str(colour).lower().replace(" ", "_"),
-                    annotations=True,
-                    grid=grid,
-                    include_plan=True,
-                )
-            }
+            result["preview"] = preview_svgs_for_drawing(
+                job.drawing,
+                colour=str(colour).lower().replace(" ", "_"),
+                grid=grid,
+                include_plan=True,
+            )
             result["layout"] = layout_summary_for_job(
                 width=width, height=height, layout_meta=job.layout_meta
             )
@@ -975,13 +972,13 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
     weight = job.weight.as_dict() if job.weight else {}
     colour = (line.get("colour") or "white")
     grid = line.get("grid") or (line.get("options") or {}).get("grid") or (line.get("options") or {}).get("grille")
-    svg = render_svg_string(
+    preview_pack = preview_svgs_for_drawing(
         job.drawing,
         colour=str(colour).lower().replace(" ", "_"),
-        annotations=True,
         grid=grid,
         include_plan=True,
     )
+    svg = preview_pack.get("svg")
     layout = layout_summary_for_job(width=width, height=height, layout_meta=job.layout_meta)
 
     # Scale commercial totals by qty
@@ -1092,7 +1089,7 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
             "lines": quote.get("lines"),
         },
         "quotationDetail": quote,
-        "preview": {"svg": svg},
+        "preview": preview_pack,
         "layoutMeta": dict(job.layout_meta or {}),
         "_rawCutList": [{"length_mm": c.length_mm, "quantity": c.quantity * qty, "profile": c.profile} for c in job.cut_list],
         "_rawGlass": [

@@ -352,7 +352,7 @@ def prepare_customer_export_payload(doc: Mapping[str, Any]) -> tuple[dict[str, A
     try:
         from WEOS.factory.project_engine import calculate_project
 
-        result = calculate_project(doc, optimize=True)
+        result = calculate_project(doc, optimize=False)
     except Exception:
         result = {"lines": list(doc.get("lines") or []), "combined": {}, "price": {}}
     calc_lines = list(result.get("lines") or [])
@@ -449,6 +449,7 @@ def export_quote_xlsx(
     company: Mapping[str, Any] | None = None,
     *,
     ledger: Mapping[str, Any] | None = None,
+    embed_drawings: str = "thumb",
 ) -> bytes:
     company = dict(company or payload.get("company") or {})
     wb, st = _wb()
@@ -517,6 +518,21 @@ def export_quote_xlsx(
         lines = [ln for ln in (payload.get("lines") or []) if isinstance(ln, Mapping)]
         from WEOS.factory.line_kind import design_serial_label, line_location_name
 
+        png_by_i: dict[int, bytes] = {}
+        mode = str(embed_drawings or "thumb").strip().lower()
+        if mode not in ("0", "none", "off", "false", "skip", "no"):
+            try:
+                from WEOS.factory.elevation_cache import XLSX_MAX_PX, XLSX_PNG_SCALE, prefetch_line_pngs
+
+                png_by_i = prefetch_line_pngs(
+                    list(lines),
+                    scale=XLSX_PNG_SCALE if mode != "full" else 1.2,
+                    max_px=XLSX_MAX_PX if mode != "full" else 480,
+                    max_workers=4,
+                )
+            except Exception:
+                png_by_i = {}
+
         for i, line in enumerate(lines):
             serial = _txt(line.get("serial") or line.get("serialLabel")) or design_serial_label(i, None)
             if "·" in serial:
@@ -554,14 +570,12 @@ def export_quote_xlsx(
             ws.cell(r, 12, unit)
             ws.cell(r, 13, group)
             ws.row_dimensions[r].height = 84
-            try:
-                from WEOS.factory.marqt_pdf import line_elevation_png_bytes
-
-                png = line_elevation_png_bytes(line)
-                if png:
+            png = png_by_i.get(i)
+            if png:
+                try:
                     _embed_png(ws, png, f"H{r}", width=118, height=78, temps=temps)
-            except Exception:
-                pass
+                except Exception:
+                    pass
             r += 1
 
         last_data = r - 1

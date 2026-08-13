@@ -208,27 +208,19 @@ def _line_design_photo_bytes(line: Mapping[str, Any]) -> tuple[bytes | None, str
         return None, None
 
 
-def line_elevation_png_bytes(line: Mapping[str, Any], *, scale: float = 1.8) -> bytes | None:
+def line_elevation_png_bytes(line: Mapping[str, Any], *, scale: float = 0.55, max_px: int | None = 220) -> bytes | None:
     """PNG of the customer design column (photo or canvas SVG) for Excel embed.
 
+    Thumbnails by default — full-res embeds made Excel export very slow.
     Does not change PDF layout — same sources as ``draw_line_elevation``.
     """
-    photo_raw, _ct = _line_design_photo_bytes(line)
-    if photo_raw:
-        return photo_raw
     try:
-        from WEOS.factory.image_engine import svg_to_png_bytes
-        from WEOS.factory.svg_export import elevation_svg_for_line
+        from WEOS.factory.elevation_cache import png_for_line
 
-        svg = elevation_svg_for_line(line, style="pdf")
-        if not svg:
-            prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
-            svg = (prev or {}).get("svg")
-        if svg:
-            return svg_to_png_bytes(str(svg), scale=scale)
+        return png_for_line(line, scale=scale, max_px=max_px)
     except Exception:
         _log.debug("excel elevation png skipped", exc_info=True)
-    return None
+        return None
 
 
 def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
@@ -259,16 +251,26 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
         except Exception:
             _log.exception("design photo embed failed; falling back to canvas SVG")
 
-    # One elevation path: live canvas SVG (shower / railing / window) via
-    # elevation_svg_for_line. PNG first for fidelity, then vector.
-    svg = elevation_svg_for_line(line, style="pdf")
+    # One elevation path: live canvas SVG (shower / railing / window).
+    # Prefer quote-session cache / calculate_line preview so we do not
+    # regenerate factory geometry for every PDF line.
+    png = None
+    try:
+        from WEOS.factory.elevation_cache import png_for_line, svg_for_line
+
+        png = png_for_line(line, scale=1.45)
+        svg = svg_for_line(line, style="preview")
+    except Exception:
+        svg = elevation_svg_for_line(line, style="preview")
+        png = None
     if not svg:
         prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
-        svg = (prev or {}).get("svg")
+        svg = (prev or {}).get("svg") or (prev or {}).get("pdfSvg")
 
     if svg:
-        # 1) Raster of the canvas SVG (same look as live preview).
-        png = svg_to_png_bytes(str(svg), scale=2.5)
+        # 1) Fast Cairo PNG of the slim canvas SVG (same strokes as live preview).
+        if not png:
+            png = svg_to_png_bytes(str(svg), scale=1.45, allow_slow=False)
         if png:
             img = ImageReader(io.BytesIO(png))
             iw, ih = img.getSize()
@@ -278,7 +280,7 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
                 c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
                 return True
 
-        # 2) Vector fallback (crisp when svglib supports the markup).
+        # 2) Vector embed of the SAME slim SVG (no slow renderPM raster that fattens strokes).
         try:
             drawing = svg_to_rl_drawing(str(svg))
             if drawing is not None and getattr(drawing, "width", 0) and getattr(drawing, "height", 0):
@@ -498,6 +500,12 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
             hr_len_mm = hr.get("lengthMm") or q.get("runLengthMm") or hr_mm or q.get("lengthMm")
             if hr_len_mm:
                 hr_bits.append(f"{_mm(hr_len_mm)} mm")
+            bar_ft = q.get("handrailBarLengthFt") or (rail_cfg or {}).get("handrailBarLengthFt")
+            if bar_ft:
+                try:
+                    hr_bits.append(f"bar {float(bar_ft):g} ft")
+                except (TypeError, ValueError):
+                    hr_bits.append(f"bar {bar_ft} ft")
             add("HANDRAIL", " · ".join(str(x) for x in hr_bits if x))
 
         thk = q.get("glassThicknessMm") or (rail_cfg or {}).get("glassThicknessMm") or 12
@@ -531,6 +539,20 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         if hw_brand:
             hw_bits.append(str(hw_brand))
         hw_bits.append(f"anchors {q.get('anchorCount') or 0}")
+        asp = q.get("anchorSpacingFt") or (rail_cfg or {}).get("anchorSpacingFt")
+        if asp and (bottom_kind in ("continuous", "rail") or q.get("continuousRail")):
+            try:
+                hw_bits.append(f"every {float(asp):g} ft")
+            except (TypeError, ValueError):
+                hw_bits.append(f"every {asp} ft")
+        epdm_h = _bom("epdmHandrail") or {}
+        epdm_b = _bom("epdmBottom") or {}
+        epdm_hr_q = epdm_h.get("qty") or q.get("epdmHandrailRft")
+        epdm_br_q = epdm_b.get("qty") or q.get("epdmBottomRft")
+        if epdm_hr_q:
+            hw_bits.append(f"EPDM handrail {epdm_hr_q} rft")
+        if epdm_br_q:
+            hw_bits.append(f"EPDM bottom {epdm_br_q} rft")
         if q.get("endCapCount") or (rail_cfg or {}).get("endCaps"):
             hw_bits.append(f"end caps {q.get('endCapCount') or 0}")
         if q.get("wallConnectors"):
@@ -1037,6 +1059,16 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     # Elevation cell — tall enough for canvas SVG (plan + elevation) without stubbing.
     draw_w, draw_h = 200, 210
     bottom_limit = M + 30  # keep clear of footer + bottom margin
+
+    # Warm PNG cache only when Cairo is available (svglib rasterize is too slow).
+    try:
+        from WEOS.factory.image_engine import cairo_png_available
+        from WEOS.factory.elevation_cache import prefetch_line_pngs
+
+        if cairo_png_available():
+            prefetch_line_pngs(lines, scale=1.45, max_workers=4)
+    except Exception:
+        _log.debug("elevation prefetch skipped", exc_info=True)
 
     for idx, line in enumerate(lines):
         # Specs first so we know how tall the text block is (wrap may exceed draw_h).

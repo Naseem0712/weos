@@ -685,15 +685,31 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                     <button type="button" data-bottom="studs">SS studs</button>
                   </div>
                   <div class="rt-row" id="wrapRailBottomCont" style="margin-top:.35rem">
-                    <div><label class="l">Size / section *</label><input id="rBottomSize" type="text" placeholder="e.g. 50×10 mm" style="width:110px" required/></div>
+                    <div><label class="l">Size *</label>
+                      <select id="rBottomSizePick" style="width:118px">
+                        <option value="">Gallery / custom</option>
+                      </select>
+                    </div>
+                    <div><label class="l">Custom size</label><input id="rBottomSize" type="text" placeholder="e.g. 100×45" style="width:100px"/></div>
                     <div><label class="l">Rate *</label><input id="rRBrail" type="number" value="80" min="0" style="width:72px"/></div>
                     <div><label class="l">Unit</label>
                       <select id="rBottomRateUnit" style="width:72px">
                         <option value="rft">₹/RFT</option><option value="rmt">₹/RMT</option><option value="kg">₹/kg</option>
                       </select>
                     </div>
-                    <div><label class="l">Wt kg/u</label><input id="rWBrail" type="number" value="0" step="0.01" style="width:56px"/></div>
+                    <div><label class="l">Weight</label><input id="rWBrail" type="number" value="0" step="0.01" placeholder="after size" style="width:64px"/></div>
+                    <div><label class="l">Wt unit</label>
+                      <select id="rWBrailUnit" style="width:78px">
+                        <option value="rft">kg/RFT</option><option value="m">kg/m</option>
+                      </select>
+                    </div>
                     <div><label class="l">Gallery</label><select id="rMatBottom" style="min-width:130px"><option value="">—</option></select></div>
+                    <div><label class="l">Anchors</label>
+                      <select id="rAnchorSpacingFt" style="width:88px" title="1 pc every 1 or 2 ft; 100 mm from each end">
+                        <option value="1">every 1 ft</option>
+                        <option value="2" selected>every 2 ft</option>
+                      </select>
+                    </div>
                   </div>
                   <div class="rt-row" id="wrapRailBottomPillar" style="display:none;margin-top:.35rem">
                     <div><label class="l">Size *</label><input id="rPillarSize" type="text" placeholder="e.g. 50 mm" style="width:90px"/></div>
@@ -779,7 +795,12 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                   <input type="checkbox" id="rHandrailStair" checked style="display:none"/>
                 </div>
                 <div class="rt-row" id="wrapRailHandrailFields">
-                  <div><label class="l">Size *</label><input id="rHandSize" type="text" placeholder="e.g. Ø38 slot" style="width:110px"/></div>
+                  <div><label class="l">Size *</label>
+                    <select id="rHandSizePick" style="width:118px">
+                      <option value="">Gallery / custom</option>
+                    </select>
+                  </div>
+                  <div><label class="l">Custom size</label><input id="rHandSize" type="text" placeholder="e.g. 50×50" style="width:100px"/></div>
                   <div><label class="l">Rate *</label><input id="rRHrail" type="number" value="120" min="0" style="width:72px"/></div>
                   <div><label class="l">Unit</label>
                     <select id="rHandRateUnit" style="width:72px">
@@ -787,7 +808,18 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                       <option value="kg">₹/kg</option><option value="pc">₹/pc</option>
                     </select>
                   </div>
-                  <div><label class="l">Wt kg/u</label><input id="rWHrail" type="number" value="0" step="0.01" style="width:56px"/></div>
+                  <div><label class="l">Weight</label><input id="rWHrail" type="number" value="0" step="0.01" placeholder="after size" style="width:64px"/></div>
+                  <div><label class="l">Wt unit</label>
+                    <select id="rWHrailUnit" style="width:78px">
+                      <option value="rft">kg/RFT</option><option value="m">kg/m</option>
+                    </select>
+                  </div>
+                  <div><label class="l">Bar length</label>
+                    <select id="rHandBarFt" style="width:78px" title="Standard stock length — 180° connector at each join">
+                      <option value="12">12 ft</option>
+                      <option value="16" selected>16 ft</option>
+                    </select>
+                  </div>
                   <div><label class="l">Gallery</label><select id="rMatHand" style="min-width:130px"><option value="">—</option></select></div>
                 </div>
                 <div class="rt-row" style="flex-wrap:wrap;margin-top:.25rem">
@@ -795,10 +827,13 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                   <div><label class="l">180° ₹</label><input id="rR180" type="number" value="0" style="width:52px"/></div>
                   <div><label class="l">Endcap ₹</label><input id="rREnd" type="number" value="0" style="width:52px"/></div>
                   <div><label class="l">Wall ₹</label><input id="rRWall" type="number" value="0" style="width:58px"/></div>
+                  <div><label class="l">EPDM ₹/RFT</label><input id="rREpdm" type="number" value="0" style="width:64px" title="Handrail + bottom EPDM"/></div>
                   <div><label class="l">Bend SKU</label><select id="rMatBend" style="min-width:110px"><option value="">—</option></select></div>
                   <div><label class="l">End cap</label><select id="rMatEnd" style="min-width:100px"><option value="">—</option></select></div>
                   <div><label class="l">Wall conn</label><select id="rMatWall" style="min-width:100px"><option value="">—</option></select></div>
                   <div><label class="l">Anchor SKU</label><select id="rMatAnchor" style="min-width:110px"><option value="">—</option></select></div>
+                  <div><label class="l">EPDM HR</label><select id="rMatEpdmHand" style="min-width:110px"><option value="">—</option></select></div>
+                  <div><label class="l">EPDM bottom</label><select id="rMatEpdmBottom" style="min-width:110px"><option value="">—</option></select></div>
                 </div>
               </div>
 
@@ -1950,6 +1985,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                 <option value="bend">Bend</option>
                 <option value="connector_180">180° connector</option>
                 <option value="anchor">Anchor</option>
+                <option value="epdm">EPDM</option>
               </select>
             </div>
           </div>
@@ -1962,6 +1998,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             </div>
             <div><label class="l">Unit</label><select id="rmUnit"><option>RFT</option><option>RMT</option><option>pc</option></select></div>
             <div><label class="l">Rate</label><input id="rmRate" type="number" style="width:80px"/></div>
+            <div><label class="l">Weight kg/u</label><input id="rmWeight" type="number" step="0.01" style="width:80px" placeholder="kg/RFT"/></div>
             <button class="btn sm" id="btnRmSave" style="margin-top:1rem">Save</button>
             <button class="btn ghost sm" id="btnRmSeed" style="margin-top:1rem">Seed defaults</button>
           </div>
@@ -3370,8 +3407,17 @@ function renderRailingLineSpecs(q, cfg) {
   if (bk === 'continuous' || (q && q.continuousRail)) {
     rows.splice(2, 0, ['Bottom rail', `${(q && q.bottomSize) || c.bottomSize || '—'} · ${mm((q && (q.runLengthMm || q.lengthMm)) || c.lengthMm || 0)} mm · ${Number((q && (q.runLengthRft || q.lengthRft)) || 0).toFixed(2)} RFT`]);
     if (q && q.handrail) {
-      rows.splice(3, 0, ['Handrail', `${(q && q.handrailSize) || c.handrailSize || '—'} · ${mm((q && (q.runLengthMm || q.lengthMm)) || 0)} mm · ${Number((q && (q.runLengthRft || q.lengthRft)) || 0).toFixed(2)} RFT`]);
+      const bar = (q && q.handrailBarLengthFt) || c.handrailBarLengthFt || 16;
+      rows.splice(3, 0, ['Handrail', `${(q && q.handrailSize) || c.handrailSize || '—'} · ${mm((q && (q.runLengthMm || q.lengthMm)) || 0)} mm · ${Number((q && (q.runLengthRft || q.lengthRft)) || 0).toFixed(2)} RFT · ${bar} ft bars`]);
     }
+    const anc = (q && q.anchorCount) != null ? q.anchorCount : '—';
+    const sp = (q && q.anchorSpacingFt) || c.anchorSpacingFt || 2;
+    rows.splice((q && q.handrail) ? 4 : 3, 0, ['Anchors', `${anc} pc · every ${sp} ft · 100 mm inset`]);
+    const n180 = (q && q.connector180Count) || 0;
+    rows.push(['180°', q && q.handrail ? `${n180} pc (handrail only)` : '—']);
+    const eHr = (q && q.epdmHandrailRft) || 0;
+    const eBr = (q && q.epdmBottomRft) || 0;
+    if (eHr || eBr) rows.push(['EPDM', `HR ${Number(eHr).toFixed(2)} RFT · bottom ${Number(eBr).toFixed(2)} RFT`]);
   }
   if (shape === 'staircase' || sg.steps) {
     rows.splice(ov ? 3 : 2, 0, ['Stairs', `${sg.steps || c.stairSteps || '—'} steps · riser ${sg.riserMm || c.stairRiseMm || '—'} · tread ${sg.treadMm || c.stairRunMm || '—'}`]);
@@ -4077,6 +4123,10 @@ function populateRailTools(cfg) {
   }
   set('rBottomSize', cfg.bottomSize); set('rPillarSize', cfg.bottomSize);
   set('rHandSize', cfg.handrailSize); set('rStairPillarSize', cfg.bottomSize);
+  set('rHandBarFt', cfg.handrailBarLengthFt || 16);
+  set('rAnchorSpacingFt', cfg.anchorSpacingFt || 2);
+  if ($('rBottomSizePick') && cfg.bottomSize) $('rBottomSizePick').value = cfg.bottomSize;
+  if ($('rHandSizePick') && cfg.handrailSize) $('rHandSizePick').value = cfg.handrailSize;
   if ($('rWallL')) $('rWallL').checked = !!(cfg.wallStart != null ? cfg.wallStart : cfg.wallLeft);
   if ($('rWallR')) $('rWallR').checked = !!(cfg.wallEnd != null ? cfg.wallEnd : cfg.wallRight);
   if ($('rHandrail')) $('rHandrail').checked = cfg.handrail !== false;
@@ -4117,6 +4167,11 @@ function populateRailTools(cfg) {
   pick('rMatBottom', 'bottom_rail'); pick('rMatHand', 'handrail');
   pick('rMatBlock', 'block'); pick('rMatAnchor', 'anchor');
   pick('rMatBend', 'bend'); pick('rMatEnd', 'end_cap'); pick('rMatWall', 'wall_connector');
+  pick('rMatEpdmHand', 'epdm_handrail'); pick('rMatEpdmBottom', 'epdm_bottom');
+  set('rHandBarFt', cfg.handrailBarLengthFt || 16);
+  set('rAnchorSpacingFt', cfg.anchorSpacingFt || 2);
+  if (cfg.bottomSize && $('rBottomSizePick')) $('rBottomSizePick').value = cfg.bottomSize;
+  if (cfg.handrailSize && $('rHandSizePick')) $('rHandSizePick').value = cfg.handrailSize;
   syncRailWizardUi();
   showRailTools(true);
   loadRailingMaterialsIntoTools();
@@ -4134,6 +4189,7 @@ function railingMaterialSelections() {
     ['bottom_rail', 'rMatBottom'], ['handrail', 'rMatHand'], ['block', 'rMatBlock'],
     ['anchor', 'rMatAnchor'], ['bend', 'rMatBend'], ['end_cap', 'rMatEnd'],
     ['wall_connector', 'rMatWall'],
+    ['epdm_handrail', 'rMatEpdmHand'], ['epdm_bottom', 'rMatEpdmBottom'],
   ];
   map.forEach(([role, eid]) => { const v = get(eid); if (v) out[role] = v; });
   const flags = railInstallFlags();
@@ -4145,25 +4201,87 @@ function railingMaterialSelections() {
 function applyMatRateFromSelect(sel) {
   if (!sel || !sel.value || !state.railingMaterials) return;
   const item = (state.railingMaterials || []).find(m => m.id === sel.value);
-  if (!item || item.rate == null) return;
+  if (!item) return;
   const cat = item.category;
   const map = {
     bottom_rail: 'rRBrail', u_channel: 'rRBrail', handrail: 'rRHrail',
     block: 'rRBlock', ss_pillar: 'rRBlock', anchor: 'rRAnchor',
     bend: 'rRBend', connector_180: 'rR180', end_cap: 'rREnd',
     wall_connector: 'rRWall', stud: 'rRStud',
+    epdm: 'rREpdm', epdm_handrail: 'rREpdm', epdm_bottom: 'rREpdm',
   };
-  const fid = map[cat];
-  if (fid && $(fid)) $(fid).value = item.rate;
+  const fid = map[cat] || (String(sel.id || '').indexOf('Epdm') >= 0 ? 'rREpdm' : '');
+  if (fid && $(fid) && item.rate != null) $(fid).value = item.rate;
+  if (item.sizeMm && (cat === 'handrail' || cat === 'bottom_rail' || cat === 'u_channel')) {
+    if (cat === 'handrail') {
+      if ($('rHandSize')) $('rHandSize').value = item.sizeMm;
+      if ($('rHandSizePick')) $('rHandSizePick').value = item.sizeMm;
+    } else {
+      if ($('rBottomSize')) $('rBottomSize').value = item.sizeMm;
+      if ($('rBottomSizePick')) $('rBottomSizePick').value = item.sizeMm;
+    }
+  }
+  if (item.weightKgPerUnit != null) {
+    if (cat === 'handrail' && $('rWHrail')) $('rWHrail').value = item.weightKgPerUnit;
+    if ((cat === 'bottom_rail' || cat === 'u_channel') && $('rWBrail')) $('rWBrail').value = item.weightKgPerUnit;
+  }
   if (item.mountType && $('rMount') && item.mountType !== 'none') $('rMount').value = item.mountType;
   if (item.color && $('rSysColor') && ($('rColorMode') && $('rColorMode').value) === 'global') {
     $('rSysColor').value = item.color;
   }
 }
+function _railSizeNorm(s) {
+  return String(s || '').replace(/x/gi, '×').replace(/\s+/g, '').toLowerCase();
+}
+function fillRailSizePicks() {
+  const mats = state.railingMaterials || [];
+  const fill = (selId, cats, presets) => {
+    const el = $(selId); if (!el) return;
+    const cur = el.value || '';
+    const seen = new Set();
+    const opts = ['<option value="">Custom…</option>'];
+    (presets || []).forEach(sz => {
+      const v = sz.sizeMm || sz;
+      const k = _railSizeNorm(v);
+      if (!k || seen.has(k)) return;
+      seen.add(k);
+      opts.push(`<option value="${v}">${v}</option>`);
+    });
+    mats.filter(m => cats.includes(m.category) && m.sizeMm).forEach(m => {
+      const k = _railSizeNorm(m.sizeMm);
+      if (!k || seen.has(k)) return;
+      seen.add(k);
+      opts.push(`<option value="${m.sizeMm}">${m.sizeMm}</option>`);
+    });
+    el.innerHTML = opts.join('');
+    if (cur) {
+      const hit = [...el.options].find(o => _railSizeNorm(o.value) === _railSizeNorm(cur));
+      el.value = hit ? hit.value : '';
+    }
+    el.onchange = () => {
+      const v = el.value;
+      if (selId === 'rHandSizePick' && $('rHandSize') && v) $('rHandSize').value = v;
+      if (selId === 'rBottomSizePick' && $('rBottomSize') && v) $('rBottomSize').value = v;
+      railingCalc();
+    };
+  };
+  const hs = (state.railingSizeOptions && state.railingSizeOptions.handrailSizes) || [
+    {sizeMm:'14×19'},{sizeMm:'25×25'},{sizeMm:'38×38'},{sizeMm:'50×50'},{sizeMm:'Ø35'},{sizeMm:'Ø50'},
+  ];
+  const bs = (state.railingSizeOptions && state.railingSizeOptions.bottomRailSizes) || [
+    {sizeMm:'60×40'},{sizeMm:'80×37'},{sizeMm:'100×45'},{sizeMm:'121×60'},{sizeMm:'120×75'},{sizeMm:'175×75'},
+  ];
+  fill('rHandSizePick', ['handrail'], hs);
+  fill('rBottomSizePick', ['bottom_rail', 'u_channel'], bs);
+}
 async function loadRailingMaterialsIntoTools() {
   try {
-    const d = await api('/api/railing/materials');
+    const [d, opt] = await Promise.all([
+      api('/api/railing/materials'),
+      api('/api/railing/materials/options').catch(() => ({})),
+    ]);
     state.railingMaterials = d.materials || [];
+    state.railingSizeOptions = opt || {};
     const fill = (selId, cats) => {
       const el = $(selId); if (!el) return;
       const cur = el.value;
@@ -4182,6 +4300,9 @@ async function loadRailingMaterialsIntoTools() {
     fill('rMatBend', ['bend']);
     fill('rMatEnd', ['end_cap']);
     fill('rMatWall', ['wall_connector']);
+    fill('rMatEpdmHand', ['epdm', 'epdm_handrail']);
+    fill('rMatEpdmBottom', ['epdm', 'epdm_bottom']);
+    fillRailSizePicks();
   } catch (e) { /* gallery optional */ }
 }
 async function loadRailGlassLibrary() {
@@ -4313,8 +4434,11 @@ function railingConfig(){
         )
       : undefined,
     bottomKind: stairs ? undefined : railBottomKind(),
-    bottomSize: ($('rBottomSize') && $('rBottomSize').value) || ($('rPillarSize') && $('rPillarSize').value) || '',
-    handrailSize: ($('rHandSize') && $('rHandSize').value) || '',
+    bottomSize: ($('rBottomSize') && $('rBottomSize').value) || ($('rBottomSizePick') && $('rBottomSizePick').value) || ($('rPillarSize') && $('rPillarSize').value) || '',
+    handrailSize: ($('rHandSize') && $('rHandSize').value) || ($('rHandSizePick') && $('rHandSizePick').value) || '',
+    handrailBarLengthFt: num('rHandBarFt', 16) || 16,
+    handrailMaxMm: (num('rHandBarFt', 16) || 16) * 304.8,
+    anchorSpacingFt: num('rAnchorSpacingFt', 2) || 2,
     legAMm: num('rLegA',0) || undefined,
     legBMm: num('rLegB',0) || undefined,
     legCMm: num('rLegC',0) || undefined,
@@ -4350,8 +4474,17 @@ function railingConfig(){
       glassPerSqft: num('rRGlass',0),
       blockPerPc: blockRate,
       anchorPerPc: num('rRAnchor',0),
-      bottomRailPerUnit: num('rRBrail',0), bottomRailWeightPerUnit: num('rWBrail',0),
-      handrailPerUnit: num('rRHrail',0), handrailWeightPerUnit: num('rWHrail',0),
+      bottomRailPerUnit: num('rRBrail',0),
+      bottomRailWeightPerUnit: (function(){
+        const w = num('rWBrail',0); if (!w) return 0;
+        return (($('rWBrailUnit') && $('rWBrailUnit').value) === 'm') ? (w / 3.28084) : w;
+      })(),
+      handrailPerUnit: num('rRHrail',0),
+      handrailWeightPerUnit: (function(){
+        const w = num('rWHrail',0); if (!w) return 0;
+        return (($('rWHrailUnit') && $('rWHrailUnit').value) === 'm') ? (w / 3.28084) : w;
+      })(),
+      epdmHandrailPerUnit: num('rREpdm',0), epdmBottomPerUnit: num('rREpdm',0),
       wallConnectorPerPc: num('rRWall',0),
       modularBendPerPc: num('rRBend',0), connector180PerPc: num('rR180',0),
       endCapPerPc: num('rREnd',0), studPerPc: studRate,
@@ -5184,7 +5317,8 @@ if ($('btnRailHwLoad')) $('btnRailHwLoad').onclick = () => {
  'rLegA','rLegB','rLegC','rArchSpan','rArchRise','rSteps','rRise','rRun','rStud','rSegments',
  'rFloorH','rGlassH','rSheetW','rSheetH','rWastePct','rBasis','rOverhead','rMarkup','rInstall','rTransport',
  'rMount','rBeamOverlap','rBeamOverlapStair','rSpanPanels','rManual','rGlassThk','rGlassType','rGlassPreset','rColorMode','rSysColor',
- 'rBottomSize','rPillarSize','rHandSize','rStairPillarSize','rStudsPerGlassStep','rStudsPerGlassSide',
+ 'rBottomSize','rBottomSizePick','rPillarSize','rHandSize','rHandSizePick','rStairPillarSize','rStudsPerGlassStep','rStudsPerGlassSide',
+ 'rHandBarFt','rAnchorSpacingFt','rWHrail','rWBrail','rWHrailUnit','rWBrailUnit','rREpdm',
  'rRStudStep','rRStudSide','rRBlockStair','rQty','rQtyStair',
  'rRGlass','rRBlock','rRAnchor','rRBend','rR180','rREnd','rRStud','rRBrail','rRHrail','rRWall'].forEach(id => {
   const el = $(id); if (!el) return;
@@ -5492,6 +5626,40 @@ if ($('btnSetupToCart')) $('btnSetupToCart').onclick = async () => {
 };
 if ($('btnSetupLoadList')) $('btnSetupLoadList').onclick = loadSetupList;
 if ($('btnEditSetup')) $('btnEditSetup').onclick = () => setView('setup');
+state._custPdfCache = { key: '', url: '', blob: null };
+function _exportFingerprint(kind) {
+  try {
+    return JSON.stringify({
+      k: kind || 'customer',
+      id: state.projectId || '',
+      brand: ($('pdfBrand') && $('pdfBrand').value) || '',
+      cust: ($('cartCustomer') && $('cartCustomer').value) || '',
+      name: ($('cartName') && $('cartName').value) || '',
+      bill: projectBillTo(),
+      n: (state.lines || []).length,
+      lines: (state.lines || []).map(l => ({
+        id: l.lineId, p: l.product, w: l.width, h: l.height, q: l.qty,
+        g: l.glass, c: l.colour, sr: l.sellingRate, su: l.saleUnit,
+        loc: l.locationName,
+        photo: l.designPhoto && l.designPhoto.key,
+        rs: l.options && l.options.railing && [
+          l.options.railing.handrailSize, l.options.railing.bottomSize,
+          l.options.railing.anchorSpacingFt, l.options.railing.handrailBarLengthFt,
+        ].join('|'),
+      })),
+    });
+  } catch (e) { return String(Date.now()); }
+}
+function _liveExportBody(brand) {
+  return {
+    lines: state.lines,
+    customer: ($('cartCustomer') && $('cartCustomer').value) || ($('projCustName') && $('projCustName').value) || '',
+    name: ($('cartName') && $('cartName').value) || undefined,
+    ...projectBillTo(),
+    brand,
+    persist: false,
+  };
+}
 async function openProjectPdf(kind) {
   if (state.selectedLine != null && state.lines[state.selectedLine] && !isRailingMode() && !isShowerMode() && !isVentMode()) {
     try {
@@ -5499,18 +5667,18 @@ async function openProjectPdf(kind) {
       state.lines[state.selectedLine] = { ...state.lines[state.selectedLine], ...draft };
     } catch (_) {}
   }
+  const cacheKind = kind === 'factory' ? 'factory' : 'customer';
+  const cacheKey = _exportFingerprint(cacheKind);
+  if (cacheKind === 'customer' && state._custPdfCache.key === cacheKey && state._custPdfCache.url) {
+    window.open(state._custPdfCache.url, '_blank');
+    return;
+  }
   await ensureProject();
   try { await ensureExportSetupApplied(); } catch (_) {}
   updatePdfLinks();
+  saveProject(true).catch(() => {});
   const brand = ($('pdfBrand') && $('pdfBrand').value) || 'woodenmax';
-  const body = {
-    lines: state.lines,
-    customer: ($('cartCustomer') && $('cartCustomer').value) || ($('projCustName') && $('projCustName').value) || '',
-    name: ($('cartName') && $('cartName').value) || undefined,
-    ...projectBillTo(),
-    brand,
-    persist: true,
-  };
+  const body = _liveExportBody(brand);
   const res = await fetch(`${API_BASE}/api/projects/${state.projectId}/${kind}-pdf?brand=${encodeURIComponent(brand)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -5525,7 +5693,11 @@ async function openProjectPdf(kind) {
     throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
   }
   const blob = await res.blob();
+  if (cacheKind === 'customer' && state._custPdfCache.url) {
+    try { URL.revokeObjectURL(state._custPdfCache.url); } catch (_) {}
+  }
   const url = URL.createObjectURL(blob);
+  if (cacheKind === 'customer') state._custPdfCache = { key: cacheKey, url, blob };
   window.open(url, '_blank');
 }
 ['linkCust','linkCustPrint','linkFact'].forEach(id => {
@@ -5539,12 +5711,37 @@ async function openProjectPdf(kind) {
   });
 });
 if ($('linkCustXlsx')) $('linkCustXlsx').addEventListener('click', async (e) => {
-  if (!state.projectId) { e.preventDefault(); toast('Save / calculate a project first'); return; }
   e.preventDefault();
+  if (!(state.projectId || (state.lines && state.lines.length))) { toast('Save / calculate a project first'); return; }
   try {
-    await ensureExportSetupApplied();
+    if (state.selectedLine != null && state.lines[state.selectedLine] && !isRailingMode() && !isShowerMode() && !isVentMode()) {
+      try {
+        const draft = currentLineDraft();
+        state.lines[state.selectedLine] = { ...state.lines[state.selectedLine], ...draft };
+      } catch (_) {}
+    }
+    await ensureProject();
+    try { await ensureExportSetupApplied(); } catch (_) {}
     updatePdfLinks();
-    window.location.href = $('linkCustXlsx').href;
+    saveProject(true).catch(() => {});
+    const brand = ($('pdfBrand') && $('pdfBrand').value) || 'woodenmax';
+    const res = await fetch(`${API_BASE}/api/projects/${state.projectId}/customer.xlsx?brand=${encodeURIComponent(brand)}&drawings=thumb`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_liveExportBody(brand)),
+    });
+    if (!res.ok) {
+      let msg = res.statusText;
+      try { const j = await res.json(); msg = j.detail || msg; } catch (_) {}
+      throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = ((state.projectId || 'quote') + '.xlsx').replace(/[^\w.\-]+/g, '_');
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   } catch(err) { toast(err.message || String(err)); }
 });
 if ($('exportSetupSelect')) {
@@ -7792,6 +7989,7 @@ if ($('btnRmSave')) $('btnRmSave').onclick = async () => {
     name, category: $('rmCat').value, sizeMm: $('rmSize').value,
     color: $('rmColor').value, grade: $('rmGrade').value, mountType: $('rmMount').value,
     unit: $('rmUnit').value, rate: parseFloat($('rmRate').value)||null,
+    weightKgPerUnit: parseFloat($('rmWeight') && $('rmWeight').value) || null,
   };
   try { await api('/api/railing/materials',{method:'POST',body}); toast('Railing material saved'); if($('rmName'))$('rmName').value=''; await loadRailingMaterialsList(); } catch(e){ toast(e.message); }
 };

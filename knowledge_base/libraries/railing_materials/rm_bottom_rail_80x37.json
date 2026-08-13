@@ -1,0 +1,20 @@
+{
+  "id": "rm_bottom_rail_80x37",
+  "name": "Bottom continuous rail 80×37",
+  "category": "bottom_rail",
+  "sizeMm": "80×37",
+  "widthMm": 80.0,
+  "heightMm": 37.0,
+  "thicknessMm": null,
+  "diameterMm": null,
+  "color": "natural",
+  "grade": "316",
+  "mountType": "top_mount",
+  "unit": "RFT",
+  "rate": null,
+  "weightKgPerUnit": null,
+  "brand": "",
+  "remarks": "",
+  "status": "active",
+  "updatedAt": "2026-08-13T18:55:24.329655+00:00"
+}

@@ -1,0 +1,20 @@
+{
+  "id": "rm_handrail_od50",
+  "name": "Round handrail Ø50",
+  "category": "handrail",
+  "sizeMm": "Ø50",
+  "widthMm": null,
+  "heightMm": null,
+  "thicknessMm": null,
+  "diameterMm": 50.0,
+  "color": "natural",
+  "grade": "316",
+  "mountType": "top_mount",
+  "unit": "RFT",
+  "rate": null,
+  "weightKgPerUnit": null,
+  "brand": "",
+  "remarks": "",
+  "status": "active",
+  "updatedAt": "2026-08-13T18:55:24.321689+00:00"
+}

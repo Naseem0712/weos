@@ -7,9 +7,20 @@ import io
 from pathlib import Path
 
 
-def svg_to_png_bytes(svg: str, *, scale: float = 1.0) -> bytes | None:
-    """Best-effort SVG→PNG. Returns None if no renderer available."""
-    # Try cairosvg
+def cairo_png_available() -> bool:
+    try:
+        import cairosvg  # noqa: F401
+
+        return True
+    except Exception:
+        return False
+
+
+def svg_to_png_bytes(svg: str, *, scale: float = 1.0, allow_slow: bool = False) -> bytes | None:
+    """SVG→PNG. Cairo is fast; svglib+renderPM is very slow and can fatten strokes.
+
+    Quote PDF / Excel pass ``allow_slow=False`` so we never block on renderPM.
+    """
     try:
         import cairosvg
 
@@ -17,7 +28,9 @@ def svg_to_png_bytes(svg: str, *, scale: float = 1.0) -> bytes | None:
     except Exception:
         pass
 
-    # Try svglib + reportlab + pillow
+    if not allow_slow:
+        return None
+
     try:
         from reportlab.graphics import renderPM
         from svglib.svglib import svg2rlg

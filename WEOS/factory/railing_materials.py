@@ -27,6 +27,9 @@ RAILING_MATERIAL_CATEGORIES = [
     "connector_180",
     "anchor",
     "stud",
+    "epdm",
+    "epdm_handrail",
+    "epdm_bottom",
 ]
 
 MOUNT_TYPES = ["side_mount", "top_mount", "base_channel", "none"]
@@ -45,7 +48,30 @@ CATEGORY_RATE_KEYS = {
     "connector_180": "connector180PerPc",
     "anchor": "anchorPerPc",
     "stud": "studPerPc",
+    "epdm": "epdmPerUnit",
+    "epdm_handrail": "epdmHandrailPerUnit",
+    "epdm_bottom": "epdmBottomPerUnit",
 }
+
+# Catalogue sizes — also seeded into the gallery. Wizard dropdowns read these
+# (plus any extra SKUs the user saves). Not the only source: custom size input
+# is always allowed.
+HANDRAIL_GALLERY_SIZES: list[dict[str, Any]] = [
+    {"sizeMm": "14×19", "shape": "rect", "widthMm": 14, "heightMm": 19},
+    {"sizeMm": "25×25", "shape": "rect", "widthMm": 25, "heightMm": 25},
+    {"sizeMm": "38×38", "shape": "rect", "widthMm": 38, "heightMm": 38},
+    {"sizeMm": "50×50", "shape": "rect", "widthMm": 50, "heightMm": 50},
+    {"sizeMm": "Ø35", "shape": "round", "diameterMm": 35},
+    {"sizeMm": "Ø50", "shape": "round", "diameterMm": 50},
+]
+BOTTOM_RAIL_GALLERY_SIZES: list[dict[str, Any]] = [
+    {"sizeMm": "60×40", "widthMm": 60, "heightMm": 40},
+    {"sizeMm": "80×37", "widthMm": 80, "heightMm": 37},
+    {"sizeMm": "100×45", "widthMm": 100, "heightMm": 45},
+    {"sizeMm": "121×60", "widthMm": 121, "heightMm": 60},
+    {"sizeMm": "120×75", "widthMm": 120, "heightMm": 75},
+    {"sizeMm": "175×75", "widthMm": 175, "heightMm": 75},
+]
 
 
 def _now() -> str:
@@ -71,6 +97,13 @@ def category_options() -> dict[str, Any]:
         "grades": ["316", "304", "6063-T5", "6063-T6", "MS", "other"],
         "colours": ["natural", "black", "white", "bronze", "4753", "RAL custom", "unfinished"],
         "rateKeys": CATEGORY_RATE_KEYS,
+        "handrailSizes": HANDRAIL_GALLERY_SIZES,
+        "bottomRailSizes": BOTTOM_RAIL_GALLERY_SIZES,
+        "barLengthsFt": [12, 16],
+        "anchorSpacingFt": [1, 2],
+        "defaultBarLengthFt": 16,
+        "defaultAnchorSpacingFt": 2,
+        "weightUnits": ["kg/RFT", "kg/m"],
     }
 
 
@@ -80,7 +113,7 @@ def build_material(spec: Mapping[str, Any]) -> dict[str, Any]:
     if category not in RAILING_MATERIAL_CATEGORIES:
         category = "block"
     mid = str(spec.get("id") or f"rm_{_slug(category)}_{_slug(name)}")
-    unit = str(spec.get("unit") or ("pc" if category not in ("bottom_rail", "handrail", "u_channel") else "RFT")).upper()
+    unit = str(spec.get("unit") or ("pc" if category not in ("bottom_rail", "handrail", "u_channel", "epdm", "epdm_handrail", "epdm_bottom") else "RFT")).upper()
     if unit == "PC":
         unit = "pc"
     return {
@@ -280,6 +313,198 @@ DEFAULT_SEED: list[dict[str, Any]] = [
         "unit": "pc",
         "rate": 50,
     },
+    {
+        "id": "rm_handrail_14x19",
+        "name": "Handrail 14×19",
+        "category": "handrail",
+        "sizeMm": "14×19",
+        "widthMm": 14,
+        "heightMm": 19,
+        "color": "natural",
+        "grade": "316",
+        "mountType": "top_mount",
+        "unit": "RFT",
+        "rate": None,
+        "weightKgPerUnit": None,
+        "remarks": "Enter weight kg/RFT or kg/m after selecting size",
+    },
+    {
+        "id": "rm_handrail_25x25",
+        "name": "Handrail 25×25",
+        "category": "handrail",
+        "sizeMm": "25×25",
+        "widthMm": 25,
+        "heightMm": 25,
+        "color": "natural",
+        "grade": "316",
+        "mountType": "top_mount",
+        "unit": "RFT",
+        "rate": None,
+        "weightKgPerUnit": None,
+    },
+    {
+        "id": "rm_handrail_38x38",
+        "name": "Handrail 38×38",
+        "category": "handrail",
+        "sizeMm": "38×38",
+        "widthMm": 38,
+        "heightMm": 38,
+        "color": "natural",
+        "grade": "316",
+        "mountType": "top_mount",
+        "unit": "RFT",
+        "rate": None,
+        "weightKgPerUnit": None,
+    },
+    {
+        "id": "rm_handrail_50x50",
+        "name": "Handrail 50×50",
+        "category": "handrail",
+        "sizeMm": "50×50",
+        "widthMm": 50,
+        "heightMm": 50,
+        "color": "natural",
+        "grade": "316",
+        "mountType": "top_mount",
+        "unit": "RFT",
+        "rate": None,
+        "weightKgPerUnit": None,
+    },
+    {
+        "id": "rm_handrail_od35",
+        "name": "Round handrail Ø35",
+        "category": "handrail",
+        "sizeMm": "Ø35",
+        "diameterMm": 35,
+        "color": "natural",
+        "grade": "316",
+        "mountType": "top_mount",
+        "unit": "RFT",
+        "rate": None,
+        "weightKgPerUnit": None,
+    },
+    {
+        "id": "rm_handrail_od50",
+        "name": "Round handrail Ø50",
+        "category": "handrail",
+        "sizeMm": "Ø50",
+        "diameterMm": 50,
+        "color": "natural",
+        "grade": "316",
+        "mountType": "top_mount",
+        "unit": "RFT",
+        "rate": None,
+        "weightKgPerUnit": None,
+    },
+    {
+        "id": "rm_bottom_rail_60x40",
+        "name": "Bottom continuous rail 60×40",
+        "category": "bottom_rail",
+        "sizeMm": "60×40",
+        "widthMm": 60,
+        "heightMm": 40,
+        "color": "natural",
+        "grade": "316",
+        "mountType": "top_mount",
+        "unit": "RFT",
+        "rate": None,
+        "weightKgPerUnit": None,
+        "remarks": "Custom size also allowed in wizard",
+    },
+    {
+        "id": "rm_bottom_rail_80x37",
+        "name": "Bottom continuous rail 80×37",
+        "category": "bottom_rail",
+        "sizeMm": "80×37",
+        "widthMm": 80,
+        "heightMm": 37,
+        "color": "natural",
+        "grade": "316",
+        "mountType": "top_mount",
+        "unit": "RFT",
+        "rate": None,
+        "weightKgPerUnit": None,
+    },
+    {
+        "id": "rm_bottom_rail_100x45",
+        "name": "Bottom continuous rail 100×45",
+        "category": "bottom_rail",
+        "sizeMm": "100×45",
+        "widthMm": 100,
+        "heightMm": 45,
+        "color": "natural",
+        "grade": "316",
+        "mountType": "top_mount",
+        "unit": "RFT",
+        "rate": None,
+        "weightKgPerUnit": None,
+    },
+    {
+        "id": "rm_bottom_rail_121x60",
+        "name": "Bottom continuous rail 121×60",
+        "category": "bottom_rail",
+        "sizeMm": "121×60",
+        "widthMm": 121,
+        "heightMm": 60,
+        "color": "natural",
+        "grade": "316",
+        "mountType": "top_mount",
+        "unit": "RFT",
+        "rate": None,
+        "weightKgPerUnit": None,
+    },
+    {
+        "id": "rm_bottom_rail_120x75",
+        "name": "Bottom continuous rail 120×75",
+        "category": "bottom_rail",
+        "sizeMm": "120×75",
+        "widthMm": 120,
+        "heightMm": 75,
+        "color": "natural",
+        "grade": "316",
+        "mountType": "top_mount",
+        "unit": "RFT",
+        "rate": None,
+        "weightKgPerUnit": None,
+    },
+    {
+        "id": "rm_bottom_rail_175x75",
+        "name": "Bottom continuous rail 175×75",
+        "category": "bottom_rail",
+        "sizeMm": "175×75",
+        "widthMm": 175,
+        "heightMm": 75,
+        "color": "natural",
+        "grade": "316",
+        "mountType": "top_mount",
+        "unit": "RFT",
+        "rate": None,
+        "weightKgPerUnit": None,
+    },
+    {
+        "id": "rm_epdm_handrail",
+        "name": "Handrail EPDM gasket",
+        "category": "epdm",
+        "sizeMm": "",
+        "color": "black",
+        "grade": "",
+        "mountType": "none",
+        "unit": "RFT",
+        "rate": 18,
+        "remarks": "1 run = handrail RFT",
+    },
+    {
+        "id": "rm_epdm_bottom",
+        "name": "Bottom rail EPDM gasket",
+        "category": "epdm",
+        "sizeMm": "",
+        "color": "black",
+        "grade": "",
+        "mountType": "none",
+        "unit": "RFT",
+        "rate": 18,
+        "remarks": "1 run = bottom continuous rail RFT",
+    },
 ]
 
 
@@ -320,7 +545,16 @@ def rates_from_selections(selections: Mapping[str, Any] | None) -> dict[str, flo
     weights: dict[str, float] = {}
     for role, item in resolved.items():
         cat = str(item.get("category") or role)
-        key = CATEGORY_RATE_KEYS.get(cat)
+        role_l = str(role).lower()
+        if cat in ("epdm", "epdm_handrail", "epdm_bottom") or "epdm" in role_l:
+            if "hand" in role_l or cat == "epdm_handrail":
+                key = "epdmHandrailPerUnit"
+            elif "bottom" in role_l or cat == "epdm_bottom":
+                key = "epdmBottomPerUnit"
+            else:
+                key = "epdmPerUnit"
+        else:
+            key = CATEGORY_RATE_KEYS.get(cat)
         if not key:
             continue
         rate = item.get("rate")

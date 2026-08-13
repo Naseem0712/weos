@@ -1,0 +1,20 @@
+{
+  "id": "rm_handrail_38x38",
+  "name": "Handrail 38×38",
+  "category": "handrail",
+  "sizeMm": "38×38",
+  "widthMm": 38.0,
+  "heightMm": 38.0,
+  "thicknessMm": null,
+  "diameterMm": null,
+  "color": "natural",
+  "grade": "316",
+  "mountType": "top_mount",
+  "unit": "RFT",
+  "rate": null,
+  "weightKgPerUnit": null,
+  "brand": "",
+  "remarks": "",
+  "status": "active",
+  "updatedAt": "2026-08-13T18:55:24.318991+00:00"
+}

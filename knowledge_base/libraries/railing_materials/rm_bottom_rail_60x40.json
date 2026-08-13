@@ -1,0 +1,20 @@
+{
+  "id": "rm_bottom_rail_60x40",
+  "name": "Bottom continuous rail 60×40",
+  "category": "bottom_rail",
+  "sizeMm": "60×40",
+  "widthMm": 60.0,
+  "heightMm": 40.0,
+  "thicknessMm": null,
+  "diameterMm": null,
+  "color": "natural",
+  "grade": "316",
+  "mountType": "top_mount",
+  "unit": "RFT",
+  "rate": null,
+  "weightKgPerUnit": null,
+  "brand": "",
+  "remarks": "Custom size also allowed in wizard",
+  "status": "active",
+  "updatedAt": "2026-08-13T18:55:24.321689+00:00"
+}

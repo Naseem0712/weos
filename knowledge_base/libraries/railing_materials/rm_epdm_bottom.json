@@ -1,0 +1,20 @@
+{
+  "id": "rm_epdm_bottom",
+  "name": "Bottom rail EPDM gasket",
+  "category": "epdm",
+  "sizeMm": "",
+  "widthMm": null,
+  "heightMm": null,
+  "thicknessMm": null,
+  "diameterMm": null,
+  "color": "black",
+  "grade": "",
+  "mountType": "none",
+  "unit": "RFT",
+  "rate": 18.0,
+  "weightKgPerUnit": null,
+  "brand": "",
+  "remarks": "1 run = bottom continuous rail RFT",
+  "status": "active",
+  "updatedAt": "2026-08-13T18:55:24.337452+00:00"
+}

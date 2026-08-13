@@ -34,9 +34,14 @@ SQMM_PER_SQFT = 92903.04
 SQMM_PER_SQM = MM_PER_M * MM_PER_M
 RFT_PER_RMT = 3.28084
 
-# Default stock length before a handrail needs a 180° join connector.
-DEFAULT_HANDRAIL_MAX_MM = 6000.0
+# Handrail sold/cut from 12' or 16' bars (default 16') → 180° join each bar.
+FT_12_MM = 12.0 * MM_PER_FT  # 3657.6
+FT_16_MM = 16.0 * MM_PER_FT  # 4876.8
+DEFAULT_HANDRAIL_BAR_FT = 16.0
+DEFAULT_HANDRAIL_MAX_MM = FT_16_MM
 PILLAR_EDGE_MM = 100.0
+ANCHOR_INSET_MM = 100.0  # first/last continuous-rail anchor inset
+DEFAULT_ANCHOR_SPACING_FT = 2.0
 GLASS_EDGE_INSET_MM = 100.0
 DEFAULT_GLASS_GAP_MM = 12.0
 DEFAULT_SHEET_W_MM = 3660.0
@@ -559,10 +564,67 @@ def _panel_widths_for_run(
 
 
 def _handrail_connectors(length_mm: float, max_mm: float) -> int:
+    """180° joins = max(0, ceil(length / bar) − 1). Handrail only — never bottom rail."""
     if length_mm <= 0 or max_mm <= 0:
         return 0
     pieces = max(int(math.ceil(length_mm / max_mm)), 1)
     return max(pieces - 1, 0)
+
+
+def handrail_bar_length_mm(cfg: Mapping[str, Any] | None) -> float:
+    """Standard bar length for 180° connectors. Default 16 ft; user may pick 12 ft."""
+    cfg = cfg or {}
+    explicit = _f(cfg.get("handrailMaxMm"), 0.0)
+    if explicit > 0:
+        return explicit
+    ft = _f(cfg.get("handrailBarLengthFt") or cfg.get("barLengthFt") or cfg.get("standardBarFt"), 0.0)
+    if ft <= 0:
+        ft = DEFAULT_HANDRAIL_BAR_FT
+    if abs(ft - 12.0) < 0.05:
+        return FT_12_MM
+    if abs(ft - 16.0) < 0.05:
+        return FT_16_MM
+    return max(ft, 0.01) * MM_PER_FT
+
+
+def handrail_bar_length_ft(cfg: Mapping[str, Any] | None) -> float:
+    mm = handrail_bar_length_mm(cfg)
+    return round(mm / MM_PER_FT, 4) if mm else DEFAULT_HANDRAIL_BAR_FT
+
+
+def continuous_rail_anchor_spacing_mm(cfg: Mapping[str, Any] | None) -> float:
+    """User-selectable 1 ft or 2 ft spacing along the bottom continuous rail."""
+    cfg = cfg or {}
+    explicit = _f(cfg.get("anchorSpacingMm"), 0.0)
+    if explicit > 0:
+        return explicit
+    ft = _f(cfg.get("anchorSpacingFt") or cfg.get("anchorsEveryFt"), 0.0)
+    if ft <= 0:
+        ft = DEFAULT_ANCHOR_SPACING_FT
+    if abs(ft - 1.0) < 0.05:
+        return MM_PER_FT
+    if abs(ft - 2.0) < 0.05:
+        return 2.0 * MM_PER_FT
+    return max(ft, 0.01) * MM_PER_FT
+
+
+def continuous_rail_anchor_count(length_mm: float, spacing_mm: float) -> int:
+    """Anchors along a continuous bottom rail.
+
+    First/last inset 100 mm from each end; remaining at ``spacing_mm`` (1 or 2 ft).
+    Count = 1 + floor((L − 200) / spacingMm), min 2 when L > 200 mm.
+    """
+    L = float(length_mm or 0.0)
+    sp = float(spacing_mm or (2.0 * MM_PER_FT))
+    if L <= 0 or sp <= 0:
+        return 0
+    usable = L - (2.0 * ANCHOR_INSET_MM)
+    if usable <= 0:
+        return 1 if L > ANCHOR_INSET_MM else 0
+    n = 1 + int(math.floor(usable / sp))
+    if L > (2.0 * ANCHOR_INSET_MM):
+        return max(2, n)
+    return max(1, n)
 
 
 def _measurement_basis(cfg: Mapping[str, Any], *, default: str = "sloping_rft") -> str:
@@ -1023,6 +1085,8 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     w_brail = _f(rates.get("bottomRailWeightPerUnit"))
     r_hrail = _f(rates.get("handrailPerUnit"))
     w_hrail = _f(rates.get("handrailWeightPerUnit"))
+    r_epdm_hr = _f(rates.get("epdmHandrailPerUnit") or rates.get("epdmPerUnit"), 0.0)
+    r_epdm_br = _f(rates.get("epdmBottomPerUnit") or rates.get("epdmPerUnit"), 0.0)
     r_wall = _f(rates.get("wallConnectorPerPc"))
     r_bend = _f(rates.get("modularBendPerPc"), _f(rates.get("bendPerPc"), 0.0))
     r_conn180 = _f(rates.get("connector180PerPc"), 0.0)
@@ -1091,7 +1155,9 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         want_bottom = False
     pillar_edge = _f(cfg.get("pillarEdgeMm"), PILLAR_EDGE_MM)
     handrail_on = want_handrail
-    handrail_max = _f(cfg.get("handrailMaxMm"), DEFAULT_HANDRAIL_MAX_MM)
+    handrail_max = handrail_bar_length_mm(cfg)
+    cfg["handrailMaxMm"] = handrail_max
+    cfg["handrailBarLengthFt"] = handrail_bar_length_ft(cfg)
     continuous_rail = bool(cfg.get("continuousRail", blocks_per_glass == 0 or (want_bottom and not want_pillars)))
     if shape != "staircase":
         continuous_rail = want_bottom and not want_studs
@@ -1366,9 +1432,17 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     include_base = bool(cfg.get("includeBaseAnchors", False))
     base_anchors = math.ceil(length_rft * anchors_per_rft) if (include_base and anchors_per_rft) else 0
     anchor_count = pillar_anchors + base_anchors + stair_stud_anchors + (normal_studs if want_studs else 0)
-    # Continuous bottom rail: do not invent 1/RFT anchors/brackets.
+    anchor_spacing_mm = continuous_rail_anchor_spacing_mm(cfg)
+    # Continuous bottom rail: 1 pc every 1 or 2 ft, first/last inset 100 mm. No pillars.
     if shape != "staircase" and str(cfg.get("bottomKind") or "").lower() == "continuous":
-        anchor_count = base_anchors if include_base else 0
+        run_for_anchors = total_length_mm or (length_rft * MM_PER_FT)
+        if cfg.get("anchorCount") not in (None, ""):
+            try:
+                anchor_count = max(int(round(float(cfg.get("anchorCount")))), 0)
+            except (TypeError, ValueError):
+                anchor_count = continuous_rail_anchor_count(run_for_anchors, anchor_spacing_mm)
+        else:
+            anchor_count = continuous_rail_anchor_count(run_for_anchors, anchor_spacing_mm)
         pillar_count = 0
     elif anchor_count == 0 and not pillar_count and shape != "staircase" and not want_studs:
         anchor_count = math.ceil(length_rft * (anchors_per_rft or 1.0))
@@ -1526,9 +1600,9 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
             material=_mat_for("stud"),
             color_role="stud",
         )
-    # Bill anchors whenever counted and a rate is set (incl. continuous 1/RFT base count).
-    if anchor_count and r_anchor > 0:
-        add("anchors", "Anchor bolts", anchor_count, "pc", r_anchor, material=_mat_for("anchor"), color_role="anchor")
+    # Bill anchors whenever counted (continuous rail uses 1/2 ft spacing + 100 mm insets).
+    if anchor_count:
+        add("anchors", "Anchor bolts", anchor_count, "pc", r_anchor or 0.0, material=_mat_for("anchor"), color_role="anchor")
     if want_bottom and r_brail and total_length_mm:
         brail_mat = _mat_for("bottom_rail", "u_channel")
         br_label = f"Bottom / continuous rail · {mount_hint}"
@@ -1552,6 +1626,29 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
             items[-1]["sizeMm"] = str(cfg.get("handrailSize") or items[-1].get("sizeMm") or "")
             items[-1]["lengthMm"] = run_len_mm
             items[-1]["lengthRft"] = run_len_rft
+    # EPDM: 1 run = matching rail RFT (handrail and/or bottom continuous rail).
+    epdm_hr_qty = run_len_rft if (handrail_on and total_length_mm) else 0.0
+    epdm_br_qty = run_len_rft if (want_bottom and continuous_bottom and total_length_mm) else 0.0
+    if epdm_hr_qty:
+        add(
+            "epdmHandrail",
+            "Handrail EPDM",
+            epdm_hr_qty,
+            "rft",
+            r_epdm_hr,
+            material=_mat_for("epdm_handrail", "epdm"),
+            color_role="epdm",
+        )
+    if epdm_br_qty:
+        add(
+            "epdmBottom",
+            "Bottom rail EPDM",
+            epdm_br_qty,
+            "rft",
+            r_epdm_br,
+            material=_mat_for("epdm_bottom", "epdm"),
+            color_role="epdm",
+        )
     if bend_count and (r_bend or True):
         add("modularBend", "Modular bend (corners)", bend_count, "pc", r_bend, material=_mat_for("bend"), color_role="bend")
     if connector_180 and (r_conn180 or True):
@@ -1578,7 +1675,10 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     # Hardware / profile split for cascade (exclude glass line)
     hardware_cost = sum(
         float(it["amount"]) for it in items
-        if it.get("key") in ("blocks", "studs", "anchors", "modularBend", "connector180", "endCap", "wallConnector")
+        if it.get("key") in (
+            "blocks", "studs", "anchors", "modularBend", "connector180",
+            "endCap", "wallConnector", "epdmHandrail", "epdmBottom",
+        )
     )
     profile_cost = sum(
         float(it["amount"]) for it in items if it.get("key") in ("bottomRail", "handrail")
@@ -1789,6 +1889,12 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "wastageEnabled": apply_wastage,
         "pillarCount": pillar_count, "anchorsPerPillar": anchors_per_pillar,
         "anchorCount": anchor_count, "baseAnchorCount": base_anchors,
+        "anchorSpacingMm": round(anchor_spacing_mm, 2) if continuous_bottom else None,
+        "anchorSpacingFt": round(anchor_spacing_mm / MM_PER_FT, 4) if continuous_bottom and anchor_spacing_mm else None,
+        "handrailBarLengthFt": round(handrail_max / MM_PER_FT, 4) if handrail_on else None,
+        "handrailMaxMm": round(handrail_max, 2) if handrail_on else None,
+        "epdmHandrailRft": rft_n(epdm_hr_qty) if epdm_hr_qty else 0,
+        "epdmBottomRft": rft_n(epdm_br_qty) if epdm_br_qty else 0,
         "handrail": handrail_on, "wallConnectors": wall_connectors,
         "bendCount": bend_count, "connector90Count": bend_count, "connector180Count": connector_180, "endCapCount": end_caps,
         "stairPillars": stair_pillars, "stairStuds": stair_studs,
