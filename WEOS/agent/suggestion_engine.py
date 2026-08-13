@@ -272,7 +272,7 @@ def generate(ctx: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
 
-    # ── Rule 6: missing material weights (Universal Weight Engine) ───────────
+    # ── Rule 6: missing material weights (Universal Weight Engine + KB recall) ─
     weight_items = _collect_weight_items(ctx)
     if weight_items:
         try:
@@ -283,18 +283,37 @@ def generate(ctx: dict[str, Any]) -> list[dict[str, Any]]:
             if n > 0:
                 m = int(report.get("calculableCount") or 0)
                 k = int(report.get("needsCatalogueCount") or 0)
+                fx = None
+                try:
+                    from WEOS.learning.material_formulas import recall_formula_for_context
+
+                    fx = recall_formula_for_context(
+                        material=str(ctx.get("material") or ctx.get("sectionSeries") or ""),
+                        glass_makeup=str((ctx.get("glassMakeup") or ctx.get("glassType") or "")),
+                        product=str(product or ""),
+                    )
+                except Exception:
+                    fx = None
+                msg = report.get("summary") or (
+                    f"⚠️ {n} items have no weight data. {m} can be calculated from available dimensions. "
+                    f"{k} requires catalogue weight."
+                )
+                if fx and fx.get("id"):
+                    msg += f" Recalled KB formula {fx.get('id')} ({fx.get('name')}) — Review → Approve before production."
                 out.append(
                     {
                         "key": "missing_weights",
                         "type": "warning",
-                        "message": report.get("summary")
-                        or f"⚠️ {n} items have no weight data. {m} can be calculated from available dimensions. {k} requires catalogue weight.",
-                        "reason": "Weight Source must be Catalogue, Manual, or Calculated — never guessed.",
-                        "source": "universal weight engine",
+                        "message": msg,
+                        "reason": "Weight Source must be Catalogue, Manual, or Calculated — never guessed. Learned weights stay pending until admin approve.",
+                        "source": "universal weight engine + formula memory",
                         "confidence": 0.9,
                         "action": "calculate_weights" if report.get("offerCalculateNow") else "add_catalogue_weight",
                         "why": {
-                            "formula": "priority: catalogue/manual → calculated (dims×density) → unknown",
+                            "formula": (fx or {}).get("expression")
+                            or "priority: catalogue/manual → calculated (dims×density) → unknown",
+                            "formulaId": (fx or {}).get("id"),
+                            "formulaName": (fx or {}).get("name"),
                             "inputs": {
                                 "missingCount": n,
                                 "calculableCount": m,
@@ -305,6 +324,7 @@ def generate(ctx: dict[str, Any]) -> list[dict[str, Any]]:
                                 "calculatePrompt": report.get("calculatePrompt"),
                             },
                             "weightSources": ["Catalogue", "Manual", "Calculated", "Missing"],
+                            "safety": "Learned candidates require Review → Approve. Never auto-applied.",
                         },
                         "data": {
                             "missingCount": n,
@@ -312,13 +332,96 @@ def generate(ctx: dict[str, Any]) -> list[dict[str, Any]]:
                             "needsCatalogueCount": k,
                             "offerCalculateNow": report.get("offerCalculateNow"),
                             "calculatePrompt": report.get("calculatePrompt"),
+                            "recalledFormulaId": (fx or {}).get("id"),
                         },
                     }
                 )
         except Exception:
             pass
 
+    # ── Rule 7: mesh requires 2.5 / 3-track ────────────────────────────────
+    for ln in _iter_quote_lines(ctx):
+        mesh = _line_has_mesh(ln)
+        track = _num(ln.get("trackCount") if ln.get("trackCount") is not None else ctx.get("trackCount"))
+        if mesh and track is not None and track < 2.5:
+            out.append(
+                {
+                    "key": "mesh_requires_3_track",
+                    "type": "warning",
+                    "message": "Mesh shutter needs 2.5-track or 3-track (2-track has no mesh sash room)",
+                    "reason": "Approved layout rule: mesh on 2-track auto-shifts to 3-track when available.",
+                    "source": "approved layout rule",
+                    "confidence": 0.92,
+                    "action": "shift_mesh_track",
+                    "why": {
+                        "ruleVersion": "mesh_track@v1",
+                        "formula": "mesh ⇒ trackCount ≥ 2.5 (prefer 3)",
+                        "inputs": {"mesh": True, "trackCount": track},
+                        "result": {"suggestedTrackCount": 3.0},
+                    },
+                    "data": {"suggestedTrackCount": 3.0, "currentTrackCount": track},
+                }
+            )
+            break
+
+    # ── Rule 8: missing selling rates on quote lines ────────────────────────
+    missing_rate_n = 0
+    for ln in _iter_quote_lines(ctx):
+        if _line_missing_rate(ln):
+            missing_rate_n += 1
+    if missing_rate_n:
+        out.append(
+            {
+                "key": "missing_rates",
+                "type": "warning",
+                "message": f"{missing_rate_n} line(s) missing selling rate — quote value / PDF totals will be incomplete",
+                "reason": "Each commercial line needs a selling rate (₹/sqft, ₹/rft, or ₹/nos) before approval.",
+                "source": "commercial quote check",
+                "confidence": 0.88,
+                "action": "add_selling_rate",
+                "why": {
+                    "formula": "lineAmount = sellingRate × qtyBasis",
+                    "inputs": {"missingRateLines": missing_rate_n},
+                    "result": {"complete": False},
+                },
+                "data": {"missingRateLines": missing_rate_n},
+            }
+        )
+
     return out
+
+
+def _iter_quote_lines(ctx: dict[str, Any]) -> list[dict[str, Any]]:
+    lines = ctx.get("lines")
+    if isinstance(lines, list) and lines:
+        return [ln for ln in lines if isinstance(ln, dict)]
+    if isinstance(ctx.get("product"), str) or ctx.get("width") is not None:
+        return [ctx]
+    return []
+
+
+def _line_has_mesh(ln: dict[str, Any]) -> bool:
+    if ln.get("mesh") in (True, 1, "1", "true", "yes"):
+        return True
+    opts = ln.get("options") if isinstance(ln.get("options"), dict) else {}
+    if opts.get("mesh") in (True, 1, "1", "true", "yes"):
+        return True
+    layout = ln.get("layout") if isinstance(ln.get("layout"), dict) else {}
+    return layout.get("mesh") in (True, 1, "1", "true", "yes")
+
+
+def _line_missing_rate(ln: dict[str, Any]) -> bool:
+    for key in ("sellingRate", "saleRate", "rate"):
+        if ln.get(key) not in (None, "", 0, "0"):
+            return False
+    price = ln.get("price") if isinstance(ln.get("price"), dict) else {}
+    if price.get("rate") not in (None, "", 0, "0"):
+        return False
+    opts = ln.get("options") if isinstance(ln.get("options"), dict) else {}
+    cq = opts.get("commercial") or opts.get("railingQuote") or {}
+    if isinstance(cq, dict) and cq.get("sellingRatePerUnit") not in (None, "", 0, "0"):
+        return False
+    return True
 
 
 def _collect_weight_items(ctx: dict[str, Any]) -> list[dict[str, Any]]:

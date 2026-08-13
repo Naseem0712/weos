@@ -238,12 +238,98 @@ def save_refinements(doc: dict[str, Any]) -> None:
     )
 
 
-def list_baseline_formulas(*, include_refinements: bool = True) -> list[dict[str, Any]]:
+def _formula_memory_dir() -> Path:
+    return knowledge_base_dir() / "memories" / "formula"
+
+
+def recall_approved_formulas() -> list[dict[str, Any]]:
+    """Recall approved formulas from KB memory. Never invent weights/defaults.
+
+    Sources (first wins per id): Formula Memory store (status=approved) →
+    ``knowledge_base/memories/formula/*.json`` → baseline expressions only.
+    Learned candidates without approval are ignored.
+    """
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def _take(item: Mapping[str, Any], *, source: str) -> None:
+        if not isinstance(item, Mapping):
+            return
+        st = str(item.get("status") or "approved").strip().lower()
+        if st and st not in ("approved", "active", ""):
+            return
+        expr = str(item.get("expression") or "").strip()
+        if not expr:
+            return
+        fid = str(item.get("id") or item.get("key") or "").strip()
+        if not fid or fid.startswith("_") or fid in seen:
+            return
+        seen.add(fid)
+        row = {
+            "id": fid,
+            "key": str(item.get("key") or item.get("outputName") or item.get("material") or fid),
+            "name": item.get("name") or fid,
+            "category": item.get("category") or "weight",
+            "material": item.get("material") or item.get("outputName") or item.get("key"),
+            "expression": expr,
+            "variables": list(item.get("variables") or []),
+            "defaults": dict(item.get("defaults") or {}) if isinstance(item.get("defaults"), dict) else {},
+            "unit": item.get("unit") or "kg",
+            "description": item.get("description") or "",
+            "source": source,
+            "status": "approved",
+            "recalled": True,
+        }
+        out.append(row)
+
+    try:
+        from WEOS.memory.schemas import MEM_FORMULA
+        from WEOS.memory.store import get_store
+
+        store = get_store()
+        for item in store.list(MEM_FORMULA) or []:
+            st = str(item.get("status") or "").strip().lower()
+            if st and st not in ("approved", "active", ""):
+                continue
+            _take(item, source="formula_memory")
+    except Exception:
+        pass
+
+    mem_dir = _formula_memory_dir()
+    if mem_dir.is_dir():
+        for path in sorted(mem_dir.glob("*.json")):
+            if path.name.startswith("_"):
+                continue
+            try:
+                doc = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if isinstance(doc, dict):
+                doc.setdefault("id", path.stem)
+                _take(doc, source="kb_formula_file")
+
+    return out
+
+
+def list_baseline_formulas(*, include_refinements: bool = True, include_memory: bool = True) -> list[dict[str, Any]]:
     overrides = load_refinements().get("overrides") or {} if include_refinements else {}
     out: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    if include_memory:
+        for mem in recall_approved_formulas():
+            item = copy.deepcopy(mem)
+            fid = str(item.get("id") or "")
+            if fid:
+                seen_ids.add(fid)
+            out.append(item)
     for key, base in BASELINE_FORMULAS.items():
         item = copy.deepcopy(base)
         item["key"] = key
+        fid = str(item.get("id") or "")
+        if fid and fid in seen_ids:
+            # Memory already recalled this id — keep KB copy, overlay baseline
+            # expression only when memory is missing fields (do not invent weights).
+            continue
         ov = overrides.get(key)
         if isinstance(ov, dict):
             # Only approved-style overrides stored after pending apply → still not production products
@@ -254,34 +340,86 @@ def list_baseline_formulas(*, include_refinements: bool = True) -> list[dict[str
                 item["refined"] = True
             item["refinementNote"] = ov.get("note")
         out.append(item)
+        if fid:
+            seen_ids.add(fid)
     return out
+
+
+_FORMULA_ALIASES = {
+    "aluminium": "aluminium_section",
+    "aluminum": "aluminium_section",
+    "alu": "aluminium_section",
+    "section": "aluminium_section",
+    "profile": "aluminium_section",
+    "railing": "iron_steel",
+    "ms_railing": "iron_steel",
+    "sheet": "sheet_generic",
+    "generic_sheet": "sheet_generic",
+    "aluminium_sheet": "aluminium_sheet",
+    "acp": "acp_sheet",
+    "composite": "acp_sheet",
+    "dgu": "glass_dgu",
+    "dg": "glass_dgu",
+    "double_glazed": "glass_dgu",
+    "sg": "glass",
+    "single_glazed": "glass",
+    "laminated": "glass_laminated",
+    "steel": "iron_steel",
+    "iron": "iron_steel",
+    "ms": "iron_steel",
+}
 
 
 def get_formula(material_or_key: str) -> dict[str, Any] | None:
     key = (material_or_key or "").strip().lower().replace(" ", "_")
-    aliases = {
-        "aluminium": "aluminium_section",
-        "aluminum": "aluminium_section",
-        "alu": "aluminium_section",
-        "section": "aluminium_section",
-        "profile": "aluminium_section",
-        "sheet": "sheet_generic",
-        "generic_sheet": "sheet_generic",
-        "aluminium_sheet": "aluminium_sheet",
-        "acp": "acp_sheet",
-        "composite": "acp_sheet",
-        "dgu": "glass_dgu",
-        "double_glazed": "glass_dgu",
-        "laminated": "glass_laminated",
-        "steel": "iron_steel",
-        "iron": "iron_steel",
-        "ms": "iron_steel",
-    }
-    key = aliases.get(key, key)
-    for f in list_baseline_formulas():
-        if f["key"] == key or f.get("material") == key or f.get("id") == key:
+    key = _FORMULA_ALIASES.get(key, key)
+    recalled = list_baseline_formulas()
+    for f in recalled:
+        ids = {
+            str(f.get("key") or "").lower(),
+            str(f.get("material") or "").lower(),
+            str(f.get("id") or "").lower(),
+            str(f.get("outputName") or "").lower(),
+        }
+        if key in ids or f"fx_{key}" in ids or key.replace("fx_", "") in {i.replace("fx_", "") for i in ids}:
             return f
-    return BASELINE_FORMULAS.get(key)
+    base = BASELINE_FORMULAS.get(key)
+    if base:
+        item = copy.deepcopy(base)
+        item["key"] = key
+        return item
+    return None
+
+
+def recall_formula_for_context(
+    *,
+    material: str | None = None,
+    glass_makeup: str | None = None,
+    product: str | None = None,
+) -> dict[str, Any] | None:
+    """Map quote context → approved KB formula. Returns None rather than inventing."""
+    makeup = (glass_makeup or "").strip().lower()
+    prod = (product or "").strip().lower()
+    mat = (material or "").strip().lower()
+    if makeup in ("dgu", "dg", "double", "double_glazed", "insulated") or "dgu" in mat or "double" in mat:
+        return get_formula("glass_dgu")
+    if makeup in ("laminated", "lami", "pvb") or "laminat" in mat:
+        return get_formula("glass_laminated")
+    if makeup in ("sg", "single", "single_glazed") or mat in ("glass", "sg"):
+        return get_formula("glass")
+    if "rail" in prod or "steel" in mat or "ms" == mat or "iron" in mat:
+        return get_formula("iron_steel")
+    if "acp" in mat or "composite" in mat:
+        return get_formula("acp_sheet")
+    if "sheet" in mat:
+        return get_formula("aluminium_sheet") if "alu" in mat or "aluminium" in mat else get_formula("sheet_generic")
+    if mat:
+        return get_formula(mat)
+    if "glass" in prod:
+        return get_formula("glass")
+    if any(k in prod for k in ("slid", "case", "window", "door")):
+        return get_formula("aluminium_section")
+    return None
 
 
 def _eval_expression(expression: str, vars_: Mapping[str, float]) -> float:

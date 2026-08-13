@@ -28,7 +28,7 @@ PAYMENT_MODES = ("cash", "cheque", "upi", "neft", "rtgs", "card", "other")
 
 # Project / quote statuses that count as a confirmed order on the company hub.
 CONFIRMED_STATUSES = frozenset(
-    {"confirmed", "accepted", "finalized", "ordered", "order", "won"}
+    {"confirmed", "accepted", "approved", "finalized", "ordered", "order", "won"}
 )
 RUNNING_STATUSES = frozenset(
     {"active", "draft", "confirmed", "accepted", "finalized", "ordered", "order", "won"}

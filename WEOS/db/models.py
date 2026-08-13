@@ -132,6 +132,8 @@ class Quote(Base):
 
     status: Mapped[str] = mapped_column(String(30), default="draft", index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
+    share_token: Mapped[str | None] = mapped_column(String(80), unique=True, index=True)
+    company_gst: Mapped[str | None] = mapped_column(String(40), index=True)
     created_by: Mapped[str | None] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
@@ -174,6 +176,8 @@ class Quote(Base):
             "grandTotal": self.grand_total,
             "status": self.status,
             "version": self.version,
+            "shareToken": self.share_token,
+            "companyGst": self.company_gst,
             "createdBy": self.created_by,
             "createdAt": _iso(self.created_at),
             "updatedAt": _iso(self.updated_at),

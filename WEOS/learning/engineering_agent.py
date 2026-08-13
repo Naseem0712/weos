@@ -373,6 +373,14 @@ def engineering_insights(*, limit: int = 600) -> dict[str, Any]:
     if not tips:
         tips.append("Calculate projects with BOM/weight — engineering patterns will appear here.")
 
+    recalled_n = 0
+    try:
+        from WEOS.learning.material_formulas import recall_approved_formulas
+
+        recalled_n = len(recall_approved_formulas())
+    except Exception:
+        recalled_n = 0
+
     result = {
         "ok": True,
         "observationCount": len(rows),
@@ -386,6 +394,7 @@ def engineering_insights(*, limit: int = 600) -> dict[str, Any]:
         "avgWastePercent": avg(waste_samples),
         "recentWeights": weight_samples[-8:][::-1],
         "formulasKnown": len(BASELINE_FORMULAS),
+        "formulasRecalled": recalled_n,
         "status": "learning" if rows else "waiting",
         "message": tips[0] if tips else "Watching engineering activity…",
         "safety": "Suggestions / pending only — production profiles never auto-modified.",
@@ -401,8 +410,17 @@ def build_engineering_suggestions() -> dict[str, Any]:
     insights = engineering_insights()
     suggestions: list[dict[str, Any]] = []
 
-    # Baseline formulas always available as teachable knowledge
-    for fx in list_baseline_formulas():
+    from WEOS.learning.material_formulas import recall_approved_formulas
+
+    recalled = recall_approved_formulas()
+    recalled_ids = {str(f.get("id") or "").lower() for f in recalled}
+    recalled_keys = {str(f.get("key") or "").lower() for f in recalled}
+    # Only queue "teach" for baseline formulas not already approved in KB memory.
+    for fx in list_baseline_formulas(include_memory=False):
+        fid = str(fx.get("id") or "").lower()
+        fkey = str(fx.get("key") or "").lower()
+        if fid in recalled_ids or fkey in recalled_keys:
+            continue
         suggestions.append(
             {
                 "id": f"teach_{fx['key']}",
@@ -501,6 +519,8 @@ def build_engineering_suggestions() -> dict[str, Any]:
             "avgWastePercent": avg_waste,
         },
         "formulas": list_baseline_formulas(),
+        "formulasRecalled": recalled,
+        "safety": "Learned formula candidates stay in Pending Review until admin Approve. Production engines are never auto-updated.",
     }
     suggestions_cache_path().write_text(
         json.dumps({"ts": _now(), "count": len(suggestions)}, indent=2) + "\n", encoding="utf-8"
@@ -595,8 +615,8 @@ def agent_status() -> dict[str, Any]:
         "formulasKnown": len(BASELINE_FORMULAS),
         "lastObservation": rows[-1] if rows else None,
         "blurb": (
-            "I watch profiles, wall thickness by size, hardware by panel/design, "
-            "glass & cut waste — and teach weight formulas. One-click suggestions go to Pending Review only."
+            "I recall approved KB formulas (SG/DG, railing, weights) and watch profiles, "
+            "hardware, and cut waste. One-click suggestions go to Pending Review only — never auto-applied."
         ),
     }
 

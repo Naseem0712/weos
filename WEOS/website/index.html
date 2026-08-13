@@ -1335,6 +1335,9 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <div><label class="l">Date</label><input id="cpAdvDate" type="date" style="width:140px"/></div>
             <div class="grow"><label class="l">Ref / note</label><input id="cpAdvRef" placeholder="cheque no / UTR / note"/></div>
             <div><label class="l">Project</label><select id="cpAdvProject" style="min-width:140px"><option value="">— any —</option></select></div>
+            <label class="muted" style="font-size:.78rem;display:flex;align-items:center;gap:.35rem;margin:0 0 .15rem">
+              <input id="cpAdvApprove" type="checkbox" checked style="width:auto"/> Mark quote approved
+            </label>
             <button class="btn sm" id="btnCpAdvAdd" type="button">Add advance</button>
           </div>
           <p class="muted" style="margin:0 0 .45rem;font-size:.75rem">After saving an advance, generate the slip from the table: <strong>Slip PDF</strong> · <strong>Print</strong> · <strong>Excel</strong> (stamp/signature if uploaded).</p>
@@ -1388,6 +1391,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
         <div class="tabs" id="hubTabs" style="margin-bottom:.5rem">
           <button class="tab active" data-hubtab="customers" type="button">Customers</button>
           <button class="tab" data-hubtab="projects" type="button">Projects</button>
+          <button class="tab" data-hubtab="quotes" type="button">Quotes</button>
           <button class="tab" data-hubtab="accounts" type="button">Accounts / Ledgers</button>
         </div>
         <div id="hub-customers" style="overflow:auto">
@@ -1398,6 +1402,27 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
         </div>
         <div id="hub-accounts" class="hidden" style="overflow:auto">
           <table><thead><tr><th>Account</th><th>Billed</th><th>Advances</th><th>Balance</th><th></th></tr></thead><tbody id="hubAccBody"></tbody></table>
+        </div>
+        <div id="hub-quotes" class="hidden">
+          <p class="muted" style="font-size:.78rem;margin:0 0 .55rem">Delete unused, duplicate extra versions, or old drafts from the server (Postgres). Confirmed / approved quotes with advances are protected.</p>
+          <div class="row" style="gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.55rem">
+            <select id="hubQuoteFilter" style="width:160px">
+              <option value="all">All quotes</option>
+              <option value="unused">Unused</option>
+              <option value="duplicate">Duplicates</option>
+              <option value="old_draft">Old drafts (30d+)</option>
+              <option value="draft">Drafts</option>
+            </select>
+            <button class="btn ghost sm" id="btnHubQuotesRefresh" type="button">Refresh</button>
+            <button class="btn ghost sm" id="btnHubQuotesBulkUnused" type="button">Bulk delete unused</button>
+            <span class="muted" id="hubQuoteCounts" style="font-size:.75rem"></span>
+          </div>
+          <div style="overflow:auto">
+            <table>
+              <thead><tr><th>Quote no</th><th>Customer</th><th>Date</th><th>Status</th><th>Value</th><th>Updated</th><th></th></tr></thead>
+              <tbody id="hubQuoteBody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -1457,6 +1482,14 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           </div>
           <p class="muted" style="margin-top:.7rem;font-size:.8rem">This branding replaces the template company name on Customer &amp; Factory PDFs automatically.</p>
         </div>
+      </div>
+    </section>
+
+    <!-- PUBLIC SCAN (in-app preview; QR uses /q/{token} live HTML) -->
+    <section id="view-scan" class="grid hidden">
+      <div class="panel" id="scanPanel">
+        <p class="muted" id="scanStatus" style="margin:0 0 .6rem">Loading live quote…</p>
+        <div id="scanBody"></div>
       </div>
     </section>
 
@@ -2077,7 +2110,7 @@ async function api(path, opts={}) {
 function setView(v) {
   state.view = v;
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view===v));
-  ['dashboard','setup','projects','cart','library','product','admin','customers','company','learning','formulas','templates','engines'].forEach(id => {
+  ['dashboard','setup','projects','cart','library','product','admin','customers','company','scan','learning','formulas','templates','engines'].forEach(id => {
     const el = $('view-'+id); if (el) el.classList.toggle('hidden', id!==v);
   });
   const titles = {
@@ -2089,7 +2122,8 @@ function setView(v) {
     product:['Product Details','Specs from Product JSON only'],
     admin:['Admin · Product Library','Every product editable — catalogue, materials, formulas, rules'],
     customers:['Customers','Details auto-fill quotes · all quotes & versions per customer'],
-    company:['Company Setup','GST workspace login — customers, projects & ledgers'],
+    company:['Company Setup','GST workspace login — customers, projects, quotes & ledgers'],
+    scan:['Live quote','Public scan record — always the latest project from the database'],
     learning:['Learning Engine','Upload → Review → Approve → Knowledge Base (never auto-production)'],
     formulas:['Formula Builder','Safe expressions over width, height, shutterCount, glassArea…'],
     templates:['Template Designer','Drag blocks → JSON → Customer & Factory PDFs per brand'],
@@ -2106,6 +2140,7 @@ function setView(v) {
   if (v==='admin') initAdmin();
   if (v==='customers') initCustomers();
   if (v==='company') initCompany();
+  if (v==='scan' && window.WEOS_SCAN_TOKEN) loadPublicScan(window.WEOS_SCAN_TOKEN);
   if (v==='learning') initLearning();
   if (v==='formulas') initFormulas();
   if (v==='templates') initTemplates();
@@ -7067,12 +7102,157 @@ if ($('hubTabs')) $('hubTabs').querySelectorAll('[data-hubtab]').forEach(btn => 
   btn.onclick = () => {
     $('hubTabs').querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
-    ['customers','projects','accounts'].forEach(k => {
+    ['customers','projects','accounts','quotes'].forEach(k => {
       const el = $('hub-'+k);
       if (el) el.classList.toggle('hidden', btn.dataset.hubtab !== k);
     });
+    if (btn.dataset.hubtab === 'quotes') loadHubQuotes();
   };
 });
+async function loadHubQuotes() {
+  const gst = state.companyGst || savedCompanyGst() || (($('coGstLogin')&&$('coGstLogin').value)||'');
+  const filter = ($('hubQuoteFilter') && $('hubQuoteFilter').value) || 'all';
+  if (!gst) { if ($('hubQuoteBody')) $('hubQuoteBody').innerHTML = '<tr><td colspan="7" class="muted">Open GST workspace first</td></tr>'; return; }
+  try {
+    const data = await api('/api/company/quotes?gst='+encodeURIComponent(gst)+'&filter='+encodeURIComponent(filter));
+    renderHubQuotes(data);
+  } catch(e) {
+    if ($('hubQuoteBody')) $('hubQuoteBody').innerHTML = '<tr><td colspan="7" class="muted">'+esc(e.message)+'</td></tr>';
+  }
+}
+function renderHubQuotes(data) {
+  const c = (data && data.counts) || {};
+  if ($('hubQuoteCounts')) $('hubQuoteCounts').textContent =
+    (c.all||0)+' total · '+(c.unused||0)+' unused · '+(c.duplicate||0)+' duplicate extras · '+(c.old_draft||0)+' old drafts';
+  const rows = (data && data.quotes) || [];
+  if (!$('hubQuoteBody')) return;
+  if (!rows.length) {
+    $('hubQuoteBody').innerHTML = '<tr><td colspan="7" class="muted">No quotes match this filter</td></tr>';
+    return;
+  }
+  $('hubQuoteBody').innerHTML = rows.map(q => {
+    const flags = (q.flags||[]).filter(f => f!=='has_duplicates').join(', ');
+    const st = esc(q.status||'draft') + (flags ? (' · '+esc(flags)) : '');
+    const val = q.totalGrand!=null ? money(q.totalGrand) : (q.grandTotal!=null ? money(q.grandTotal) : '—');
+    const scan = q.scanPath || (q.shareToken ? ('/q/'+q.shareToken) : '');
+    return `<tr>
+      <td><strong>${esc(q.quoteNumber||'—')}</strong><div class="muted" style="font-size:.7rem">${esc(q.projectId||'')} · v${q.version||1}</div></td>
+      <td>${esc(q.customer||'')}</td>
+      <td>${fmtDate(q.createdAt)}</td>
+      <td>${st}</td>
+      <td>${val}<div class="muted" style="font-size:.7rem">${q.totalTaxable!=null?('ex-GST '+money(q.totalTaxable)) : ''}</div></td>
+      <td>${fmtDate(q.updatedAt)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn ghost sm" data-hq-open="${esc(q.projectId)}" type="button">Open</button>
+        <button class="btn ghost sm" data-hq-scan="${esc(q.projectId)}" data-hq-token="${esc(q.shareToken||'')}" type="button">Scan link</button>
+        <button class="btn ghost sm" data-hq-del="${esc(q.projectId)}" data-hq-label="${esc((q.quoteNumber||q.projectId)+' / '+(q.customer||''))}" type="button">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+  $('hubQuoteBody').querySelectorAll('[data-hq-open]').forEach(b => b.onclick = async () => {
+    await openProject(b.dataset.hqOpen); setView('cart');
+  });
+  $('hubQuoteBody').querySelectorAll('[data-hq-scan]').forEach(b => b.onclick = async () => {
+    try {
+      let token = b.dataset.hqToken || '';
+      if (!token) {
+        const r = await api('/api/projects/'+b.dataset.hqScan+'/share-token', {method:'POST'});
+        token = r.shareToken || '';
+      }
+      if (!token) { toast('No scan token'); return; }
+      const url = (API_BASE || location.origin) + '/q/' + token;
+      try { await navigator.clipboard.writeText(url); toast('Public scan link copied'); }
+      catch(_) { prompt('Public scan URL', url); }
+    } catch(e) { toast(e.message); }
+  });
+  $('hubQuoteBody').querySelectorAll('[data-hq-del]').forEach(b => b.onclick = async () => {
+    const label = b.dataset.hqLabel || b.dataset.hqDel;
+    if (!confirm('Delete quote '+label+' from the server (Postgres)? This cannot be undone.')) return;
+    const gst = state.companyGst || savedCompanyGst() || '';
+    try {
+      await api('/api/company/quotes/'+encodeURIComponent(b.dataset.hqDel)+'?gst='+encodeURIComponent(gst)+'&hard=true', {method:'DELETE'});
+      toast('Quote deleted');
+      await loadHubQuotes();
+      if (gst) refreshCompanyHub(gst);
+    } catch(e) { toast(e.message); }
+  });
+}
+if ($('hubQuoteFilter')) $('hubQuoteFilter').onchange = () => loadHubQuotes();
+if ($('btnHubQuotesRefresh')) $('btnHubQuotesRefresh').onclick = () => loadHubQuotes();
+if ($('btnHubQuotesBulkUnused')) $('btnHubQuotesBulkUnused').onclick = async () => {
+  const gst = state.companyGst || savedCompanyGst() || '';
+  if (!gst) { toast('Open GST workspace first'); return; }
+  if (!confirm('Bulk-delete UNUSED quotes for this company from the server? Confirmed / approved quotes and any with advances are kept.')) return;
+  try {
+    const res = await api('/api/company/quotes/bulk-delete', {method:'POST', body:{ gstNo: gst, filter: 'unused' }});
+    toast('Deleted '+(res.deletedCount||0)+' unused quote(s)');
+    await loadHubQuotes();
+    refreshCompanyHub(gst);
+  } catch(e) { toast(e.message); }
+};
+async function loadPublicScan(token) {
+  if ($('scanStatus')) $('scanStatus').textContent = 'Loading live quote…';
+  if ($('scanBody')) $('scanBody').innerHTML = '';
+  try {
+    const rec = await api('/api/public/quote/'+encodeURIComponent(token));
+    window.WEOS_SCAN_TOKEN = rec.shareToken || token;
+    if ($('scanStatus')) $('scanStatus').textContent = 'Live from database · updated '+fmtDate(rec.updatedAt);
+    const co = rec.company || {};
+    const cust = rec.customer || {};
+    const val = rec.value || {};
+    const adv = rec.advances || [];
+    const prods = rec.products || [];
+    const badge = rec.approved ? 'Approved' : (rec.status || 'draft');
+    $('scanBody').innerHTML = `
+      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:.6rem;flex-wrap:wrap">
+        <div>
+          <strong style="font-size:1.15rem">${esc(co.name||'WEOS')}</strong>
+          <div class="muted" style="font-size:.8rem">GSTIN ${esc(co.gstNo||'—')}${co.phone?(' · '+esc(co.phone)):''}${co.email?(' · '+esc(co.email)):''}</div>
+          ${co.address?('<div class="muted" style="font-size:.78rem">'+esc(co.address)+'</div>'):''}
+        </div>
+        <span class="chip">${esc(badge)}</span>
+      </div>
+      <p style="margin:.7rem 0 .35rem"><strong>${esc(rec.quoteNumber)}</strong> · v${esc(rec.version)} · ${esc(rec.versionCount||1)} version(s)</p>
+      <div class="muted" style="font-size:.8rem;margin-bottom:.6rem">Customer: ${esc(cust.name||'—')}</div>
+      <div class="row" style="gap:.6rem;flex-wrap:wrap;margin-bottom:.8rem">
+        <div class="kpi"><label class="l">Taxable</label><div class="big" style="font-size:1.05rem">${money(val.totalTaxable)}</div></div>
+        <div class="kpi"><label class="l">GST</label><div class="big" style="font-size:1.05rem">${money(val.totalGst)}</div></div>
+        <div class="kpi"><label class="l">Grand</label><div class="big" style="font-size:1.05rem">${money(val.totalGrand)}</div></div>
+        <div class="kpi"><label class="l">Advances (${adv.length}×)</label><div class="big" style="font-size:1.05rem">${money(rec.totalAdvance)}</div></div>
+        <div class="kpi"><label class="l">Balance</label><div class="big" style="font-size:1.05rem">${money(rec.balanceWithGst)}</div></div>
+      </div>
+      <strong style="font-size:.88rem">Advances</strong>
+      <table style="margin:.4rem 0 .8rem"><thead><tr><th>#</th><th>Amount</th><th>Mode</th><th>Date</th><th>Running</th></tr></thead>
+      <tbody>${adv.length ? adv.map(a => `<tr><td>${a.n}</td><td>${money(a.amount)}</td><td>${esc(a.paymentMode)}</td><td>${fmtDate(a.date)}</td><td>${money(a.runningTotal)}</td></tr>`).join('') : '<tr><td colspan="5" class="muted">No advances yet</td></tr>'}</tbody></table>
+      <strong style="font-size:.88rem">Products</strong>
+      <table style="margin:.4rem 0 .8rem"><thead><tr><th>Serial</th><th>Location</th><th>Type</th><th>Size</th><th>Qty</th><th>Amount</th></tr></thead>
+      <tbody>${prods.length ? prods.map(p => `<tr><td>${esc(p.serial)}</td><td>${esc(p.location)}</td><td>${esc(p.type)}</td><td>${esc(p.size)}</td><td>${esc(p.qty)}</td><td>${p.amount!=null?money(p.amount):'—'}</td></tr>`).join('') : '<tr><td colspan="6" class="muted">No products</td></tr>'}</tbody></table>
+      <div class="row" style="gap:.4rem;flex-wrap:wrap">
+        ${rec.customerPdfUrl?`<a class="btn sm" href="${API_BASE}${rec.customerPdfUrl}" target="_blank">Customer PDF</a>`:''}
+        ${rec.ledgerPdfUrl?`<a class="btn ghost sm" href="${API_BASE}${rec.ledgerPdfUrl}" target="_blank">Ledger PDF</a>`:''}
+      </div>
+      <p class="muted" style="margin:.7rem 0 0;font-size:.75rem">Last updated ${esc(rec.updatedAt||'—')}. This page always reads the live project — not a frozen PDF snapshot.</p>`;
+  } catch(e) {
+    if ($('scanStatus')) $('scanStatus').textContent = 'Quote not found';
+    if ($('scanBody')) $('scanBody').innerHTML = '<p class="muted">'+esc(e.message)+'</p>';
+  }
+}
+(function bootPublicScan(){
+  try {
+    const path = location.pathname || '';
+    const hash = location.hash || '';
+    const qs = new URLSearchParams(location.search || '');
+    let token = qs.get('scan') || '';
+    const m1 = path.match(/\/(?:q|scan)\/([^/?#]+)/i);
+    const m2 = hash.match(/#\/?(?:q|scan)\/([^/?#]+)/i);
+    if (m1) token = decodeURIComponent(m1[1]);
+    else if (m2) token = decodeURIComponent(m2[1]);
+    if (token) {
+      window.WEOS_SCAN_TOKEN = token;
+      setTimeout(() => setView('scan'), 0);
+    }
+  } catch(_) {}
+})();
 if ($('btnHubNewProject')) $('btnHubNewProject').onclick = () => {
   if ($('btnNewProj')) $('btnNewProj').click();
   else setView('setup');
@@ -7266,6 +7446,10 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
         customerName: name,
       },
     });
+    const pid = (sel && sel.value) || (created && created.projectId);
+    if (pid && ($('cpAdvApprove') ? $('cpAdvApprove').checked : true)) {
+      try { await api('/api/projects/'+pid+'/status', {method:'POST', body:{status:'approved'}}); } catch(_) {}
+    }
     if ($('cpAdvAmt')) $('cpAdvAmt').value = '';
     if ($('cpAdvRef')) $('cpAdvRef').value = '';
     const advId = created && (created.id || (created.advance && created.advance.id));
@@ -7292,7 +7476,7 @@ function renderCustomerQuotes(quotes) {
       `<span class="chip">v${v.version} ${v.grandTotal!=null?money(v.grandTotal):''} <a href="${API_BASE}/api/projects/${q.projectId}/customer-pdf?brand=${brand}" target="_blank" title="Print current">🖨</a></span>`
     ).join(' ');
     const st = (q.status||'').toLowerCase();
-    const confLabel = ['confirmed','accepted','finalized','ordered','won'].includes(st) ? 'Confirmed' : 'Mark confirmed';
+    const confLabel = ['confirmed','accepted','approved','finalized','ordered','won'].includes(st) ? 'Approved' : 'Approve';
     return `<div class="card" style="padding:.65rem .8rem;margin-bottom:.55rem">
       <div class="row" style="justify-content:space-between;align-items:center">
         <div>
@@ -7303,6 +7487,7 @@ function renderCustomerQuotes(quotes) {
         <div class="actions-inline">
           <button class="btn ghost sm" data-confirm-q="${q.projectId}" type="button">${confLabel}</button>
           <a class="btn ghost sm" href="${API_BASE}/api/projects/${q.projectId}/customer-pdf?brand=marqt" target="_blank">Print</a>
+          <button class="btn ghost sm" data-scan-q="${q.projectId}" type="button">Scan link</button>
           <button class="btn ghost sm" data-open-q="${q.projectId}">Edit</button>
           <button class="btn ghost sm" data-reuse-q="${q.projectId}">Reuse</button>
         </div>
@@ -7318,10 +7503,18 @@ function renderCustomerQuotes(quotes) {
   });
   $('cpQuotes').querySelectorAll('[data-confirm-q]').forEach(b => b.onclick = async () => {
     try {
-      await api('/api/projects/'+b.dataset.confirmQ+'/status', {method:'POST', body:{status:'confirmed'}});
-      toast('Order confirmed');
+      await api('/api/projects/'+b.dataset.confirmQ+'/status', {method:'POST', body:{status:'approved'}});
+      toast('Quote approved');
       if (state.selectedCustomer) await openCustomer(state.selectedCustomer);
       if (state.companyGst) refreshCompanyHub(state.companyGst);
+    } catch(e) { toast(e.message); }
+  });
+  $('cpQuotes').querySelectorAll('[data-scan-q]').forEach(b => b.onclick = async () => {
+    try {
+      const r = await api('/api/projects/'+b.dataset.scanQ+'/share-token', {method:'POST'});
+      const url = (API_BASE || location.origin) + (r.scanPath || ('/q/'+r.shareToken));
+      try { await navigator.clipboard.writeText(url); toast('Public scan link copied'); }
+      catch(_) { prompt('Public scan URL', url); }
     } catch(e) { toast(e.message); }
   });
 }

@@ -36,6 +36,38 @@ def normalise_mobile(mobile: str) -> str:
     return cleaned
 
 
+def _ensure_quote_share_schema() -> None:
+    """Add share_token / company_gst on existing DBs (create_all does not ALTER)."""
+    try:
+        from sqlalchemy import text
+
+        from WEOS.db.engine import get_engine
+
+        eng = get_engine()
+        if eng is None:
+            return
+        stmts = (
+            "ALTER TABLE quotes ADD COLUMN IF NOT EXISTS share_token VARCHAR(80)",
+            "ALTER TABLE quotes ADD COLUMN IF NOT EXISTS company_gst VARCHAR(40)",
+        )
+        with eng.begin() as conn:
+            for sql in stmts:
+                try:
+                    conn.execute(text(sql))
+                except Exception:
+                    pass
+            try:
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_quotes_share_token ON quotes (share_token)"))
+            except Exception:
+                pass
+            try:
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_quotes_company_gst ON quotes (company_gst)"))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def _ensure_ready() -> None:
     if not db_available():
         raise RuntimeError(
@@ -43,6 +75,7 @@ def _ensure_ready() -> None:
             "Set DATABASE_URL (PostgreSQL) on Railway. Quotes are never stored in the browser."
         )
     init_db()
+    _ensure_quote_share_schema()
 
 
 # ── quote number generation ──────────────────────────────────────────────────
@@ -208,6 +241,8 @@ def _apply_payload(quote: Any, payload: dict[str, Any]) -> None:
         "lines": "lines",
         "status": "status",
         "createdBy": "created_by",
+        "shareToken": "share_token",
+        "companyGst": "company_gst",
     }
     for src, dst in field_map.items():
         if src in payload and payload[src] is not None:
@@ -243,6 +278,32 @@ def _record_version(session: Any, quote: Any, created_by: str | None) -> None:
             created_by=created_by,
         )
     )
+
+
+def _mint_share_token() -> str:
+    try:
+        from WEOS.factory.quote_share import new_share_token
+
+        return new_share_token()
+    except Exception:
+        return uuid.uuid4().hex
+
+
+def _stamp_share_and_gst(quote: Any, payload: dict[str, Any] | None = None) -> None:
+    payload = payload or {}
+    if not getattr(quote, "share_token", None):
+        token = str(payload.get("shareToken") or "").strip() or _mint_share_token()
+        quote.share_token = token
+    gst = str(payload.get("companyGst") or getattr(quote, "company_gst", None) or "").strip()
+    if not gst:
+        try:
+            from WEOS.factory.company_store import get_active_gst
+
+            gst = get_active_gst() or ""
+        except Exception:
+            gst = ""
+    if gst:
+        quote.company_gst = gst
 
 
 def _add_event_obj(session: Any, quote_pk: int, event_type: str, message: str, data: dict | None, created_by: str | None) -> None:
@@ -339,6 +400,7 @@ def create_quote(payload: dict[str, Any], *, created_by: str | None = None) -> d
                     )
                 if existing.bom is not None:
                     s.add(QuoteBom(quote_id=existing.id, bom=existing.bom))
+                _stamp_share_and_gst(existing, payload)
                 _record_version(s, existing, created_by)
                 _add_event_obj(
                     s,
@@ -366,6 +428,7 @@ def create_quote(payload: dict[str, Any], *, created_by: str | None = None) -> d
         if not _co_name and isinstance(payload.get("branding"), dict):
             _co_name = (payload.get("branding") or {}).get("companyName")
         quote.quote_number = wanted_number or _next_quote_number(s, company_name=_co_name)
+        _stamp_share_and_gst(quote, payload)
         s.add(quote)
         s.flush()
 
@@ -433,9 +496,11 @@ def get_quote_by_ref(ref: str) -> dict[str, Any] | None:
 
     try:
         with session_scope() as s:
-            q = s.execute(
-                select(Quote).where((Quote.quote_id == ref) | (Quote.quote_number == ref))
-            ).scalars().first()
+            q = s.execute(select(Quote).where(Quote.share_token == ref)).scalars().first()
+            if q is None:
+                q = s.execute(
+                    select(Quote).where((Quote.quote_id == ref) | (Quote.quote_number == ref))
+                ).scalars().first()
             if q is None:
                 q = s.execute(
                     select(Quote).where(Quote.project_id == ref).order_by(Quote.id.desc())
@@ -482,6 +547,7 @@ def update_quote(quote_id: str, payload: dict[str, Any], *, created_by: str | No
         quote = _get_quote_obj(s, quote_id)
         before = _snapshot(quote)
         _apply_payload(quote, payload)
+        _stamp_share_and_gst(quote, payload)
         quote.version = int(quote.version or 1) + 1
 
         # Refresh line items when lines provided.
@@ -529,10 +595,17 @@ def update_quote(quote_id: str, payload: dict[str, Any], *, created_by: str | No
         return quote.to_dict(include_children=True)
 
 
-def delete_quote(quote_id: str) -> dict[str, Any]:
+def delete_quote(quote_id: str, *, company_gst: str | None = None) -> dict[str, Any]:
     _ensure_ready()
     with session_scope() as s:
         quote = _get_quote_obj(s, quote_id)
+        if company_gst:
+            from WEOS.factory.company_store import normalise_gstin
+
+            want = normalise_gstin(company_gst)
+            have = normalise_gstin(getattr(quote, "company_gst", None) or "")
+            if have and want and have != want:
+                raise PermissionError("This quote belongs to another company GST workspace.")
         s.delete(quote)
         return {"ok": True, "deleted": quote_id}
 

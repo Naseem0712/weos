@@ -21,7 +21,15 @@ import os
 from typing import Any, Mapping
 from urllib.parse import quote as _urlquote
 
-_REF_KEYS = ("quoteRef", "quoteId", "quoteNumber", "quotationId", "projectId")
+_REF_KEYS = (
+    "shareToken",
+    "quoteShareToken",
+    "quoteRef",
+    "quoteId",
+    "quoteNumber",
+    "quotationId",
+    "projectId",
+)
 
 
 def public_base_url(payload: Mapping[str, Any] | None = None) -> str:

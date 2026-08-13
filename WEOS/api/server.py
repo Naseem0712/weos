@@ -798,6 +798,15 @@ def _pdf_response(
         "publicBaseUrl": _public_base_url(request),
         "quoteRef": doc.get("quoteId") or doc.get("quoteNumber") or project_id,
     }
+    try:
+        from WEOS.factory.quote_share import ensure_project_share_token
+
+        token = ensure_project_share_token(doc, persist=True)
+        payload["shareToken"] = token
+        payload["quoteShareToken"] = token
+        payload["quoteRef"] = token
+    except Exception:
+        _log.debug("share token mint during PDF skipped", exc_info=True)
     # Bill-to profile: saved customer profile first, then overlay the Project-Setup
     # values (mobile/address/GST) so the bill-to prints even without a saved profile.
     profile: dict[str, Any] = {}
@@ -1417,7 +1426,19 @@ def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
 
 
 @app.delete("/api/projects/{project_id}")
-def api_delete_project(project_id: str, hard: bool = Query(False)) -> dict[str, Any]:
+def api_delete_project(project_id: str, hard: bool = Query(False), gst: str | None = None) -> dict[str, Any]:
+    if gst:
+        from WEOS.factory.company_quotes import delete_company_quote
+        from WEOS.factory.company_store import normalise_gstin
+
+        try:
+            return delete_company_quote(project_id, company_gst=normalise_gstin(gst), hard=hard)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         return delete_project(project_id, hard=hard)
     except FileNotFoundError as exc:
@@ -1746,15 +1767,24 @@ def api_pdf_factory_alias(project_id: str, request: Request, brand: str | None =
     return api_factory_pdf(project_id, request, brand=brand)
 
 
-@app.get("/q/{ref}")
-def public_quote(ref: str, request: Request) -> Response:
-    """Public share link encoded in the PDF QR code.
+def _public_scan_response(ref: str, request: Request, *, fmt: str | None = None) -> Response:
+    """Live public quote page (HTML) or optional PDF download."""
+    from WEOS.factory.quote_share import build_public_quote_record, render_scan_html
 
-    Resolves the quote from PostgreSQL (by quote number / id) and returns the
-    customer PDF inline so scanning on a phone opens it — surviving redeploys.
-    Falls back to a file-based project when the ref is a project id.
-    """
     base = _public_base_url(request)
+    want_pdf = (fmt or "").strip().lower() in ("pdf", "download", "file")
+    record = build_public_quote_record(ref)
+    if record and not want_pdf:
+        html = render_scan_html(record, base_url=base)
+        return HTMLResponse(html)
+    if record and want_pdf:
+        pid = str(record.get("projectId") or "").strip()
+        if pid:
+            try:
+                return _pdf_response(pid, "customer", request=request, inline=True)
+            except FileNotFoundError:
+                pass
+    # Legacy: quote_store / project id PDF fallback when live HTML cannot build.
     try:
         from WEOS.db.quote_store import get_quote_by_ref
 
@@ -1770,7 +1800,8 @@ def public_quote(ref: str, request: Request) -> Response:
             "combined": {"grandTotal": q.get("grandTotal")},
             "projectId": q.get("projectId"),
             "quotationId": q.get("quoteNumber") or q.get("quoteId"),
-            "quoteRef": q.get("quoteNumber") or q.get("quoteId") or ref,
+            "quoteRef": q.get("shareToken") or q.get("quoteNumber") or q.get("quoteId") or ref,
+            "shareToken": q.get("shareToken"),
             "customer": cust_name,
             "name": "",
             "brand": q.get("brand") or "woodenmax",
@@ -1792,11 +1823,33 @@ def public_quote(ref: str, request: Request) -> Response:
             )
         except Exception:
             _log.exception("public quote PDF build failed for %s", ref)
-    # Fall back to a file-based project id (works while the project file exists).
     try:
         return _pdf_response(ref, "customer", request=request, inline=True)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"Quote not found: {ref}") from exc
+
+
+@app.get("/q/{ref}")
+def public_quote(ref: str, request: Request, format: str | None = Query(None)) -> Response:
+    """Public QR target: live project record (HTML). ``?format=pdf`` downloads PDF."""
+    return _public_scan_response(ref, request, fmt=format)
+
+
+@app.get("/scan/{ref}")
+def public_scan(ref: str, request: Request, format: str | None = Query(None)) -> Response:
+    """Alias for ``/q/{token}`` — stable public scan URL."""
+    return _public_scan_response(ref, request, fmt=format)
+
+
+@app.get("/api/public/quote/{ref}")
+def api_public_quote(ref: str) -> dict[str, Any]:
+    """JSON live quote for the public scan page (no login)."""
+    from WEOS.factory.quote_share import build_public_quote_record
+
+    rec = build_public_quote_record(ref)
+    if not rec:
+        raise HTTPException(status_code=404, detail=f"Quote not found: {ref}")
+    return rec
 
 
 @app.post("/api/projects/import")
@@ -2007,6 +2060,92 @@ def api_company_workspace_open(body: CompanyWorkspaceOpenBody) -> dict[str, Any]
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+class CompanyQuotesBulkBody(BaseModel):
+    gstNo: str | None = None
+    filter: str = "unused"
+
+
+@app.get("/api/company/quotes")
+def api_company_quotes(gst: str | None = None, filter: str | None = Query("all")) -> dict[str, Any]:
+    """List quotes/projects for the logged-in company GST (unused / duplicates / drafts)."""
+    from WEOS.factory.company_quotes import list_company_quotes
+    from WEOS.factory.company_store import get_active_gst, load_company, normalise_gstin
+
+    g = normalise_gstin(gst) if gst else (get_active_gst() or "")
+    if not g:
+        g = normalise_gstin((load_company() or {}).get("gstNo") or "")
+    if not g:
+        raise HTTPException(status_code=400, detail="Open a company workspace with GSTIN first.")
+    try:
+        return list_company_quotes(g, filter_key=filter)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/company/quotes/{project_id}")
+def api_company_delete_quote(
+    project_id: str,
+    gst: str | None = None,
+    hard: bool = Query(True),
+) -> dict[str, Any]:
+    """Delete a quote/project from Postgres, scoped to the open company GST."""
+    from WEOS.factory.company_quotes import delete_company_quote
+    from WEOS.factory.company_store import get_active_gst, load_company, normalise_gstin
+
+    g = normalise_gstin(gst) if gst else (get_active_gst() or "")
+    if not g:
+        g = normalise_gstin((load_company() or {}).get("gstNo") or "")
+    if not g:
+        raise HTTPException(status_code=400, detail="Open a company workspace with GSTIN first.")
+    try:
+        return delete_company_quote(project_id, company_gst=g, hard=hard)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/company/quotes/bulk-delete")
+def api_company_bulk_delete_quotes(body: CompanyQuotesBulkBody) -> dict[str, Any]:
+    """Bulk-delete unused / old-draft / duplicate extras for this GST only."""
+    from WEOS.factory.company_quotes import bulk_delete_unused
+    from WEOS.factory.company_store import get_active_gst, load_company, normalise_gstin
+
+    g = normalise_gstin(body.gstNo) if body.gstNo else (get_active_gst() or "")
+    if not g:
+        g = normalise_gstin((load_company() or {}).get("gstNo") or "")
+    if not g:
+        raise HTTPException(status_code=400, detail="Open a company workspace with GSTIN first.")
+    fk = (body.filter or "unused").strip().lower()
+    if fk in ("all", "*", ""):
+        raise HTTPException(status_code=400, detail="Bulk delete requires filter=unused, old_draft, or duplicate.")
+    try:
+        return bulk_delete_unused(g, filter_key=fk)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/share-token")
+def api_ensure_share_token(project_id: str) -> dict[str, Any]:
+    """Mint or return the durable public scan token for a project."""
+    from WEOS.factory.quote_share import ensure_project_share_token
+
+    try:
+        doc = load_project(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    token = ensure_project_share_token(doc, persist=True)
+    return {
+        "ok": True,
+        "projectId": project_id,
+        "shareToken": token,
+        "scanPath": f"/q/{token}",
+        "scanAltPath": f"/scan/{token}",
+    }
+
+
 @app.get("/api/company/workspace")
 def api_company_workspace(gst: str | None = None) -> dict[str, Any]:
     """Return the open (or specified) company workspace hub payload."""
@@ -2175,11 +2314,27 @@ def api_add_customer_advance(customer: str, body: AdvanceBody) -> dict[str, Any]
     payload = body.model_dump(exclude_none=True)
     payload.setdefault("customerName", customer)
     try:
-        return add_advance(customer, payload)
+        created = add_advance(customer, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    pid = str(created.get("projectId") or payload.get("projectId") or "").strip()
+    if pid:
+        try:
+            from WEOS.factory.ledger_store import CONFIRMED_STATUSES
+            from WEOS.factory.project_store import load_project, set_project_status
+
+            doc = load_project(pid)
+            st = str(doc.get("status") or "").strip().lower()
+            if st not in CONFIRMED_STATUSES:
+                set_project_status(pid, "approved")
+                created["projectStatus"] = "approved"
+            else:
+                created["projectStatus"] = st or "approved"
+        except Exception:
+            _log.debug("advance approve-status stamp skipped for %s", pid, exc_info=True)
+    return created
 
 
 @app.delete("/api/customers/{customer}/advances/{advance_id}")
@@ -3734,11 +3889,15 @@ def api_update_quote(quote_id: str, body: QuoteBody) -> dict[str, Any]:
 
 
 @app.delete("/api/quotes/{quote_id}")
-def api_delete_quote(quote_id: str) -> dict[str, Any]:
+def api_delete_quote(quote_id: str, gst: str | None = None) -> dict[str, Any]:
     from WEOS.db.quote_store import delete_quote
+    from WEOS.factory.company_store import get_active_gst, normalise_gstin
 
+    g = normalise_gstin(gst) if gst else (get_active_gst() or "")
     try:
-        return delete_quote(quote_id)
+        return delete_quote(quote_id, company_gst=g or None)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:

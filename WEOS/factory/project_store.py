@@ -193,6 +193,17 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
             pass
     elif doc.get("companyGst"):
         doc["companyGst"] = _norm_company_gst(doc.get("companyGst"))
+    if not str(doc.get("shareToken") or doc.get("quoteShareToken") or "").strip():
+        try:
+            from WEOS.factory.quote_share import new_share_token
+
+            tok = new_share_token()
+            doc["shareToken"] = tok
+            doc["quoteShareToken"] = tok
+        except Exception:
+            pass
+    elif doc.get("shareToken") and not doc.get("quoteShareToken"):
+        doc["quoteShareToken"] = doc["shareToken"]
     now = datetime.now(timezone.utc).isoformat()
     if "createdAt" not in doc:
         doc["createdAt"] = now
@@ -238,6 +249,14 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
         except Exception:
             pass
     _append_history(pid, action, ver)
+    try:
+        from WEOS.factory.quote_share import _index_share_token
+
+        tok = str(out.get("shareToken") or out.get("quoteShareToken") or "").strip()
+        if tok:
+            _index_share_token(tok, out)
+    except Exception:
+        _log.debug("share token index skipped for %s", pid, exc_info=True)
     doc["_path"] = path.as_posix()
     if versioned:
         doc["quoteNumberVersioned"] = True
@@ -523,6 +542,7 @@ def list_projects(
                 "quotationId": d.get("quotationId"),
                 "grandTotal": (d.get("lastCalculation") or {}).get("price", {}).get("total"),
                 "companyGst": d.get("companyGst") or "",
+                "shareToken": d.get("shareToken") or d.get("quoteShareToken") or "",
             }
             if q:
                 blob = f"{row['projectId']} {row['name']} {row['customer']} {row.get('quotationId')}".lower()
