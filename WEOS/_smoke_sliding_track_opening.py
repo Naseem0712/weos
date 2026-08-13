@@ -143,7 +143,7 @@ def main() -> None:
     _ok("center opening" in title.lower(), f"svg title center: {title}")
     _ok("#111111" in svg4 or "#052c54" in svg4, "dark frame/interlock strokes")
     sws = [float(x) for x in re.findall(r'stroke-width="([\d.]+)"', svg4)]
-    _ok(sws and max(sws) >= 2.0, f"readable stroke widths max={max(sws) if sws else None}")
+    _ok(sws and 0.9 <= max(sws) <= 3.2, f"slim CAD strokes max={max(sws) if sws else None}")
     _ok('data-visual-series="sliding35"' in svg4, "sliding visual 35")
 
     job_cas = generate_job(1200, 2100, "29mm_sliding", glass="8mm_toughened", system="casement", glass_count=2)

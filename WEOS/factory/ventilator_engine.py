@@ -404,7 +404,7 @@ def _handle_bottom(parts: list[str], x: float, y_bot: float, w: float) -> None:
     hy = y_bot - hh - 1.2
     parts.append(
         f'<rect x="{hx:.1f}" y="{hy:.1f}" width="{hw:.1f}" height="{hh:.1f}" rx="{hh * 0.4:.1f}" '
-        f'fill="none" stroke="#222" stroke-width="0.8" data-handle="1" data-handle-pos="bottom"/>'
+        f'fill="none" stroke="#222" stroke-width="0.65" data-handle="1" data-handle-pos="bottom"/>'
     )
     parts.append(
         f'<line x1="{hx + 2:.1f}" y1="{hy + hh / 2:.1f}" x2="{hx + hw - 2:.1f}" y2="{hy + hh / 2:.1f}" '
@@ -451,7 +451,7 @@ def _top_hinges(
                 w=hw,
                 h=hh,
                 stroke=stroke,
-                stroke_width=0.75,
+                stroke_width=0.55,
                 extra_attrs='data-hinge-style="casement" data-hinge-pos="top"',
             )
         )

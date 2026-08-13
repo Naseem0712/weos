@@ -231,7 +231,7 @@ def casement_hinge_svg(
     w: float,
     h: float,
     stroke: str = HINGE_STROKE,
-    stroke_width: float = 0.75,
+    stroke_width: float = 0.55,
     extra_attrs: str = "",
 ) -> str:
     """2D stadium hinge: round heads + horizontal barrel split (shared SVG glyph).

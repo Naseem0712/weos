@@ -1930,7 +1930,7 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
     def Y(my: float) -> float:
         return oy + (Hgt - my)
 
-    sw = max(0.55, max(L, Hgt) / 1100.0)
+    sw = max(0.50, min(max(L, Hgt) / 2000.0, 1.15))
     stroke, glass, glass_stroke, dim = "#14181c", "#e6eef6", "#2f6db0", "#8c1f18"
     fs = max(vb_w, vb_h) * 0.018
     p: list[str] = [
@@ -2064,7 +2064,7 @@ def _svg_elevation_span(
     hand_h = rail_h if handrail else 0.0
     post_w = max(min(L * 0.01, 40.0), 18.0)
     stroke, glass, glass_stroke, dim = "#14181c", "#e6eef6", "#2f6db0", "#8c1f18"
-    sw = max(0.55, max(L, Hgt) / 1100.0)
+    sw = max(0.50, min(max(L, Hgt) / 2000.0, 1.15))
     fs = max(L, Hgt) * 0.022 * scale
     pad_x, pad_y = 80.0, 70.0
 
@@ -2220,7 +2220,7 @@ def _svg_plan_polyline(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
     def Y(my: float) -> float:
         return oy - my
 
-    sw = max(span_x, span_y) / 450.0
+    sw = max(0.50, min(max(span_x, span_y) / 900.0, 1.20))
     stroke, dim, bend_c, rail_c = "#14181c", "#8c1f18", "#0a5a48", "#2f6db0"
     fs = max(vb_w, vb_h) * 0.016
     p: list[str] = [
@@ -2287,7 +2287,7 @@ def _svg_arch_plan(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
     vb_w = span + pad * 2
     vb_h = rise + pad * 2
     ox, oy = pad, pad + rise
-    sw = max(span, rise) / 400.0
+    sw = max(0.50, min(max(span, rise) / 800.0, 1.20))
     stroke, dim, rail_c = "#14181c", "#8c1f18", "#2f6db0"
     fs = max(vb_w, vb_h) * 0.018
     # SVG arc from (-span/2) to (+span/2) with given rise (approx via quadratic)
@@ -2360,7 +2360,7 @@ def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
         # Continuous slope line through nosings for glass baseline.
         return (rise / run) * x_h
 
-    sw = max(0.55, max(total_w, total_h) / 1100.0)
+    sw = max(0.50, min(max(total_w, total_h) / 2000.0, 1.15))
     stroke, dim, rail_c = "#14181c", "#8c1f18", "#2f6db0"
     glass, glass_stroke = "#dceaf6", "#2f6db0"
     fs = max(vb_w, vb_h) * 0.014

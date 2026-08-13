@@ -46,7 +46,7 @@ def _glasses(model: DrawingModel) -> list[tuple[str, float, float, float, float]
     return out
 
 
-def _draw_casement_hinge_pdf(c, px, py, scale: float, x0: float, y0: float, x1: float, y1: float, stroke_rgb, *, lw: float = 0.5) -> None:
+def _draw_casement_hinge_pdf(c, px, py, scale: float, x0: float, y0: float, x1: float, y1: float, stroke_rgb, *, lw: float = 0.40) -> None:
     """Light stadium hinge + horizontal barrel split — same glyph as live SVG preview."""
     w_m = abs(float(x1) - float(x0))
     h_m = abs(float(y1) - float(y0))
@@ -92,12 +92,12 @@ def _draw_grid_pdf(c, *, px, py, scale, meta, W, H, finish, stroke, dim, glass_s
             c.setDash()
 
     # Outer frame
-    rect_ol(0, 0, W, H, 0.9)
+    rect_ol(0, 0, W, H, 0.70)
 
     for cell in cells:
         x0, y0, x1, y1 = float(cell["x0"]), float(cell["y0"]), float(cell["x1"]), float(cell["y1"])
         role = cell.get("role") or "fix"
-        rect_ol(x0, y0, x1, y1, 0.85)
+        rect_ol(x0, y0, x1, y1, 0.65)
         for g in cell.get("glass") or []:
             gx0, gy0, gx1, gy1 = float(g["x0"]), float(g["y0"]), float(g["x1"]), float(g["y1"])
             c.setFillColorRGB(0.88, 0.93, 0.97)
@@ -106,7 +106,7 @@ def _draw_grid_pdf(c, *, px, py, scale, meta, W, H, finish, stroke, dim, glass_s
             c.rect(px(gx0), py(gy0), (gx1 - gx0) * scale, (gy1 - gy0) * scale, fill=1, stroke=1)
         for sx in cell.get("sashLines") or []:
             c.setStrokeColorRGB(*stroke)
-            c.setLineWidth(0.7)
+            c.setLineWidth(0.55)
             c.line(px(float(sx)), py(y0), px(float(sx)), py(y1))
         m = cell.get("mesh")
         if isinstance(m, _Mapping):
@@ -135,7 +135,7 @@ def _draw_grid_pdf(c, *, px, py, scale, meta, W, H, finish, stroke, dim, glass_s
             _draw_casement_hinge_pdf(
                 c, px, py, scale,
                 float(hg["x0"]), float(hg["y0"]), float(hg["x1"]), float(hg["y1"]),
-                fc["stroke"], lw=0.5,
+                fc["stroke"], lw=0.40,
             )
         # Handles (outline lever)
         for hd in cell.get("handles") or []:
@@ -145,7 +145,7 @@ def _draw_grid_pdf(c, *, px, py, scale, meta, W, H, finish, stroke, dim, glass_s
             rx = max(pw * 0.6, 2.0)
             ry = max(ph * 0.5, 4.0)
             c.setStrokeColorRGB(*fc["stroke"])
-            c.setLineWidth(0.7)
+            c.setLineWidth(0.50)
             c.ellipse(px(hcx) - rx * scale, py(hcy) - ry * scale, px(hcx) + rx * scale, py(hcy) + ry * scale, fill=0, stroke=1)
             direction = -1.0 if hd.get("side") == "right" else 1.0
             arm = max(pw * 2.4, 10.0)
@@ -314,7 +314,7 @@ def draw_model_elevation(
         if not isinstance(h, _Mapping):
             continue
         hx0, hy0, hx1, hy1 = float(h["x0"]), float(h["y0"]), float(h["x1"]), float(h["y1"])
-        _draw_casement_hinge_pdf(c, px, py, scale, hx0, hy0, hx1, hy1, fc["stroke"], lw=0.5)
+        _draw_casement_hinge_pdf(c, px, py, scale, hx0, hy0, hx1, hy1, fc["stroke"], lw=0.40)
     for sp in meta.get("shutters") or []:
         if not isinstance(sp, _Mapping):
             continue
@@ -327,7 +327,7 @@ def draw_model_elevation(
         rx = max(pw * 0.60, 2.0)
         ry = max(ph * 0.5, 4.0)
         c.setStrokeColorRGB(*fc["stroke"])
-        c.setLineWidth(0.7)
+        c.setLineWidth(0.50)
         # oval escutcheon (outline)
         c.ellipse(px(hcx) - rx * scale, py(hcy) - ry * scale, px(hcx) + rx * scale, py(hcy) + ry * scale, fill=0, stroke=1)
         # keyhole hint
@@ -503,7 +503,7 @@ def draw_model_elevation(
         py0 = y + 4
         box_ph = plan_h - 4
         c.setStrokeColorRGB(*stroke)
-        c.setLineWidth(0.7)
+        c.setLineWidth(0.55)
         c.rect(px(0), py0, W * scale, box_ph, fill=0, stroke=1)
         c.setFont("Helvetica", 5)
         c.setFillColorRGB(0.4, 0.4, 0.4)

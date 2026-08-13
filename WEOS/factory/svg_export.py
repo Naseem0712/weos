@@ -167,7 +167,7 @@ def _arrow(
 ) -> None:
     parts.append(
         f'<line x1="{tx(x0):.2f}" y1="{ty(y0):.2f}" x2="{tx(x1):.2f}" y2="{ty(y1):.2f}" '
-        f'stroke="{stroke}" stroke-width="1.6" marker-end="url(#slideArrow)"/>'
+        f'stroke="{stroke}" stroke-width="1.05" marker-end="url(#slideArrow)"/>'
     )
 
 
@@ -257,7 +257,7 @@ def _draw_lever_handle(
     pw = (x1 - x0)
     ph = (y1 - y0)
     c = _handle_finish_colors(finish)
-    sw = max(1.3 * k, 1.0)
+    sw = max(0.70, min(0.50 * k, 1.10))
     rx = max(pw * 0.60, 5.0 * k)
     ry = max(ph * 0.5, 10.0 * k)
     tag = "" if panel_index is None else f' data-handle="{panel_index}"'
@@ -334,7 +334,7 @@ def _draw_hardware(parts: list[str], *, tx, ty, model: DrawingModel, finish: str
         x0, y0, x1, y1 = float(h["x0"]), float(h["y0"]), float(h["x1"]), float(h["y1"])
         _draw_casement_hinge_svg(
             parts, tx=tx, ty=ty, x0=x0, y0=y0, x1=x1, y1=y1,
-            stroke=c["stroke"], stroke_width=0.9 * k,
+            stroke=c["stroke"], stroke_width=max(0.50, min(0.38 * k, 0.85)),
         )
     # Handles
     for sp in meta.get("shutters") or []:
@@ -412,7 +412,7 @@ def _draw_grid_svg(
             _draw_casement_hinge_svg(
                 parts, tx=tx, ty=ty,
                 x0=float(hg["x0"]), y0=float(hg["y0"]), x1=float(hg["x1"]), y1=float(hg["y1"]),
-                stroke=hc["stroke"], stroke_width=0.9 * k,
+                stroke=hc["stroke"], stroke_width=max(0.50, min(0.38 * k, 0.85)),
             )
         # Handles — 2D lever outline
         for hd in cell.get("handles") or []:
@@ -424,7 +424,7 @@ def _draw_grid_svg(
             chip_w, chip_h = 70 * k, 30 * k
             parts.append(
                 f'<rect x="{tx(cx)-chip_w/2:.2f}" y="{ty(cy)-chip_h/2:.2f}" width="{chip_w:.2f}" height="{chip_h:.2f}" '
-                f'rx="{3*k:.1f}" fill="#fff" fill-opacity="0.92" stroke="#333" stroke-width="{1.0*k:.2f}"/>'
+                f'rx="{3*k:.1f}" fill="#fff" fill-opacity="0.92" stroke="#333" stroke-width="{max(0.55, min(0.40 * k, 0.90)):.2f}"/>'
             )
             parts.append(
                 f'<text x="{tx(cx):.2f}" y="{ty(cy)+label_font*0.3:.2f}" text-anchor="middle" '
@@ -670,13 +670,16 @@ def render_svg_string(
     glass_fill = "rgba(170, 205, 230, 0.20)" if pdf else "rgba(186, 214, 235, 0.28)"
     glass_stroke = "#1a4f86"
     dim_stroke = "#8b1e1a"
-    sw_mul = 1.25 if pdf else 1.0
-    sw_outer = max(2.8, min(ref * 0.0048, 11.0)) * sw_mul
-    sw_inner = max(2.2, sw_outer * 0.78)
+    # Slim 2D CAD strokes in model-mm. Dark colour stays readable on light
+    # glass; weight stays hairline so miters / handles don't become fat bars.
+    # (0170314 contrast scaled up to ~11 mm — far too heavy.)
+    sw_mul = 1.15 if pdf else 1.0
+    sw_outer = max(1.15, min(ref * 0.0015, 2.10)) * sw_mul
+    sw_inner = max(0.90, sw_outer * 0.82)
     sw_profile = sw_inner
     sw_seg = sw_inner
-    sw_grid = max(1.6, sw_inner * 0.7)
-    sw_interlock = max(2.4, sw_outer * 0.88)
+    sw_grid = max(0.70, sw_inner * 0.72)
+    sw_interlock = max(1.00, sw_outer * 0.90)
     dim_font = (44.0 if pdf else 36.0) * k
     label_font = (32.0 if pdf else 26.0) * k
 
@@ -861,7 +864,7 @@ def render_svg_string(
                 parts.append(
                     f'<rect x="{tx(cx) - chip_w / 2:.2f}" y="{ty(chip_y) - chip_h / 2:.2f}" '
                     f'width="{chip_w:.2f}" height="{chip_h:.2f}" rx="{3 * k:.1f}" fill="#fff" fill-opacity="0.95" '
-                    f'stroke="#333" stroke-width="{1.15 * k:.2f}"/>'
+                    f'stroke="#333" stroke-width="{max(0.55, min(0.40 * k, 0.90)):.2f}"/>'
                 )
                 parts.append(
                     f'<text x="{tx(cx):.2f}" y="{ty(chip_y) + label_font * 0.32:.2f}" text-anchor="middle" '
@@ -966,7 +969,7 @@ def render_svg_string(
                 model=model,
                 plan_y0=min_y + margin * 0.25,
                 plan_h=plan_h,
-                stroke_scale=k,
+                stroke_scale=max(0.55, min(k * 0.45, 1.05)),
             )
 
     parts.append("</svg>")

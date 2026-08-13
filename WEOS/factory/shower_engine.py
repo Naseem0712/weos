@@ -567,7 +567,7 @@ def _d_handle_on_glass(
     cx = x0 + rod_w / 2.0
     parts.append(
         f'<rect x="{x0:.1f}" y="{y0:.1f}" width="{rod_w:.1f}" height="{rod_h:.1f}" '
-        f'rx="{rod_w / 2.0:.1f}" fill="#e8e8ea" stroke="#111" stroke-width="0.9" '
+        f'rx="{rod_w / 2.0:.1f}" fill="#e8e8ea" stroke="#111" stroke-width="0.65" '
         f'data-handle="1" data-handle-side="{side}" data-handle-kind="d-cylinder"/>'
     )
     hx = cx - rod_w * 0.18
@@ -712,7 +712,7 @@ def _casement_hinge(
             w=max(w_mm * sc, 0.9),
             h=max(h_mm * sc, 4.0),
             stroke=stroke,
-            stroke_width=0.8,
+            stroke_width=0.55,
             extra_attrs=f'data-hinge-style="casement" data-hinge-from-top-mm="{from_top_mm:.0f}"',
         )
     )
@@ -766,7 +766,7 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
     glass_fill = "rgba(170, 205, 230, 0.22)"
     slide_fill = "rgba(120, 170, 210, 0.30)"
     open_fill = "rgba(210, 190, 140, 0.26)"
-    sw = 0.95  # darker readable 2D strokes
+    sw = 0.65  # slim 2D CAD strokes (keep dark colour, not beige-on-beige)
 
     # 16×45 mm slim leaf / 22×50 chokhat face in elevation
     frame_face_mm = 45.0
@@ -1134,7 +1134,7 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
     )
     px = x0 + (28.0 if shape != "straight" else 8.0)
     plan_y = py + 8.0
-    psw = 1.15
+    psw = 0.80
 
     def _dim_h(x1: float, x2: float, y: float, text: str) -> None:
         parts.append(f'<line x1="{x1:.1f}" y1="{y:.1f}" x2="{x2:.1f}" y2="{y:.1f}" stroke="#8b1e1a" stroke-width="0.6"/>')
