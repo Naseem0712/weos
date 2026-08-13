@@ -13,7 +13,7 @@ from typing import Any, Mapping
 from xml.sax.saxutils import escape
 
 from WEOS.factory.fmt import mm_n, money_n
-from WEOS.factory.geometry import casement_hinge_svg, hinge_capsule_size_mm
+from WEOS.factory.geometry import casement_hinge_svg, hinge_capsule_size_mm, hinge_gap_axis
 
 MM_PER_FT = 304.8
 SQMM_PER_SQFT = 92903.04
@@ -441,7 +441,8 @@ def _top_hinges(
     stile_mm = float(stile_t_mm) if stile_t_mm and stile_t_mm > 0 else (t / sc)
     hw_mm, hh_mm = hinge_capsule_size_mm(span_mm, stile_mm, orientation="horizontal")
     hw, hh = max(hw_mm * sc, 2.4), max(hh_mm * sc, 0.9)
-    cy = float(gap_y) if gap_y is not None else (y + t / 2.0)
+    # Default = sash top outer (stile gap), not mid-stile / frame-inner.
+    cy = float(gap_y) if gap_y is not None else float(y)
     for cx in xs:
         parts.append(
             casement_hinge_svg(
@@ -606,7 +607,7 @@ def ventilator_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = Non
                     _handle_bottom(parts, sx + sash_t, sy + sh - sash_t, max(swd - 2 * sash_t, 8))
                 _top_hinges(
                     parts, sx, sy, swd, sash_t, hinge_n, stroke,
-                    gap_y=inner_y,
+                    gap_y=hinge_gap_axis(sy, inner_y, toward_frame=-1.0),
                     leaf_w_mm=swd / max(scale, 1e-6),
                     stile_t_mm=50.0 * 0.85,
                     scale=scale,

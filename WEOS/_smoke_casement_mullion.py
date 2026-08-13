@@ -83,8 +83,15 @@ def main() -> int:
         hw = abs(float(hinges[0]["x1"]) - float(hinges[0]["x0"]))
         hh = abs(float(hinges[0]["y1"]) - float(hinges[0]["y0"]))
         aspect = hh / max(hw, 0.1)
-        if hw > 18.0 or hh < 50.0 or aspect < 4.8:
-            fails.append(f"hinge not slim capsule w={hw:.1f} h={hh:.1f} aspect={aspect:.2f}")
+        if hw < 22.0 or hw > 38.0 or hh < 95.0 or hh > 145.0 or aspect < 3.2 or aspect > 6.5:
+            fails.append(f"hinge not ~30×120 capsule w={hw:.1f} h={hh:.1f} aspect={aspect:.2f}")
+        if opens:
+            sp = opens[0]
+            hx_c = (float(hinges[0]["x0"]) + float(hinges[0]["x1"])) / 2.0
+            side = str(sp.get("hingeSide") or "left").lower()
+            gap = float(sp["x0"]) if side == "left" else float(sp["x1"])
+            if abs(hx_c - gap) > 1.5:
+                fails.append(f"hinge not centred on stile gap cx={hx_c:.1f} gap={gap:.1f} side={side}")
         if "data-hinge=\"1\"" not in svg or "data-hinge-split=\"h\"" not in svg:
             fails.append("svg missing stadium hinge + horizontal barrel split")
 

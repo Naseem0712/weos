@@ -11,7 +11,12 @@ from typing import Any, Mapping
 from xml.sax.saxutils import escape
 
 from WEOS.factory.fmt import mm_n, money_n
-from WEOS.factory.geometry import casement_hinge_svg, hinge_capsule_size_mm, hinge_centers_mm
+from WEOS.factory.geometry import (
+    casement_hinge_svg,
+    hinge_capsule_size_mm,
+    hinge_centers_mm,
+    hinge_gap_axis,
+)
 
 MM_PER_FT = 304.8
 SQMM_PER_SQFT = 92903.04
@@ -22,6 +27,7 @@ DEFAULT_HORIZ = "16×45 mm"
 DEFAULT_CHOKHAT = "22×50 mm"
 DEFAULT_HANDLE = "D-type"
 DEFAULT_HINGE = "casement"
+DOOR_BOTTOM_CLEAR_MM = 20.0
 
 
 def _f(value: Any, default: float = 0.0) -> float:
@@ -470,6 +476,7 @@ def _panel_frame(
     omit_side: str | None = None,
     skip_miters: frozenset[str] | set[str] | None = None,
     meeting: bool = False,
+    bottom_clear: bool = False,
 ) -> None:
     """Aluminium leaf: filled ring + 45° miters. Back leaf omits meeting stile / miters."""
     t = min(max(t, 2.4), w / 2.4, h / 2.4)
@@ -480,9 +487,12 @@ def _panel_frame(
         skip.update(("tl", "bl"))
     d = _frame_d(x, y, w, h, t, omit_side)
     extra = ' data-meeting-stile="1"' if meeting else ""
+    if bottom_clear:
+        extra += f' data-bottom-clear-mm="{int(DOOR_BOTTOM_CLEAR_MM)}"'
     parts.append(
         f'<path d="{d}" fill="#f2f2f3" fill-rule="evenodd" stroke="{stroke}" '
-        f'stroke-width="{sw:.2f}" data-{tag}="1"{extra}/>'
+        f'stroke-width="{sw:.2f}" stroke-linejoin="miter" stroke-miterlimit="1.25" '
+        f'stroke-linecap="butt" data-{tag}="1"{extra}/>'
     )
     x1, y1 = x + w, y + h
     corners = {
@@ -501,6 +511,16 @@ def _panel_frame(
         )
 
 
+def _u_chokhat_d(x: float, y: float, w: float, h: float, t: float) -> str:
+    """Single U path (open at floor) so head/jamb strokes do not double at corners."""
+    x1, y1 = x + w, y + h
+    xi0, yi0, xi1 = x + t, y + t, x1 - t
+    return (
+        f"M {x:.1f},{y1:.1f} L {x:.1f},{y:.1f} L {x1:.1f},{y:.1f} L {x1:.1f},{y1:.1f} "
+        f"L {xi1:.1f},{y1:.1f} L {xi1:.1f},{yi0:.1f} L {xi0:.1f},{yi0:.1f} L {xi0:.1f},{y1:.1f} Z"
+    )
+
+
 def _u_chokhat(
     parts: list[str],
     x: float,
@@ -511,31 +531,20 @@ def _u_chokhat(
     stroke: str,
     sw: float,
 ) -> None:
-    """Hinged chokhat: both verticals + top only. No bottom member."""
+    """Hinged chokhat: L+T+R as one 45°-mitered U. No bottom member, no extra corner stroke."""
     t = min(max(t, 2.8), w / 2.8, h / 3.2)
-    fill = "#e6e6e8"
     parts.append(
-        f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{t:.1f}" fill="{fill}" '
-        f'stroke="{stroke}" stroke-width="{sw:.2f}" data-chokhat="1" data-chokhat-side="top" '
-        f'data-chokhat-overlap="1"/>'
-    )
-    parts.append(
-        f'<rect x="{x:.1f}" y="{y:.1f}" width="{t:.1f}" height="{h:.1f}" fill="{fill}" '
-        f'stroke="{stroke}" stroke-width="{sw:.2f}" data-chokhat="1" data-chokhat-side="left" '
-        f'data-chokhat-overlap="1"/>'
-    )
-    parts.append(
-        f'<rect x="{x + w - t:.1f}" y="{y:.1f}" width="{t:.1f}" height="{h:.1f}" fill="{fill}" '
-        f'stroke="{stroke}" stroke-width="{sw:.2f}" data-chokhat="1" data-chokhat-side="right" '
-        f'data-chokhat-overlap="1"/>'
+        f'<path d="{_u_chokhat_d(x, y, w, h, t)}" fill="#e6e6e8" fill-rule="evenodd" '
+        f'stroke="{stroke}" stroke-width="{sw:.2f}" stroke-linejoin="miter" stroke-miterlimit="1.2" '
+        f'stroke-linecap="butt" data-chokhat="1" data-chokhat-side="u" data-chokhat-overlap="1"/>'
     )
     parts.append(
         f'<line x1="{x:.1f}" y1="{y:.1f}" x2="{x + t:.1f}" y2="{y + t:.1f}" '
-        f'stroke="{stroke}" stroke-width="{sw:.2f}" data-miter="1"/>'
+        f'stroke="{stroke}" stroke-width="{sw:.2f}" data-miter="1" data-chokhat-miter="45"/>'
     )
     parts.append(
         f'<line x1="{x + w:.1f}" y1="{y:.1f}" x2="{x + w - t:.1f}" y2="{y + t:.1f}" '
-        f'stroke="{stroke}" stroke-width="{sw:.2f}" data-miter="1"/>'
+        f'stroke="{stroke}" stroke-width="{sw:.2f}" data-miter="1" data-chokhat-miter="45"/>'
     )
 
 
@@ -782,6 +791,7 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
     frame_t = max(frame_face_mm * scale, 3.2)
     chok_t = max(chokhat_face_mm * scale, 3.6)
     overlap_px = max(chokhat_overlap_mm * scale, 2.0)
+    clear_px = max(DOOR_BOTTOM_CLEAR_MM * scale, 2.4)
     track_h = track_h_mm * scale
     cover_h = cover_h_mm * scale
     elev_w = max(front_w * scale, 180.0)
@@ -809,6 +819,7 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
         f'data-chokhat-bottom="{chok_bottom}" data-hinge-style="{hinge_style}" '
         f'data-frame-kind="{frame_kind}" data-wheel-count="{wheel_n}" '
         f'data-glass-overlap="{glass_overlap_flag}" '
+        f'data-door-bottom-clear-mm="{int(DOOR_BOTTOM_CLEAR_MM)}" '
         f'data-chokhat-overlap-mm="'
         f'{int(chokhat_overlap_mm) if op == "hinged" and not frameless else 0}">',
         f"<title>Shower {escape(shape)} {mm_n(front_w)}×{mm_n(height)}</title>",
@@ -882,8 +893,11 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
         for p, px_i, pw, _pw_mm in panel_geom:
             role = str(p.get("role") or "fix")
             fill = slide_fill if role == "sliding" else (open_fill if role == "openable" else glass_fill)
+            gh = elev_h
+            if role in ("sliding", "openable"):
+                gh = max(elev_h - clear_px, frame_t * 3)
             parts.append(
-                f'<rect x="{px_i:.1f}" y="{y0:.1f}" width="{pw:.1f}" height="{elev_h:.1f}" '
+                f'<rect x="{px_i:.1f}" y="{y0:.1f}" width="{pw:.1f}" height="{gh:.1f}" '
                 f'fill="{fill}" stroke="none"/>'
             )
 
@@ -898,7 +912,8 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
         # Glass-on-glass 1+1: header + side jambs + low guide; no chunky 4-side sashes.
         inner_x = x0 + jamb_t
         inner_r = x0 + elev_w - jamb_t
-        gh = max(elev_h - guide_h, 8.0)
+        gh_fix = max(elev_h - guide_h, 8.0)
+        gh_slide = max(gh_fix - clear_px, 8.0)
         slide_on_right = bool(slide_g and fix_g and slide_g[1] >= fix_g[1])
         junction = (fix_g[1] + fix_g[2]) if (fix_g and slide_on_right) else (
             slide_g[1] + slide_g[2] if slide_g else (x0 + elev_w / 2.0)
@@ -910,20 +925,21 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
             sx0, sw0 = inner_x, max(junction + glass_ov - inner_x, 8.0)
             fx0, fw0 = junction - glass_ov, max(inner_r - (junction - glass_ov), 8.0)
         parts.append(
-            f'<rect x="{fx0:.1f}" y="{y0:.1f}" width="{fw0:.1f}" height="{gh:.1f}" '
+            f'<rect x="{fx0:.1f}" y="{y0:.1f}" width="{fw0:.1f}" height="{gh_fix:.1f}" '
             f'fill="{glass_fill}" stroke="none" data-glass="fix"/>'
         )
         parts.append(
-            f'<rect x="{sx0:.1f}" y="{y0:.1f}" width="{sw0:.1f}" height="{gh:.1f}" '
-            f'fill="{slide_fill}" stroke="none" data-glass="slide"/>'
+            f'<rect x="{sx0:.1f}" y="{y0:.1f}" width="{sw0:.1f}" height="{gh_slide:.1f}" '
+            f'fill="{slide_fill}" stroke="none" data-glass="slide" '
+            f'data-bottom-clear-mm="{int(DOOR_BOTTOM_CLEAR_MM)}"/>'
         )
         parts.append(
-            f'<line x1="{junction:.1f}" y1="{y0:.1f}" x2="{junction:.1f}" y2="{y0 + gh:.1f}" '
+            f'<line x1="{junction:.1f}" y1="{y0:.1f}" x2="{junction:.1f}" y2="{y0 + gh_slide:.1f}" '
             f'stroke="{stroke}" stroke-width="{sw * 0.7:.2f}" data-glass-meet="1"/>'
         )
         _sliding_side_jambs(parts, x0, y0, elev_w, elev_h, jamb_t, stroke, sw)
         _sliding_bottom_guide(parts, x0, y0 + elev_h - guide_h, elev_w, guide_h, stroke, sw)
-        door_box = (sx0, y0, sw0, gh)
+        door_box = (sx0, y0, sw0, gh_slide)
         _emit_panel_labels()
     elif frameless:
         for p, px_i, pw, _pw_mm in panel_geom:
@@ -939,16 +955,24 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
         slide_on_right = bool(slide_g and fix_g and slide_g[1] >= fix_g[1])
         operable_is_front = front_leaf == "door"
         front_is_right = slide_on_right if operable_is_front else (not slide_on_right)
+        slide_h = max(elev_h - clear_px, frame_t * 3)
+        fix_h = elev_h
         if front_is_right:
-            back_box = (x0, y0, max(stile_x + frame_t - x0, frame_t * 2), elev_h)
-            fr_box = (stile_x, y0, max(x0 + elev_w - stile_x, frame_t * 2), elev_h)
+            back_box = (x0, y0, max(stile_x + frame_t - x0, frame_t * 2), fix_h if slide_on_right else slide_h)
+            fr_box = (stile_x, y0, max(x0 + elev_w - stile_x, frame_t * 2), slide_h if slide_on_right else fix_h)
             back_omit: str | None = "right"
         else:
-            fr_box = (x0, y0, max(stile_x + frame_t - x0, frame_t * 2), elev_h)
-            back_box = (stile_x, y0, max(x0 + elev_w - stile_x, frame_t * 2), elev_h)
+            fr_box = (x0, y0, max(stile_x + frame_t - x0, frame_t * 2), slide_h if not slide_on_right else fix_h)
+            back_box = (stile_x, y0, max(x0 + elev_w - stile_x, frame_t * 2), slide_h if slide_on_right else fix_h)
             back_omit = "left"
-        _panel_frame(parts, *back_box, frame_t, stroke, sw, tag="back-frame", omit_side=back_omit)
-        _panel_frame(parts, *fr_box, frame_t, stroke, sw, tag="front-frame", meeting=True)
+        _panel_frame(
+            parts, *back_box, frame_t, stroke, sw, tag="back-frame", omit_side=back_omit,
+            bottom_clear=(back_box[3] < elev_h - 0.5),
+        )
+        _panel_frame(
+            parts, *fr_box, frame_t, stroke, sw, tag="front-frame", meeting=True,
+            bottom_clear=(fr_box[3] < elev_h - 0.5),
+        )
         door_box = fr_box if operable_is_front else back_box
         if slide_g and not operable_is_front:
             door_box = back_box
@@ -974,7 +998,10 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
             door_x = junction
             door_y = inner_y - overlap_px
             door_r = inner_r + overlap_px
-            door_box = (door_x, door_y, max(door_r - door_x, frame_t * 2), floor_y - door_y)
+            door_box = (
+                door_x, door_y, max(door_r - door_x, frame_t * 2),
+                max(floor_y - door_y - clear_px, frame_t * 3),
+            )
             if operable_is_front:
                 dx0, dy0, dw0, dh0 = door_box
                 door_box = (dx0 - lap_meet, dy0, dw0 + lap_meet, dh0)
@@ -987,7 +1014,10 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
             junction = door_p[1] + door_p[2]
             door_x = inner_x - overlap_px
             door_y = inner_y - overlap_px
-            door_box = (door_x, door_y, max(junction - door_x, frame_t * 2), floor_y - door_y)
+            door_box = (
+                door_x, door_y, max(junction - door_x, frame_t * 2),
+                max(floor_y - door_y - clear_px, frame_t * 3),
+            )
             fix_box = (junction, inner_y, max(inner_r - junction, frame_t * 2), floor_y - inner_y)
             if operable_is_front:
                 dx0, dy0, dw0, dh0 = door_box
@@ -1001,10 +1031,16 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
             if fix_box:
                 _panel_frame(parts, *fix_box, frame_t, stroke, sw, tag="fix-frame", skip_miters=fix_skip)
             if door_box:
-                _panel_frame(parts, *door_box, frame_t, stroke, sw, tag="door-frame", skip_miters=door_skip, meeting=True)
+                _panel_frame(
+                    parts, *door_box, frame_t, stroke, sw, tag="door-frame",
+                    skip_miters=door_skip, meeting=True, bottom_clear=True,
+                )
         else:
             if door_box:
-                _panel_frame(parts, *door_box, frame_t, stroke, sw, tag="door-frame", skip_miters=door_skip)
+                _panel_frame(
+                    parts, *door_box, frame_t, stroke, sw, tag="door-frame",
+                    skip_miters=door_skip, bottom_clear=True,
+                )
             if fix_box:
                 _panel_frame(parts, *fix_box, frame_t, stroke, sw, tag="fix-frame", skip_miters=fix_skip, meeting=True)
         _u_chokhat(parts, x0, y0, elev_w, elev_h, chok_t, stroke, sw)
@@ -1014,7 +1050,9 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
         _emit_panel_labels()
         door_g = next((g for g in panel_geom if str(g[0].get("role")) in ("sliding", "openable")), None)
         if door_g:
-            door_box = (door_g[1], y0, door_g[2], elev_h)
+            role_g = str(door_g[0].get("role") or "")
+            dh_g = max(elev_h - clear_px, frame_t * 3) if role_g in ("sliding", "openable") else elev_h
+            door_box = (door_g[1], y0, door_g[2], dh_g)
 
     # Arrow + D-handle + lock + casement hinges (hinged only) + sliding rollers
     door_geom = next(
@@ -1022,7 +1060,9 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
         None,
     )
     if door_box is None and door_geom:
-        door_box = (door_geom[1], y0, door_geom[2], elev_h)
+        role_g = str(door_geom[0].get("role") or "")
+        dh_g = max(elev_h - clear_px, frame_t * 3) if role_g in ("sliding", "openable") else elev_h
+        door_box = (door_geom[1], y0, door_geom[2], dh_g)
     if op == "sliding" and slide_g:
         wx0 = float(slide_g[1])
         ww = float(slide_g[2])
@@ -1061,11 +1101,13 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
                     glass_side=("left" if handle_side == "right" else "right"),
                 )
         if op == "hinged" and not frameless:
-            # Gap line = chokhat inner face (U-chokhat) or door outer edge.
-            if len(panel_geom) >= 2:
-                hx_h = (x0 + elev_w - chok_t) if hinge_side == "right" else (x0 + chok_t)
-            else:
-                hx_h = (dx + dw) if hinge_side == "right" else dx
+            # Stile gap: sash outer vs chokhat inner (half on outer, half on door).
+            chok_inner = (x0 + elev_w - chok_t) if hinge_side == "right" else (x0 + chok_t)
+            hx_h = hinge_gap_axis(
+                (dx + dw) if hinge_side == "right" else dx,
+                chok_inner if len(panel_geom) >= 2 else None,
+                toward_frame=1.0 if hinge_side == "right" else -1.0,
+            )
             leaf_h_mm = dh / scale if scale else height
             for y_mm in hinge_centers_mm(leaf_h_mm, hinge_count):
                 _casement_hinge(
@@ -1135,8 +1177,16 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
             )
         else:
             plan_arrow = "←" if door_side == "right" else "→"
+            hx = t1 if hinge_side == "right" else t0
+            r = min(max(abs(t1 - t0) * 0.38, 10.0), 22.0)
+            sx = hx - r if hinge_side == "right" else hx + r
+            sweep = 1 if hinge_side == "right" else 0
             parts.append(
-                f'<text x="{mid:.1f}" y="{front_y - 8:.1f}" text-anchor="middle" font-size="9" '
+                f'<path d="M {sx:.1f},{front_y:.1f} A {r:.1f},{r:.1f} 0 0 {sweep} {hx:.1f},{front_y - r:.1f}" '
+                f'fill="none" stroke="#0b3d7a" stroke-width="0.8" stroke-dasharray="3 2" data-swing="1"/>'
+            )
+            parts.append(
+                f'<text x="{mid:.1f}" y="{front_y - r - 6:.1f}" text-anchor="middle" font-size="9" '
                 f'font-family="sans-serif" fill="#0b3d7a">{escape(lab)} {plan_arrow}</text>'
             )
 

@@ -135,6 +135,33 @@ def hinge_centers_mm(leaf_h_mm: float, count: int = 3) -> list[float]:
 HINGE_FILL = "#f3f2ee"
 HINGE_FILL_RGB = (0.953, 0.949, 0.933)
 HINGE_STROKE = "#1a1a1a"
+HINGE_NOMINAL_THICK_MM = 30.0
+HINGE_NOMINAL_LEN_MM = 120.0
+HINGE_MAX_LEN_MM = 140.0
+
+
+def hinge_gap_axis(
+    sash_face: float,
+    frame_face: float | None = None,
+    *,
+    toward_frame: float = -1.0,
+) -> float:
+    """Drawing-mm centre of the outer-frame | leaf stile gap.
+
+    Place the capsule on this axis so half sits on the outer (or mullion) and
+    half on the door. ``toward_frame`` is the sign from sash toward the outer
+    frame: -1 for left jamb / top head (SVG y-down), +1 for right jamb.
+
+    Overlap or flush → sash outer face (visible meeting line). Inset clearance
+    → midpoint of the two faces.
+    """
+    sf = float(sash_face)
+    if frame_face is None:
+        return sf
+    ff = float(frame_face)
+    if (sf - ff) * float(toward_frame) >= -0.05:
+        return sf
+    return (sf + ff) / 2.0
 
 
 def hinge_capsule_size_mm(
@@ -145,27 +172,27 @@ def hinge_capsule_size_mm(
 ) -> tuple[float, float]:
     """Drawing-mm (width, height) for a thin stadium hinge.
 
-    Target ~15 × 85 mm (aspect ~1:5–1:7). Length ≤ min(100, 12% of leaf span);
-    thickness ≤ 0.4× stile. Small leaves shrink both axes, keeping capsule shape.
-    ``orientation='horizontal'`` rotates the capsule (top-hung head hinges).
+    Target ~30 × 120 mm (2× prior thickness, ~+40% length). Length ≤ min(140,
+    16% of leaf span); thickness ≤ 0.72× stile. Tiny leaves shrink both axes
+    to keep a capsule (not a blob). ``orientation='horizontal'`` rotates it
+    (top-hung head hinges).
     """
     span = max(float(leaf_span_mm), 1.0)
     stile = max(float(stile_t_mm), 1.0)
-    max_len = min(100.0, max(span * 0.12, 14.0))
-    max_thick = max(stile * 0.40, 1.8)
+    max_len = min(HINGE_MAX_LEN_MM, max(span * 0.16, 20.0))
+    max_thick = max(stile * 0.72, 4.0)
 
-    length = min(85.0, max_len)
-    thick = min(15.0, max_thick)
-    if length > thick * 7.0:
-        length = min(length, max(thick * 7.0, min(75.0, max_len)))
-        if length / max(thick, 0.1) > 7.2:
-            length = thick * 7.0
-    if length < thick * 5.0:
-        thick = min(max(length / 5.5, 1.8), max_thick)
-    length = min(max(length, 14.0), max_len)
-    thick = min(max(thick, 1.8), max_thick)
-    if length < thick * 5.0:
-        thick = max(length / 5.5, 1.8)
+    length = min(HINGE_NOMINAL_LEN_MM, max_len)
+    thick = min(HINGE_NOMINAL_THICK_MM, max_thick)
+    # Capsule aspect ~1:3.5–1:5.5 (30×105–140). Tiny leaves slim the thickness.
+    if length > thick * 5.5:
+        length = min(length, thick * 5.5)
+    if length < thick * 3.5:
+        thick = min(max(length / 4.0, 4.0), max_thick)
+    length = min(max(length, 20.0), max_len)
+    thick = min(max(thick, 4.0), max_thick)
+    if length < thick * 3.5:
+        thick = max(length / 4.0, 4.0)
 
     if str(orientation or "vertical").lower().startswith("h"):
         return (length, thick)
@@ -210,7 +237,7 @@ def casement_hinge_svg(
     """2D stadium hinge: round heads + horizontal barrel split (shared SVG glyph).
 
     ``(cx, cy)`` is the hinge centre in the same SVG space as ``w`` / ``h``.
-    Place that centre on the outer-frame | sash gap so the gap line runs through it.
+    Place that centre with ``hinge_gap_axis`` (sash outer / stile gap).
     """
     g = hinge_capsule_geom(cx, cy, w, h)
     extra = f" {extra_attrs.strip()}" if extra_attrs and extra_attrs.strip() else ""

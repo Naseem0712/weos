@@ -23,6 +23,7 @@ from WEOS.factory.geometry import (
     frame_miter_segments,
     hinge_capsule_size_mm,
     hinge_centers_mm,
+    hinge_gap_axis,
     horizontal_segment,
     rect_polyline,
     subtract_intervals,
@@ -58,7 +59,7 @@ def _hinge_knuckle_rects(
     stile_t: float,
     count: int = 3,
 ) -> list[Rect]:
-    """Stadium hinge boxes centred on ``hx`` (outer | sash gap), 2–6 layout."""
+    """Stadium hinge boxes centred on ``hx`` (stile gap via ``hinge_gap_axis``)."""
     kw, kh = hinge_capsule_size_mm(leaf_h, stile_t)
     out: list[Rect] = []
     for y_mm in hinge_centers_mm(leaf_h, count):
@@ -287,8 +288,11 @@ def _build_shutters(
             handle_cx = (handle_rect.x0 + handle_rect.x1) / 2.0
             on_right = handle_cx > (nom_x0 + nom_x1) / 2.0
             hinge_side = "left" if on_right else "right"
-            # Centre on the outer-frame | sash gap (not stile mid).
-            hx = nom_x0 if hinge_side == "left" else nom_x1
+            hx = hinge_gap_axis(
+                outer.x0 if hinge_side == "left" else outer.x1,
+                nom_x0 if hinge_side == "left" else nom_x1,
+                toward_frame=-1.0 if hinge_side == "left" else 1.0,
+            )
             hinges.extend(_hinge_knuckle_rects(hx, y0, band_h, fw, 3))
 
         depth = depths[i]
@@ -460,8 +464,12 @@ def _build_casement_leaves(
                 handles.append(handle_rect)
             hinge_side = ("left" if handle_side == "right" else "right") if handle_side else None
             if hinge_side:
-                # Cell bound = outer-frame inner / mullion face (gap through hinge centre).
-                hx = cx0 if hinge_side == "left" else cx1
+                # Sash outer vs frame/mullion inner — half capsule each side.
+                hx = hinge_gap_axis(
+                    outer.x0 if hinge_side == "left" else outer.x1,
+                    cx0 if hinge_side == "left" else cx1,
+                    toward_frame=-1.0 if hinge_side == "left" else 1.0,
+                )
                 hinges.extend(_hinge_knuckle_rects(hx, outer.y0, outer.height, fw, 3))
             open_dir = 1 if handle_side != "left" else -1
             open_seen += 1
@@ -1244,8 +1252,12 @@ def _compute_grid_layout(
                 yc = y0 + ch * hlevel
                 hx = (x1 - fw / 2.0) if handle_side == "right" else (x0 + fw / 2.0)
                 cell["handles"] = [{"x0": round(hx - hw / 2, 1), "y0": round(yc - hlen / 2, 1), "x1": round(hx + hw / 2, 1), "y1": round(yc + hlen / 2, 1), "side": handle_side}]
-                # Hinge knuckles centred on the outer | sash gap (cell edge).
-                khx = x0 if hinge == "left" else x1
+                # Hinge knuckles centred on the outer | sash gap (cell / sash outer).
+                khx = hinge_gap_axis(
+                    x0 if hinge == "left" else x1,
+                    x0 if hinge == "left" else x1,
+                    toward_frame=-1.0 if hinge == "left" else 1.0,
+                )
                 for hr in _hinge_knuckle_rects(khx, y0, ch, fw, 3):
                     hinges.append(hr)
                     cell["hinges"].append({"x0": round(hr.x0, 1), "y0": round(hr.y0, 1), "x1": round(hr.x1, 1), "y1": round(hr.y1, 1)})

@@ -70,6 +70,10 @@ def main() -> int:
         fails.append("profile sliding missing cylindrical D-handle")
     if 'data-hinge="1"' in svg:
         fails.append("sliding must not draw casement hinges")
+    if 'data-door-bottom-clear-mm="20"' not in svg:
+        fails.append("sliding missing 20mm door bottom clearance flag")
+    if 'data-bottom-clear-mm="20"' not in svg:
+        fails.append("sliding leaf missing 20mm bottom-clear marker")
     if q.get("doorSide") != "right":
         fails.append(f"quote doorSide {q.get('doorSide')}")
 
@@ -138,6 +142,16 @@ def main() -> int:
         fails.append("hinged door must not draw sliding rollers")
     if "#f3f2ee" not in hsvg:
         fails.append("hinged capsule hinge missing light fill")
+    if 'data-door-bottom-clear-mm="20"' not in hsvg:
+        fails.append("hinged missing 20mm door bottom clearance flag")
+    if 'data-bottom-clear-mm="20"' not in hsvg:
+        fails.append("hinged door missing 20mm bottom-clear marker")
+    if 'data-chokhat-miter="45"' not in hsvg:
+        fails.append("hinged chokhat missing 45° corner miters")
+    if hsvg.count('data-chokhat-side="top"') or hsvg.count('data-chokhat="1"') < 1:
+        fails.append("hinged chokhat should be a single U path, not stacked side rects")
+    if 'data-swing="1"' not in hsvg:
+        fails.append("hinged floor plan missing swing hint")
 
     # 1d) Frameless sliding 1+1 — glass-on-glass, jambs, guide, 2 wheels, no sash miters
     fcfg = {**cfg, "frameKind": "frameless", "frameless": True}
@@ -162,6 +176,10 @@ def main() -> int:
         fails.append("frameless sliding missing cylindrical D-handle")
     if 'data-hinge="1"' in fsvg:
         fails.append("frameless sliding must not draw hinges")
+    if 'data-door-bottom-clear-mm="20"' not in fsvg:
+        fails.append("frameless sliding missing 20mm door bottom clearance flag")
+    if 'data-bottom-clear-mm="20"' not in fsvg:
+        fails.append("frameless sliding leaf missing 20mm bottom-clear marker")
     if 'data-miter="1"' in fsvg:
         fails.append("frameless sliding should not draw 4-side sash miters")
     if "frameless" not in fsvg.lower():
