@@ -194,6 +194,57 @@ def normalize_fixed_shutters(raw: Any, glass_count: int) -> list[int]:
     return sorted(out)
 
 
+def parse_sliding_opening(raw: Any) -> tuple[str | None, str | None]:
+    """Return ``(mode, side)`` from a UI/API opening string.
+
+    ``mode`` is ``center`` / ``telescopic`` / None (auto).
+    ``side`` is ``left`` / ``right`` / None (default right for side opening).
+    """
+    s = str(raw or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if not s or s in ("auto", "default", "none"):
+        return None, None
+    side = None
+    if "left" in s:
+        side = "left"
+    elif "right" in s:
+        side = "right"
+    if "center" in s or "centre" in s:
+        return "center", side
+    if s in ("side", "telescopic", "telescope", "side_opening") or "telescopic" in s or s.startswith("side"):
+        return "telescopic", side or "right"
+    return None, side
+
+
+def default_sliding_opening(glass_count: int) -> str:
+    """Center opening only for 4 sliding glass shutters; everything else is side."""
+    return "center" if int(glass_count or 0) == 4 else "telescopic"
+
+
+def resolve_sliding_opening(
+    raw: Any,
+    glass_count: int,
+    *,
+    explicit: bool = False,
+) -> tuple[str, str]:
+    """Resolve opening mode + side.
+
+    Stale persisted ``center`` on non-4-panel carts (old even-count auto) is
+    treated as auto unless ``explicit`` is set by the UI override.
+    Side / telescopic is always honoured (it was never the even-count auto).
+    """
+    mode, side = parse_sliding_opening(raw)
+    g = max(int(glass_count or 0), 1)
+    if mode == "telescopic":
+        chosen = "telescopic"
+    elif mode == "center" and (explicit or g == 4):
+        chosen = "center"
+    else:
+        chosen = default_sliding_opening(g)
+    if chosen == "center":
+        return chosen, side or "right"
+    return chosen, side or "right"
+
+
 def resolve_shutter_config(
     *,
     glass_count: Any = None,
@@ -202,6 +253,8 @@ def resolve_shutter_config(
     track_count: float | None = None,
     fixed_shutters: Any = None,
     opening: str | None = None,
+    opening_explicit: bool = False,
+    opening_side: str | None = None,
     default_glass: int = 2,
 ) -> dict[str, Any]:
     """Normalize a flexible sliding configuration.
@@ -209,8 +262,8 @@ def resolve_shutter_config(
     Rules:
       - ``glass_count`` >= 1 (defaults to product ``shutterCount`` / 2).
       - ``mesh_count`` >= 0. If ``mesh`` is truthy but no count given, defaults to 1.
-      - ``opening`` is 'center' for an even glass count (default), else 'telescopic'.
-        An explicit value wins when provided.
+      - ``opening`` default: center only when glass_count == 4, else side (telescopic).
+        Explicit UI/API values win (``opening_explicit`` or a side/telescopic value).
       - Mesh validity vs. track type is handled by ``resolve_mesh_track`` upstream;
         here we only clamp counts and derive the opening mode.
     """
@@ -225,9 +278,14 @@ def resolve_shutter_config(
     if bool(mesh) and m == 0:
         m = 1
 
-    mode = str(opening or "").strip().lower()
-    if mode not in ("center", "telescopic"):
-        mode = "center" if g % 2 == 0 else "telescopic"
+    mode, side = resolve_sliding_opening(
+        opening,
+        g,
+        explicit=bool(opening_explicit),
+    )
+    side_in = str(opening_side or "").strip().lower()
+    if side_in in ("left", "right"):
+        side = side_in
 
     fixed = normalize_fixed_shutters(fixed_shutters, g)
 
@@ -235,6 +293,7 @@ def resolve_shutter_config(
         "glassCount": int(g),
         "meshCount": int(m),
         "opening": mode,
+        "openingSide": side,
         "fixedShutters": fixed,
         "mesh": bool(mesh) or m > 0,
         "trackCount": float(track_count) if track_count is not None else None,
@@ -263,13 +322,15 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
         or (opts or {}).get("partitions")
         or []
     )
-    mesh = bool(line.get("mesh") if line.get("mesh") is not None else (opts or {}).get("mesh"))
+    mesh_count_hint = _coerce_int(pick("meshShutters", "meshCount", "mesh_count")) or 0
+    mesh = bool(line.get("mesh") if line.get("mesh") is not None else (opts or {}).get("mesh")) or mesh_count_hint > 0
     track_raw = pick("trackCount")
     try:
         track_count = float(track_raw) if track_raw is not None and str(track_raw).strip() != "" else None
     except (TypeError, ValueError):
         track_count = None
 
+    opening_explicit = bool(pick("openingExplicit", "opening_explicit")) or str(pick("openingSource") or "").lower() == "user"
     shutter_cfg = resolve_shutter_config(
         glass_count=pick("glassShutters", "glassCount", "glass_count"),
         mesh_count=pick("meshShutters", "meshCount", "mesh_count"),
@@ -277,6 +338,8 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
         track_count=track_count,
         fixed_shutters=pick("fixShutters", "fixedShutters", "fixed_shutters"),
         opening=pick("opening"),
+        opening_explicit=opening_explicit,
+        opening_side=pick("openingSide", "opening_side", "slideSide"),
     )
     system_raw = pick("system", "windowSystem")
     # layout.kind uses fold_and_sliding
@@ -344,6 +407,8 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
         "glassCount": shutter_cfg["glassCount"],
         "meshCount": 0 if (is_bifold or is_casement or is_shower) else shutter_cfg["meshCount"],
         "opening": shutter_cfg["opening"],
+        "openingSide": shutter_cfg.get("openingSide") or "right",
+        "openingExplicit": bool(opening_explicit),
         "fixedShutters": shutter_cfg["fixedShutters"],
         # Raw (1-based / string) fix value — pass THIS to generate_job so it
         # normalises exactly once (avoids double 1-based conversion).

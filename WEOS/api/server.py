@@ -132,6 +132,8 @@ class CartLine(BaseModel):
     meshShutters: int | None = None
     fixShutters: Any = None
     opening: str | None = None
+    openingSide: str | None = None
+    openingExplicit: bool | None = None
     system: str | None = None
     foldLeft: int | None = None
     foldRight: int | None = None
@@ -290,6 +292,8 @@ class PreviewRequest(BaseModel):
     meshShutters: int | None = None
     fixShutters: Any = None
     opening: str | None = None
+    openingSide: str | None = None
+    openingExplicit: bool | None = None
     system: str | None = None
     foldLeft: int | None = None
     foldRight: int | None = None
@@ -1200,6 +1204,8 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
                     glass_count=body.glassShutters,
                     mesh_count=body.meshShutters,
                     opening=body.opening,
+                    opening_side=getattr(body, "openingSide", None),
+                    opening_explicit=bool(getattr(body, "openingExplicit", False)),
                     fixed_shutters=body.fixShutters,
                     system=body.system or "sliding",
                     fold_left=body.foldLeft,

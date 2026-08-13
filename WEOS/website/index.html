@@ -87,7 +87,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 .muted{color:var(--muted)}
 .pill{display:inline-block;padding:.15rem .45rem;border-radius:999px;background:#e7f3ee;color:var(--green);font-size:.72rem;font-weight:600}
 .pill.stub{background:#f3ebe2;color:var(--copper)}
-.preview{background:#f4f1ea;border:1px solid var(--line);border-radius:12px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:auto;padding:.5rem}
+.preview{background:#d8dee6;border:1px solid var(--line);border-radius:12px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:auto;padding:.5rem}
 .preview svg,.preview img{max-width:100%;max-height:420px;width:auto;height:auto;display:block}
 .chip{display:inline-flex;align-items:center;gap:.3rem;background:#eef3ef;border:1px solid var(--line);border-radius:999px;padding:.15rem .55rem;font-size:.75rem}
 .chip button{border:0;background:transparent;cursor:pointer;font-size:.85rem;line-height:1;padding:0;color:#666}
@@ -382,6 +382,13 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
               </select>
             </div>
             <div id="wrapGlassShutters"><label class="l" id="glassCountLbl">Glass shutters</label><input id="lineGlassShutters" type="number" min="1" value="2" style="width:90px"/></div>
+            <div id="wrapOpening"><label class="l">Opening</label>
+              <select id="lineOpening" style="width:140px">
+                <option value="auto" selected>Auto</option>
+                <option value="side">Side opening</option>
+                <option value="center">Center opening</option>
+              </select>
+            </div>
             <div id="wrapMeshShutters"><label class="l">Mesh shutters</label><input id="lineMeshShutters" type="number" min="0" value="0" style="width:90px"/></div>
             <div id="wrapFixShutters"><label class="l">Mark fix (e.g. 1,3)</label><input id="lineFixShutters" type="text" placeholder="none" style="width:100px"/></div>
           </div>
@@ -2393,7 +2400,9 @@ function renderPartChips() {
 }
 
 function applyMeshTrackRules() {
-  const mesh = $('lineMesh') && $('lineMesh').checked;
+  const meshChk = $('lineMesh') && $('lineMesh').checked;
+  const meshN = $('lineMeshShutters') ? (parseInt($('lineMeshShutters').value, 10) || 0) : 0;
+  const mesh = !!meshChk || meshN > 0;
   const trackEl = $('lineTrack');
   const hint = $('meshHint');
   if (!trackEl) return;
@@ -2502,6 +2511,7 @@ function applySystemUiRules(opts) {
   show('bifoldRow', bifold);
   show('gridRow', grid);
   show('wrapGlassShutters', !bifold && !grid && !shower && !ventilator);
+  show('wrapOpening', !bifold && !grid && !shower && !ventilator && !casement);
   show('wrapMeshShutters', hasTracks && !bifold && !casement && !grid && !shower && !ventilator);
   show('wrapFixShutters', !bifold && !grid && !casement && !shower && !ventilator);
   show('wrapTrack', hasTracks && !casement && !shower && !ventilator);
@@ -2748,6 +2758,14 @@ function syncDraftFromLine(ln) {
   if ($('lineMesh')) $('lineMesh').checked = !!ln.mesh;
   if ($('lineTrack') && ln.trackCount != null) $('lineTrack').value = String(ln.trackCount);
   if ($('lineSystem')) $('lineSystem').value = ln.system || 'sliding';
+  if ($('lineOpening')) {
+    const opRaw = String(ln.opening || (ln.options && ln.options.opening) || '').toLowerCase();
+    const explicit = !!(ln.openingExplicit || (ln.options && ln.options.openingExplicit));
+    if (explicit && (opRaw === 'center' || opRaw === 'centre')) $('lineOpening').value = 'center';
+    else if (explicit && (opRaw === 'side' || opRaw === 'telescopic')) $('lineOpening').value = 'side';
+    else if (opRaw === 'side' || opRaw === 'telescopic') $('lineOpening').value = 'side';
+    else $('lineOpening').value = 'auto';
+  }
   if ($('lineGlassShutters') && ln.glassShutters != null) $('lineGlassShutters').value = ln.glassShutters;
   if ($('lineMeshShutters') && ln.meshShutters != null) $('lineMeshShutters').value = ln.meshShutters;
   if ($('lineFixShutters')) $('lineFixShutters').value = Array.isArray(ln.fixShutters) ? ln.fixShutters.join(',') : (ln.fixShutters || '');
@@ -2879,6 +2897,19 @@ function currentLineDraft() {
       return $('lineTrack') ? parseFloat($('lineTrack').value) || 2 : 2;
     })(),
     system: sys,
+    opening: (function(){
+      const el = $('lineOpening');
+      if (!el) return null;
+      const v = String(el.value || 'auto').toLowerCase();
+      if (v === 'center' || v === 'side') return v;
+      return null;
+    })(),
+    openingExplicit: (function(){
+      const el = $('lineOpening');
+      if (!el) return false;
+      const v = String(el.value || 'auto').toLowerCase();
+      return v === 'center' || v === 'side';
+    })(),
     glassShutters: $('lineGlassShutters') ? (parseInt($('lineGlassShutters').value) || 2) : 2,
     meshShutters: $('lineMeshShutters') ? (parseInt($('lineMeshShutters').value) || 0) : 0,
     fixShutters: ($('lineFixShutters') && $('lineFixShutters').value.trim()) || null,
@@ -3339,7 +3370,14 @@ async function refreshPreview() {
   showRailTools(false);
   const draft = currentLineDraft();
   const ln = state.lines[state.selectedLine] ? { ...state.lines[state.selectedLine], ...draft } : draft;
-  const bits = [designSerialLabel(state.selectedLine, ln), `${ln.product}`, `${ln.width}×${ln.height}`];
+  const bits = [designSerialLabel(state.selectedLine, ln), `${ln.width}×${ln.height}`];
+  if (productHasTracks(selectedProductMeta(), ln, ln.system) && ln.trackCount != null) bits.push(`${ln.trackCount}-track`);
+  const gN = parseInt(ln.glassShutters, 10) || 0;
+  if ((ln.system || 'sliding') === 'sliding' && gN) {
+    const op = String(ln.opening || '').toLowerCase();
+    const opLbl = (op === 'center' || op === 'centre' || (!op && gN === 4)) ? 'center opening' : 'side opening';
+    bits.push(opLbl);
+  }
   if (ln.mesh) bits.push('mesh');
   if ((ln.partitions||[]).length) bits.push(`${ln.partitions.length} fix`);
   bits.push(ln.colour||'');
@@ -3358,6 +3396,9 @@ async function refreshPreview() {
       system: ln.system || 'sliding',
       glassShutters: ln.glassShutters != null ? ln.glassShutters : null,
       meshShutters: ln.meshShutters != null ? ln.meshShutters : null,
+      opening: ln.opening || null,
+      openingExplicit: !!ln.openingExplicit,
+      openingSide: ln.openingSide || null,
       fixShutters: ln.fixShutters || null,
       foldLeft: ln.foldLeft != null ? ln.foldLeft : null,
       foldRight: ln.foldRight != null ? ln.foldRight : null,
@@ -3382,6 +3423,21 @@ async function refreshPreview() {
     if (prev.meshTrack && prev.meshTrack.shifted && $('lineTrack')) {
       $('lineTrack').value = String(prev.trackCount || 3);
       if ($('meshHint')) $('meshHint').textContent = prev.meshTrack.reason || 'Track shifted for mesh';
+    }
+    if ($('previewLabel')) {
+      const tcNow = prev.trackCount != null ? prev.trackCount : ln.trackCount;
+      const gNow = prev.glassShutters != null ? prev.glassShutters : (ln.glassShutters != null ? ln.glassShutters : null);
+      const opNow = (prev.layout && prev.layout.opening) || prev.opening || ln.opening || '';
+      const hdr = [designSerialLabel(state.selectedLine, ln), `${ln.width}×${ln.height}`];
+      if (productHasTracks(selectedProductMeta(), ln, ln.system || prev.system) && tcNow != null) hdr.push(`${tcNow}-track`);
+      if ((prev.system || ln.system || 'sliding') === 'sliding' && gNow) {
+        const ol = String(opNow).toLowerCase();
+        hdr.push((ol === 'center' || ol === 'centre' || (!ol && Number(gNow) === 4)) ? 'center opening' : 'side opening');
+      }
+      if (prev.mesh || ln.mesh) hdr.push('mesh');
+      if ((ln.partitions||[]).length) hdr.push(`${ln.partitions.length} fix`);
+      if (ln.colour) hdr.push(ln.colour);
+      $('previewLabel').textContent = hdr.filter(Boolean).join(' · ');
     }
     if (prev.svg) { $('livePreview').innerHTML = prev.svg; attachHandleDrag($('livePreview'), (prev.layout && prev.layout.meta) || prev.meta || null, ln.system || prev.system || 'sliding'); }
     else if (prev.heroImage) $('livePreview').innerHTML = `<img src="${prev.heroImage}" alt=""/>`;
@@ -3410,6 +3466,11 @@ async function refreshPreview() {
       const gCount = prev.glassShutters != null ? prev.glassShutters : (ln.glassShutters != null ? ln.glassShutters : null);
       const mCount = prev.meshShutters != null ? prev.meshShutters : (ln.meshShutters != null ? ln.meshShutters : null);
       extra.push(['System', `Sliding · ${gCount != null ? gCount : '?'} glass${mCount ? (' + ' + mCount + ' mesh') : ''}`]);
+      const opLay = (prev.layout && prev.layout.opening) || prev.opening || ln.opening || '';
+      const gForOp = Number(gCount) || 0;
+      const opLbl = (String(opLay).toLowerCase() === 'center' || String(opLay).toLowerCase() === 'centre' || (!opLay && gForOp === 4))
+        ? 'center opening' : (gForOp ? 'side opening' : '');
+      if (opLbl) extra.push(['Opening', opLbl]);
       if (prev.mesh) extra.push(['Mesh', `Yes · ${prev.trackCount || ln.trackCount || '?'}-track`]);
       else if (productHasTracks(selectedProductMeta(), ln, ln.system) && (prev.trackCount || ln.trackCount)) extra.push(['Track', `${prev.trackCount || ln.trackCount}-track`]);
     }
@@ -3419,7 +3480,14 @@ async function refreshPreview() {
       renderRailingLineSpecs(prev.railing || {}, ln.options && ln.options.railing);
       return;
     }
-    const rows = [...Object.entries(specs).slice(0,5), ...extra];
+    const specEntries = Object.entries(specs).filter(([k, v]) => {
+      const key = String(k || '').toLowerCase();
+      const val = String(v || '');
+      if (key.includes('trackoption')) return false;
+      if (/(?:\d+(?:\.\d+)?\s*[-\s]*track.*){2,}/i.test(val)) return false;
+      return true;
+    }).slice(0, 5);
+    const rows = [...specEntries, ...extra];
     $('lineSpecs').innerHTML = rows.map(([k,v])=>`<div><span class="muted">${k}</span><div>${v??'—'}</div></div>`).join('');
   } catch(e) {
     $('livePreview').innerHTML = `<span class="muted">${e.message}</span>`;
@@ -5209,7 +5277,7 @@ if ($('lineMesh')) {
 applyMeshNameVisibility();
 applyFrameMaterialUi({ skipColourDefault: true });
 // Flexible window-config + Fold & Sliding controls
-['lineSystem','lineFoldPreset','lineGlassShutters','lineMeshShutters','lineFixShutters',
+['lineSystem','lineFoldPreset','lineGlassShutters','lineMeshShutters','lineFixShutters','lineOpening',
  'lineHandleFinish','lineHandleLevel','lineFoldLeft','lineFoldRight','secTop','secBottom','secJamb','secLeaf','lineSashOverlap','lineMullionGap'].forEach(id => {
   const el = $(id); if (!el) return;
   const handler = () => {
@@ -5217,6 +5285,7 @@ applyFrameMaterialUi({ skipColourDefault: true });
     else if (id === 'lineSystem') applySystemUiRules({ applyFoldPreset: ($('lineSystem') && $('lineSystem').value) === 'bifold' });
     if (id === 'lineSystem' || id === 'lineGlassShutters') { state.draftHandleOverrides = {}; }
     if (id === 'lineGlassShutters') ensureCasementPanels();
+    if (id === 'lineMeshShutters') applyMeshTrackRules();
     if (id === 'lineHandleLevel') updateHandleLevelLabel();
     if (id === 'lineFoldLeft' || id === 'lineFoldRight') { if ($('lineFoldPreset')) $('lineFoldPreset').value = 'custom'; }
     refreshPreview();

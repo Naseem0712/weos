@@ -151,6 +151,74 @@ def parse_glass_options(name: str | None) -> list[str]:
 
 
 _SG_DG_PRINT = re.compile(r"(?i)(?:^|[\s,;/]+)(?:sg|dg|gd|dgu)\b")
+_TRACK_OPTION_DUMP = re.compile(
+    r"(?i)(?:[,;/\-–]\s*)?(?:\d+(?:\.\d+)?\s*[-\s]*track(?:s)?)"
+    r"(?:\s*[,;/&]\s*(?:\d+(?:\.\d+)?\s*[-\s]*track(?:s)?))+"
+)
+_SINGLE_TRACK_TOKEN = re.compile(r"(?i)\b\d+(?:\.\d+)?\s*[-\s]*track(?:s)?\b")
+_TRACK_ORIENT_FLUFF = re.compile(
+    r"(?i)\b(?:all\s+side|top/?bottom|left/?right|horizont[ae]l?e?|verticale?|high\s*end|domal)\b"
+)
+
+
+def has_track_option_dump(text: Any) -> bool:
+    """True when a string lists more than one track option (e.g. ``2 track, 3 track``)."""
+    s = str(text or "")
+    if _TRACK_OPTION_DUMP.search(s):
+        return True
+    return len(_SINGLE_TRACK_TOKEN.findall(s)) >= 2
+
+
+def clean_series_print_name(name: str | None) -> str:
+    """Strip catalogue track-option dumps from a series / product title.
+
+    May return empty when the name was only track tokens (e.g. ``3 track``).
+    """
+    raw = str(name or "").strip()
+    if not raw:
+        return ""
+    cleaned = _TRACK_OPTION_DUMP.sub(" ", raw)
+    cleaned = _SINGLE_TRACK_TOKEN.sub(" ", cleaned)
+    return re.sub(r"[\s,;]+", " ", cleaned).strip(" ,;/-")
+
+
+def format_active_track_print(
+    track_count: Any,
+    track_sec: Mapping[str, Any] | None = None,
+    *,
+    wall_mm: Any = None,
+) -> str:
+    """Customer TRACK line: only the selected count, never ``2 track, 3 track``."""
+    tc_lbl = ""
+    try:
+        if track_count is not None and str(track_count).strip() != "":
+            tc_lbl = f"{float(track_count):g}-track"
+    except (TypeError, ValueError):
+        tc_lbl = ""
+    dim = None
+    extra_name = ""
+    if isinstance(track_sec, Mapping):
+        d, w = track_sec.get("sectionDepthMm"), track_sec.get("widthMm")
+        if d is not None and w is not None:
+            dim = f"{float(d):g}×{float(w):g} mm"
+        extra_name = clean_series_print_name(track_sec.get("name") or "")
+        extra_name = _TRACK_ORIENT_FLUFF.sub(" ", extra_name)
+        extra_name = re.sub(r"[\s,;]+", " ", extra_name).strip(" ,;/-")
+        if extra_name.lower() in ("track", "frame", "outer", ""):
+            extra_name = ""
+        if wall_mm is None:
+            wall_mm = track_sec.get("wallThicknessMm")
+    bits: list[str] = []
+    if tc_lbl:
+        bits.append(tc_lbl)
+    if extra_name:
+        bits.append(extra_name)
+    if dim:
+        bits.append(dim)
+    if wall_mm not in (None, ""):
+        wtxt = f"{wall_mm:g}" if isinstance(wall_mm, (int, float)) else str(wall_mm)
+        bits.append(f"wall {wtxt} mm")
+    return " · ".join(bits)
 
 
 def clean_profile_print_name(name: str | None) -> str:
@@ -817,12 +885,23 @@ def specs_summary_for_series(
     wall_sash = (sash or {}).get("wallThicknessMm") if sash else None
     wall_frame = (frame or {}).get("wallThicknessMm") if frame else None
 
+    tc_used = track_count
+    if tc_used is None and isinstance(track, Mapping):
+        tc_used = track.get("trackCount")
+        if tc_used is None:
+            tc_used = parse_track_count(track.get("name"))
+    active_track = format_active_track_print(tc_used, track, wall_mm=wall_track)
+    series_title = clean_series_print_name(series.get("title")) if has_track_option_dump(series.get("title")) else series.get("title")
+    if not series_title:
+        series_title = series.get("title")
+
     return {
         "seriesId": series["id"],
-        "seriesTitle": series.get("title"),
+        "seriesTitle": series_title,
         "glassFamily": fam or None,
-        "track": _print_dim(track, clean_names=clean_names),
-        "trackPrint": _print_dim(track, clean_names=True),
+        "track": active_track or _print_dim(track, clean_names=clean_names),
+        "trackPrint": active_track or _print_dim(track, clean_names=True),
+        "trackCount": float(tc_used) if tc_used is not None else None,
         "frame": _print_dim(frame, clean_names=clean_names),
         "framePrint": _print_dim(frame, clean_names=True),
         "sash": _print_dim(sash, clean_names=clean_names),

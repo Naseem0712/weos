@@ -85,6 +85,8 @@ def generate_job(
     glass_count: int | None = None,
     mesh_count: int | None = None,
     opening: str | None = None,
+    opening_side: str | None = None,
+    opening_explicit: bool = False,
     fixed_shutters: Any = None,
     system: str | None = None,
     fold_left: int | None = None,
@@ -116,8 +118,15 @@ def generate_job(
             series_doc = get_series(str(section_series))
         except Exception:
             series_doc = None
+    m_in = 0
+    try:
+        if mesh_count is not None:
+            m_in = int(mesh_count)
+    except (TypeError, ValueError):
+        m_in = 0
+    mesh_flag = bool(mesh) or m_in > 0
     mesh_res = resolve_mesh_track(
-        mesh=bool(mesh),
+        mesh=mesh_flag,
         track_count=track_count if track_count is not None else float(geom.get("trackCount") or 2),
         series=series_doc,
     )
@@ -143,10 +152,12 @@ def generate_job(
         shutter_cfg = resolve_shutter_config(
             glass_count=glass_count,
             mesh_count=mesh_count,
-            mesh=bool(mesh_res.get("mesh")),
+            mesh=bool(mesh_res.get("mesh")) or mesh_flag,
             track_count=float(mesh_res["trackCount"]),
             fixed_shutters=fixed_shutters,
             opening=opening,
+            opening_explicit=bool(opening_explicit),
+            opening_side=opening_side,
             default_glass=int(float(geom.get("shutterCount") or 2)),
         )
 
@@ -160,6 +171,7 @@ def generate_job(
         glass_count=shutter_cfg["glassCount"],
         mesh_count=shutter_cfg["meshCount"],
         opening=shutter_cfg["opening"],
+        opening_side=shutter_cfg.get("openingSide") or opening_side,
         fixed_shutters=shutter_cfg["fixedShutters"],
         system="bifold" if is_bifold else sys_kind,
         fold_left=fold_left,
@@ -187,6 +199,7 @@ def generate_job(
             glass_count=shutter_cfg["glassCount"],
             mesh_count=shutter_cfg["meshCount"],
             opening=shutter_cfg["opening"],
+            opening_side=shutter_cfg.get("openingSide") or opening_side,
             fixed_shutters=shutter_cfg["fixedShutters"],
             system="bifold" if is_bifold else sys_kind,
             fold_left=fold_left,
@@ -215,6 +228,7 @@ def generate_job(
     meta["glass_count"] = int(layout.glass_count)
     meta["mesh_count"] = int(layout.mesh_count)
     meta["opening"] = layout.opening
+    meta["opening_side"] = shutter_cfg.get("openingSide") or opening_side or "right"
     meta["system"] = layout.system
     meta["visualProfileMm"] = round(float(visual_mm), 1)
     meta["visualSeries"] = (

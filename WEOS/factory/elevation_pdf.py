@@ -603,6 +603,8 @@ def draw_line_model_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
             glass_count=lo.get("glassCount"),
             mesh_count=lo.get("meshCount"),
             opening=lo.get("opening"),
+            opening_side=lo.get("openingSide"),
+            opening_explicit=bool(lo.get("openingExplicit")),
             fixed_shutters=lo.get("fixShuttersRaw"),
             system=lo.get("system"),
             fold_left=lo.get("foldLeft"),

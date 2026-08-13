@@ -316,6 +316,15 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
     if mat == "upvc":
         title = re.sub(r"(?i)\balumin(?:ium|um)\b", "UPVC", title)
         title = re.sub(r"(?i)\balloy\b", "UPVC", title)
+    try:
+        from WEOS.factory.section_catalogue import clean_series_print_name, has_track_option_dump
+
+        if has_track_option_dump(title):
+            cleaned_title = clean_series_print_name(title)
+            if cleaned_title:
+                title = cleaned_title
+    except Exception:
+        pass
     add("", title)
     add("SIZE", f"{_mm_txt(w)} × {_mm_txt(h)} mm")
     add("AREA", f"{_area_sqft(w, h)} Sq.Ft.")
@@ -341,7 +350,22 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
         if glass_n_i <= 0 and panels_tmp:
             glass_n_i = len(panels_tmp)
     if glass_n_i > 0:
-        add("SHUTTER", f"{glass_n_i} Nos")
+        opening_raw = (
+            (layout or {}).get("opening")
+            or (opts or {}).get("opening")
+            or line.get("opening")
+            or ""
+        )
+        opening_mode = str(opening_raw).strip().lower()
+        if is_bifold or is_casement or is_vent:
+            add("SHUTTER", f"{glass_n_i} Nos")
+        else:
+            if opening_mode not in ("center", "centre", "telescopic", "side"):
+                opening_mode = "center" if glass_n_i == 4 else "side"
+            if opening_mode in ("center", "centre"):
+                add("SHUTTER", f"{glass_n_i} Nos · center opening")
+            else:
+                add("SHUTTER", f"{glass_n_i} Nos · side opening")
 
     wall = section.get("wallThicknessMm") or section.get("trackWallMm") or section.get("sashWallMm")
     track_lbl = section.get("trackPrint") or section.get("track")
@@ -350,15 +374,57 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
     if is_casement or is_vent:
         add("FRAME", _dim_wall(frame_lbl or track_lbl, wall or section.get("frameWallMm")))
     elif not is_bifold:
-        tc = layout.get("trackCount") if layout else opts.get("trackCount")
-        extra = ""
+        tc = (layout or {}).get("trackCount") if layout else None
+        if tc is None:
+            tc = (opts or {}).get("trackCount") or line.get("trackCount")
+        track_wall = wall or section.get("trackWallMm")
+        printed = ""
         try:
-            if tc:
-                extra = f" · {float(tc):g}-track"
-        except (TypeError, ValueError):
+            from WEOS.factory.section_catalogue import (
+                format_active_track_print,
+                has_track_option_dump,
+            )
+
+            blob = str(track_lbl or "")
+            has_active = False
+            try:
+                if tc is not None:
+                    has_active = f"{float(tc):g}-track" in blob.lower().replace(" ", "")
+            except (TypeError, ValueError):
+                has_active = False
+            if (not blob) or has_track_option_dump(blob) or (tc is not None and not has_active):
+                track_sec = None
+                if isinstance(section.get("sections"), list) and tc is not None:
+                    try:
+                        from WEOS.factory.section_catalogue import parse_track_count
+
+                        want = float(tc)
+                        for sec in section.get("sections") or []:
+                            if not isinstance(sec, Mapping):
+                                continue
+                            stc = sec.get("trackCount")
+                            if stc is None:
+                                stc = parse_track_count(sec.get("name"))
+                            if stc is None:
+                                continue
+                            if abs(float(stc) - want) <= 0.05:
+                                track_sec = sec
+                                break
+                    except Exception:
+                        track_sec = None
+                printed = format_active_track_print(tc, track_sec, wall_mm=track_wall)
+            else:
+                printed = _dim_wall(track_lbl, track_wall)
+        except Exception:
             extra = ""
-        base = _dim_wall(track_lbl, wall or section.get("trackWallMm"))
-        add("TRACK", f"{base}{extra}" if base else extra.lstrip(" ·"))
+            try:
+                if tc:
+                    extra = f" · {float(tc):g}-track"
+            except (TypeError, ValueError):
+                extra = ""
+            base = _dim_wall(track_lbl, track_wall)
+            printed = f"{base}{extra}" if base else extra.lstrip(" ·")
+        add("TRACK", printed)
     add("SASH", _dim_wall(sash_lbl, section.get("sashWallMm") or wall))
 
     gtxt = human_glass_label(line)

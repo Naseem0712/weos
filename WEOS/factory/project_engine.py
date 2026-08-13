@@ -44,8 +44,15 @@ def _persist_window_options(
         options["glassShutters"] = lo.get("glassCount")
     if lo.get("meshCount") is not None:
         options["meshShutters"] = lo.get("meshCount")
-    if lo.get("opening"):
-        options["opening"] = lo.get("opening")
+    op = lo.get("opening")
+    if op in ("auto", "", None):
+        options.pop("opening", None)
+    elif op:
+        options["opening"] = op
+    if lo.get("openingSide"):
+        options["openingSide"] = lo.get("openingSide")
+    if lo.get("openingExplicit"):
+        options["openingExplicit"] = True
     if lo.get("fixShuttersRaw") not in (None, ""):
         options["fixShutters"] = lo.get("fixShuttersRaw")
     if lo.get("foldLeft") is not None:
@@ -852,6 +859,8 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
                 glass_count=lo.get("glassCount"),
                 mesh_count=lo.get("meshCount"),
                 opening=lo.get("opening"),
+                opening_side=lo.get("openingSide"),
+                opening_explicit=bool(lo.get("openingExplicit")),
                 fixed_shutters=lo.get("fixShuttersRaw"),
                 system=lo.get("system"),
                 fold_left=lo.get("foldLeft"),
@@ -943,6 +952,8 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
         glass_count=lo.get("glassCount"),
         mesh_count=lo.get("meshCount"),
         opening=lo.get("opening"),
+        opening_side=lo.get("openingSide"),
+        opening_explicit=bool(lo.get("openingExplicit")),
         fixed_shutters=lo.get("fixShuttersRaw"),
         system=lo.get("system"),
         fold_left=lo.get("foldLeft"),

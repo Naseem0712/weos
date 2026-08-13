@@ -629,25 +629,26 @@ def render_svg_string(
     def ty(y: float) -> float:
         return max_y - y
 
-    # Drafting style: profile outlines only (never solid dark fills)
+    # Drafting style: profile outlines only (never solid dark fills).
+    # Strokes are in model-mm so they stay readable when the SVG is fit into
+    # the live preview (~420px) or the quote PDF column.
     _ = colour  # kept for API / quote colour label; frames stay stroke-only
-    frame_stroke = "#1a1a1a"
+    frame_stroke = "#111111"
     # Very light glass tint — clear 2D, not solid dark
-    glass_fill = "rgba(170, 205, 230, 0.22)" if pdf else "rgba(160, 200, 230, 0.18)"
-    glass_stroke = "#2a6fad"
+    glass_fill = "rgba(170, 205, 230, 0.20)" if pdf else "rgba(186, 214, 235, 0.28)"
+    glass_stroke = "#1a4f86"
     dim_stroke = "#8b1e1a"
-    # Slim professional 2D — size-independent but much thinner than before
-    k_stroke = max(0.40, min(k, 0.95))
-    sw_outer = (0.30 if pdf else 0.28) * k_stroke
-    sw_inner = (0.22 if pdf else 0.20) * k_stroke
+    sw_mul = 1.25 if pdf else 1.0
+    sw_outer = max(2.8, min(ref * 0.0048, 11.0)) * sw_mul
+    sw_inner = max(2.2, sw_outer * 0.78)
     sw_profile = sw_inner
     sw_seg = sw_inner
-    sw_grid = (0.22 if pdf else 0.20) * k_stroke
-    sw_interlock = (0.26 if pdf else 0.24) * k_stroke
+    sw_grid = max(1.6, sw_inner * 0.7)
+    sw_interlock = max(2.4, sw_outer * 0.88)
     dim_font = (44.0 if pdf else 36.0) * k
     label_font = (32.0 if pdf else 26.0) * k
 
-    bg = "#ffffff" if pdf else "#f7f6f2"
+    bg = "#ffffff"
     # Compact sash box table for interactive handle drag: "i;x0;x1;y0;y1;nx0;nx1|..."
     _sh_rows = []
     for _sp in (model.metadata or {}).get("shutters") or []:
@@ -661,6 +662,18 @@ def render_svg_string(
             )
         )
     _sh_data = "|".join(_sh_rows)
+    _meta0 = model.metadata or {}
+    _sys0 = str(_meta0.get("system") or "sliding").lower()
+    _title_bits = [f"{model.width:g}×{model.height:g}"]
+    try:
+        _tc0 = _meta0.get("track_count")
+        if _sys0 == "sliding" and _tc0 not in (None, ""):
+            _title_bits.append(f"{float(_tc0):g}-track")
+    except (TypeError, ValueError):
+        pass
+    _op0 = str(_meta0.get("opening") or "").lower()
+    if _sys0 == "sliding" and _op0:
+        _title_bits.append("center opening" if _op0 in ("center", "centre") else "side opening")
     parts: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:.1f}" height="{h:.1f}" '
         f'viewBox="0 0 {w:.1f} {h:.1f}" data-model-minx="{min_x:.3f}" data-model-maxy="{max_y:.3f}" '
@@ -668,7 +681,7 @@ def render_svg_string(
         f'data-visual-profile-mm="{escape(str((model.metadata or {}).get("visualProfileMm") or ""))}" '
         f'data-visual-series="{escape(str((model.metadata or {}).get("visualSeries") or ""))}" '
         f'data-shutters="{escape(_sh_data)}">',
-        f"<title>{escape(model.product_type)} {model.width:g}x{model.height:g}</title>",
+        f"<title>{escape(' · '.join(_title_bits))}</title>",
         f'<rect width="100%" height="100%" fill="{bg}"/>',
         '<defs><marker id="slideArrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">'
         '<path d="M0,0 L8,4 L0,8 Z" fill="#0b3d7a"/></marker></defs>',
@@ -736,7 +749,7 @@ def render_svg_string(
     for seg in model.segments:
         lname = (seg.name or "").lower()
         is_il = "interlock" in lname or "meeting" in lname
-        stroke = "#0d3a6e" if is_il else (frame_stroke if seg.layer == "PROFILES" else "#777")
+        stroke = "#052c54" if is_il else (frame_stroke if seg.layer == "PROFILES" else "#333")
         lw = sw_interlock if is_il else sw_seg
         parts.append(
             f'<line x1="{tx(seg.start.x):.2f}" y1="{ty(seg.start.y):.2f}" '
@@ -1071,6 +1084,8 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
             glass_count=lo.get("glassCount"),
             mesh_count=lo.get("meshCount"),
             opening=lo.get("opening"),
+            opening_side=lo.get("openingSide"),
+            opening_explicit=bool(lo.get("openingExplicit")),
             fixed_shutters=lo.get("fixShuttersRaw"),
             system=lo.get("system"),
             fold_left=lo.get("foldLeft"),
@@ -1220,6 +1235,13 @@ def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[
         "mesh": bool(meta.get("mesh")),
         "glassCount": int(meta.get("glass_count") or 0),
         "meshCount": int(meta.get("mesh_count") or 0),
+        "opening": meta.get("opening"),
+        "openingSide": meta.get("opening_side") or meta.get("openingSide"),
+        "openingLabel": (
+            "center opening"
+            if str(meta.get("opening") or "").lower() in ("center", "centre")
+            else ("side opening" if str(meta.get("opening") or "") else None)
+        ) if system == "sliding" else None,
         "foldLeft": int(meta.get("fold_left") or 0),
         "foldRight": int(meta.get("fold_right") or 0),
         "sectionSizes": meta.get("sectionSizes"),

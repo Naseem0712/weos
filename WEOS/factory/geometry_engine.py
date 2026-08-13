@@ -103,6 +103,7 @@ def _build_shutters(
     system: str = "sliding",
     handle_level: float = 0.5,
     handle_overrides: Mapping[Any, Any] | None = None,
+    opening_side: str = "right",
 ) -> tuple[list[ShutterPanel], list[Rect], list[Rect]]:
     """Divide the band into exactly-equal glass sashes (+ mesh sashes).
 
@@ -153,7 +154,10 @@ def _build_shutters(
 
     center_l = (G - 1) // 2
     center_r = G // 2
-    mode = "center" if opening == "center" else "telescopic"
+    mode = "center" if str(opening or "").strip().lower() in ("center", "centre") else "telescopic"
+    slide_side = str(opening_side or "right").strip().lower()
+    if slide_side not in ("left", "right"):
+        slide_side = "right"
 
     def depth_for(i: int) -> int:
         if casement:
@@ -173,27 +177,21 @@ def _build_shutters(
         if casement:
             # Handle on the centre-meeting stile (hinge ends up on the outer stile)
             return "right" if i <= center_l else "left"
-        # --- Sliding handle placement rules (fix-aware) ---
-        # 2 glass: handle on BOTH doors, on the OUTER stiles (left→left, right→right).
-        if G <= 2:
-            return "left" if i == 0 else "right"
-        # 3 glass: handles ONLY on the outer sliding doors; the centre door gets none.
-        if G == 3:
+        # --- Sliding handle / lock placement ---
+        # Center opening (4 glass): centre meeting stiles + outer track-side stiles.
+        # Side opening (2 / 3 / 4+ override): outer track-side verticals only —
+        # never a handle on every interlock / middle meeting stile.
+        if mode == "center" and G >= 4:
             if i == 0:
                 return "left"
             if i == G - 1:
                 return "right"
-            return None
-        # 4+ glass (centre-opening family): every operable door gets a handle.
-        #   - outer doors → outer stile
-        #   - inner doors → their centre-meeting stile
-        # Fixed side doors are already excluded above (operable=False → None), so
-        # when the sides ARE fixed only the selected sliding doors keep handles.
+            return "right" if i <= center_l else "left"
         if i == 0:
             return "left"
         if i == G - 1:
             return "right"
-        return "right" if i <= center_l else "left"
+        return None
 
     def make_handle(nom_a: float, nom_b: float, side: str | None, x_frac: float | None, y_frac: float) -> Rect | None:
         if side == "none":
@@ -254,8 +252,8 @@ def _build_shutters(
         if handle_rect is not None:
             handles.append(handle_rect)
 
-        # Open direction: sliding slides toward centre (away from outer handle);
-        # casement swing sign follows the hinge side.
+        # Open direction: 2-panel sashes slide past each other; 4-panel center
+        # middle pair slide apart (outward); side opening all toward L/R side.
         if operable:
             if casement:
                 open_dir = 1 if (i <= center_l) else -1
@@ -264,7 +262,7 @@ def _build_shutters(
             elif mode == "center":
                 open_dir = -1 if i <= center_l else 1
             else:
-                open_dir = 1
+                open_dir = -1 if slide_side == "left" else 1
         else:
             open_dir = 0
 
@@ -764,6 +762,7 @@ def compute_two_track_layout(
     glass_count: int | None = None,
     mesh_count: int | None = None,
     opening: str | None = None,
+    opening_side: str | None = None,
     fixed_shutters: Sequence[int] | None = None,
     system: str | None = None,
     fold_left: int | None = None,
@@ -843,9 +842,12 @@ def compute_two_track_layout(
     m_count = int(mesh_count) if mesh_count is not None else (1 if mesh else 0)
     if mesh and m_count <= 0:
         m_count = 1
-    mode = str(opening or "").strip().lower()
-    if mode not in ("center", "telescopic"):
-        mode = "center" if g_count % 2 == 0 else "telescopic"
+    from WEOS.factory.layout_options import resolve_sliding_opening
+
+    mode, slide_side = resolve_sliding_opening(opening, g_count, explicit=True)
+    side_in = str(opening_side or slide_side or "right").strip().lower()
+    if side_in not in ("left", "right"):
+        side_in = "right"
     fixed_set = {int(i) for i in (fixed_shutters or []) if 0 <= int(i) < g_count}
     handle_length = float(geometry["handleLengthMm"]) if geometry.get("handleLengthMm") else None
     is_casement = sys_kind in ("casement", "openable", "opening")
@@ -883,6 +885,7 @@ def compute_two_track_layout(
             system="sliding",
             handle_level=h_level,
             handle_overrides=handle_overrides,
+            opening_side=side_in,
         )
         casement_mullions = []
 
