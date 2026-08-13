@@ -31,46 +31,71 @@ def _win(i: int) -> dict:
         "system": "sliding",
         "trackCount": 2,
         "glassShutters": 2,
-    })
+    }, include_preview=False)
 
 
-def main() -> None:
-    lines = [_win(i) for i in range(9)]
-    lines.append(calculate_line({
+def _rail(length: int, rate: float) -> dict:
+    return calculate_line({
         "product": "railing",
         "productType": "railing",
-        "width": 5000,
-        "height": 1100,
+        "width": length,
+        "height": 1000,
         "qty": 1,
-        "sellingRate": 520,
+        "sellingRate": rate,
         "saleUnit": "rft",
         "options": {
             "railing": {
                 "shape": "straight",
-                "lengthMm": 5000,
-                "heightMm": 1100,
+                "lengthMm": length,
+                "heightMm": 1000,
                 "panels": 3,
                 "bottomKind": "continuous",
                 "bottomSize": "100×45",
-                "handrailSize": "50×50",
+                "handrailSize": "25×25",
                 "continuousRail": True,
                 "handrail": True,
-                "handrailBarLengthFt": 16,
                 "anchorSpacingFt": 2,
                 "installComponents": {
                     "bottomRail": True, "block": False, "ssPillar": False,
                     "handrail": True, "glass": True,
                 },
-                "rates": {
-                    "glassPerSqft": 200, "bottomRailPerUnit": 90, "handrailPerUnit": 140,
-                    "anchorPerPc": 40, "connector180PerPc": 80,
-                    "epdmHandrailPerUnit": 18, "epdmBottomPerUnit": 18,
-                },
-                "manualRatePerUnit": 520,
+                "manualRatePerUnit": rate,
             },
         },
-    }))
-    _ok(len(lines) == 10, f"10 lines got {len(lines)}")
+    }, include_preview=False)
+
+
+def _shower(w: int, h: int, shape: str = "straight", op: str = "sliding") -> dict:
+    return calculate_line({
+        "product": "shower_partition",
+        "productType": "shower_partition",
+        "width": w,
+        "height": h,
+        "qty": 1,
+        "sellingRate": 900,
+        "saleUnit": "sqft",
+        "options": {
+            "shower": {
+                "shape": shape,
+                "operation": op,
+                "widthMm": w,
+                "heightMm": h,
+                "depthMm": 900 if shape == "L" else 0,
+                "manualRatePerUnit": 900,
+                "saleUnit": "sqft",
+                "handle": True,
+            },
+        },
+    }, include_preview=False)
+
+
+def main() -> None:
+    lines = [_win(i) for i in range(11)]
+    lines.append(_rail(2050, 2550))
+    lines.append(_rail(3000, 520))
+    lines.append(_shower(1750, 2130, "L", "hinged"))
+    lines.append(_shower(1200, 2000, "straight", "sliding"))
+    _ok(len(lines) == 15, f"15 lines got {len(lines)}")
 
     # Use already-calculated lines (don't re-run calculate_project — glass lists break generate_job).
     t0 = time.perf_counter()
@@ -91,9 +116,10 @@ def main() -> None:
     xls_s = time.perf_counter() - t2
     _ok(len(xlsx) > 2000, f"xlsx bytes {len(xlsx)}")
 
-    # Local target: a few seconds, not "bahut delay". Without Cairo, vector embed should still be quick.
-    _ok(pdf_s < 30.0, f"PDF {pdf_s:.2f}s")
+    # Local target: a few seconds. ReportLab elevations — no multi-megapixel Cairo.
+    _ok(pdf_s < 8.0, f"PDF {pdf_s:.2f}s")
     _ok(xls_s < 25.0, f"Excel {xls_s:.2f}s")
+    _ok(b"Railing design" not in pdf, "no railing placeholder")
     print(f"OK export perf · pdf {pdf_s:.2f}s · xlsx {xls_s:.2f}s")
 
 

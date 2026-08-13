@@ -230,6 +230,24 @@ def customer_line_amount(line: Mapping[str, Any] | None) -> float | None:
     sale_unit = str(
         line.get("saleUnit") or selling.get("saleUnit") or rq.get("saleUnit") or "sqft"
     ).strip() or "sqft"
+    # Railing bills running length (RFT/RMT), never window perimeter 2×(W+H).
+    try:
+        if is_railing_cart_line(line):
+            length = width
+            if length <= 0:
+                length = float(rq.get("lengthMm") or 0)
+            unit = sale_unit.lower()
+            if unit == "rmt":
+                billable = (length / 1000.0) * qty
+            elif unit in ("opening", "pc", "nos", "each"):
+                billable = float(qty)
+            else:  # rft default
+                billable = (length / 304.8) * qty
+            amt = _money(billable * rate_n)
+            if amt is not None and amt > 0:
+                return round(amt, 2)
+    except Exception:
+        pass
     try:
         from WEOS.factory.live_pricing import sell_amount
 
@@ -306,16 +324,19 @@ def merge_calc_line(stored: Mapping[str, Any] | None, calc: Mapping[str, Any] | 
         opts["locationName"] = loc
         opts["positionName"] = loc
         out["options"] = opts
-    if customer_line_amount(out) is None and customer_line_amount(calc) is not None:
+    stored_amt = customer_line_amount(out)
+    calc_amt = customer_line_amount(calc)
+    if (stored_amt is None or stored_amt <= 0) and calc_amt is not None and calc_amt > 0:
         for key in ("selling", "commercialTotal", "sellingAmount", "sellingRate", "saleUnit", "price"):
-            if key in calc and key not in out:
+            if key in calc and (key not in out or out.get(key) in (None, "", 0, 0.0)):
                 out[key] = calc[key]
             elif key == "selling" and isinstance(calc.get("selling"), Mapping):
                 out["selling"] = dict(calc["selling"])
             elif key == "price" and isinstance(calc.get("price"), Mapping) and not isinstance(out.get("price"), Mapping):
                 out["price"] = dict(calc["price"])
-        if calc.get("sellingRate") is not None and out.get("sellingRate") is None:
+        if calc.get("sellingRate") is not None and out.get("sellingRate") in (None, ""):
             out["sellingRate"] = calc.get("sellingRate")
+        out["commercialTotal"] = calc_amt
     for key in ("displayName", "productType", "colour", "glass", "width", "height", "qty"):
         if not out.get(key) and calc.get(key) not in (None, ""):
             out[key] = calc[key]

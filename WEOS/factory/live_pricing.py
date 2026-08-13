@@ -135,24 +135,56 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
     payload.setdefault("glass", line.get("glass") or "5mm_clear")
     payload.setdefault("colour", line.get("colour") or "white")
     payload.setdefault("handle", line.get("handle") or "standard")
-    calc = calculate_line(payload)
+    calc = calculate_line(payload, include_preview=False)
+
+    from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line, is_ventilator_cart_line
+
+    special = (
+        is_railing_cart_line(payload) or is_railing_cart_line(calc)
+        or is_shower_cart_line(payload) or is_shower_cart_line(calc)
+        or is_ventilator_cart_line(payload) or is_ventilator_cart_line(calc)
+    )
 
     cost_total = float((calc.get("price") or {}).get("total") or 0)
     cost_unit = float((calc.get("price") or {}).get("unitTotal") or (cost_total / max(qty, 1)))
-    sale_unit = str(line.get("saleUnit") or default_sale_unit(product))
+    sale_unit = str(line.get("saleUnit") or calc.get("saleUnit") or default_sale_unit(product))
     selling_rate = line.get("sellingRate")
     if selling_rate is None or selling_rate == "":
-        selling_rate = line.get("customerRate")
+        selling_rate = line.get("customerRate") or calc.get("sellingRate")
     has_sell = selling_rate is not None and str(selling_rate).strip() != ""
     sell = None
-    if has_sell:
-        sell = sell_amount(
-            width_mm=width,
-            height_mm=height,
-            qty=qty,
-            selling_rate=float(selling_rate),
-            sale_unit=sale_unit,
-        )
+    if special and isinstance(calc.get("selling"), Mapping) and (calc.get("selling") or {}).get("sellingAmount"):
+        sell = dict(calc["selling"])
+        sale_unit = str(sell.get("saleUnit") or sale_unit)
+    elif has_sell:
+        if special and (is_railing_cart_line(payload) or is_railing_cart_line(calc)):
+            # Running-ft along length, not window perimeter.
+            unit = (sale_unit or "rft").lower()
+            length = float(calc.get("width") or width or 0)
+            if unit == "rmt":
+                billable = (length / 1000.0) * max(qty, 1)
+            elif unit in ("opening", "pc", "nos"):
+                billable = float(max(qty, 1))
+            else:
+                billable = (length / 304.8) * max(qty, 1)
+            from WEOS.factory.fmt import money_n
+
+            sell = {
+                "saleUnit": unit if unit in SALE_UNITS else "rft",
+                "saleUnitLabel": SALE_UNITS.get(unit, SALE_UNITS["rft"])["label"],
+                "sellingRate": money_n(float(selling_rate)),
+                "billableQty": round(billable, 4),
+                "sellingAmount": money_n(billable * float(selling_rate)),
+                "qty": max(qty, 1),
+            }
+        else:
+            sell = sell_amount(
+                width_mm=width,
+                height_mm=height,
+                qty=qty,
+                selling_rate=float(selling_rate),
+                sale_unit=sale_unit,
+            )
 
     metrics = area_metrics(width, height)
     margin = None

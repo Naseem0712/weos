@@ -255,10 +255,10 @@ def _special_line_svg(line: Mapping[str, Any]) -> str:
 
 
 def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
-    """Draw the design column. Windows use ReportLab model elevation (reliable).
+    """Draw the design column. Windows / railing / shower use ReportLab (fast, solid).
 
-    Canvas-SVG → Cairo/svglib was hanging Quote PDF (huge mm viewBox + dasharray
-    ``none``). Photo still wins; railing/shower/vent use a size-capped PNG.
+    Never rasterize huge mm-viewBox SVGs (Cairo hang). Photo still wins.
+    Ventilator may use a tiny PNG; railing never falls back to a text placeholder.
     """
     from reportlab.lib.utils import ImageReader
 
@@ -285,64 +285,101 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
             _log.exception("design photo embed failed; falling back to elevation")
 
     is_rail = _line_is_railing(line)
-    is_special = is_rail or is_shower_cart_line(line) or is_ventilator_cart_line(line)
-
-    # Windows / doors / casement / fold: known-good ReportLab path (miters, handles).
-    if not is_special:
-        try:
-            from WEOS.factory.elevation_pdf import draw_line_model_elevation
-
-            if draw_line_model_elevation(c, line, x, y, box_w, box_h):
-                return True
-        except Exception:
-            _log.exception("reportlab model elevation failed")
-
-    svg = _special_line_svg(line) if is_special else ""
-    if not svg and not is_special:
-        try:
-            from WEOS.factory.svg_export import elevation_svg_for_line
-
-            svg = elevation_svg_for_line(line, style="preview") or ""
-        except Exception:
-            svg = ""
-
-    if svg:
-        try:
-            from WEOS.factory.image_engine import svg_to_png_bytes
-
-            png = svg_to_png_bytes(str(svg), scale=1.0, allow_slow=False, max_px=1100)
-            if png:
-                img = ImageReader(io.BytesIO(png))
-                iw, ih = img.getSize()
-                if iw > 0 and ih > 0:
-                    scale = min(box_w / float(iw), box_h / float(ih))
-                    dw, dh = iw * scale, ih * scale
-                    c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
-                    return True
-        except Exception:
-            _log.debug("capped svg png skipped", exc_info=True)
+    is_shower = is_shower_cart_line(line)
+    is_vent = is_ventilator_cart_line(line)
 
     if is_rail:
-        rail_cfg, rail_q = _railing_cfg_and_quote(line)
-        c.setStrokeColorRGB(0.35, 0.35, 0.35)
-        c.setFillColorRGB(0.96, 0.96, 0.97)
-        c.rect(x + 4, y + 4, box_w - 8, box_h - 8, stroke=1, fill=1)
-        c.setFillColorRGB(0.2, 0.2, 0.2)
-        _set_font(c, 8, bold=True)
-        c.drawCentredString(x + box_w / 2, y + box_h / 2 + 6, "Railing design")
-        _set_font(c, 7)
-        shape = (rail_q or {}).get("shape") or (rail_cfg or {}).get("shape") or "—"
-        c.drawCentredString(x + box_w / 2, y + box_h / 2 - 8, f"{shape} · {w:g}×{h:g} mm")
-        return True
-
-    if not is_special:
         try:
-            from WEOS.factory.elevation_pdf import draw_line_model_elevation
+            from WEOS.factory.railing_pdf import draw_railing_elevation
 
-            if draw_line_model_elevation(c, line, x, y, box_w, box_h):
+            if draw_railing_elevation(c, line, x, y, box_w, box_h):
                 return True
         except Exception:
-            _log.exception("reportlab model elevation retry failed")
+            _log.exception("reportlab railing elevation failed")
+        # Last resort: tiny PNG of railing SVG — never a grey text box.
+        try:
+            svg = _special_line_svg(line)
+            if svg:
+                from WEOS.factory.image_engine import svg_to_png_bytes
+
+                png = svg_to_png_bytes(str(svg), scale=1.0, allow_slow=False, max_px=700)
+                if png:
+                    img = ImageReader(io.BytesIO(png))
+                    iw, ih = img.getSize()
+                    if iw > 0 and ih > 0:
+                        scale = min(box_w / float(iw), box_h / float(ih))
+                        dw, dh = iw * scale, ih * scale
+                        c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
+                        return True
+        except Exception:
+            _log.debug("railing tiny png skipped", exc_info=True)
+        # Absolute last: still draw a real (schematic) railing, not placeholder text.
+        try:
+            from WEOS.factory.railing_pdf import draw_railing_elevation
+
+            return bool(draw_railing_elevation(c, {"width": w or 2000, "height": h or 1000,
+                                                   "productType": "railing",
+                                                   "options": {"railing": {"shape": "straight",
+                                                                           "lengthMm": w or 2000,
+                                                                           "heightMm": h or 1000,
+                                                                           "panels": 3,
+                                                                           "bottomKind": "continuous",
+                                                                           "handrail": True}}},
+                                               x, y, box_w, box_h))
+        except Exception:
+            return False
+
+    if is_shower:
+        try:
+            from WEOS.factory.shower_pdf import draw_shower_elevation
+
+            if draw_shower_elevation(c, line, x, y, box_w, box_h):
+                return True
+        except Exception:
+            _log.exception("reportlab shower elevation failed")
+        try:
+            svg = _special_line_svg(line)
+            if svg:
+                from WEOS.factory.image_engine import svg_to_png_bytes
+
+                png = svg_to_png_bytes(str(svg), scale=1.0, allow_slow=False, max_px=700)
+                if png:
+                    img = ImageReader(io.BytesIO(png))
+                    iw, ih = img.getSize()
+                    if iw > 0 and ih > 0:
+                        scale = min(box_w / float(iw), box_h / float(ih))
+                        dw, dh = iw * scale, ih * scale
+                        c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
+                        return True
+        except Exception:
+            _log.debug("shower tiny png skipped", exc_info=True)
+
+    if is_vent:
+        svg = _special_line_svg(line)
+        if svg:
+            try:
+                from WEOS.factory.image_engine import svg_to_png_bytes
+
+                png = svg_to_png_bytes(str(svg), scale=1.0, allow_slow=False, max_px=600)
+                if png:
+                    img = ImageReader(io.BytesIO(png))
+                    iw, ih = img.getSize()
+                    if iw > 0 and ih > 0:
+                        scale = min(box_w / float(iw), box_h / float(ih))
+                        dw, dh = iw * scale, ih * scale
+                        c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
+                        return True
+            except Exception:
+                _log.debug("vent tiny png skipped", exc_info=True)
+
+    # Windows / doors / casement / fold: known-good ReportLab path (miters, handles).
+    try:
+        from WEOS.factory.elevation_pdf import draw_line_model_elevation
+
+        if draw_line_model_elevation(c, line, x, y, box_w, box_h):
+            return True
+    except Exception:
+        _log.exception("reportlab model elevation failed")
 
     layout = line.get("layout") if isinstance(line.get("layout"), Mapping) else {}
     panels = list((layout or {}).get("panels") or [])
@@ -1085,15 +1122,8 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     draw_w, draw_h = 200, 210
     bottom_limit = M + 30  # keep clear of footer + bottom margin
 
-    # Warm PNG cache only when Cairo is available (svglib rasterize is too slow).
-    try:
-        from WEOS.factory.image_engine import cairo_png_available
-        from WEOS.factory.elevation_cache import prefetch_line_pngs
-
-        if cairo_png_available():
-            prefetch_line_pngs(lines, scale=1.45, max_workers=4)
-    except Exception:
-        _log.debug("elevation prefetch skipped", exc_info=True)
+    # Elevations are ReportLab vectors (windows / railing / shower). Do not
+    # prefetch Cairo PNGs — that was hanging 8–30 line quotes.
 
     for idx, line in enumerate(lines):
         # Specs first so we know how tall the text block is (wrap may exceed draw_h).
