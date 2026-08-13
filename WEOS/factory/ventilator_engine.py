@@ -13,7 +13,7 @@ from typing import Any, Mapping
 from xml.sax.saxutils import escape
 
 from WEOS.factory.fmt import mm_n, money_n
-from WEOS.factory.geometry import casement_hinge_svg
+from WEOS.factory.geometry import casement_hinge_svg, hinge_capsule_size_mm
 
 MM_PER_FT = 304.8
 SQMM_PER_SQFT = 92903.04
@@ -422,6 +422,9 @@ def _top_hinges(
     stroke: str,
     *,
     gap_y: float | None = None,
+    leaf_w_mm: float | None = None,
+    stile_t_mm: float | None = None,
+    scale: float = 1.0,
 ) -> None:
     """Top-hung hinges: horizontal capsule centred on the outer | sash head gap."""
     count = min(max(int(count), 2), 4)
@@ -433,8 +436,11 @@ def _top_hinges(
     else:
         span = w - 2 * inset
         xs = [x + inset + span * i / (count - 1) for i in range(count)]
-    hw = max(min(t * 1.55, 10.0), 5.4)
-    hh = max(min(t * 1.05, 6.4), 3.6)
+    sc = max(float(scale), 1e-6)
+    span_mm = float(leaf_w_mm) if leaf_w_mm and leaf_w_mm > 0 else (w / sc)
+    stile_mm = float(stile_t_mm) if stile_t_mm and stile_t_mm > 0 else (t / sc)
+    hw_mm, hh_mm = hinge_capsule_size_mm(span_mm, stile_mm, orientation="horizontal")
+    hw, hh = max(hw_mm * sc, 2.4), max(hh_mm * sc, 0.9)
     cy = float(gap_y) if gap_y is not None else (y + t / 2.0)
     for cx in xs:
         parts.append(
@@ -598,7 +604,13 @@ def ventilator_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = Non
                 _sash_frame(parts, sx, sy, swd, sh, sash_t, stroke, sw)
                 if handle_on:
                     _handle_bottom(parts, sx + sash_t, sy + sh - sash_t, max(swd - 2 * sash_t, 8))
-                _top_hinges(parts, sx, sy, swd, sash_t, hinge_n, stroke, gap_y=inner_y)
+                _top_hinges(
+                    parts, sx, sy, swd, sash_t, hinge_n, stroke,
+                    gap_y=inner_y,
+                    leaf_w_mm=swd / max(scale, 1e-6),
+                    stile_t_mm=50.0 * 0.85,
+                    scale=scale,
+                )
                 # opening hint (down for top-hung)
                 mx = sx + swd / 2.0
                 parts.append(

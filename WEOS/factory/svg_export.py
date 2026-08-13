@@ -305,14 +305,15 @@ def _draw_casement_hinge_svg(
     stroke_width: float,
     extra_attrs: str = "",
 ) -> None:
-    """Same capsule hinge glyph as shower / ventilator (preview === PDF)."""
+    """Same stadium hinge glyph as shower / ventilator / PDF (horizontal barrel split)."""
     w = abs(float(x1) - float(x0))
     h = abs(float(y1) - float(y0))
-    sx0, sy_top = tx(float(x0)), ty(max(float(y0), float(y1)))
+    cx = (float(x0) + float(x1)) / 2.0
+    cy = (float(y0) + float(y1)) / 2.0
     parts.append(
         casement_hinge_svg(
-            sx0 + w / 2.0,
-            sy_top + h / 2.0,
+            tx(cx),
+            ty(cy),
             w=w,
             h=h,
             stroke=stroke,
@@ -326,7 +327,7 @@ def _draw_hardware(parts: list[str], *, tx, ty, model: DrawingModel, finish: str
     """Draw handles (from shutter meta, oriented) and casement hinge capsules."""
     meta = model.metadata or {}
     c = _handle_finish_colors(finish)
-    # Hinge capsules (light fill + diagonal split), centred on stile gap in geometry.
+    # Hinge capsules (light fill + horizontal barrel split), centred on stile gap.
     for h in meta.get("hinges") or []:
         if not isinstance(h, Mapping):
             continue
@@ -405,7 +406,7 @@ def _draw_grid_svg(
         # Arrows (sliding)
         for a in cell.get("arrows") or []:
             _arrow(parts, tx=tx, ty=ty, x0=float(a["x0"]), y0=float(a["y0"]), x1=float(a["x1"]), y1=float(a["y1"]))
-        # Hinges (openable) — capsule + diagonal split
+        # Hinges (openable) — stadium + horizontal barrel split
         hc = _handle_finish_colors(finish)
         for hg in cell.get("hinges") or []:
             _draw_casement_hinge_svg(

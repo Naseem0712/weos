@@ -21,6 +21,7 @@ from WEOS.factory.dimensioning import (
 )
 from WEOS.factory.geometry import (
     frame_miter_segments,
+    hinge_capsule_size_mm,
     hinge_centers_mm,
     horizontal_segment,
     rect_polyline,
@@ -48,6 +49,22 @@ def _clamp_mm(value: Any, lo: float, hi: float, default: float) -> float:
     if v <= 0:
         v = default
     return min(max(v, lo), hi)
+
+
+def _hinge_knuckle_rects(
+    hx: float,
+    y0: float,
+    leaf_h: float,
+    stile_t: float,
+    count: int = 3,
+) -> list[Rect]:
+    """Stadium hinge boxes centred on ``hx`` (outer | sash gap), 2–6 layout."""
+    kw, kh = hinge_capsule_size_mm(leaf_h, stile_t)
+    out: list[Rect] = []
+    for y_mm in hinge_centers_mm(leaf_h, count):
+        ky = y0 + y_mm
+        out.append(Rect(hx - kw / 2.0, ky - kh / 2.0, hx + kw / 2.0, ky + kh / 2.0))
+    return out
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,8 +227,6 @@ def _build_shutters(
     panels: list[ShutterPanel] = []
     handles: list[Rect] = []
     hinges: list[Rect] = []
-    knuckle_w = max(fw * 0.7, 14.0)
-    knuckle_h = max(band_h * 0.05, 18.0)
 
     for i in range(G):
         nom_x0 = bounds[i]
@@ -274,9 +289,7 @@ def _build_shutters(
             hinge_side = "left" if on_right else "right"
             # Centre on the outer-frame | sash gap (not stile mid).
             hx = nom_x0 if hinge_side == "left" else nom_x1
-            for t in (0.18, 0.5, 0.82):
-                ky = y0 + band_h * t
-                hinges.append(Rect(hx - knuckle_w / 2.0, ky - knuckle_h / 2.0, hx + knuckle_w / 2.0, ky + knuckle_h / 2.0))
+            hinges.extend(_hinge_knuckle_rects(hx, y0, band_h, fw, 3))
 
         depth = depths[i]
         if is_fixed:
@@ -388,8 +401,6 @@ def _build_casement_leaves(
     hlen = min(hlen, max(band_h * 0.9, 40.0))
     hw = max(fw * 0.5, 12.0)
     hlevel = min(max(float(handle_level), 0.04), 0.96)
-    knuckle_w = max(fw * 0.7, 14.0)
-    knuckle_h = max(band_h * 0.05, 18.0)
     n_open = sum(1 for r in roles if r != "fix")
     center_l = max(n_open - 1, 0) // 2
 
@@ -451,9 +462,7 @@ def _build_casement_leaves(
             if hinge_side:
                 # Cell bound = outer-frame inner / mullion face (gap through hinge centre).
                 hx = cx0 if hinge_side == "left" else cx1
-                for y_mm in hinge_centers_mm(outer.height, 3):
-                    ky = outer.y0 + y_mm
-                    hinges.append(Rect(hx - knuckle_w / 2.0, ky - knuckle_h / 2.0, hx + knuckle_w / 2.0, ky + knuckle_h / 2.0))
+                hinges.extend(_hinge_knuckle_rects(hx, outer.y0, outer.height, fw, 3))
             open_dir = 1 if handle_side != "left" else -1
             open_seen += 1
 
@@ -568,13 +577,9 @@ def _build_bifold_leaves(
     # Hinge knuckles: at every internal boundary WITHIN a pack (not the centre),
     # plus a pivot at each pack's outer jamb edge.
     hinges: list[Rect] = []
-    knuckle_w = max(fw * 0.7, 14.0)
-    knuckle_h = max(band_h * 0.045, 18.0)
 
     def add_hinges_at(xc: float) -> None:
-        for t in (0.2, 0.5, 0.8):
-            ky = y0 + band_h * t
-            hinges.append(Rect(xc - knuckle_w / 2.0, ky - knuckle_h / 2.0, xc + knuckle_w / 2.0, ky + knuckle_h / 2.0))
+        hinges.extend(_hinge_knuckle_rects(xc, y0, band_h, fw, 3))
 
     for i in range(1, total):
         if i == meeting:
@@ -1241,11 +1246,7 @@ def _compute_grid_layout(
                 cell["handles"] = [{"x0": round(hx - hw / 2, 1), "y0": round(yc - hlen / 2, 1), "x1": round(hx + hw / 2, 1), "y1": round(yc + hlen / 2, 1), "side": handle_side}]
                 # Hinge knuckles centred on the outer | sash gap (cell edge).
                 khx = x0 if hinge == "left" else x1
-                kw = max(fw * 0.7, 14.0)
-                kh = max(ch * 0.05, 18.0)
-                for t in (0.18, 0.5, 0.82):
-                    ky = y0 + ch * t
-                    hr = Rect(khx - kw / 2, ky - kh / 2, khx + kw / 2, ky + kh / 2)
+                for hr in _hinge_knuckle_rects(khx, y0, ch, fw, 3):
                     hinges.append(hr)
                     cell["hinges"].append({"x0": round(hr.x0, 1), "y0": round(hr.y0, 1), "x1": round(hr.x1, 1), "y1": round(hr.y1, 1)})
                 # Openable symbol: two diagonals meeting at the handle-side mid

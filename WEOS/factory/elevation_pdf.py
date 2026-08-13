@@ -6,7 +6,7 @@ from typing import Any, Mapping
 
 from typing import Mapping as _Mapping
 
-from WEOS.factory.geometry import HINGE_FILL_RGB
+from WEOS.factory.geometry import HINGE_FILL_RGB, hinge_capsule_geom
 from WEOS.factory.svg_export import _parse_grid
 from WEOS.factory.types import DrawingModel, Polyline
 
@@ -47,22 +47,18 @@ def _glasses(model: DrawingModel) -> list[tuple[str, float, float, float, float]
 
 
 def _draw_casement_hinge_pdf(c, px, py, scale: float, x0: float, y0: float, x1: float, y1: float, stroke_rgb, *, lw: float = 0.5) -> None:
-    """Light capsule hinge + slight diagonal — same glyph as live SVG preview."""
-    w = (float(x1) - float(x0)) * scale
-    h = (float(y1) - float(y0)) * scale
-    if w <= 0.2 or h <= 0.2:
+    """Light stadium hinge + horizontal barrel split — same glyph as live SVG preview."""
+    w_m = abs(float(x1) - float(x0))
+    h_m = abs(float(y1) - float(y0))
+    if w_m <= 0.2 or h_m <= 0.2:
         return
-    rx = min(abs(w), abs(h)) * 0.49
+    g = hinge_capsule_geom((float(x0) + float(x1)) / 2.0, (float(y0) + float(y1)) / 2.0, w_m, h_m)
     c.setFillColorRGB(*HINGE_FILL_RGB)
     c.setStrokeColorRGB(*stroke_rgb)
     c.setLineWidth(lw)
-    c.roundRect(px(float(x0)), py(float(y0)), w, h, rx, fill=1, stroke=1)
-    cx = (float(x0) + float(x1)) / 2.0
-    cy = (float(y0) + float(y1)) / 2.0
-    dx = (float(x1) - float(x0)) * 0.28
-    dy = (float(y1) - float(y0)) * 0.20
+    c.roundRect(px(g["x"]), py(g["y"]), g["w"] * scale, g["h"] * scale, g["rx"] * scale, fill=1, stroke=1)
     c.setLineWidth(max(lw * 0.7, 0.3))
-    c.line(px(cx - dx), py(cy - dy), px(cx + dx), py(cy + dy))
+    c.line(px(g["x1"]), py(g["y1"]), px(g["x2"]), py(g["y2"]))
 
 
 def _hollow_plan_band(c, x: float, y: float, w: float, h: float, *, lw: float = 0.55) -> None:
@@ -134,7 +130,7 @@ def _draw_grid_pdf(c, *, px, py, scale, meta, W, H, finish, stroke, dim, glass_s
             dirx = 1 if ax1 > ax0 else -1
             c.line(px(ax1), py(ay1), px(ax1) - dirx * ah, py(ay1) + ah * 0.7)
             c.line(px(ax1), py(ay1), px(ax1) - dirx * ah, py(ay1) - ah * 0.7)
-        # Hinges (capsule + diagonal split)
+        # Hinges (stadium + horizontal barrel split)
         for hg in cell.get("hinges") or []:
             _draw_casement_hinge_pdf(
                 c, px, py, scale,

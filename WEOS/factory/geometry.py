@@ -131,10 +131,70 @@ def hinge_centers_mm(leaf_h_mm: float, count: int = 3) -> list[float]:
     return [top, top_b, *mids, bot]
 
 
-# Sleek 2D casement hinge — light capsule + slight diagonal (two leaves).
+# Sleek 2D hinge — stadium capsule + horizontal barrel split (not slash / X / pin).
 HINGE_FILL = "#f3f2ee"
 HINGE_FILL_RGB = (0.953, 0.949, 0.933)
 HINGE_STROKE = "#1a1a1a"
+
+
+def hinge_capsule_size_mm(
+    leaf_span_mm: float,
+    stile_t_mm: float,
+    *,
+    orientation: str = "vertical",
+) -> tuple[float, float]:
+    """Drawing-mm (width, height) for a thin stadium hinge.
+
+    Target ~15 × 85 mm (aspect ~1:5–1:7). Length ≤ min(100, 12% of leaf span);
+    thickness ≤ 0.4× stile. Small leaves shrink both axes, keeping capsule shape.
+    ``orientation='horizontal'`` rotates the capsule (top-hung head hinges).
+    """
+    span = max(float(leaf_span_mm), 1.0)
+    stile = max(float(stile_t_mm), 1.0)
+    max_len = min(100.0, max(span * 0.12, 14.0))
+    max_thick = max(stile * 0.40, 1.8)
+
+    length = min(85.0, max_len)
+    thick = min(15.0, max_thick)
+    if length > thick * 7.0:
+        length = min(length, max(thick * 7.0, min(75.0, max_len)))
+        if length / max(thick, 0.1) > 7.2:
+            length = thick * 7.0
+    if length < thick * 5.0:
+        thick = min(max(length / 5.5, 1.8), max_thick)
+    length = min(max(length, 14.0), max_len)
+    thick = min(max(thick, 1.8), max_thick)
+    if length < thick * 5.0:
+        thick = max(length / 5.5, 1.8)
+
+    if str(orientation or "vertical").lower().startswith("h"):
+        return (length, thick)
+    return (thick, length)
+
+
+def hinge_capsule_geom(
+    cx: float,
+    cy: float,
+    w: float,
+    h: float,
+) -> dict[str, float]:
+    """Stadium box + horizontal barrel-split line through the capsule centre."""
+    ww = max(float(w), 0.8)
+    hh = max(float(h), 0.8)
+    inset = min(ww, hh) * 0.18
+    return {
+        "x": float(cx) - ww / 2.0,
+        "y": float(cy) - hh / 2.0,
+        "w": ww,
+        "h": hh,
+        "rx": min(ww, hh) * 0.49,
+        "cx": float(cx),
+        "cy": float(cy),
+        "x1": float(cx) - ww / 2.0 + inset,
+        "y1": float(cy),
+        "x2": float(cx) + ww / 2.0 - inset,
+        "y2": float(cy),
+    }
 
 
 def casement_hinge_svg(
@@ -147,26 +207,19 @@ def casement_hinge_svg(
     stroke_width: float = 0.75,
     extra_attrs: str = "",
 ) -> str:
-    """Tall/wide rounded capsule with a thin outline and a slight mid diagonal.
+    """2D stadium hinge: round heads + horizontal barrel split (shared SVG glyph).
 
     ``(cx, cy)`` is the hinge centre in the same SVG space as ``w`` / ``h``.
-    Place that centre on the outer-frame | sash gap so the split reads as two leaves.
+    Place that centre on the outer-frame | sash gap so the gap line runs through it.
     """
-    ww = max(float(w), 0.8)
-    hh = max(float(h), 0.8)
-    x = float(cx) - ww / 2.0
-    y = float(cy) - hh / 2.0
-    rx = min(ww, hh) * 0.49
-    dx = ww * 0.28
-    dy = hh * 0.20
+    g = hinge_capsule_geom(cx, cy, w, h)
     extra = f" {extra_attrs.strip()}" if extra_attrs and extra_attrs.strip() else ""
     sw = max(float(stroke_width), 0.35)
     return (
-        f'<rect x="{x:.2f}" y="{y:.2f}" width="{ww:.2f}" height="{hh:.2f}" '
-        f'rx="{rx:.2f}" fill="{HINGE_FILL}" stroke="{stroke}" stroke-width="{sw:.2f}" '
-        f'data-hinge="1"{extra}/>'
-        f'<line x1="{float(cx) - dx:.2f}" y1="{float(cy) - dy:.2f}" '
-        f'x2="{float(cx) + dx:.2f}" y2="{float(cy) + dy:.2f}" '
-        f'stroke="{stroke}" stroke-width="{max(sw * 0.65, 0.35):.2f}"/>'
+        f'<rect x="{g["x"]:.2f}" y="{g["y"]:.2f}" width="{g["w"]:.2f}" height="{g["h"]:.2f}" '
+        f'rx="{g["rx"]:.2f}" fill="{HINGE_FILL}" stroke="{stroke}" stroke-width="{sw:.2f}" '
+        f'data-hinge="1" data-hinge-split="h"{extra}/>'
+        f'<line x1="{g["x1"]:.2f}" y1="{g["y1"]:.2f}" x2="{g["x2"]:.2f}" y2="{g["y2"]:.2f}" '
+        f'stroke="{stroke}" stroke-width="{max(sw * 0.7, 0.35):.2f}" data-hinge-split="h"/>'
     )
 

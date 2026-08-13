@@ -76,6 +76,18 @@ def main() -> int:
     if "track_inner" in svg:
         fails.append("svg still mentions track_inner")
 
+    hinges = [h for h in (meta.get("hinges") or []) if isinstance(h, dict)]
+    if len(hinges) < 2:
+        fails.append(f"casement F1+A1 missing hinges ({len(hinges)})")
+    else:
+        hw = abs(float(hinges[0]["x1"]) - float(hinges[0]["x0"]))
+        hh = abs(float(hinges[0]["y1"]) - float(hinges[0]["y0"]))
+        aspect = hh / max(hw, 0.1)
+        if hw > 18.0 or hh < 50.0 or aspect < 4.8:
+            fails.append(f"hinge not slim capsule w={hw:.1f} h={hh:.1f} aspect={aspect:.2f}")
+        if "data-hinge=\"1\"" not in svg or "data-hinge-split=\"h\"" not in svg:
+            fails.append("svg missing stadium hinge + horizontal barrel split")
+
     j2 = generate_job(
         2050, 1970, "29mm_sliding", system="casement", glass_count=2,
         sash_overlap_mm=5, mullion_gap_mm=40,

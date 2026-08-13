@@ -11,7 +11,7 @@ from typing import Any, Mapping
 from xml.sax.saxutils import escape
 
 from WEOS.factory.fmt import mm_n, money_n
-from WEOS.factory.geometry import casement_hinge_svg
+from WEOS.factory.geometry import casement_hinge_svg, hinge_capsule_size_mm, hinge_centers_mm
 
 MM_PER_FT = 304.8
 SQMM_PER_SQFT = 92903.04
@@ -682,47 +682,26 @@ def _mortice_lock(
     )
 
 
-def _hinge_centers_mm(leaf_h_mm: float, count: int) -> list[float]:
-    """Hinge cy from top of door leaf (mm). Top/bottom at 100 mm; extras per casement rules."""
-    count = min(max(int(count), 2), 6)
-    h = max(float(leaf_h_mm), 240.0)
-    top = 100.0 if h >= 280.0 else min(100.0, h * 0.16)
-    bot = (h - 100.0) if h >= 280.0 else max(h - 100.0, h * 0.84)
-    if bot <= top + 30.0:
-        top, bot = h * 0.18, h * 0.82
-    if count == 2:
-        return [top, bot]
-    if count == 3:
-        return [top, (top + bot) / 2.0, bot]
-    stack = min(48.0, max(28.0, (bot - top) * 0.08))
-    top_b = top + stack
-    extra = count - 3
-    mids: list[float] = []
-    if extra > 0:
-        span = bot - top_b
-        for i in range(1, extra + 1):
-            mids.append(top_b + span * i / (extra + 1))
-    return [top, top_b, *mids, bot]
-
-
 def _casement_hinge(
     parts: list[str],
     cx: float,
     cy: float,
-    stile_t: float,
     stroke: str,
     *,
     from_top_mm: float,
+    leaf_h_mm: float,
+    stile_t_mm: float,
+    scale: float,
 ) -> None:
-    """Sleek light capsule + diagonal split (two leaves) — not an X or pin mark."""
-    hw = max(stile_t * 0.95, 4.8)
-    hh = max(stile_t * 2.15, 9.0)
+    """Shared stadium hinge (round heads + horizontal barrel split)."""
+    w_mm, h_mm = hinge_capsule_size_mm(leaf_h_mm, stile_t_mm)
+    sc = max(float(scale), 1e-6)
     parts.append(
         casement_hinge_svg(
             cx,
             cy,
-            w=hw,
-            h=hh,
+            w=max(w_mm * sc, 0.9),
+            h=max(h_mm * sc, 4.0),
             stroke=stroke,
             stroke_width=0.8,
             extra_attrs=f'data-hinge-style="casement" data-hinge-from-top-mm="{from_top_mm:.0f}"',
@@ -1088,8 +1067,17 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
             else:
                 hx_h = (dx + dw) if hinge_side == "right" else dx
             leaf_h_mm = dh / scale if scale else height
-            for y_mm in _hinge_centers_mm(leaf_h_mm, hinge_count):
-                _casement_hinge(parts, hx_h, dy + y_mm * scale, frame_t, stroke, from_top_mm=y_mm)
+            for y_mm in hinge_centers_mm(leaf_h_mm, hinge_count):
+                _casement_hinge(
+                    parts,
+                    hx_h,
+                    dy + y_mm * scale,
+                    stroke,
+                    from_top_mm=y_mm,
+                    leaf_h_mm=leaf_h_mm,
+                    stile_t_mm=frame_face_mm,
+                    scale=scale,
+                )
 
     parts.append(
         f'<text x="{x0 + elev_w + 8:.1f}" y="{y_frame0 + elev_h / 2:.1f}" font-size="10" '
