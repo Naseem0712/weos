@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -67,9 +68,16 @@ def main() -> int:
     rows = _spec_rows(win)
     labels = [r[0] for r in rows if r[0]]
     blob = " | ".join(f"{a}: {b}" for a, b in rows)
-    for need in ("SIZE", "GLASS", "HARDWARE", "COLOUR", "HANDLE", "TRACK", "SERIES", "MESH"):
+    for need in ("SIZE", "AREA", "GLASS", "COLOUR", "HANDLE", "TRACK", "SASH", "MESH"):
         if need not in labels:
             fails.append(f"window missing {need} in {labels}")
+    for ban in ("SERIES", "ALUMINIUM", "JOINT", "INTERLOCK", "SECTION"):
+        if ban in labels:
+            fails.append(f"window customer dump still has {ban}: {labels}")
+    if "shutter_0_glass" in blob.lower() or "shutter_0" in blob.lower():
+        fails.append(f"internal glass id leaked: {blob}")
+    if re.search(r"(?i)\bsg\b.*,\s*\bdg\b|\bdg\b.*,\s*\bsg\b", blob):
+        fails.append(f"dual sg,dg dump: {blob}")
     if "SIZE: 2760" not in blob.replace("×", "x") and "2760" not in blob:
         fails.append(f"window size missing: {blob}")
     lines = _spec_lines(win)

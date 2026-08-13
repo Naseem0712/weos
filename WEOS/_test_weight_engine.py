@@ -344,7 +344,7 @@ def t_ss_acp_hpl_pc():
 
 def t_legacy_compute_weight():
     from WEOS.factory.job_types import GlassPane
-    from WEOS.factory.weight_engine import compute_weight
+    from WEOS.factory.weight_engine import WEIGHT_SOURCE_GLASS_UPLIFT, compute_weight
 
     glass = [GlassPane(name="g", width_mm=1000, height_mm=1000, thickness_mm=5, area_m2=1.0, weight_kg=12.5, quantity=1)]
     rules = {
@@ -356,10 +356,45 @@ def t_legacy_compute_weight():
         ],
     }
     wb = compute_weight(rules, glass, {})
-    assert abs(wb.aluminium_kg - 1.35) < 0.01, wb
-    assert abs(wb.glass_kg - 12.5) < 0.01
-    assert abs(wb.total_kg - 14.35) < 0.01
-    return f"legacy compute_weight total={wb.total_kg}"
+    # No catalogue kg/m → glass + 20% frame/hw (do not invent hardwareAllowanceKg)
+    assert abs(wb.glass_kg - 12.5) < 0.05, wb
+    assert abs(wb.aluminium_kg - 2.5) < 0.05, wb
+    assert abs(wb.hardware_kg - 0.0) < 0.01, wb
+    assert abs(wb.total_kg - 15.0) < 0.08, wb
+    assert wb.weight_source == WEIGHT_SOURCE_GLASS_UPLIFT, wb
+    return f"uplift compute_weight total={wb.total_kg} src={wb.weight_source}"
+
+
+def t_catalogue_kg_m_weight():
+    from WEOS.factory.job_types import GlassPane
+    from WEOS.factory.weight_engine import WEIGHT_SOURCE_CATALOGUE, compute_weight
+
+    glass = [GlassPane(name="g", width_mm=1000, height_mm=1000, thickness_mm=5, area_m2=1.0, weight_kg=12.5, quantity=1)]
+    rules = {
+        "aluminiumDensityKgPerM3": 2700,
+        "wasteFactor": 1.0,
+        "profileSections": [
+            {"name": "outer", "weightPerMeter": 0.8, "lengthFormula": "2000"},
+        ],
+    }
+    wb = compute_weight(rules, glass, {})
+    assert wb.weight_source == WEIGHT_SOURCE_CATALOGUE, wb
+    assert abs(wb.aluminium_kg - 1.6) < 0.05, wb  # 2.0 m × 0.8 kg/m
+    assert abs(wb.glass_kg - 12.5) < 0.05, wb
+    return f"catalogue kg/m alu={wb.aluminium_kg}"
+
+
+def t_upvc_no_uplift():
+    from WEOS.factory.job_types import GlassPane
+    from WEOS.factory.weight_engine import WEIGHT_SOURCE_GLASS_ONLY, compute_weight
+
+    glass = [GlassPane(name="g", width_mm=1000, height_mm=1000, thickness_mm=5, area_m2=1.0, weight_kg=12.5, quantity=1)]
+    rules = {"aluminiumDensityKgPerM3": 2700, "profileSections": []}
+    wb = compute_weight(rules, glass, {}, frame_material="upvc")
+    assert abs(wb.aluminium_kg) < 0.01, wb
+    assert abs(wb.glass_kg - 12.5) < 0.05, wb
+    assert wb.weight_source == WEIGHT_SOURCE_GLASS_ONLY, wb
+    return f"upvc glass-only {wb.total_kg}"
 
 
 def main() -> int:
@@ -384,6 +419,8 @@ def main() -> int:
         ("Product total blocked", t_product_total_blocked),
         ("SS/ACP/HPL/PC", t_ss_acp_hpl_pc),
         ("Legacy compute_weight", t_legacy_compute_weight),
+        ("Catalogue kg/m weight", t_catalogue_kg_m_weight),
+        ("UPVC no 20% uplift", t_upvc_no_uplift),
     ]:
         check(name, fn)
 

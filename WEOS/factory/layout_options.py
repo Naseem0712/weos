@@ -367,6 +367,15 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
         "productType": pick("productType") or line.get("productType"),
         "sashOverlapMm": pick("sashOverlapMm", "sash_overlap_mm", "sashOverlap"),
         "mullionGapMm": pick("mullionGapMm", "mullion_gap_mm", "mullionGap"),
+        "frameMaterial": pick("frameMaterial", "frame_material", "material"),
+        "reinforcement": pick("reinforcement", "reinforcementPresent"),
+        "reinforcementMaterial": pick("reinforcementMaterial", "reinforcement_material"),
+        "hardwareBrand": pick("hardwareBrand", "hardware_brand"),
+        "hardwareType": pick("hardwareType", "hardware_type"),
+        "hardwareColour": pick("hardwareColour", "hardware_colour", "hardwareColor"),
+        "glassBrand": pick("glassBrand", "glass_brand"),
+        "glassColour": pick("glassColour", "glass_colour", "glassColor"),
+        "glassMakeup": pick("glassMakeup", "glass_makeup"),
     }
 
 

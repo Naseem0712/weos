@@ -58,6 +58,7 @@ class WeightBreakdown:
     hardware_kg: float
     total_kg: float
     details: dict[str, float] = field(default_factory=dict)
+    weight_source: str = "unknown"
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)

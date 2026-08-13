@@ -254,6 +254,26 @@ class ProjectCalculateOpts(BaseModel):
     quotationId: str | None = None
 
 
+class PdfExportBody(BaseModel):
+    """In-memory cart snapshot for Quote PDF — do not rely on a stale saved project."""
+
+    model_config = {"extra": "allow"}
+
+    lines: list[dict[str, Any]] | None = None
+    customer: str | None = None
+    name: str | None = None
+    customerMobile: str | None = None
+    customerAddress: str | None = None
+    customerGst: str | None = None
+    description: str | None = None
+    terms: str | None = None
+    quotationId: str | None = None
+    companyGst: str | None = None
+    brand: str | None = None
+    templateId: str | None = None
+    persist: bool = True
+
+
 class PreviewRequest(BaseModel):
     model_config = {"extra": "allow"}
 
@@ -717,9 +737,32 @@ def _pdf_response(
     *,
     request: Request | None = None,
     inline: bool = False,
+    overlay: dict[str, Any] | None = None,
 ) -> Response:
     # load_project raises FileNotFoundError → 404 (handled by the caller).
     doc = load_project(project_id)
+    if overlay:
+        # PDF must print the live cart payload, not a stale autosave snapshot.
+        if overlay.get("lines") is not None:
+            doc["lines"] = list(overlay["lines"] or [])
+        for _fld in (
+            "customer",
+            "name",
+            "customerMobile",
+            "customerAddress",
+            "customerGst",
+            "description",
+            "terms",
+            "quotationId",
+            "companyGst",
+        ):
+            if overlay.get(_fld) is not None:
+                doc[_fld] = overlay[_fld]
+        if overlay.get("persist", True) and overlay.get("lines") is not None:
+            try:
+                save_project(doc, action="pdf-flush")
+            except Exception:
+                _log.exception("pdf-flush save failed for %s; continuing with in-memory lines", project_id)
     try:
         result = calculate_project(doc, optimize=True)
     except Exception:
@@ -1168,6 +1211,7 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
                     grid=body.grid if str(body.system or "").lower() == "grid" else None,
                     sash_overlap_mm=getattr(body, "sashOverlapMm", None),
                     mullion_gap_mm=getattr(body, "mullionGapMm", None),
+                    frame_material=getattr(body, "frameMaterial", None),
                 )
                 break
             except Exception as exc:  # try next engine id
@@ -1555,6 +1599,28 @@ def api_customer_pdf(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@app.post("/api/projects/{project_id}/customer-pdf")
+def api_customer_pdf_post(
+    project_id: str,
+    request: Request,
+    body: PdfExportBody | None = None,
+    brand: str | None = Query(None),
+    templateId: str | None = Query(None),
+) -> Response:
+    try:
+        overlay = (body.model_dump() if body is not None else {}) or {}
+        return _pdf_response(
+            project_id,
+            "customer",
+            brand=brand or overlay.get("brand"),
+            template_id=templateId or overlay.get("templateId"),
+            request=request,
+            overlay=overlay,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/api/projects/{project_id}/factory-pdf")
 def api_factory_pdf(
     project_id: str,
@@ -1564,6 +1630,28 @@ def api_factory_pdf(
 ) -> Response:
     try:
         return _pdf_response(project_id, "factory", brand=brand, template_id=templateId, request=request)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/factory-pdf")
+def api_factory_pdf_post(
+    project_id: str,
+    request: Request,
+    body: PdfExportBody | None = None,
+    brand: str | None = Query(None),
+    templateId: str | None = Query(None),
+) -> Response:
+    try:
+        overlay = (body.model_dump() if body is not None else {}) or {}
+        return _pdf_response(
+            project_id,
+            "factory",
+            brand=brand or overlay.get("brand"),
+            template_id=templateId or overlay.get("templateId"),
+            request=request,
+            overlay=overlay,
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

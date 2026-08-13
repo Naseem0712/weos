@@ -64,9 +64,23 @@ def _persist_window_options(
     if series:
         options["sectionSeries"] = series
     _opts_in = line.get("options") if isinstance(line.get("options"), Mapping) else {}
-    for _k in ("handleName", "meshName", "powderCoatName", "handleFinish"):
+    for _k in (
+        "handleName",
+        "meshName",
+        "powderCoatName",
+        "handleFinish",
+        "frameMaterial",
+        "reinforcement",
+        "reinforcementMaterial",
+        "hardwareBrand",
+        "hardwareType",
+        "hardwareColour",
+        "glassBrand",
+        "glassColour",
+        "glassMakeup",
+    ):
         _v = lo.get(_k) or line.get(_k) or (_opts_in or {}).get(_k)
-        if _v:
+        if _v is not None and _v != "":
             options[_k] = _v
     # Optional panel fill (glass → louvers / sheet) — composable feature, not a product type.
     pf = lo.get("panelFill") or line.get("panelFill") or (_opts_in or {}).get("panelFill")
@@ -847,6 +861,9 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
                 handle_level=lo.get("handleLevel"),
                 handle_overrides=lo.get("handleOverrides"),
                 grid=lo.get("gridSpec"),
+                sash_overlap_mm=lo.get("sashOverlapMm"),
+                mullion_gap_mm=lo.get("mullionGapMm"),
+                frame_material=lo.get("frameMaterial") or line.get("frameMaterial"),
             )
             if lo.get("panelFill"):
                 from WEOS.factory.panel_fills import attach_fill_to_drawing
@@ -891,6 +908,7 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
                     "glassKg": round(float(wd.get("glass_kg") or 0) * qty, 3),
                     "hardwareKg": round(float(wd.get("hardware_kg") or 0) * qty, 3),
                     "totalKg": round(float(wd.get("total_kg") or 0) * qty, 3),
+                    "weightSource": wd.get("weight_source") or wd.get("weightSource"),
                 }
             # Persist resolved config so the PDF re-render reproduces the same type.
             result["options"] = _persist_window_options(
@@ -934,6 +952,9 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
         handle_level=lo.get("handleLevel"),
         handle_overrides=lo.get("handleOverrides"),
         grid=lo.get("gridSpec"),
+        sash_overlap_mm=lo.get("sashOverlapMm"),
+        mullion_gap_mm=lo.get("mullionGapMm"),
+        frame_material=lo.get("frameMaterial") or line.get("frameMaterial"),
     )
     if lo.get("panelFill"):
         from WEOS.factory.panel_fills import attach_fill_to_drawing
@@ -1001,6 +1022,9 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
                 "thicknessMm": g.thickness_mm,
                 "areaM2": round(g.area_m2 * qty, 4),
                 "weightKg": round(g.weight_kg * qty, 3),
+                "colour": (lo.get("glassColour") or line.get("glassColour")),
+                "brand": (lo.get("glassBrand") or line.get("glassBrand")),
+                "makeup": (lo.get("glassMakeup") or line.get("glassMakeup")),
             }
             for g in job.glass
         ],
@@ -1045,6 +1069,7 @@ def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
             "glassKg": round(weight.get("glass_kg", 0) * qty, 3),
             "hardwareKg": round(weight.get("hardware_kg", 0) * qty, 3),
             "totalKg": round(weight.get("total_kg", 0) * qty, 3),
+            "weightSource": weight.get("weight_source") or weight.get("weightSource"),
         },
         "price": {
             "currency": quote.get("currency", "INR"),

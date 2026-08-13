@@ -27,6 +27,47 @@ from WEOS.factory.quotation_engine import compute_quotation
 from WEOS.factory.track_rail_engine import compute_track_rail
 from WEOS.factory.weight_engine import compute_weight
 
+VISUAL_SLIDING_MM = 35.0
+VISUAL_CASEMENT_MM = 50.0
+
+
+def _visual_profile_mm(sys_kind: str | None, width: float, height: float) -> float:
+    """Print-only profile thickness so large openings still show double-line joints."""
+    sk = str(sys_kind or "sliding").strip().lower()
+    casementish = sk in (
+        "casement",
+        "openable",
+        "opening",
+        "bifold",
+        "fold",
+        "fold_sliding",
+        "fold_and_sliding",
+        "ventilator",
+        "bathroom_ventilator",
+    )
+    base = VISUAL_CASEMENT_MM if casementish else VISUAL_SLIDING_MM
+    minor = max(min(float(width or 1), float(height or 1)), 1.0)
+    visual = max(base, minor * 0.018)
+    return min(visual, minor * 0.08)
+
+
+def _visual_geom(geom: Mapping[str, Any], sys_kind: str | None, width: float, height: float) -> tuple[dict[str, Any], float]:
+    v = _visual_profile_mm(sys_kind, width, height)
+    g = dict(geom)
+    tw = float(g.get("trackWidth") or 0) or v
+    fw = float(g.get("frameWidth") or 0) or v
+    ref = min(tw, fw) if min(tw, fw) > 0 else v
+    if v > ref + 0.4:
+        scale = v / ref
+        g["trackWidth"] = tw * scale
+        g["frameWidth"] = fw * scale
+        if g.get("interlockWidth"):
+            try:
+                g["interlockWidth"] = float(g["interlockWidth"]) * scale
+            except (TypeError, ValueError):
+                pass
+    return g, v
+
 
 def generate_job(
     width: float,
@@ -55,6 +96,7 @@ def generate_job(
     grid: Mapping[str, Any] | None = None,
     sash_overlap_mm: float | None = None,
     mullion_gap_mm: float | None = None,
+    frame_material: str | None = None,
 ) -> JobResult:
     from WEOS.factory.layout_options import resolve_mesh_track, resolve_shutter_config
 
@@ -133,8 +175,34 @@ def generate_job(
     params["track_count"] = float(mesh_res["trackCount"])
     params["shutter_count"] = float(layout.glass_count)
     style = dim_style_from_profile(product.get("dimensioning") or {})
+    visual_geom, visual_mm = _visual_geom(geom, sys_kind, width, height)
+    try:
+        visual_layout = compute_two_track_layout(
+            width,
+            height,
+            visual_geom,
+            partitions=partitions,
+            mesh=bool(mesh_res.get("mesh")) and not is_bifold,
+            track_count=float(mesh_res["trackCount"]),
+            glass_count=shutter_cfg["glassCount"],
+            mesh_count=shutter_cfg["meshCount"],
+            opening=shutter_cfg["opening"],
+            fixed_shutters=shutter_cfg["fixedShutters"],
+            system="bifold" if is_bifold else sys_kind,
+            fold_left=fold_left,
+            fold_right=fold_right,
+            section_sizes=section_sizes,
+            handle_level=handle_level,
+            handle_overrides=handle_overrides,
+            grid=grid,
+            sash_overlap_mm=sash_overlap_mm,
+            mullion_gap_mm=mullion_gap_mm,
+        )
+    except Exception:
+        visual_layout = layout
+        visual_mm = float(geom.get("trackWidth") or geom.get("frameWidth") or visual_mm)
     drawing = build_drawing(
-        layout,
+        visual_layout,
         product_name=str(product.get("displayName", product.get("id", "opening"))),
         parameters=params,
         style=style,
@@ -148,6 +216,13 @@ def generate_job(
     meta["mesh_count"] = int(layout.mesh_count)
     meta["opening"] = layout.opening
     meta["system"] = layout.system
+    meta["visualProfileMm"] = round(float(visual_mm), 1)
+    meta["visualSeries"] = (
+        "casement50"
+        if str(sys_kind or "").lower()
+        in ("casement", "openable", "opening", "bifold", "fold", "fold_sliding", "fold_and_sliding", "ventilator")
+        else "sliding35"
+    )
     if handle_finish:
         meta["handle_finish"] = str(handle_finish)
     elif colour and ("black" in str(colour).lower() or "dark" in str(colour).lower()):
@@ -191,7 +266,14 @@ def generate_job(
     # Append library materials into BOM when present
     if materials:
         bom = list(bom) + list(materials)
-    weight = compute_weight(product.get("weight") or {}, glass_items, ctx)
+    weight = compute_weight(
+        product.get("weight") or {},
+        glass_items,
+        ctx,
+        glass_rules=glass_rules,
+        hardware=hardware,
+        frame_material=frame_material,
+    )
     quotation = compute_quotation(
         product.get("quotation") or {},
         weight=weight,

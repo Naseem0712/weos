@@ -637,11 +637,13 @@ def render_svg_string(
     glass_stroke = "#2a6fad"
     dim_stroke = "#8b1e1a"
     # Slim professional 2D — size-independent but much thinner than before
-    k_stroke = max(0.45, min(k, 1.15))
-    sw_profile = (0.42 if pdf else 0.38) * k_stroke
-    sw_seg = (0.32 if pdf else 0.30) * k_stroke
-    sw_grid = (0.30 if pdf else 0.28) * k_stroke
-    sw_interlock = (0.48 if pdf else 0.42) * k_stroke
+    k_stroke = max(0.40, min(k, 0.95))
+    sw_outer = (0.30 if pdf else 0.28) * k_stroke
+    sw_inner = (0.22 if pdf else 0.20) * k_stroke
+    sw_profile = sw_inner
+    sw_seg = sw_inner
+    sw_grid = (0.22 if pdf else 0.20) * k_stroke
+    sw_interlock = (0.26 if pdf else 0.24) * k_stroke
     dim_font = (44.0 if pdf else 36.0) * k
     label_font = (32.0 if pdf else 26.0) * k
 
@@ -663,6 +665,8 @@ def render_svg_string(
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:.1f}" height="{h:.1f}" '
         f'viewBox="0 0 {w:.1f} {h:.1f}" data-model-minx="{min_x:.3f}" data-model-maxy="{max_y:.3f}" '
         f'data-model-system="{escape(str((model.metadata or {}).get("system") or "sliding"))}" '
+        f'data-visual-profile-mm="{escape(str((model.metadata or {}).get("visualProfileMm") or ""))}" '
+        f'data-visual-series="{escape(str((model.metadata or {}).get("visualSeries") or ""))}" '
         f'data-shutters="{escape(_sh_data)}">',
         f"<title>{escape(model.product_type)} {model.width:g}x{model.height:g}</title>",
         f'<rect width="100%" height="100%" fill="{bg}"/>',
@@ -717,13 +721,16 @@ def render_svg_string(
         if pl.layer in ("GLASS", "HARDWARE") or len(pl.points) < 2:
             continue
         pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
+        nm = str(pl.name or "").lower()
+        is_outer = "outer" in nm or nm in ("outer_frame", "frame_outer", "track_outer")
+        sw_pl = sw_outer if is_outer else sw_inner
         if pl.closed:
             parts.append(
-                f'<polygon points="{pts}" fill="none" stroke="{frame_stroke}" stroke-width="{sw_profile:.2f}"/>'
+                f'<polygon points="{pts}" fill="none" stroke="{frame_stroke}" stroke-width="{sw_pl:.2f}"/>'
             )
         else:
             parts.append(
-                f'<polyline points="{pts}" fill="none" stroke="{frame_stroke}" stroke-width="{sw_profile * 0.9:.2f}"/>'
+                f'<polyline points="{pts}" fill="none" stroke="{frame_stroke}" stroke-width="{sw_pl * 0.9:.2f}"/>'
             )
 
     for seg in model.segments:
@@ -1075,6 +1082,7 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
             grid=lo.get("gridSpec"),
             sash_overlap_mm=lo.get("sashOverlapMm"),
             mullion_gap_mm=lo.get("mullionGapMm"),
+            frame_material=lo.get("frameMaterial") or line.get("frameMaterial"),
         )
         if lo.get("panelFill"):
             from WEOS.factory.panel_fills import attach_fill_to_drawing

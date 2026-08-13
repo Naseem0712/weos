@@ -31,12 +31,17 @@ WEIGHT_STATUS_CALCULABLE = "calculable"
 WEIGHT_STATUS_NEEDS_CATALOGUE = "needs_catalogue"
 WEIGHT_STATUS_PARTIAL = "partial"
 
+WEIGHT_SOURCE_GLASS_UPLIFT = "glass+20%"
+WEIGHT_SOURCE_GLASS_ONLY = "glass"
+
 SOURCE_LABELS = {
     WEIGHT_SOURCE_CATALOGUE: "Catalogue",
     WEIGHT_SOURCE_MANUAL: "Manual",
     WEIGHT_SOURCE_CALCULATED: "Calculated",
     WEIGHT_SOURCE_LEARNED: "Learned (pending)",
     WEIGHT_SOURCE_UNKNOWN: "Missing",
+    WEIGHT_SOURCE_GLASS_UPLIFT: "Glass + 20% frame/hardware",
+    WEIGHT_SOURCE_GLASS_ONLY: "Glass",
 }
 
 # Industry defaults — overridable by catalogue / explicit density arg
@@ -1266,57 +1271,158 @@ def profile_entry(
 # ── Legacy pipeline API (aluminium profile sections + glass panes) ────────────
 
 
+def _pane_glass_kg(pane: GlassPane, glass_rules: Mapping[str, Any] | None) -> float:
+    """Universal engine glass kg (dims × thickness × density × qty; laminated/DGU sum layers)."""
+    rules = dict(glass_rules or {})
+    makeup = str(rules.get("makeup") or rules.get("kind") or "").lower()
+    thk = float(pane.thickness_mm or rules.get("thicknessMm") or rules.get("overallMm") or 0)
+    dims: dict[str, Any] = {
+        "widthMm": float(pane.width_mm or 0),
+        "heightMm": float(pane.height_mm or 0),
+        "thicknessMm": thk or None,
+        "makeup": makeup,
+    }
+    kind = "glass"
+    if makeup in ("dgu", "igu", "double", "insulated") or str(rules.get("airGapMm") or ""):
+        kind = "glass_dgu"
+        layers = list(rules.get("layersMm") or [])
+        if rules.get("glass1Mm") and rules.get("glass2Mm"):
+            layers = [float(rules["glass1Mm"]), float(rules["glass2Mm"])]
+        if layers:
+            dims["layersMm"] = layers
+        if rules.get("airGapMm") is not None:
+            dims["airGapMm"] = rules.get("airGapMm")
+        if rules.get("glass1Mm") is not None:
+            dims["glass1Mm"] = rules.get("glass1Mm")
+        if rules.get("glass2Mm") is not None:
+            dims["glass2Mm"] = rules.get("glass2Mm")
+    elif makeup in ("laminated", "lami", "pvb"):
+        kind = "glass_laminated"
+        layers = list(rules.get("layersMm") or [])
+        if rules.get("glass1Mm") and rules.get("glass2Mm"):
+            layers = [float(rules["glass1Mm"]), float(rules["glass2Mm"])]
+        if layers:
+            dims["layersMm"] = layers
+        if rules.get("pvbMm") is not None:
+            dims["pvbMm"] = rules.get("pvbMm")
+    try:
+        res = calculate_material_weight(
+            kind,
+            dimensions=dims,
+            quantity=float(pane.quantity or 1),
+            density=_num(rules.get("densityKgPerM3")),
+        )
+        kg = float(res.get("totalWeight") or 0)
+        if kg > 0:
+            return kg
+    except Exception:
+        pass
+    return float(pane.weight_kg or 0) * float(pane.quantity or 1)
+
+
 def compute_weight(
     weight_rules: Mapping[str, Any],
     glass: Sequence[GlassPane],
     ctx: Mapping[str, float],
+    *,
+    glass_rules: Mapping[str, Any] | None = None,
+    hardware: Sequence[Any] | None = None,
+    frame_material: str | None = None,
 ) -> WeightBreakdown:
-    """Backward-compatible job weight breakdown used by pipeline / quotation."""
-    if "aluminiumDensityKgPerM3" not in weight_rules:
+    """Window/door weight: glass from universal engine, then actual kg/m or 20% uplift.
+
+    Aluminium (and casement/vent unless UPVC):
+      1. Glass kg from dims × thickness × density × qty (laminated/DGU sum layers).
+      2. Frame + hardware = catalogue kg/m × cut lengths (+ hardware pcs kg) when
+         ``weightPerMeter`` / hardware kg exist; else **20% of glass weight**.
+    UPVC: glass only (+ actual hardware kg if present). Never invent hardware kg.
+    """
+    if "aluminiumDensityKgPerM3" not in (weight_rules or {}):
         raise KeyError("profile.weight.aluminiumDensityKgPerM3 is required (no Python default)")
-    density = float(weight_rules["aluminiumDensityKgPerM3"])
-    waste = float(weight_rules.get("wasteFactor", 1.0))
-    hw_allow = float(weight_rules.get("hardwareAllowanceKg", 0.0))
+    waste = float((weight_rules or {}).get("wasteFactor", 1.0) or 1.0)
     details: dict[str, float] = {}
+    glass_kg = 0.0
+    for g in glass or []:
+        kg = _pane_glass_kg(g, glass_rules)
+        details[str(getattr(g, "name", None) or "glass")] = kg
+        glass_kg += kg
+    details["glass"] = glass_kg
+
+    upvc = str(frame_material or "").strip().lower().replace("-", "").replace(" ", "") in (
+        "upvc",
+        "upv",
+        "pvc",
+    )
+
     alu = 0.0
-    for sec in weight_rules.get("profileSections") or []:
-        area_mm2 = float(sec.get("crossSectionAreaMm2", 0))
+    has_catalogue_kg_m = False
+    for sec in (weight_rules or {}).get("profileSections") or []:
+        wpm = sec.get("weightPerMeter") or sec.get("weightKgPerM") or sec.get("weightKgPerMtr")
+        if wpm is None:
+            continue
+        has_catalogue_kg_m = True
         length_mm = eval_formula(sec.get("lengthFormula", 0), ctx)
-        # Prefer catalogue kg/m when present on the section
-        wpm = sec.get("weightPerMeter") or sec.get("weightKgPerM")
-        if wpm is not None:
-            res = calculate_material_weight(
-                "aluminium_profile",
-                dimensions={"lengthMm": length_mm, "weightPerMeter": float(wpm)},
-                quantity=1.0,
-                weight_per_meter=float(wpm),
-                weight_source=WEIGHT_SOURCE_CATALOGUE,
-            )
-            kg = float(res.get("totalWeight") or 0.0) * waste
-        else:
-            res = calculate_material_weight(
-                "aluminium_profile",
-                dimensions={
-                    "lengthMm": length_mm,
-                    "crossSectionAreaMm2": area_mm2,
-                },
-                quantity=1.0,
-                density=density,
-                waste_factor=None,  # waste applied once below for parity with legacy
-            )
-            kg = float(res.get("totalWeight") or 0.0) * waste
-        name = str(sec.get("name", "section"))
-        details[name] = kg
+        res = calculate_material_weight(
+            "aluminium_profile",
+            dimensions={"lengthMm": length_mm, "weightPerMeter": float(wpm)},
+            quantity=1.0,
+            weight_per_meter=float(wpm),
+            weight_source=WEIGHT_SOURCE_CATALOGUE,
+        )
+        kg = float(res.get("totalWeight") or 0.0) * waste
+        details[str(sec.get("name", "section"))] = kg
         alu += kg
 
-    glass_kg = sum(g.weight_kg * g.quantity for g in glass)
-    details["glass"] = glass_kg
-    details["hardware_allowance"] = hw_allow
-    total = alu + glass_kg + hw_allow
+    hw_kg = 0.0
+    for h in hardware or []:
+        qty = 1.0
+        piece = None
+        if isinstance(h, Mapping):
+            piece = h.get("weightKg") or h.get("weightPerUnit") or h.get("unitWeightKg")
+            qty = float(h.get("qty") or h.get("quantity") or 1) or 1.0
+        else:
+            piece = getattr(h, "weight_kg", None) or getattr(h, "weightKg", None)
+            qty = float(getattr(h, "quantity", None) or getattr(h, "qty", None) or 1) or 1.0
+        if piece in (None, ""):
+            continue
+        try:
+            hw_kg += float(piece) * qty
+        except (TypeError, ValueError):
+            continue
+    if hw_kg:
+        details["hardware"] = hw_kg
+
+    if upvc:
+        src = WEIGHT_SOURCE_GLASS_ONLY if not hw_kg else WEIGHT_SOURCE_CATALOGUE
+        total = glass_kg + hw_kg
+        return WeightBreakdown(
+            aluminium_kg=0.0,
+            glass_kg=glass_kg,
+            hardware_kg=hw_kg,
+            total_kg=total,
+            details=details,
+            weight_source=src,
+        )
+
+    if has_catalogue_kg_m:
+        total = alu + glass_kg + hw_kg
+        return WeightBreakdown(
+            aluminium_kg=alu,
+            glass_kg=glass_kg,
+            hardware_kg=hw_kg,
+            total_kg=total,
+            details=details,
+            weight_source=WEIGHT_SOURCE_CATALOGUE,
+        )
+
+    # Default: aluminium + hardware = 20% of glass. Do not invent hardware kg.
+    uplift = round(0.20 * glass_kg, 6)
+    details["frame_hardware_uplift"] = uplift
     return WeightBreakdown(
-        aluminium_kg=alu,
+        aluminium_kg=uplift,
         glass_kg=glass_kg,
-        hardware_kg=hw_allow,
-        total_kg=total,
+        hardware_kg=0.0,
+        total_kg=glass_kg + uplift,
         details=details,
+        weight_source=WEIGHT_SOURCE_GLASS_UPLIFT,
     )

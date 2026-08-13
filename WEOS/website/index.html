@@ -420,6 +420,29 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <div id="gridCells" style="flex-basis:100%"></div>
           </div>
           <div class="row" style="margin-top:.5rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
+            <div><label class="l">Frame material</label>
+              <select id="lineFrameMaterial" style="width:120px" title="Aluminium or UPVC">
+                <option value="aluminium" selected>Aluminium</option>
+                <option value="upvc">UPVC</option>
+              </select>
+            </div>
+            <div id="wrapUpvcReinf" style="display:none">
+              <label class="l">Reinforcement</label>
+              <div style="display:flex;gap:.35rem;flex-wrap:wrap">
+                <select id="lineReinfPresent" style="width:80px">
+                  <option value="yes" selected>Yes</option>
+                  <option value="no">No</option>
+                </select>
+                <select id="lineReinfMaterial" style="width:110px" title="Inside UPVC sections">
+                  <option value="gi" selected>GI</option>
+                  <option value="iron">Iron</option>
+                  <option value="aluminium">Aluminium</option>
+                </select>
+              </div>
+            </div>
+            <div id="wrapSeries"><label class="l">Section series</label>
+              <select id="lineSeries" style="min-width:160px"><option value="">— optional —</option></select>
+            </div>
             <div class="grow"><label class="l">Colour / Powder-coat</label>
               <div style="display:flex;gap:.35rem;align-items:flex-end;flex-wrap:wrap">
                 <select id="lineColour" style="min-width:140px;flex:1"><option value="white">White</option><option value="black_texture" selected>Black Texture</option><option value="wood_oak">Wood Oak</option></select>
@@ -431,6 +454,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                 <select id="lineHandle" style="width:95px"><option value="standard">Standard</option><option value="premium" selected>Premium</option></select>
                 <select id="lineHandleFinish" style="width:90px"><option value="auto" selected>Auto</option><option value="silver">Silver</option><option value="black">Black</option></select>
                 <input id="lineHandleName" type="text" placeholder="name (e.g. Ozone lever)" style="width:150px"/>
+                <input id="lineHwBrand" type="text" placeholder="hardware brand" style="width:130px" title="Hardware brand printed on quote"/>
               </div>
             </div>
             <div class="grow"><label class="l">Description</label><input id="lineDesc" placeholder="Customer-facing description"/></div>
@@ -2728,6 +2752,14 @@ function syncDraftFromLine(ln) {
   if ($('lineMeshShutters') && ln.meshShutters != null) $('lineMeshShutters').value = ln.meshShutters;
   if ($('lineFixShutters')) $('lineFixShutters').value = Array.isArray(ln.fixShutters) ? ln.fixShutters.join(',') : (ln.fixShutters || '');
   if ($('lineHandleFinish')) $('lineHandleFinish').value = ln.handleFinish || 'auto';
+  const fm = ln.frameMaterial || (ln.options && ln.options.frameMaterial) || 'aluminium';
+  if ($('lineFrameMaterial')) $('lineFrameMaterial').value = String(fm).toLowerCase() === 'upvc' ? 'upvc' : 'aluminium';
+  const reinf = ln.reinforcement != null ? ln.reinforcement : (ln.options && ln.options.reinforcement);
+  if ($('lineReinfPresent')) $('lineReinfPresent').value = (reinf === false || reinf === 'no') ? 'no' : 'yes';
+  const rm = ln.reinforcementMaterial || (ln.options && ln.options.reinforcementMaterial) || 'gi';
+  if ($('lineReinfMaterial')) $('lineReinfMaterial').value = String(rm).toLowerCase();
+  if ($('lineHwBrand')) $('lineHwBrand').value = ln.hardwareBrand || (ln.options && ln.options.hardwareBrand) || '';
+  applyFrameMaterialUi({ skipColourDefault: true });
   if ($('lineHandleLevel')) { const lvl = (ln.handleLevel != null ? ln.handleLevel : 0.5); $('lineHandleLevel').value = Math.round(lvl * 100); }
   if ($('lineFoldLeft') && ln.foldLeft != null) $('lineFoldLeft').value = ln.foldLeft;
   if ($('lineFoldRight') && ln.foldRight != null) $('lineFoldRight').value = ln.foldRight;
@@ -2859,6 +2891,10 @@ function currentLineDraft() {
     meshName: ($('lineMeshName') && $('lineMeshName').value.trim()) || null,
     // Powder-coat colour is merged into the single Colour field — use its label.
     powderCoatName: colourLabel(),
+    frameMaterial: ($('lineFrameMaterial') && $('lineFrameMaterial').value) || 'aluminium',
+    reinforcement: ($('lineReinfPresent') && $('lineReinfPresent').value !== 'no'),
+    reinforcementMaterial: ($('lineReinfMaterial') && $('lineReinfMaterial').value) || 'gi',
+    hardwareBrand: ($('lineHwBrand') && $('lineHwBrand').value.trim()) || null,
     panelFill: currentPanelFill(),
     features: currentPanelFill() ? [{ type: 'panel_fill', ...currentPanelFill() }] : null,
     casementPanels: (sys === 'casement') ? (state.draftCasementPanels || []).slice() : null,
@@ -3333,6 +3369,10 @@ async function refreshPreview() {
       handleName: ln.handleName || null,
       meshName: ln.meshName || null,
       powderCoatName: ln.powderCoatName || null,
+      frameMaterial: ln.frameMaterial || (ln.options && ln.options.frameMaterial) || 'aluminium',
+      reinforcement: ln.reinforcement != null ? ln.reinforcement : (ln.options && ln.options.reinforcement),
+      reinforcementMaterial: ln.reinforcementMaterial || (ln.options && ln.options.reinforcementMaterial) || 'gi',
+      hardwareBrand: ln.hardwareBrand || (ln.options && ln.options.hardwareBrand) || null,
       panelFill: ln.panelFill || currentPanelFill() || null,
       features: ln.features || null,
       productType: ln.productType || null,
@@ -5128,13 +5168,14 @@ if ($('lineLocation')) {
   $('lineLocation').addEventListener('input', () => { clearTimeout(state._locT); state._locT = setTimeout(applyLoc, 280); });
   $('lineLocation').addEventListener('change', applyLoc);
 }
-['lineW','lineH','lineQty','lineColour','lineGlass','lineProduct','lineSeries','lineSaleUnit','lineSellRate','lineHandle','lineDesc','cartCustomer','lineTrack','partSize'].forEach(id => {
+['lineW','lineH','lineQty','lineColour','lineGlass','lineProduct','lineSeries','lineSaleUnit','lineSellRate','lineHandle','lineDesc','cartCustomer','lineTrack','partSize','lineFrameMaterial','lineReinfPresent','lineReinfMaterial','lineHwBrand'].forEach(id => {
   const el = $(id); if (!el) return;
-  el.addEventListener('input', () => { if (id === 'lineProduct') { applyProductSystem(); loadCartGlassOptions(); loadCartColourOptions(); } scheduleLivePrice(); if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','partSize'].includes(id)) refreshPreview(); });
+  el.addEventListener('input', () => { if (id === 'lineProduct') { applyProductSystem(); loadCartGlassOptions(); loadCartColourOptions(); } scheduleLivePrice();     if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','partSize','lineFrameMaterial'].includes(id)) refreshPreview(); });
   el.addEventListener('change', () => {
     if (id === 'lineProduct') { applyProductSystem(); loadCartGlassOptions(); loadCartColourOptions(); }
+    if (id === 'lineFrameMaterial') applyFrameMaterialUi();
     scheduleLivePrice();
-    if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','lineSeries'].includes(id)) refreshPreview();
+    if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','lineSeries','lineFrameMaterial'].includes(id)) refreshPreview();
     if (id === 'cartCustomer') maybeAskCustomerMemory();
     if (id === 'lineTrack') applyMeshTrackRules();
   });
@@ -5142,6 +5183,20 @@ if ($('lineLocation')) {
 function applyMeshNameVisibility() {
   const on = !!($('lineMesh') && $('lineMesh').checked);
   const w = $('wrapMeshName'); if (w) w.style.display = on ? '' : 'none';
+}
+function applyFrameMaterialUi(opts) {
+  const fm = ($('lineFrameMaterial') && $('lineFrameMaterial').value) || 'aluminium';
+  const upvc = String(fm).toLowerCase() === 'upvc';
+  const box = $('wrapUpvcReinf');
+  if (box) box.style.display = upvc ? '' : 'none';
+  if (upvc) {
+    if ($('lineReinfPresent') && !$('lineReinfPresent').value) $('lineReinfPresent').value = 'yes';
+    if ($('lineReinfMaterial') && !$('lineReinfMaterial').value) $('lineReinfMaterial').value = 'gi';
+    if (!opts || !opts.skipColourDefault) {
+      const col = $('lineColour');
+      if (col && (!col.value || col.value === 'black_texture')) col.value = 'white';
+    }
+  }
 }
 if ($('lineMesh')) {
   $('lineMesh').addEventListener('change', () => {
@@ -5152,6 +5207,7 @@ if ($('lineMesh')) {
   });
 }
 applyMeshNameVisibility();
+applyFrameMaterialUi({ skipColourDefault: true });
 // Flexible window-config + Fold & Sliding controls
 ['lineSystem','lineFoldPreset','lineGlassShutters','lineMeshShutters','lineFixShutters',
  'lineHandleFinish','lineHandleLevel','lineFoldLeft','lineFoldRight','secTop','secBottom','secJamb','secLeaf','lineSashOverlap','lineMullionGap'].forEach(id => {
@@ -5302,15 +5358,49 @@ if ($('btnSetupToCart')) $('btnSetupToCart').onclick = async () => {
 };
 if ($('btnSetupLoadList')) $('btnSetupLoadList').onclick = loadSetupList;
 if ($('btnEditSetup')) $('btnEditSetup').onclick = () => setView('setup');
+async function openProjectPdf(kind) {
+  if (state.selectedLine != null && state.lines[state.selectedLine] && !isRailingMode() && !isShowerMode() && !isVentMode()) {
+    try {
+      const draft = currentLineDraft();
+      state.lines[state.selectedLine] = { ...state.lines[state.selectedLine], ...draft };
+    } catch (_) {}
+  }
+  await ensureProject();
+  try { await ensureExportSetupApplied(); } catch (_) {}
+  updatePdfLinks();
+  const brand = ($('pdfBrand') && $('pdfBrand').value) || 'woodenmax';
+  const body = {
+    lines: state.lines,
+    customer: ($('cartCustomer') && $('cartCustomer').value) || ($('projCustName') && $('projCustName').value) || '',
+    name: ($('cartName') && $('cartName').value) || undefined,
+    ...projectBillTo(),
+    brand,
+    persist: true,
+  };
+  const res = await fetch(`${API_BASE}/api/projects/${state.projectId}/${kind}-pdf?brand=${encodeURIComponent(brand)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let msg = res.statusText;
+    try {
+      const j = await res.json();
+      msg = j.detail || msg;
+    } catch (_) {}
+    throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
 ['linkCust','linkCustPrint','linkFact'].forEach(id => {
   const a = $(id); if (!a) return;
   a.addEventListener('click', async (e) => {
-    if (!state.projectId) { e.preventDefault(); toast('Save / calculate a project first'); return; }
     e.preventDefault();
+    if (!(state.projectId || (state.lines && state.lines.length))) { toast('Save / calculate a project first'); return; }
     try {
-      await ensureExportSetupApplied();
-      updatePdfLinks();
-      window.open(a.href, '_blank');
+      await openProjectPdf(id === 'linkFact' ? 'factory' : 'customer');
     } catch(err) { toast(err.message || String(err)); }
   });
 });

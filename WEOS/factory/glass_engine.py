@@ -35,18 +35,19 @@ def compute_glass(
     # One lite per glass sash / fold leaf (mesh sashes carry no glass)
     shutters = [sp for sp in (getattr(layout, "shutters", ()) or ()) if sp.role == "glass"]
     if shutters:
-        for sp in shutters:
-            specs.append((f"shutter_{sp.index}_glass", sp.glass.width, sp.glass.height))
+        for i, sp in enumerate(shutters):
+            specs.append((f"Glass {i + 1}", sp.glass.width, sp.glass.height))
     else:  # legacy fallback (2-sash)
         qty = int(round(eval_formula(glass_rules.get("quantityFormula", "shutterCount"), ctx)))
         base = [
-            ("left_glass", layout.left_glass.width, layout.left_glass.height),
-            ("right_glass", layout.right_glass.width, layout.right_glass.height),
+            ("Glass 1", layout.left_glass.width, layout.left_glass.height),
+            ("Glass 2", layout.right_glass.width, layout.right_glass.height),
         ]
         specs.extend(base[: min(qty, 2)] if qty > 0 else [])
     # Fixed partition lites (clear opening ≈ glass rect; still apply overlaps)
     for fp in getattr(layout, "fix_panels", ()) or ():
-        specs.append((f"fix_{fp.side}_glass", fp.glass.width, fp.glass.height))
+        side = str(fp.side or "fix").replace("_", " ").title()
+        specs.append((f"Fix {side}", fp.glass.width, fp.glass.height))
     for name, ow, oh in specs:
         gw = ow + hs + ils
         gh = oh + top + bot

@@ -150,6 +150,57 @@ def parse_glass_options(name: str | None) -> list[str]:
     return opts
 
 
+_SG_DG_PRINT = re.compile(r"(?i)(?:^|[\s,;/]+)(?:sg|dg|gd|dgu)\b")
+
+
+def clean_profile_print_name(name: str | None) -> str:
+    """Customer print name without dual ``sg, dg`` tags."""
+    raw = str(name or "").strip()
+    if not raw:
+        return ""
+    cleaned = _SG_DG_PRINT.sub(" ", raw)
+    cleaned = re.sub(r"[\s,;]+", " ", cleaned).strip(" ,;/-")
+    return cleaned or raw
+
+
+def section_glass_family_rank(sec: Mapping[str, Any] | None, family: str | None) -> int:
+    """Higher is better. -1 = incompatible with requested SG/DG family."""
+    if not isinstance(sec, Mapping):
+        return -1
+    opts = list(sec.get("glassOptions") or []) or parse_glass_options(sec.get("name"))
+    fam = str(family or "").strip().lower()
+    if fam in ("sg", "single", "laminated", "lami"):
+        fam = "single"
+    elif fam in ("dg", "dgu", "igu", "gd", "double"):
+        fam = "dgu"
+    if not fam:
+        return 0
+    if not opts:
+        return 1
+    if fam in opts and len(opts) == 1:
+        return 3
+    if fam in opts:
+        return 2
+    return -1
+
+
+def _print_dim(sec: Mapping[str, Any] | None, *, clean_names: bool = True) -> str | None:
+    if not isinstance(sec, Mapping):
+        return None
+    d, w = sec.get("sectionDepthMm"), sec.get("widthMm")
+    if d is None or w is None:
+        return None
+    name = clean_profile_print_name(sec.get("name")) if clean_names else str(sec.get("name") or "")
+    wall = sec.get("wallThicknessMm")
+    bits = []
+    if name:
+        bits.append(name)
+    bits.append(f"{d:g}×{w:g} mm")
+    if wall not in (None, ""):
+        bits.append(f"wall {wall:g} mm")
+    return " · ".join(bits)
+
+
 def is_center_opening_only(name: str | None) -> bool:
     n = (name or "").lower()
     return "center" in n and ("open" in n or "opning" in n or "opening" in n)
@@ -699,8 +750,18 @@ def sections_for_usage(series_id: str, usage: str | None = None) -> list[dict[st
     return secs
 
 
-def specs_summary_for_series(series_id: str | None) -> dict[str, Any]:
-    """Build MAR-QT-style specification fields from catalogue sections."""
+def specs_summary_for_series(
+    series_id: str | None,
+    *,
+    glass_family: str | None = None,
+    track_count: float | None = None,
+    clean_names: bool = True,
+) -> dict[str, Any]:
+    """Build specification fields from catalogue sections.
+
+    ``glass_family``: ``single`` (SG, incl. laminated) or ``dgu`` (DG/IGU).
+    When set, pick the matching SG or DG profile — never a dual ``sg, dg`` dump.
+    """
     if not series_id:
         return {}
     try:
@@ -712,36 +773,71 @@ def specs_summary_for_series(series_id: str | None) -> dict[str, Any]:
     for sec in series.get("sections") or []:
         by_usage.setdefault(sec.get("usage") or "other", []).append(sec)
 
+    fam = str(glass_family or "").strip().lower()
+    if fam in ("sg", "laminated", "lami"):
+        fam = "single"
+    elif fam in ("dg", "igu", "gd", "double"):
+        fam = "dgu"
+
     def pick(usages: Sequence[str]) -> dict[str, Any] | None:
+        ranked: list[tuple[int, dict[str, Any]]] = []
         for u in usages:
-            if by_usage.get(u):
-                return by_usage[u][0]
-        return None
+            for sec in by_usage.get(u) or []:
+                if not isinstance(sec, Mapping):
+                    continue
+                # Prefer the track count the cart actually uses.
+                if track_count is not None and u.startswith("track"):
+                    stc = sec.get("trackCount")
+                    if stc is None:
+                        stc = parse_track_count(sec.get("name"))
+                    try:
+                        if stc is not None and abs(float(stc) - float(track_count)) > 0.05:
+                            continue
+                    except (TypeError, ValueError):
+                        pass
+                rank = section_glass_family_rank(sec, fam or None)
+                if rank < 0:
+                    continue
+                ranked.append((rank, dict(sec)))
+        if not ranked:
+            for u in usages:
+                if by_usage.get(u):
+                    return dict(by_usage[u][0])
+            return None
+        ranked.sort(key=lambda x: -x[0])
+        return ranked[0][1]
 
     track = pick(("track", "track_horizontal", "track_vertical", "frame"))
+    frame = pick(("frame", "track"))
     sash = pick(("sash",))
     interlock = pick(("interlock",))
     meeting = pick(("meeting",))
 
-    def dim_str(sec: dict[str, Any] | None) -> str | None:
-        if not sec:
-            return None
-        d, w = sec.get("sectionDepthMm"), sec.get("widthMm")
-        if d is None or w is None:
-            return None
-        return f"{sec.get('name')} {d:g}×{w:g} mm"
+    wall_track = (track or {}).get("wallThicknessMm") if track else None
+    wall_sash = (sash or {}).get("wallThicknessMm") if sash else None
+    wall_frame = (frame or {}).get("wallThicknessMm") if frame else None
 
     return {
         "seriesId": series["id"],
         "seriesTitle": series.get("title"),
-        "track": dim_str(track),
-        "sash": dim_str(sash),
-        "interlock": dim_str(interlock),
-        "meeting": dim_str(meeting),
-        "wallThicknessMm": next(
+        "glassFamily": fam or None,
+        "track": _print_dim(track, clean_names=clean_names),
+        "trackPrint": _print_dim(track, clean_names=True),
+        "frame": _print_dim(frame, clean_names=clean_names),
+        "framePrint": _print_dim(frame, clean_names=True),
+        "sash": _print_dim(sash, clean_names=clean_names),
+        "sashPrint": _print_dim(sash, clean_names=True),
+        "interlock": _print_dim(interlock, clean_names=clean_names),
+        "interlockPrint": _print_dim(interlock, clean_names=True),
+        "meeting": _print_dim(meeting, clean_names=clean_names),
+        "wallThicknessMm": wall_track or wall_frame or wall_sash
+        or next(
             (s.get("wallThicknessMm") for s in (series.get("sections") or []) if s.get("wallThicknessMm")),
             None,
         ),
+        "trackWallMm": wall_track,
+        "sashWallMm": wall_sash,
+        "frameWallMm": wall_frame,
         "sections": series.get("sections") or [],
         "designOptions": series.get("designOptions") or [],
     }
