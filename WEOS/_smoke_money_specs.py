@@ -67,7 +67,7 @@ def main() -> int:
     rows = _spec_rows(win)
     labels = [r[0] for r in rows if r[0]]
     blob = " | ".join(f"{a}: {b}" for a, b in rows)
-    for need in ("SIZE", "GLASS", "HARDWARE", "COLOUR", "HANDLE", "TRACK", "SERIES"):
+    for need in ("SIZE", "GLASS", "HARDWARE", "COLOUR", "HANDLE", "TRACK", "SERIES", "MESH"):
         if need not in labels:
             fails.append(f"window missing {need} in {labels}")
     if "SIZE: 2760" not in blob.replace("×", "x") and "2760" not in blob:
@@ -75,6 +75,19 @@ def main() -> int:
     lines = _spec_lines(win)
     if any("=" in s.split(":")[0] for s in lines if ":" in s):
         fails.append("window still using = delimiters in labels")
+
+    win_dump = {
+        **win,
+        "layout": {
+            **(win.get("layout") or {}),
+            "panels": [
+                {"id": "S1", "label": "Sliding", "role": "sliding", "widthMm": 1348.8, "heightMm": 2317.6},
+            ],
+        },
+    }
+    dump_blob = " ".join(f"{a}: {b}" for a, b in _spec_rows(win_dump)).upper()
+    if "PANELS:" in dump_blob and "1348" in dump_blob:
+        fails.append("window specs still dump PANELS mm sizes")
 
     # Railing specs
     rail = {
@@ -107,9 +120,28 @@ def main() -> int:
     }
     rrows = _spec_rows(rail)
     rlabels = [r[0] for r in rrows if r[0]]
-    for need in ("SIZE", "GLASS", "TYPE", "HARDWARE"):
+    for need in ("SIZE", "GLASS", "TYPE", "HARDWARE", "MOUNT"):
         if need not in rlabels:
             fails.append(f"railing missing {need} in {rlabels}")
+    rblob = " ".join(f"{a}: {b}" for a, b in rrows)
+    if " @ " in rblob:
+        fails.append(f"customer railing specs leaked rates: {rblob}")
+
+    from WEOS.factory.design_photo import save_design_photo, design_photo_bytes_by_key
+    from WEOS.factory.marqt_pdf import _line_design_photo_bytes
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+        b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    info = save_design_photo("smoke_p", "smoke_l", png, filename="design.png", content_type="image/png")
+    raw, _ct = design_photo_bytes_by_key(info["key"])
+    if not raw:
+        fails.append("design photo durable blob round-trip failed")
+    photo_line = {**win, "designPhoto": {"key": info["key"], "filename": "design.png"}}
+    got, _ = _line_design_photo_bytes(photo_line)
+    if not got:
+        fails.append("PDF photo lookup failed")
 
     pdf = render_marqt_pdf(
         {"branding": {"companyName": "TEST CO", "primaryColor": [0.1, 0.2, 0.3]}},

@@ -99,15 +99,15 @@ def _dim_line_h(
     ty_line = text_y if text_y is not None else y
     parts.append(
         f'<line x1="{tx(x0):.2f}" y1="{ty(y):.2f}" x2="{tx(x1):.2f}" y2="{ty(y):.2f}" '
-        f'stroke="{stroke}" stroke-width="1.4"/>'
+        f'stroke="{stroke}" stroke-width="0.7"/>'
     )
     parts.append(
         f'<line x1="{tx(x0):.2f}" y1="{ty(y) - 8:.2f}" x2="{tx(x0):.2f}" y2="{ty(y) + 8:.2f}" '
-        f'stroke="{stroke}" stroke-width="1.4"/>'
+        f'stroke="{stroke}" stroke-width="0.7"/>'
     )
     parts.append(
         f'<line x1="{tx(x1):.2f}" y1="{ty(y) - 8:.2f}" x2="{tx(x1):.2f}" y2="{ty(y) + 8:.2f}" '
-        f'stroke="{stroke}" stroke-width="1.4"/>'
+        f'stroke="{stroke}" stroke-width="0.7"/>'
     )
     mid = (x0 + x1) / 2.0
     parts.append(
@@ -132,15 +132,15 @@ def _dim_line_v(
 ) -> None:
     parts.append(
         f'<line x1="{tx(x):.2f}" y1="{ty(y0):.2f}" x2="{tx(x):.2f}" y2="{ty(y1):.2f}" '
-        f'stroke="{stroke}" stroke-width="1.4"/>'
+        f'stroke="{stroke}" stroke-width="0.7"/>'
     )
     parts.append(
         f'<line x1="{tx(x) - 8:.2f}" y1="{ty(y0):.2f}" x2="{tx(x) + 8:.2f}" y2="{ty(y0):.2f}" '
-        f'stroke="{stroke}" stroke-width="1.4"/>'
+        f'stroke="{stroke}" stroke-width="0.7"/>'
     )
     parts.append(
         f'<line x1="{tx(x) - 8:.2f}" y1="{ty(y1):.2f}" x2="{tx(x) + 8:.2f}" y2="{ty(y1):.2f}" '
-        f'stroke="{stroke}" stroke-width="1.4"/>'
+        f'stroke="{stroke}" stroke-width="0.7"/>'
     )
     mid = (y0 + y1) / 2.0
     tx_text = text_x if text_x is not None else x
@@ -635,11 +635,12 @@ def render_svg_string(
     glass_fill = "rgba(170, 205, 230, 0.22)" if pdf else "rgba(160, 200, 230, 0.18)"
     glass_stroke = "#2a6fad"
     dim_stroke = "#8b1e1a"
-    # Sleek CAD linework — thin, crisp strokes (not heavy blobs)
-    sw_profile = (0.85 if pdf else 0.75) * k
-    sw_seg = (0.6 if pdf else 0.55) * k
-    sw_grid = (0.55 if pdf else 0.5) * k
-    sw_interlock = (0.95 if pdf else 0.85) * k
+    # Slim professional 2D — size-independent but much thinner than before
+    k_stroke = max(0.45, min(k, 1.15))
+    sw_profile = (0.42 if pdf else 0.38) * k_stroke
+    sw_seg = (0.32 if pdf else 0.30) * k_stroke
+    sw_grid = (0.30 if pdf else 0.28) * k_stroke
+    sw_interlock = (0.48 if pdf else 0.42) * k_stroke
     dim_font = (44.0 if pdf else 36.0) * k
     label_font = (32.0 if pdf else 26.0) * k
 

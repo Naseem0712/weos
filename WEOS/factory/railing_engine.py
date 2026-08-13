@@ -42,6 +42,9 @@ DEFAULT_GLASS_GAP_MM = 12.0
 DEFAULT_SHEET_W_MM = 3660.0
 DEFAULT_SHEET_H_MM = 2440.0
 FLOOR_RISE_TOL_MM = 1.0
+BEAM_OVERLAP_MIN_MM = 150.0
+BEAM_OVERLAP_MAX_MM = 450.0
+BEAM_OVERLAP_DEFAULT_MM = 200.0
 
 
 def _f(value: Any, default: float = 0.0) -> float:
@@ -60,6 +63,224 @@ def _i(value: Any, default: int = 0) -> int:
         return int(round(float(value)))
     except (TypeError, ValueError):
         return default
+
+
+# Bottom system → default mount (all railing types: normal + stairs).
+# Studs → side_mount; SS pillars / continuous rail / aluminium block → top_mount.
+_BOTTOM_KIND_ALIAS = {
+    "continuous_rail": "continuous",
+    "rail": "continuous",
+    "u_channel": "continuous",
+    "aluminium_block": "block",
+    "alu_block": "block",
+    "ss": "ss_pillar",
+    "pillar": "ss_pillar",
+    "sspillar": "ss_pillar",
+    "topiller": "ss_pillar",
+    "stud": "studs",
+    "ss_stud": "studs",
+    "ss_studs": "studs",
+}
+
+
+def normalize_bottom_kind(raw: Any) -> str:
+    k = str(raw or "").strip().lower().replace(" ", "_").replace("-", "_")
+    return _BOTTOM_KIND_ALIAS.get(k, k)
+
+
+def _normalize_mount_token(raw: Any) -> str:
+    m = str(raw or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if m in ("side", "side_mount", "sidemount"):
+        return "side_mount"
+    if m in ("top", "top_mount", "topmount"):
+        return "top_mount"
+    if m in ("step", "step_mount", "stepmount"):
+        return "step_mount"
+    if m in ("base_channel", "u_channel", "uchannel"):
+        return "base_channel"
+    return m or "top_mount"
+
+
+def infer_railing_mount(
+    *,
+    bottom_kind: str = "",
+    shape: str = "straight",
+    stair_bottom_type: str = "",
+    stair_mount_type: str = "",
+    mount_explicit: bool = False,
+    explicit_mount: str = "",
+) -> str:
+    """Default mount from bottom system.
+
+    | Bottom                 | Mount      |
+    | studs                  | side_mount |
+    | SS pillars / pillars   | top_mount  |
+    | continuous bottom rail | top_mount  |
+    | aluminium block        | top_mount  |
+
+    Stairs exception: ``step_mount`` only when stairs + explicit step mode is
+    selected (studs on treads). Otherwise follow the table. Honour a stored
+    ``mountType`` only when ``mountExplicit`` / ``mountTypeLocked`` is set.
+    """
+    if mount_explicit and explicit_mount:
+        return _normalize_mount_token(explicit_mount)
+
+    shape_l = str(shape or "straight").strip().lower()
+    sm = str(stair_mount_type or "").strip().lower().replace(" ", "_").replace("-", "_")
+    kind = normalize_bottom_kind(bottom_kind)
+
+    if shape_l in ("staircase", "stairs", "stair"):
+        sbt = normalize_bottom_kind(stair_bottom_type)
+        if sbt in ("studs", "ss_pillar", "block", "continuous"):
+            kind = sbt
+        # Explicit step-mounted stairs (studs on treads) — only exception.
+        if sm in ("step", "step_mount", "stepmounted"):
+            return "step_mount"
+        # Explicit side-mounted stairs (studs on slab / beam edge).
+        if sm in ("side", "side_mount", "sidemounted"):
+            return "side_mount"
+        if kind == "studs":
+            return "side_mount"
+        return "top_mount"
+
+    if kind == "studs":
+        return "side_mount"
+    return "top_mount"
+
+
+def railing_mount_label(mount: Any) -> str:
+    m = _normalize_mount_token(mount)
+    return {
+        "side_mount": "SIDE MOUNTED",
+        "top_mount": "TOP MOUNTED",
+        "step_mount": "STEP MOUNTED",
+        "base_channel": "U-CHANNEL",
+    }.get(m, (m or "top_mount").replace("_", " ").upper())
+
+
+def clamp_beam_overlap_mm(value: Any, *, default: float = BEAM_OVERLAP_DEFAULT_MM) -> float:
+    """Studs + beam overlap: 150–450 mm (default 200)."""
+    v = _f(value, default)
+    if v <= 0:
+        v = default
+    return max(BEAM_OVERLAP_MIN_MM, min(BEAM_OVERLAP_MAX_MM, v))
+
+
+def beam_overlap_applies(
+    *,
+    bottom_kind: str = "",
+    shape: str = "straight",
+    stair_mount_type: str = "",
+    mount_type: str = "",
+) -> bool:
+    """True when side-mounted studs overlap the beam/slab edge."""
+    shape_l = str(shape or "").lower()
+    sm = str(stair_mount_type or "").lower()
+    mt = _normalize_mount_token(mount_type)
+    if shape_l in ("staircase", "stairs", "stair"):
+        if "step" in sm or mt == "step_mount":
+            return False
+        return "side" in sm or mt == "side_mount"
+    return normalize_bottom_kind(bottom_kind) == "studs" or mt == "side_mount"
+
+
+STUD_FACE_INSET_MM = 100.0
+STUD_ROW1_FROM_BOTTOM_MM = 25.0
+
+
+def side_stud_second_y_mm(overlap_mm: float) -> float:
+    """Second stud row from glass bottom. Overlap 150 → 100; ``secondY = overlap − 50``."""
+    ov = clamp_beam_overlap_mm(overlap_mm) if _f(overlap_mm) > 0 else BEAM_OVERLAP_DEFAULT_MM
+    second = ov - 50.0
+    return max(STUD_ROW1_FROM_BOTTOM_MM + 0.01, min(ov - 0.01, second))
+
+
+def side_stud_row_offsets_mm(
+    count: int,
+    *,
+    overlap_mm: float,
+    glass_height_from_bottom_mm: float,
+) -> list[float]:
+    """Vertical offsets from glass bottom for one column (2/4/6/8 → 1/2/3/4 rows).
+
+    Row 1 = 25 mm. Row 2 = overlap − 50 (in the beam-overlap zone). Extra rows
+    (6/8 pc) are evenly spaced in the remaining height *above* the overlap zone.
+    """
+    n = max(int(count or 0), 0)
+    if n <= 0:
+        return []
+    if n <= 2:
+        rows = 1
+    elif n <= 4:
+        rows = 2
+    elif n <= 6:
+        rows = 3
+    else:
+        rows = 4
+    y1 = STUD_ROW1_FROM_BOTTOM_MM
+    offsets = [y1]
+    ov = _f(overlap_mm)
+    if rows >= 2:
+        offsets.append(side_stud_second_y_mm(ov) if ov > 25 else y1 + 75.0)
+    extra = rows - 2
+    if extra > 0:
+        remaining_start = ov if ov > 0 else offsets[-1]
+        remaining_h = max(_f(glass_height_from_bottom_mm) - remaining_start, 0.0)
+        if remaining_h > 1:
+            for k in range(1, extra + 1):
+                offsets.append(remaining_start + remaining_h * k / (extra + 1))
+        else:
+            last = offsets[-1]
+            for k in range(1, extra + 1):
+                offsets.append(last + 80.0 * k)
+    return offsets[:rows]
+
+
+def side_stud_column_xs(
+    gx0: float,
+    gx1: float,
+    *,
+    inset: float = STUD_FACE_INSET_MM,
+) -> tuple[float, float]:
+    """Left/right columns: 100 mm inset from both glass edges."""
+    w = gx1 - gx0
+    if w <= 0:
+        mid = (gx0 + gx1) / 2.0
+        return mid, mid
+    inset_eff = float(inset)
+    if w < 2 * inset_eff + 8:
+        inset_eff = max(w * 0.22, 4.0)
+    return gx0 + inset_eff, gx1 - inset_eff
+
+
+def _draw_side_stud_plate(
+    p: list[str],
+    *,
+    cx: float,
+    cy: float,
+    size_mm: float,
+    sw: float,
+    stroke: str = "#2a2f36",
+    fill: str = "#ececec",
+) -> None:
+    """Face-on side-mount disc/plate on the glass — not a bullet on a pole."""
+    plate = max(min(_f(size_mm, 38.0) * 0.55, 28.0), 10.0)
+    h = plate / 2.0
+    r_bolt = max(plate * 0.22, 2.4)
+    r_washer = max(plate * 0.34, 3.2)
+    p.append(
+        f'<rect x="{cx - h:.1f}" y="{cy - h:.1f}" width="{plate:.1f}" height="{plate:.1f}" '
+        f'rx="{plate * 0.12:.1f}" fill="{fill}" stroke="{stroke}" stroke-width="{max(sw * 0.7, 0.55):.2f}" '
+        f'data-side-stud="1"/>'
+    )
+    p.append(
+        f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r_washer:.1f}" fill="none" '
+        f'stroke="{stroke}" stroke-width="{max(sw * 0.55, 0.45):.2f}"/>'
+    )
+    p.append(
+        f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r_bolt:.1f}" fill="#cfd3d8" '
+        f'stroke="{stroke}" stroke-width="{max(sw * 0.5, 0.4):.2f}"/>'
+    )
 
 
 def _length_mm(cfg: Mapping[str, Any]) -> float:
@@ -827,14 +1048,7 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     want_handrail = bool(install.get("handrail", cfg.get("handrail", shape != "straight")))
     want_glass = bool(install.get("glass", True))
     # Exactly one bottom system on normal railings: continuous | block | ss_pillar | studs
-    bottom_kind = str(cfg.get("bottomKind") or "").strip().lower().replace(" ", "_")
-    _bk_alias = {
-        "continuous_rail": "continuous", "rail": "continuous", "u_channel": "continuous",
-        "aluminium_block": "block", "alu_block": "block",
-        "ss": "ss_pillar", "pillar": "ss_pillar", "sspillar": "ss_pillar",
-        "stud": "studs", "ss_stud": "studs", "ss_studs": "studs",
-    }
-    bottom_kind = _bk_alias.get(bottom_kind, bottom_kind)
+    bottom_kind = normalize_bottom_kind(cfg.get("bottomKind"))
     if shape != "staircase":
         if bottom_kind not in ("continuous", "block", "ss_pillar", "studs"):
             if want_studs:
@@ -986,6 +1200,8 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     if shape != "staircase" and want_studs:
         studs_per_n = max(_i(cfg.get("studsPerGlass") or cfg.get("blocksPerGlass"), 2), 1)
         normal_studs = panel_count * studs_per_n
+        if _i(cfg.get("studsPerGlass"), 0) <= 0:
+            cfg["studsPerGlass"] = studs_per_n
 
     if shape == "staircase" and stair_panels:
         glass_area_sqmm = sum(_f(p.get("netGlassAreaSqMm")) for p in stair_panels)
@@ -1227,11 +1443,27 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     purchased_sqft = _f(glass_nest.get("purchasedGlassAreaSqFt"))
     net_sqft = _f(glass_nest.get("netGlassAreaSqFt"), glass_area_sqft)
 
-    mount_hint = str(
-        cfg.get("mountType")
-        or (_mat_for("block", "ss_pillar", "bottom_rail", "u_channel") or {}).get("mountType")
-        or "side_mount"
+    mount_hint = infer_railing_mount(
+        bottom_kind=bottom_kind if shape != "staircase" else "",
+        shape=shape,
+        stair_bottom_type=str(cfg.get("stairBottomType") or ""),
+        stair_mount_type=str(cfg.get("stairMountType") or cfg.get("stair_mount") or ""),
+        mount_explicit=bool(cfg.get("mountExplicit") or cfg.get("mountTypeLocked")),
+        explicit_mount=str(cfg.get("mountType") or ""),
     )
+    # Persist inferred mount on cfg so cart / PDF / wizard stay in sync.
+    cfg["mountType"] = mount_hint
+    overlap_on = beam_overlap_applies(
+        bottom_kind=bottom_kind if shape != "staircase" else "",
+        shape=shape,
+        stair_mount_type=str(stair_mount if shape == "staircase" else ""),
+        mount_type=mount_hint if shape != "staircase" else "",
+    )
+    beam_overlap_mm = clamp_beam_overlap_mm(cfg.get("beamOverlapMm")) if overlap_on else None
+    if overlap_on:
+        cfg["beamOverlapMm"] = beam_overlap_mm
+    else:
+        cfg.pop("beamOverlapMm", None)
 
     # BOM glass line uses purchased area when nesting/estimate available
     include_stair_glass = want_glass and (shape != "staircase" or bool(cfg.get("stairGlass", True)))
@@ -1244,9 +1476,10 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     pillar_type = str(cfg.get("pillarType") or ("ss" if want_ss else "block")).lower()
     block_mat = _mat_for("ss_pillar" if pillar_type in ("ss", "ss_pillar", "pillar") else "block", "block", "ss_pillar")
     if pillar_count and want_pillars:
-        label = f"Blocks / pillars ({pillar_type}) · {mount_hint}"
+        label = f"Blocks / pillars ({pillar_type}) · {railing_mount_label(mount_hint)}"
         if shape == "staircase":
-            label = f"Side-mount pillars (every 3 steps · {pillar_type})"
+            loc = "Step" if mount_hint == "step_mount" else ("Side" if mount_hint == "side_mount" else "Top")
+            label = f"{loc}-mount pillars (every 3 steps · {pillar_type})"
         add("blocks", label, pillar_count, "pc", r_block, material=block_mat, color_role="block")
     stud_qty = stair_studs or (normal_studs if want_studs else 0)
     if stud_qty:
@@ -1434,6 +1667,43 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
             "wallConnectors": wall_connectors if it.get("key") == "wallConnector" else None,
         })
 
+    glass_supports: list[dict[str, Any]] = []
+    if shape == "staircase" and stud_stations:
+        for st in stud_stations:
+            n_st = _i(st.get("studs"), 0)
+            if n_st <= 0:
+                continue
+            where = "step" if str(st.get("mount") or stair_mount) == "step" else "side"
+            glass_supports.append({
+                "glass": f"G{st.get('panel') or len(glass_supports) + 1}",
+                "count": n_st,
+                "kind": "studs",
+                "where": where,
+                "sizeMm": st.get("studSizeMm") or stud_size,
+            })
+    elif want_studs:
+        per = max(_i(cfg.get("studsPerGlass") or cfg.get("blocksPerGlass"), 2), 1)
+        sz = _i(cfg.get("studSizeMm"), 38)
+        for i in range(max(panel_count, 1)):
+            glass_supports.append({
+                "glass": f"G{i + 1}",
+                "count": per,
+                "kind": "studs",
+                "where": "side",
+                "sizeMm": sz,
+            })
+    elif want_pillars and blocks_per_glass:
+        kind_s = "pillars" if want_ss else "blocks"
+        sz_s = str(cfg.get("bottomSize") or cfg.get("pillarSize") or "") or None
+        for i in range(max(panel_count, 1)):
+            glass_supports.append({
+                "glass": f"G{i + 1}",
+                "count": blocks_per_glass,
+                "kind": kind_s,
+                "where": "top",
+                "sizeMm": sz_s,
+            })
+
     return {
         "shape": shape,
         "lengthMm": round(total_length_mm, 2), "heightMm": round(height_mm if height_mm > 0 else glass_height_mm, 2),
@@ -1485,7 +1755,10 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "bendCount": bend_count, "connector90Count": bend_count, "connector180Count": connector_180, "endCapCount": end_caps,
         "stairPillars": stair_pillars, "stairStuds": stair_studs,
         "stairStudAnchors": stair_stud_anchors, "studSizeMm": stud_size,
-        "studsPerGlass": studs_per_glass if shape == "staircase" else None,
+        "studsPerGlass": (
+            studs_per_glass if shape == "staircase"
+            else (max(_i(cfg.get("studsPerGlass") or cfg.get("blocksPerGlass"), 2), 1) if want_studs else None)
+        ),
         "stairMountType": stair_mount if shape == "staircase" else None,
         "stairBottomType": str(cfg.get("stairBottomType") or ("ss" if want_ss else "block")) if shape == "staircase" else None,
         "bottomKind": str(cfg.get("bottomKind") or ("continuous" if continuous_rail else ("studs" if want_studs else ("ss_pillar" if want_ss else "block")))) if shape != "staircase" else None,
@@ -1496,6 +1769,9 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "segments": run_details,
         "continuousRailSegments": sum(1 for r in run_details if r.get("continuousRail")),
         "mountType": mount_hint,
+        "mountLabel": railing_mount_label(mount_hint),
+        "beamOverlapMm": beam_overlap_mm,
+        "glassSupports": glass_supports,
         "materialSelections": {
             k: {"id": v.get("id"), "name": v.get("name"), "category": v.get("category")}
             for k, v in gallery_meta.items()
@@ -1600,9 +1876,14 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
     else:
         widths = [float(w) for w in (q.get("panelWidthsMm") or [])]
 
+    mount = str(q.get("mountType") or "top_mount")
+    bottom_kind = str(q.get("bottomKind") or "").lower()
+    side_studs = mount == "side_mount" or bottom_kind == "studs"
+    overlap = _f(q.get("beamOverlapMm")) if side_studs else 0.0
+    extra_below = (overlap + 70.0) if overlap > 0 else 0.0
     pad = max(L, Hgt) * 0.16 + 120.0
     vb_w = L + pad * 2
-    vb_h = Hgt + pad * 2
+    vb_h = Hgt + pad * 2 + extra_below
     ox, oy = pad, pad
 
     def X(mx: float) -> float:
@@ -1611,40 +1892,83 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
     def Y(my: float) -> float:
         return oy + (Hgt - my)
 
-    sw = max(L, Hgt) / 500.0
+    sw = max(0.55, max(L, Hgt) / 1100.0)
     stroke, glass, glass_stroke, dim = "#14181c", "#e6eef6", "#2f6db0", "#8c1f18"
     fs = max(vb_w, vb_h) * 0.018
     p: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb_w:.1f} {vb_h:.1f}" font-family="Segoe UI, Arial, sans-serif">',
         f'<rect x="0" y="0" width="{vb_w:.1f}" height="{vb_h:.1f}" fill="#ffffff"/>',
-        f'<rect x="{X(0):.1f}" y="{Y(rail_h):.1f}" width="{L:.1f}" height="{rail_h:.1f}" fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>',
+        '<defs><pattern id="beamHatch" patternUnits="userSpaceOnUse" width="8" height="8">'
+        '<path d="M0,8 L8,0" stroke="#b8c0c8" stroke-width="0.8"/></pattern></defs>',
     ]
+    if not side_studs:
+        p.append(
+            f'<rect x="{X(0):.1f}" y="{Y(rail_h):.1f}" width="{L:.1f}" height="{rail_h:.1f}" '
+            f'fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
+        )
     if hand_h > 0:
         p.append(f'<rect x="{X(0):.1f}" y="{Y(Hgt):.1f}" width="{L:.1f}" height="{hand_h:.1f}" fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>')
-    for px in (0.0, L - post_w):
-        p.append(f'<rect x="{X(px):.1f}" y="{Y(Hgt):.1f}" width="{post_w:.1f}" height="{Hgt:.1f}" fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>')
+    if not side_studs:
+        for px in (0.0, L - post_w):
+            p.append(f'<rect x="{X(px):.1f}" y="{Y(Hgt):.1f}" width="{post_w:.1f}" height="{Hgt:.1f}" fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>')
 
     x = wall_gap if wall_left else 0.0
-    glass_y0, glass_y1 = rail_h, Hgt - hand_h
+    glass_y0 = (-overlap) if (side_studs and overlap > 0) else rail_h
+    glass_y1 = Hgt - hand_h
+    if side_studs and overlap > 0:
+        slab_h = min(max(overlap * 0.55, 90.0), 160.0)
+        p.append(
+            f'<rect x="{X(-24):.1f}" y="{Y(0):.1f}" width="{L + 48:.1f}" height="{slab_h:.1f}" '
+            f'fill="url(#beamHatch)" stroke="#6a7380" stroke-width="{sw * 0.7:.2f}"/>'
+        )
+        p.append(
+            f'<text x="{X(L + 28):.1f}" y="{Y(-slab_h * 0.45):.1f}" font-size="{fs * 0.65:.1f}" fill="#555">BEAM / SLAB</text>'
+        )
+        _dim_v(p, Y(0), Y(-overlap), X(L) + fs * 1.8, f'overlap {overlap:g} mm', dim, sw, fs * 0.85)
     panel_start = _i((segs[0] if segs else {}).get("panelStartIndex"), 1)
     for i, w in enumerate(widths):
         gx0, gx1 = x, x + w
         p.append(f'<rect x="{X(gx0):.1f}" y="{Y(glass_y1):.1f}" width="{(gx1-gx0):.1f}" height="{(glass_y1-glass_y0):.1f}" '
                  f'fill="{glass}" stroke="{glass_stroke}" stroke-width="{sw*0.8:.2f}"/>')
         pno = panel_start + i
-        p.append(f'<text x="{X((gx0+gx1)/2):.1f}" y="{Y((glass_y0+glass_y1)/2):.1f}" text-anchor="middle" font-size="{fs:.1f}" fill="#173a63">Panel #{pno}</text>')
+        p.append(f'<text x="{X((gx0+gx1)/2):.1f}" y="{Y((glass_y0+glass_y1)/2):.1f}" text-anchor="middle" font-size="{fs:.1f}" fill="#173a63">G{pno}</text>')
         _dim_h(p, X(gx0), X(gx1), Y(0) + fs * 1.6, f'{(gx1-gx0):.0f}', dim, sw, fs)
         # Gap label between panels
         if i < len(widths) - 1:
             p.append(f'<text x="{X(gx1 + gap/2):.1f}" y="{Y(glass_y1) - fs*0.3:.1f}" text-anchor="middle" '
                      f'font-size="{fs*0.65:.1f}" fill="#666">gap {gap:.0f}</text>')
-        # pillars along panel with 100 mm edge rule inside panel
         n_block = _i((cfg or {}).get("blocksPerGlass"), _i((segs[0] if segs else {}).get("blocksPerGlass"), 0))
-        for bx in _pillar_positions_along(w, n_block):
-            cx = gx0 + bx
-            bw = post_w
-            p.append(f'<rect x="{X(cx-bw/2):.1f}" y="{Y(rail_h*1.4):.1f}" width="{bw:.1f}" height="{rail_h*1.4:.1f}" '
-                     f'fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>')
+        n_studs = _i((cfg or {}).get("studsPerGlass") or (q.get("studsPerGlass")), 0)
+        n_sup = n_studs if side_studs else n_block
+        if side_studs and n_sup <= 0:
+            n_sup = max(_i((cfg or {}).get("studsPerGlass") or (cfg or {}).get("blocksPerGlass"), 2), 0)
+        if side_studs and n_sup:
+            glass_h_bot = max(glass_y1 - glass_y0, 1.0)
+            xl, xr = side_stud_column_xs(gx0, gx1)
+            row_ys = side_stud_row_offsets_mm(n_sup, overlap_mm=overlap, glass_height_from_bottom_mm=glass_h_bot)
+            stud_sz = _f(q.get("studSizeMm") or (cfg or {}).get("studSizeMm"), 38.0)
+            drawn = 0
+            target = n_sup
+            for y_off in row_ys:
+                for cx in (xl, xr):
+                    if drawn >= target:
+                        break
+                    _draw_side_stud_plate(
+                        p, cx=X(cx), cy=Y(glass_y0 + y_off), size_mm=stud_sz, sw=sw,
+                    )
+                    drawn += 1
+                if drawn >= target:
+                    break
+        elif n_sup:
+            for bx in _pillar_positions_along(w, n_sup):
+                cx = gx0 + bx
+                bw = post_w
+                p.append(f'<rect x="{X(cx-bw/2):.1f}" y="{Y(rail_h*1.4):.1f}" width="{bw:.1f}" height="{rail_h*1.4:.1f}" '
+                         f'fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>')
+        if n_sup:
+            kind = "studs" if side_studs else "supports"
+            p.append(f'<text x="{X((gx0+gx1)/2):.1f}" y="{Y(glass_y1) + fs*0.9:.1f}" text-anchor="middle" '
+                     f'font-size="{fs*0.6:.1f}" fill="#444">G{pno}: {n_sup} {kind}</text>')
         x = gx1 + gap
 
     # End caps / wall ticks
@@ -1659,9 +1983,9 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
 
     _dim_h(p, X(0), X(L), Y(0) + fs * 3.4, f'{L:.0f} mm  ·  {q.get("lengthRft")} RFT', dim, sw, fs)
     _dim_v(p, Y(0), Y(Hgt), X(0) - fs * 1.6, f'{Hgt:.0f}', dim, sw, fs)
-    mount = q.get("mountType") or "side_mount"
+    mount_lbl = q.get("mountLabel") or railing_mount_label(q.get("mountType") or mount)
     summ = (f'Railing · straight · {q.get("panelCount")} panels · {q.get("glassAreaSqft")} sft · '
-            f'{mount} · waste {q.get("wastagePercent", 0)}%')
+            f'{mount_lbl}')
     p.append(f'<text x="{X(0):.1f}" y="{oy - fs*0.6:.1f}" font-size="{fs*1.05:.1f}" fill="#111">{escape(summ)}</text>')
     p.append('</svg>')
     return "".join(p)
@@ -1677,7 +2001,7 @@ def _svg_elevation_span(
     hand_h = rail_h if handrail else 0.0
     post_w = max(min(L * 0.01, 40.0), 18.0)
     stroke, glass, glass_stroke, dim = "#14181c", "#e6eef6", "#2f6db0", "#8c1f18"
-    sw = max(L, Hgt) / 500.0
+    sw = max(0.55, max(L, Hgt) / 1100.0)
     fs = max(L, Hgt) * 0.022 * scale
     pad_x, pad_y = 80.0, 70.0
 
@@ -1708,7 +2032,7 @@ def _svg_elevation_span(
         pno = panel_start + i
         parts.append(
             f'<text x="{X((gx0+gx1)/2):.1f}" y="{Y((glass_y0+glass_y1)/2):.1f}" text-anchor="middle" '
-            f'font-size="{fs*0.9:.1f}" fill="#173a63">Panel #{pno}</text>'
+            f'font-size="{fs*0.9:.1f}" fill="#173a63">G{pno}</text>'
         )
         _dim_h(parts, X(gx0), X(gx1), Y(0) + fs * 1.4, f'{w:.0f}', dim, sw, fs * 0.85)
         if i < len(widths) - 1:
@@ -1793,8 +2117,8 @@ def _svg_shop_drawing_multi(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
         f'<rect x="0" y="0" width="{vb_w:.1f}" height="{vb_h:.1f}" fill="#ffffff"/>',
         f'<text x="20" y="28" font-size="22" fill="#111" font-weight="600">'
         f'Railing shop drawing · {escape(str(q.get("shape")))} · '
-        f'{q.get("panelCount")} panels · waste {q.get("wastagePercent", 0)}% · '
-        f'{escape(str(q.get("mountType") or ""))}</text>',
+        f'{q.get("panelCount")} panels · '
+        f'{escape(str(q.get("mountLabel") or railing_mount_label(q.get("mountType"))))}</text>',
         f'<svg x="0" y="36" width="{plan_w:.1f}" height="{plan_h:.1f}" viewBox="0 0 {plan_w:.1f} {plan_h:.1f}">',
         inner,
         '</svg>',
@@ -1946,10 +2270,14 @@ def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
         angle = math.degrees(math.atan(rise / run))
     comp = _f(g.get("complementaryAngleDeg"), 90.0 - angle)
     panels = list(g.get("glassPanels") or g.get("panels") or q.get("glassPanels") or [])
+    stair_sm = str(q.get("stairMountType") or "").lower()
+    side_studs = "side" in stair_sm or str(q.get("mountType") or "").lower() == "side_mount"
+    overlap = _f(q.get("beamOverlapMm")) if side_studs else 0.0
     pad = max(total_w, total_h + guard) * 0.12 + 140.0
+    extra_below = overlap + 80.0 if overlap > 0 else 0.0
     vb_w = total_w + pad * 2
-    vb_h = total_h + guard + pad * 2.2
-    ox, oy = pad, pad + total_h + guard
+    vb_h = total_h + guard + pad * 2.2 + extra_below
+    ox, oy = pad, pad + total_h + guard + extra_below
 
     def X(mx: float) -> float:
         return ox + mx
@@ -1964,13 +2292,15 @@ def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
         # Continuous slope line through nosings for glass baseline.
         return (rise / run) * x_h
 
-    sw = max(total_w, total_h) / 500.0
-    stroke, dim, rail_c, stud_c = "#14181c", "#8c1f18", "#2f6db0", "#0a5a48"
+    sw = max(0.55, max(total_w, total_h) / 1100.0)
+    stroke, dim, rail_c = "#14181c", "#8c1f18", "#2f6db0"
     glass, glass_stroke = "#dceaf6", "#2f6db0"
     fs = max(vb_w, vb_h) * 0.014
     p: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb_w:.1f} {vb_h:.1f}" font-family="Segoe UI, Arial, sans-serif">',
         f'<rect x="0" y="0" width="{vb_w:.1f}" height="{vb_h:.1f}" fill="#ffffff"/>',
+        '<defs><pattern id="beamHatchStair" patternUnits="userSpaceOnUse" width="8" height="8">'
+        '<path d="M0,8 L8,0" stroke="#b8c0c8" stroke-width="0.8"/></pattern></defs>',
     ]
     # Stair polyline
     sx = sy = 0.0
@@ -1981,6 +2311,19 @@ def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
         sy += rise
         d_steps.append(f'L{X(sx):.1f},{Y(sy):.1f}')
     p.append(f'<path d="{" ".join(d_steps)}" fill="none" stroke="{stroke}" stroke-width="{sw*1.2:.2f}"/>')
+
+    if overlap > 0:
+        # Hatched beam/slab under the nosing; draw BEFORE glass so studs sit on the face.
+        p.append(
+            f'<polygon points="{X(0):.1f},{Y(0):.1f} {X(total_w):.1f},{Y(total_h):.1f} '
+            f'{X(total_w):.1f},{Y(total_h - min(overlap, 160)):.1f} {X(0):.1f},{Y(-min(overlap, 160)):.1f}" '
+            f'fill="url(#beamHatchStair)" stroke="#6a7380" stroke-width="{sw * 0.7:.2f}"/>'
+        )
+        _dim_v(p, Y(0), Y(-overlap), X(0) - fs * 2.2, f'overlap {overlap:g} mm', dim, sw, fs * 0.85)
+        p.append(
+            f'<text x="{X(total_w) + fs:.1f}" y="{Y(total_h - overlap * 0.4):.1f}" '
+            f'font-size="{fs * 0.7:.1f}" fill="#555">BEAM / SLAB</text>'
+        )
 
     # Trapezoidal / parallelogram glass panels (vertical edges, slope-parallel top/bottom)
     if not panels:
@@ -2012,10 +2355,12 @@ def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
         hr = _f(panel.get("rightGlassHeight"), guard)
         y0 = nosing_y_at(x0)
         y1 = nosing_y_at(x1)
+        y0b = y0 - overlap if overlap > 0 else y0
+        y1b = y1 - overlap if overlap > 0 else y1
         # Bottom-left, bottom-right, top-right, top-left (plumb sides)
         pts = [
-            (X(x0), Y(y0)),
-            (X(x1), Y(y1)),
+            (X(x0), Y(y0b)),
+            (X(x1), Y(y1b)),
             (X(x1), Y(y1 + hr)),
             (X(x0), Y(y0 + hl)),
         ]
@@ -2023,8 +2368,35 @@ def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
         p.append(f'<polygon points="{poly}" fill="{glass}" fill-opacity="0.85" stroke="{glass_stroke}" stroke-width="{sw*0.85:.2f}"/>')
         mx = (x0 + x1) / 2
         my = nosing_y_at(mx) + (hl + hr) / 4
-        label = f'G{panel.get("index", "")} { (x1-x0):.0f}×{max(hl,hr):.0f}'
-        p.append(f'<text x="{X(mx):.1f}" y="{Y(my):.1f}" text-anchor="middle" font-size="{fs*0.85:.1f}" fill="#173a63">{escape(label)}</text>')
+        pno = panel.get("index") or ""
+        label = f'G{pno} {(x1-x0):.0f}×{max(hl, hr):.0f}'
+        p.append(f'<text x="{X(mx):.1f}" y="{Y(my):.1f}" text-anchor="middle" font-weight="700" font-size="{fs*0.9:.1f}" fill="#173a63">{escape(label)}</text>')
+        n_studs = _i(panel.get("studs") or q.get("studsPerGlass"), 0)
+        if n_studs:
+            xl, xr = side_stud_column_xs(x0, x1)
+            # Height from glass bottom (incl. overlap) at mid-panel.
+            y_bot_m = (y0b + y1b) / 2.0
+            y_top_m = ((y0 + hl) + (y1 + hr)) / 2.0
+            glass_h_bot = max(y_top_m - y_bot_m, 1.0)
+            row_ys = side_stud_row_offsets_mm(n_studs, overlap_mm=overlap, glass_height_from_bottom_mm=glass_h_bot)
+            stud_sz = _f(q.get("studSizeMm") or g.get("studSizeMm"), 38.0)
+            drawn = 0
+            for y_off in row_ys:
+                for cx in (xl, xr):
+                    if drawn >= n_studs:
+                        break
+                    t = 0.0 if (x1 - x0) == 0 else (cx - x0) / (x1 - x0)
+                    y_bot = y0b + t * (y1b - y0b)
+                    _draw_side_stud_plate(
+                        p, cx=X(cx), cy=Y(y_bot + y_off), size_mm=stud_sz, sw=sw,
+                    )
+                    drawn += 1
+                if drawn >= n_studs:
+                    break
+            p.append(
+                f'<text x="{X(mx):.1f}" y="{Y(y_top_m) - fs * 0.4:.1f}" text-anchor="middle" '
+                f'font-size="{fs * 0.65:.1f}" fill="#444">G{pno}: {n_studs} studs</text>'
+            )
 
     # Landing rectangular panels (horizontal after run)
     for panel in panels:
@@ -2041,29 +2413,11 @@ def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
             f'fill="{glass}" fill-opacity="0.85" stroke="{glass_stroke}" stroke-width="{sw*0.85:.2f}"/>'
         )
 
-    # Top rail along slope
+    # Top rail along slope (no vertical poles through glass)
     p.append(
         f'<line x1="{X(0):.1f}" y1="{Y(guard):.1f}" x2="{X(total_w):.1f}" y2="{Y(total_h + guard):.1f}" '
         f'stroke="{rail_c}" stroke-width="{sw*2:.2f}" stroke-linecap="round"/>'
     )
-
-    stud_size = _i(g.get("studSizeMm"), 38)
-    stations = g.get("studStations") or []
-    if not stations:
-        for n in range(3, steps + 1, 3):
-            stations.append({"step": n, "horizontalMm": run * n, "riseMm": rise * n})
-    for st in stations:
-        px = _f(st.get("horizontalMm"), run * _i(st.get("step"), 0))
-        py = _f(st.get("riseMm"), nosing_y_at(px))
-        p.append(f'<line x1="{X(px):.1f}" y1="{Y(py):.1f}" x2="{X(px):.1f}" y2="{Y(py+guard):.1f}" '
-                 f'stroke="{stroke}" stroke-width="{sw*1.5:.2f}"/>')
-        # Dual studs (upper + lower) — side-mounted pairs opposite the step
-        for frac in (0.35, 0.65):
-            cy = py + guard * frac
-            p.append(f'<circle cx="{X(px):.1f}" cy="{Y(cy):.1f}" r="{max(stud_size*0.18, sw*2.8):.1f}" '
-                     f'fill="#e7f3ee" stroke="{stud_c}" stroke-width="{sw*0.75:.2f}"/>')
-        p.append(f'<text x="{X(px)+fs*0.45:.1f}" y="{Y(py+guard*0.5):.1f}" font-size="{fs*0.7:.1f}" fill="{stud_c}">'
-                 f'{stud_size}×2</text>')
 
     _dim_h(p, X(0), X(total_w), Y(0) + fs * 2.0, f'tread {run:.0f} × {steps} = {total_w:.0f} run', dim, sw, fs)
     _dim_v(p, Y(0), Y(total_h), X(0) - fs * 1.4, f'rise {total_h:.0f}', dim, sw, fs)
@@ -2071,14 +2425,14 @@ def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
     if g.get("riseMismatch") or (q.get("stairGeometry") or {}).get("riseMismatch"):
         msg = g.get("riseMismatchMessage") or (q.get("stairGeometry") or {}).get("riseMismatchMessage") or "rise ≠ floor height"
         mismatch = f' · ⚠ {msg}'
-    summ = (f'Staircase railing · {steps} steps · {len(panels)} panels · '
+    mount_lbl = q.get("mountLabel") or railing_mount_label(q.get("mountType"))
+    summ = (f'Staircase railing · {mount_lbl} · {steps} steps · {len(panels)} panels · '
             f'angle {angle:.2f}° / complement {comp:.2f}° · '
             f'pillars {q.get("stairPillars", 0)} · studs {q.get("stairStuds", 0)}')
     p.append(f'<text x="{ox:.1f}" y="{fs*1.25:.1f}" font-size="{fs:.1f}" fill="#111">{escape(summ)}</text>')
     p.append(f'<text x="{ox:.1f}" y="{fs*2.35:.1f}" font-size="{fs*0.85:.1f}" fill="#555">'
-             f'net {q.get("netGlassAreaSqFt") or q.get("glassAreaSqft")} sft · '
-             f'purchased {q.get("purchasedGlassAreaSqFt")} sft · '
-             f'wastage {q.get("wastagePercent")}%{escape(mismatch)}</text>')
+             f'net {q.get("netGlassAreaSqFt") or q.get("glassAreaSqft")} sft'
+             f'{escape(mismatch)}</text>')
     p.append('</svg>')
     return "".join(p)
 

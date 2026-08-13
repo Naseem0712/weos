@@ -57,6 +57,29 @@ def main() -> int:
     if qu.get("shape") != "U" or not fp.get("leftMm") or not fp.get("rightMm"):
         fails.append(f"U footprint {fp}")
 
+    # 2b) Quote-style U sliding 1050×2130 · L 1860 · R 900 — frames/track/handle/plan
+    u_cfg = {
+        **cfg,
+        "shape": "U",
+        "widthMm": 1050,
+        "heightMm": 2130,
+        "depthMm": 1860,
+        "depthBMm": 900,
+        "handle": True,
+        "handleName": "D-type",
+        "lock": True,
+    }
+    uq = compute_shower(u_cfg)
+    usvg = shower_svg(u_cfg, quote=uq)
+    uflat = usvg.replace("×", "x")
+    for need in ("16x45", "FIX", "SLIDE", "front 1050", "L 1860", "R 900", "SLIDE + TRACK", "Floor plan"):
+        if need not in uflat and need not in usvg:
+            fails.append(f"U 1050 shower svg missing {need}")
+    if "data-gi-plate" not in usvg:
+        fails.append("U shower svg missing GI connector plates")
+    if "lock" not in usvg.lower():
+        fails.append("U shower svg missing lock mark")
+
     # 3) Cart line → calculate → elevation SVG + PDF specs
     line = {
         "product": "shower_partition",

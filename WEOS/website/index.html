@@ -651,12 +651,20 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                     <div><label class="l">Anch/p</label><input id="rAnchPer" type="number" min="1" max="2" value="2" style="width:44px"/></div>
                     <div><label class="l">Anchor ₹</label><input id="rRAnchor" type="number" value="50" style="width:56px"/></div>
                     <div><label class="l">Gallery</label><select id="rMatBlock" style="min-width:120px"><option value="">—</option></select></div>
-                    <div><label class="l">Mount</label>
-                      <select id="rMount" style="width:100px">
-                        <option value="side_mount">Side-mount</option>
-                        <option value="top_mount">Top-mount</option>
-                        <option value="base_channel">U-channel</option>
-                      </select>
+                  </div>
+                  <div id="wrapRailMountAuto" class="rt-row" style="margin-top:.35rem;align-items:center">
+                    <div><label class="l">Mount</label><strong id="rMountLabel">TOP MOUNTED</strong>
+                      <div class="muted" style="font-size:.72rem">from bottom system</div>
+                    </div>
+                    <select id="rMount" style="display:none">
+                      <option value="side_mount">Side-mount</option>
+                      <option value="top_mount">Top-mount</option>
+                      <option value="base_channel">U-channel</option>
+                    </select>
+                    <div id="wrapBeamOverlap" style="display:none">
+                      <label class="l">Beam overlap mm *</label>
+                      <input id="rBeamOverlap" type="number" min="150" max="450" value="200" style="width:72px"/>
+                      <div class="muted" style="font-size:.72rem">150–450 · studs over slab</div>
                     </div>
                   </div>
                 </div>
@@ -672,8 +680,8 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                   </div>
                   <span class="l" style="width:100%;margin:.45rem 0 .15rem">Stud mount *</span>
                   <div class="rt-shapes" id="rStairMountBtns">
-                    <button type="button" data-stair-mount="step" class="active">Step-mounted</button>
-                    <button type="button" data-stair-mount="side">Side-mounted</button>
+                    <button type="button" data-stair-mount="step">Step-mounted</button>
+                    <button type="button" data-stair-mount="side" class="active">Side-mounted</button>
                   </div>
                   <div class="rt-row" id="wrapStairStepMount" style="margin-top:.3rem">
                     <div><label class="l">Studs / glass *</label>
@@ -694,6 +702,10 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                       </select>
                     </div>
                     <div><label class="l">Stud ₹/pc *</label><input id="rRStudSide" type="number" value="80" min="0" style="width:72px"/></div>
+                    <div id="wrapBeamOverlapStair">
+                      <label class="l">Beam overlap mm *</label>
+                      <input id="rBeamOverlapStair" type="number" min="150" max="450" value="200" style="width:72px"/>
+                    </div>
                   </div>
                 </div>
                 <!-- hidden legacy install flags kept for engine mapping -->
@@ -931,6 +943,13 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             </div>
           </div>
           <div class="preview" id="livePreview"><span class="muted">SVG / hero</span></div>
+          <div class="row" id="wrapDesignPhoto" style="margin:.45rem 0 .2rem;gap:.5rem;align-items:center;flex-wrap:wrap">
+            <label class="btn ghost sm" style="cursor:pointer">Upload design photo
+              <input id="lineDesignPhoto" type="file" accept="image/*" hidden/>
+            </label>
+            <button class="btn ghost sm" id="btnClearDesignPhoto" type="button" style="display:none">Remove photo</button>
+            <span class="muted" id="lineDesignPhotoName" style="font-size:.75rem"></span>
+          </div>
           <div class="specs" id="lineSpecs" style="margin-top:.8rem"></div>
         </div>
       </div>
@@ -1820,7 +1839,7 @@ const state = {
   railStep: 'design',
   railBottomKind: 'continuous', // continuous | block | ss_pillar | studs
   railStairBottom: 'block', // block | topiller
-  railStairMount: 'step', // step | side
+  railStairMount: 'side', // step | side — default side (table); step is explicit exception
   railingMode: false,
   railing: null,
   showerMode: false,
@@ -2904,6 +2923,7 @@ function renderCart() {
       syncDraftFromLine(ln);
       if (ln.options && ln.options.railing) populateRailTools(ln.options.railing);
       else if (String(ln.product||'').toLowerCase().includes('rail')) { state.railingMode = true; }
+      refreshDesignPhotoUi();
     }
     renderCart(); refreshPreview(); scheduleLivePrice();
   });
@@ -2994,17 +3014,21 @@ function renderRailingLineSpecs(q, cfg) {
   const c = cfg || {};
   const sg = (q && q.stairGeometry) || {};
   const shape = (q && q.shape) || c.shape || 'straight';
+  const mt = String((q && q.mountType) || c.mountType || inferRailingMountFromUi() || '');
+  const mountLbl = (q && q.mountLabel) || (mt.includes('side') ? 'SIDE MOUNTED' : (mt.includes('step') ? 'STEP MOUNTED' : 'TOP MOUNTED'));
   const rows = [
     ['Type', shape],
-    ['Mount', (q && q.mountType) || c.mountType || 'side_mount'],
+    ['Mount', mountLbl],
     ['Length', `${(q && q.lengthMm) || c.lengthMm || 0} mm · ${(q && (q.lengthRft || q.widthUnit)) || 0} RFT`],
     ['Height', `${(q && (q.heightMm || q.glassHeightMm)) || c.heightMm || c.glassHeightMm || 0} mm`],
     ['Panels', `${(q && q.panelCount) || c.panels || 0} · gap ${(q && q.gapMm) || c.gapMm || 12} mm`],
     ['Glass', `${(q && q.glassThicknessMm) || c.glassThicknessMm || 12} mm ${(q && q.glassType) || c.glassType || ''}`.trim()],
     ['Sale', `₹${(q && q.sellingPerUnit) != null ? q.sellingPerUnit : '—'} / ${String((q && q.saleUnit) || c.saleUnit || 'rft').toUpperCase()}`],
   ];
+  const ov = (q && q.beamOverlapMm) || c.beamOverlapMm;
+  if (ov) rows.splice(2, 0, ['Overlap', `${ov} mm over beam / slab`]);
   if (shape === 'staircase' || sg.steps) {
-    rows.splice(2, 0, ['Stairs', `${sg.steps || c.stairSteps || '—'} steps · riser ${sg.riserMm || c.stairRiseMm || '—'} · tread ${sg.treadMm || c.stairRunMm || '—'}`]);
+    rows.splice(ov ? 3 : 2, 0, ['Stairs', `${sg.steps || c.stairSteps || '—'} steps · riser ${sg.riserMm || c.stairRiseMm || '—'} · tread ${sg.treadMm || c.stairRunMm || '—'}`]);
   }
   $('lineSpecs').innerHTML = rows.map(([k,v]) =>
     `<div><span class="muted">${k}</span><div>${v ?? '—'}</div></div>`
@@ -3033,6 +3057,7 @@ async function refreshPreview() {
       $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
       renderRailingBom(q);
       renderRailingLineSpecs(q, cfg);
+      refreshDesignPhotoUi();
       showRailTools(true);
     } catch (e) {
       $('livePreview').innerHTML = '<span class="muted">Railing preview failed</span>';
@@ -3084,6 +3109,7 @@ async function refreshPreview() {
     if (prev.svg) { $('livePreview').innerHTML = prev.svg; attachHandleDrag($('livePreview'), (prev.layout && prev.layout.meta) || prev.meta || null, ln.system || prev.system || 'sliding'); }
     else if (prev.heroImage) $('livePreview').innerHTML = `<img src="${prev.heroImage}" alt=""/>`;
     else $('livePreview').innerHTML = '<span class="muted">No preview</span>';
+    refreshDesignPhotoUi();
     const specs = prev.specifications || {};
     const layout = prev.layout || {};
     const extra = [];
@@ -3295,6 +3321,7 @@ async function openProject(id) {
   }
   renderCart(); refreshPreview(); updatePdfLinks();
   refreshSetupSummary();
+  refreshDesignPhotoUi();
   toast('Loaded '+id);
   maybeAskCustomerMemory();
 }
@@ -3413,6 +3440,52 @@ function railIsStairs() {
 function railBottomKind() {
   return state.railBottomKind || 'continuous';
 }
+function inferRailingMountFromUi() {
+  const stairs = railIsStairs();
+  const sm = state.railStairMount || 'side';
+  if (stairs && (sm === 'step' || sm === 'step_mount')) return 'step_mount';
+  if (stairs && (sm === 'side' || sm === 'side_mount')) return 'side_mount';
+  const kind = stairs ? (state.railStairBottom || 'block') : railBottomKind();
+  if (kind === 'studs') return 'side_mount';
+  return 'top_mount';
+}
+function clampBeamOverlapUi(v) {
+  let n = parseFloat(v);
+  if (!(n > 0)) n = 200;
+  return Math.max(150, Math.min(450, n));
+}
+function beamOverlapAppliesUi() {
+  const stairs = railIsStairs();
+  const sm = state.railStairMount || 'side';
+  if (stairs) return sm === 'side' || sm === 'side_mount';
+  return railBottomKind() === 'studs';
+}
+function updateRailingMountUi() {
+  const mount = inferRailingMountFromUi();
+  const label = mount === 'side_mount' ? 'SIDE MOUNTED'
+    : (mount === 'step_mount' ? 'STEP MOUNTED' : 'TOP MOUNTED');
+  if ($('rMountLabel')) $('rMountLabel').textContent = label;
+  if ($('rMount')) $('rMount').value = mount === 'step_mount' ? 'side_mount' : mount;
+  const ov = beamOverlapAppliesUi();
+  if ($('wrapBeamOverlap')) $('wrapBeamOverlap').style.display = (!railIsStairs() && ov) ? '' : 'none';
+  if ($('wrapBeamOverlapStair')) $('wrapBeamOverlapStair').style.display = (railIsStairs() && ov) ? '' : 'none';
+}
+function selectedLinePhoto() {
+  const ln = state.lines[state.selectedLine];
+  return (ln && ln.designPhoto) || null;
+}
+function refreshDesignPhotoUi() {
+  const photo = selectedLinePhoto();
+  const nameEl = $('lineDesignPhotoName');
+  const clearBtn = $('btnClearDesignPhoto');
+  if (nameEl) nameEl.textContent = photo ? (photo.filename || photo.key || 'Design photo attached') : '';
+  if (clearBtn) clearBtn.style.display = photo ? '' : 'none';
+}
+function ensureLineId(ln) {
+  if (!ln) return '';
+  if (!ln.lineId) ln.lineId = Math.random().toString(16).slice(2, 10);
+  return ln.lineId;
+}
 function railInstallFlags() {
   if (railIsStairs()) {
     return {
@@ -3496,7 +3569,7 @@ function syncRailBottomUi() {
     if (cont && $('rBlocks')) $('rBlocks').value = '0';
   } else {
     const sb = state.railStairBottom || 'block';
-    const sm = state.railStairMount || 'step';
+    const sm = state.railStairMount || 'side';
     document.querySelectorAll('#rStairBottomBtns [data-stair-bottom]').forEach(b => {
       b.classList.toggle('active', b.dataset.stairBottom === sb);
     });
@@ -3521,6 +3594,7 @@ function syncRailBottomUi() {
   const handOn = !!(!$('rHandrail') || $('rHandrail').checked);
   if ($('wrapRailHandrailFields')) $('wrapRailHandrailFields').style.opacity = handOn ? '1' : '0.45';
   if ($('rHandrailStair')) $('rHandrailStair').checked = handOn;
+  updateRailingMountUi();
 }
 function syncRailWizardUi() {
   const stairs = railIsStairs();
@@ -3595,6 +3669,10 @@ function populateRailTools(cfg) {
   set('rGap', cfg.gapMm); set('rPillar', cfg.pillarType);
   set('rAnchPer', cfg.anchorsPerPillar); set('rSaleUnit', cfg.saleUnit);
   set('rMount', cfg.mountType);
+  if (cfg.beamOverlapMm != null) {
+    set('rBeamOverlap', cfg.beamOverlapMm);
+    set('rBeamOverlapStair', cfg.beamOverlapMm);
+  }
   set('rBottomSize', cfg.bottomSize); set('rPillarSize', cfg.bottomSize);
   set('rHandSize', cfg.handrailSize); set('rStairPillarSize', cfg.bottomSize);
   if ($('rWallL')) $('rWallL').checked = !!(cfg.wallStart != null ? cfg.wallStart : cfg.wallLeft);
@@ -3824,9 +3902,14 @@ function railingConfig(){
     pillarType: flags.ssPillar ? 'ss' : 'block',
     anchorsPerPillar: num('rAnchPer',2),
     saleUnit: ($('rSaleUnit')&&$('rSaleUnit').value)||'rft',
-    mountType: stairs
-      ? (stairMount === 'side' ? 'side_mount' : 'step_mount')
-      : (($('rMount')&&$('rMount').value)||'side_mount'),
+    mountType: inferRailingMountFromUi(),
+    beamOverlapMm: beamOverlapAppliesUi()
+      ? clampBeamOverlapUi(
+          stairs
+            ? (($('rBeamOverlapStair') && $('rBeamOverlapStair').value) || ($('rBeamOverlap') && $('rBeamOverlap').value) || 200)
+            : (($('rBeamOverlap') && $('rBeamOverlap').value) || 200)
+        )
+      : undefined,
     bottomKind: stairs ? undefined : railBottomKind(),
     bottomSize: ($('rBottomSize') && $('rBottomSize').value) || ($('rPillarSize') && $('rPillarSize').value) || '',
     handrailSize: ($('rHandSize') && $('rHandSize').value) || '',
@@ -4463,7 +4546,7 @@ if ($('btnRailHwLoad')) $('btnRailHwLoad').onclick = () => {
 ['rLenMm','rHtMm','rLenFt','rHtFt','rPanels','rPanelsStair','rBlocks','rGap','rWallL','rWallR','rHandrail','rHandrailStair','rPillar','rAnchPer','rSaleUnit',
  'rLegA','rLegB','rLegC','rArchSpan','rArchRise','rSteps','rRise','rRun','rStud','rSegments',
  'rFloorH','rGlassH','rSheetW','rSheetH','rWastePct','rBasis','rOverhead','rMarkup','rInstall','rTransport',
- 'rMount','rSpanPanels','rManual','rGlassThk','rGlassType','rGlassPreset','rColorMode','rSysColor',
+ 'rMount','rBeamOverlap','rBeamOverlapStair','rSpanPanels','rManual','rGlassThk','rGlassType','rGlassPreset','rColorMode','rSysColor',
  'rBottomSize','rPillarSize','rHandSize','rStairPillarSize','rStudsPerGlassStep','rStudsPerGlassSide',
  'rRStudStep','rRStudSide','rRBlockStair','rQty','rQtyStair',
  'rRGlass','rRBlock','rRAnchor','rRBend','rR180','rREnd','rRStud','rRBrail','rRHrail','rRWall'].forEach(id => {
@@ -4484,6 +4567,50 @@ loadRailGlassLibrary();
 refreshRailHwPresetSelect();
 $('btnUndo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/undo',{method:'POST'}); state.lines=d.lines||[]; renderCart(); toast('Undo'); };
 $('btnRedo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/redo',{method:'POST'}); state.lines=d.lines||[]; renderCart(); toast('Redo'); };
+if ($('lineDesignPhoto')) $('lineDesignPhoto').onchange = async (ev) => {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  try {
+    await ensureProject();
+    let ln = state.lines[state.selectedLine];
+    if (!ln) {
+      toast('Add a cart line first');
+      ev.target.value = '';
+      return;
+    }
+    const lid = ensureLineId(ln);
+    await saveProject(true);
+    const fd = new FormData();
+    fd.append('file', f);
+    const info = await api(`/api/projects/${state.projectId}/lines/${lid}/design-photo`, { method: 'POST', body: fd });
+    ln.designPhoto = {
+      key: info.key,
+      url: info.url,
+      contentType: info.contentType,
+      filename: info.filename || f.name,
+    };
+    scheduleSave();
+    refreshDesignPhotoUi();
+    toast('Design photo uploaded — PDF will print this photo');
+  } catch (e) {
+    toast(e.message || 'Photo upload failed');
+  }
+  ev.target.value = '';
+};
+if ($('btnClearDesignPhoto')) $('btnClearDesignPhoto').onclick = async () => {
+  const ln = state.lines[state.selectedLine];
+  if (!ln || !ln.designPhoto) return;
+  try {
+    if (state.projectId && ln.lineId) {
+      await api(`/api/projects/${state.projectId}/lines/${ln.lineId}/design-photo`, { method: 'DELETE' });
+    }
+  } catch (_) {}
+  delete ln.designPhoto;
+  if (ln.options && ln.options.designPhoto) delete ln.options.designPhoto;
+  scheduleSave();
+  refreshDesignPhotoUi();
+  toast('Design photo removed');
+};
 $('importFile').onchange = async (ev) => {
   const f = ev.target.files[0]; if(!f) return;
   await ensureProject();

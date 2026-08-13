@@ -202,6 +202,45 @@ def main() -> int:
         fails.append(f"studs manual rate {studs.get('sellingPerUnit')}")
     if str(studs.get("bottomKind") or "") != "studs":
         fails.append(f"bottomKind {studs.get('bottomKind')}")
+    if studs.get("mountType") != "side_mount":
+        fails.append(f"studs mount {studs.get('mountType')} != side_mount")
+    if float(studs.get("beamOverlapMm") or 0) < 150:
+        fails.append(f"studs overlap {studs.get('beamOverlapMm')}")
+    studs_svg = ""
+    try:
+        from WEOS.factory.railing_engine import railing_svg as _rsvg_easy
+        studs_svg = _rsvg_easy({**{
+            "shape": "straight", "lengthMm": 3000, "heightMm": 1000, "panels": 3,
+            "bottomKind": "studs", "studsPerGlass": 2, "continuousRail": False,
+            "installComponents": {
+                "bottomRail": False, "block": False, "ssPillar": False, "studs": True,
+                "handrail": True, "glass": True,
+            },
+            "beamOverlapMm": 200,
+        }}, quote=studs)
+    except Exception as exc:
+        fails.append(f"studs svg {exc}")
+    if "overlap" not in studs_svg.lower():
+        fails.append("studs svg missing overlap label")
+    n_drawn = studs_svg.count('data-side-stud="1"')
+    if n_drawn != 3 * 2:
+        fails.append(f"straight 2pc/glass stud count {n_drawn} != 6")
+    if "#e7f3ee" in studs_svg:
+        fails.append("straight still draws green bullet studs")
+    if cont.get("mountType") != "top_mount":
+        fails.append(f"continuous mount {cont.get('mountType')} != top_mount")
+    if blk.get("mountType") != "top_mount":
+        fails.append(f"block mount {blk.get('mountType')} != top_mount")
+    if ss.get("mountType") != "top_mount":
+        fails.append(f"ss pillar mount {ss.get('mountType')} != top_mount")
+    if stair_step.get("mountType") != "step_mount":
+        fails.append(f"stair step mount {stair_step.get('mountType')}")
+    if stair_step.get("beamOverlapMm"):
+        fails.append("step-mount stairs should not carry beam overlap")
+    if stair_side.get("mountType") != "side_mount":
+        fails.append(f"stair side mount {stair_side.get('mountType')}")
+    if float(stair_side.get("beamOverlapMm") or 0) < 150:
+        fails.append(f"stair side overlap {stair_side.get('beamOverlapMm')}")
 
     # 7) Side mount 2/4/6/8 enumeration
     for n in (2, 4, 6, 8):
@@ -216,6 +255,7 @@ def main() -> int:
             "studSizeMm": 38,
             "studsPerGlass": n,
             "stairBottomType": "block",
+            "beamOverlapMm": 150,
             "installComponents": {
                 "bottomRail": False, "block": True, "ssPillar": False,
                 "handrail": True, "glass": True,
@@ -224,6 +264,40 @@ def main() -> int:
         })
         if int(q.get("stairStuds") or 0) != 3 * n:
             fails.append(f"side {n}/glass → studs {q.get('stairStuds')}")
+        svg_n = ""
+        try:
+            from WEOS.factory.railing_engine import railing_svg as _rsvg_side
+            svg_n = _rsvg_side({
+                "shape": "staircase",
+                "floorHeightMm": 2520,
+                "stairRiseMm": 180,
+                "stairRunMm": 300,
+                "glassHeightMm": 900,
+                "panels": 3,
+                "stairMountType": "side",
+                "studSizeMm": 38,
+                "studsPerGlass": n,
+                "stairBottomType": "block",
+                "beamOverlapMm": 150,
+                "installComponents": {
+                    "bottomRail": False, "block": True, "ssPillar": False,
+                    "handrail": True, "glass": True,
+                },
+            }, quote=q)
+        except Exception as exc:
+            fails.append(f"side {n} svg {exc}")
+            continue
+        mark = 'data-side-stud="1"'
+        got = svg_n.count(mark)
+        if got != 3 * n:
+            fails.append(f"side {n}/glass svg studs {got} != {3 * n}")
+        if "<line" in svg_n and 'stroke="#14181c" stroke-width="' in svg_n:
+            # Stair nosing polyline is OK; a full-height pole at a stud x is not.
+            if "×2</text>" in svg_n or "#e7f3ee" in svg_n:
+                fails.append(f"side {n} still draws pole/bullet studs")
+        if n == 4 and "overlap 150" not in svg_n.lower() and "overlap 150 mm" not in svg_n.lower():
+            if "overlap" not in svg_n.lower():
+                fails.append("side 4pc svg missing overlap dim")
 
     if fails:
         print("FAIL:", "; ".join(fails))

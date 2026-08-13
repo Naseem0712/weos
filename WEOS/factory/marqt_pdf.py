@@ -182,10 +182,30 @@ def _railing_cfg_and_quote(line: Mapping[str, Any]) -> tuple[dict[str, Any], dic
     return cfg, dict(q) if isinstance(q, Mapping) else {}
 
 
-def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
-    """Draw the same geometry-engine elevation used by the live canvas into the design column.
+def _line_design_photo_bytes(line: Mapping[str, Any]) -> tuple[bytes | None, str | None]:
+    """Uploaded design photo (durable blob), if the line has one."""
+    photo = line.get("designPhoto") if isinstance(line.get("designPhoto"), Mapping) else None
+    if not photo:
+        opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+        photo = opts.get("designPhoto") if isinstance(opts.get("designPhoto"), Mapping) else None
+    if not isinstance(photo, Mapping):
+        return None, None
+    key = str(photo.get("key") or "").strip()
+    if not key:
+        return None, None
+    try:
+        from WEOS.factory.design_photo import design_photo_bytes_by_key
 
-    Prefers crisp ReportLab vector drawing; falls back to SVG→PNG, then schematic stub.
+        return design_photo_bytes_by_key(key)
+    except Exception:
+        _log.exception("design photo load failed")
+        return None, None
+
+
+def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
+    """Draw the live-canvas SVG (or user-uploaded design photo) into the design column.
+
+    Photo wins when uploaded; otherwise the same SVG as the live preview.
     Returns True when the real elevation was drawn.
     """
     from reportlab.lib.utils import ImageReader
@@ -195,6 +215,20 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
 
     w = float(line.get("width") or 0)
     h = float(line.get("height") or 0)
+
+    # User-uploaded design photo prints instead of canvas when present.
+    photo_raw, _photo_ct = _line_design_photo_bytes(line)
+    if photo_raw:
+        try:
+            img = ImageReader(io.BytesIO(photo_raw))
+            iw, ih = img.getSize()
+            if iw > 0 and ih > 0:
+                scale = min(box_w / float(iw), box_h / float(ih))
+                dw, dh = iw * scale, ih * scale
+                c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
+                return True
+        except Exception:
+            _log.exception("design photo embed failed; falling back to canvas SVG")
 
     # Railing lines carry their own 2D designer geometry — never fall through to
     # window elevation (that produced blank/wrong "window" drawings on quotes).
@@ -301,12 +335,42 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
     return False
 
 
-def _spec_rows(line: Mapping[str, Any]) -> list[tuple[str, str]]:
+def _laminated_config_label(thickness_mm: Any, glass_type: str = "") -> str | None:
+    """Customer-facing laminated makeup e.g. ``5+1.52+6mm``."""
+    try:
+        thk = float(thickness_mm or 0)
+    except (TypeError, ValueError):
+        thk = 0.0
+    gt = str(glass_type or "").lower()
+    if thk <= 0 and "lam" not in gt:
+        return None
+    try:
+        from WEOS.factory.glass_catalogue import LAMINATED_MAKEUPS_MM, default_layers_for
+
+        layers = default_layers_for("laminated", thk) if thk else {}
+        if not layers and thk:
+            # nearest catalogue overall
+            nearest = min(LAMINATED_MAKEUPS_MM.keys(), key=lambda k: abs(k - thk), default=None)
+            if nearest is not None and abs(nearest - thk) < 0.6:
+                layers = dict(LAMINATED_MAKEUPS_MM[nearest])
+        if not layers and "lam" in gt:
+            layers = default_layers_for("laminated", 13.52) or {}
+        g1, pvb, g2 = layers.get("glass1Mm"), layers.get("pvbMm"), layers.get("glass2Mm")
+        if g1 and pvb and g2:
+            return f"{g1:g}+{pvb:g}+{g2:g}mm"
+    except Exception:
+        pass
+    return None
+
+
+def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[tuple[str, str]]:
     """Structured SPECIFICATIONS rows: (LABEL, value) for tabular PDF layout.
 
     Labels are uppercase without trailing colon. Empty label = full-width title line.
+    ``audience``: customer (no BOM / purchase rates) or factory (full BOM + rates).
     Applies to windows, doors, railings, louvers, and other product lines.
     """
+    factory = str(audience or "customer").lower() == "factory"
     opts = line.get("options") or {}
     layout = line.get("layout") if isinstance(line.get("layout"), Mapping) else {}
     w = float((layout or {}).get("widthMm") or line.get("width") or 0)
@@ -338,9 +402,27 @@ def _spec_rows(line: Mapping[str, Any]) -> list[tuple[str, str]]:
         from WEOS.factory.railing_engine import format_railing_description
 
         title = format_railing_description(q, rail_cfg)
+        try:
+            from WEOS.factory.railing_engine import infer_railing_mount, railing_mount_label
+
+            mount = q.get("mountType") or infer_railing_mount(
+                bottom_kind=str(q.get("bottomKind") or (rail_cfg or {}).get("bottomKind") or ""),
+                shape=str(shape),
+                stair_bottom_type=str(q.get("stairBottomType") or (rail_cfg or {}).get("stairBottomType") or ""),
+                stair_mount_type=str(q.get("stairMountType") or (rail_cfg or {}).get("stairMountType") or ""),
+                mount_explicit=bool((rail_cfg or {}).get("mountExplicit") or (rail_cfg or {}).get("mountTypeLocked")),
+                explicit_mount=str((rail_cfg or {}).get("mountType") or q.get("mountType") or ""),
+            )
+            mount_lbl = q.get("mountLabel") or railing_mount_label(mount)
+        except Exception:
+            mount = q.get("mountType") or (rail_cfg or {}).get("mountType") or "top_mount"
+            mount_lbl = str(q.get("mountLabel") or str(mount).replace("_", " ").upper())
         add("", title)
-        add("TYPE", f"{shape} · Mount {(q.get('mountType') or (rail_cfg or {}).get('mountType') or 'side_mount')}")
+        add("TYPE", f"{shape} · {mount_lbl}")
+        add("MOUNT", mount_lbl)
         add("SIZE", f"{q.get('lengthMm') or w:g} × {q.get('heightMm') or h:g} mm")
+        gh = q.get("glassHeightMm") or q.get("heightMm") or h
+        add("GLASS HEIGHT", f"{gh:g} mm")
 
         bom = list(q.get("bomDetails") or q.get("items") or [])
         def _bom(key: str) -> Mapping[str, Any] | None:
@@ -371,33 +453,78 @@ def _spec_rows(line: Mapping[str, Any]) -> list[tuple[str, str]]:
                 b_bits.append(f"size {b_item.get('sizeMm')}")
         elif q.get("lengthRft"):
             b_bits.append(f"len {q.get('lengthRft')} rft")
+        b_bits.append(mount_lbl)
         add("BOTTOM", " · ".join(str(x) for x in b_bits if x))
+
+        pillar_sz = (
+            (rail_cfg or {}).get("bottomSize")
+            or (rail_cfg or {}).get("pillarSize")
+            or q.get("bottomSize")
+            or q.get("studSizeMm")
+            or (b_item or {}).get("sizeMm")
+        )
+        if pillar_sz:
+            add("PILLAR", f"{pillar_sz}" + (f" · {kind_label}" if kind_label else ""))
+
+        supports = q.get("glassSupports") or []
+        if supports:
+            add(
+                "SUPPORTS",
+                " · ".join(
+                    f"{s.get('glass')}: {s.get('count')} {s.get('kind')}"
+                    + (f" ({s.get('where')})" if s.get("where") else "")
+                    for s in supports
+                    if isinstance(s, Mapping)
+                ),
+            )
+        elif q.get("panelCount") and (q.get("studsPerGlass") or (rail_cfg or {}).get("blocksPerGlass")):
+            n_g = int(q.get("panelCount") or 0)
+            per = int(q.get("studsPerGlass") or (rail_cfg or {}).get("blocksPerGlass") or 0)
+            if n_g and per:
+                kind_s = "studs" if bottom_kind == "studs" or (q.get("stairStuds") or 0) else "supports"
+                add("SUPPORTS", " · ".join(f"G{i + 1}: {per} {kind_s}" for i in range(n_g)))
 
         if q.get("handrail") or (rail_cfg or {}).get("handrail") or _bom("handrail"):
             hr = _bom("handrail") or {}
-            hr_bits = [
-                str((rail_cfg or {}).get("handrailSize") or q.get("handrailSize") or hr.get("sizeMm") or "Handrail"),
-                f"color {hr.get('color') or sys_color or '—'}",
-                f"len {hr.get('qty') or q.get('lengthRft') or q.get('widthUnit') or 0} {hr.get('unit') or q.get('saleUnit') or 'rft'}",
-            ]
+            hr_size = str((rail_cfg or {}).get("handrailSize") or q.get("handrailSize") or hr.get("sizeMm") or "Handrail")
+            hr_len_rft = hr.get("qty") or q.get("lengthRft") or q.get("widthUnit") or 0
+            hr_unit = hr.get("unit") or q.get("saleUnit") or "rft"
+            try:
+                hr_mm = round(float(hr_len_rft) * 304.8, 0) if str(hr_unit).lower() in ("rft", "ft") else None
+            except (TypeError, ValueError):
+                hr_mm = None
+            hr_bits = [hr_size]
+            if hr.get("color") or sys_color:
+                hr_bits.append(f"color {hr.get('color') or sys_color}")
+            hr_bits.append(f"{hr_len_rft} {hr_unit}")
+            if hr_mm:
+                hr_bits.append(f"{hr_mm:g} mm")
             add("HANDRAIL", " · ".join(str(x) for x in hr_bits if x))
 
-        glass_bits = [
-            f"{q.get('glassThicknessMm') or (rail_cfg or {}).get('glassThicknessMm') or 12} mm",
-            (rail_cfg or {}).get("glassType") or q.get("glassType") or "",
-            (rail_cfg or {}).get("glassColour") or q.get("glassColour") or "",
-        ]
-        g_item = _bom("glass")
-        if g_item and g_item.get("sizeMm") and not any("mm" in str(b).lower() for b in glass_bits[1:]):
-            pass
+        thk = q.get("glassThicknessMm") or (rail_cfg or {}).get("glassThicknessMm") or 12
+        gtype = (rail_cfg or {}).get("glassType") or q.get("glassType") or ""
+        gcol = (rail_cfg or {}).get("glassColour") or q.get("glassColour") or ""
+        gbrand = q.get("glassBrand") or (rail_cfg or {}).get("glassBrand") or ""
+        lam = _laminated_config_label(thk, gtype)
+        glass_bits = [f"{thk:g} mm"]
+        if lam:
+            glass_bits.append(lam)
+        if gtype:
+            glass_bits.append(str(gtype))
+        if gcol and str(gcol).lower() not in str(gtype).lower():
+            glass_bits.append(str(gcol))
+        if gbrand:
+            glass_bits.append(str(gbrand))
         glass_val = " · ".join(str(b) for b in glass_bits if b) or "—"
-        if q.get("panelWidthsMm"):
-            glass_val += f" · sizes {', '.join(f'{x:g}' for x in (q.get('panelWidthsMm') or [])[:8])} mm"
-        glass_val += (
-            f" · net {q.get('netGlassAreaSqFt') or q.get('glassAreaSqft') or 0} sft"
-            f" · purchased {q.get('purchasedGlassAreaSqFt') or 0} sft"
-            f" · wastage {q.get('wastagePercent') or 0}%"
-        )
+        if q.get("panelCount"):
+            glass_val += f" · {q.get('panelCount')} glass"
+        net_sft = q.get("netGlassAreaSqFt") or q.get("glassAreaSqft") or 0
+        glass_val += f" · net {net_sft} sft"
+        if factory:
+            glass_val += (
+                f" · purchased {q.get('purchasedGlassAreaSqFt') or 0} sft"
+                f" · wastage {q.get('wastagePercent') or 0}%"
+            )
         add("GLASS", glass_val)
 
         hw_brand = q.get("hardwareBrand") or (rail_cfg or {}).get("hardwareBrand") or ""
@@ -418,6 +545,9 @@ def _spec_rows(line: Mapping[str, Any]) -> list[tuple[str, str]]:
                 grade = f" · {c90.get('grade')}"
             hw_bits.append(f"90° {n90} / 180° {n180}{grade}")
         add("HARDWARE", " · ".join(hw_bits) or "—")
+        ov = q.get("beamOverlapMm") or (rail_cfg or {}).get("beamOverlapMm")
+        if ov:
+            add("OVERLAP", f"{ov:g} mm over beam / slab")
 
         sale_u = str(q.get("saleUnit") or line.get("saleUnit") or "rft").upper()
         add(
@@ -442,23 +572,24 @@ def _spec_rows(line: Mapping[str, Any]) -> list[tuple[str, str]]:
             )
             if sg.get("riseMismatch"):
                 add("NOTE", str(sg.get("riseMismatchMessage") or "Rise mismatch vs floor height"))
-        for it in bom[:10]:
-            if not isinstance(it, Mapping):
-                continue
-            bits = [
-                str(it.get("item") or it.get("label") or it.get("key") or "Item"),
-                f"{it.get('qty')} {it.get('unit')}",
-            ]
-            if it.get("sizeMm"):
-                bits.append(f"size {it['sizeMm']}")
-            if it.get("color"):
-                bits.append(f"color {it['color']}")
-            if it.get("grade"):
-                bits.append(f"grade {it['grade']}")
-            if it.get("mountType"):
-                bits.append(str(it["mountType"]))
-            bits.append(f"@ {it.get('rate')} = {it.get('amount')}")
-            add("BOM", " · ".join(bits))
+        if factory:
+            for it in bom[:12]:
+                if not isinstance(it, Mapping):
+                    continue
+                bits = [
+                    str(it.get("item") or it.get("label") or it.get("key") or "Item"),
+                    f"{it.get('qty')} {it.get('unit')}",
+                ]
+                if it.get("sizeMm"):
+                    bits.append(f"size {it['sizeMm']}")
+                if it.get("color"):
+                    bits.append(f"color {it['color']}")
+                if it.get("grade"):
+                    bits.append(f"grade {it['grade']}")
+                if it.get("mountType"):
+                    bits.append(str(it["mountType"]))
+                bits.append(f"@ {it.get('rate')} = {it.get('amount')}")
+                add("BOM", " · ".join(bits))
         return rows
 
     try:
@@ -571,56 +702,62 @@ def _spec_rows(line: Mapping[str, Any]) -> list[tuple[str, str]]:
     elif section.get("sash"):
         add("JOINT", f"Sash {section['sash']}")
 
-    panels = list((layout or {}).get("panels") or [])
-    if panels:
-        panel_bits = []
-        for p in panels:
-            pid = p.get("id") or "?"
-            role = str(p.get("label") or p.get("role") or "").title()
-            pw = p.get("widthMm")
-            ph = p.get("heightMm")
-            hs = p.get("handleSide") or ""
-            extra = f" · handle {str(hs)[0].upper()}" if hs and str(p.get("role") or "").lower() in ("openable", "casement") else ""
-            if pw is not None and ph is not None:
-                panel_bits.append(f"{pid} {role} {pw:g}×{ph:g}{extra}")
-            else:
-                panel_bits.append(f"{pid} {role}{extra}")
-        if panel_bits:
-            add("PANELS", "; ".join(panel_bits))
-    else:
-        cpanels = opts.get("casementPanels") or line.get("casementPanels") or []
-        if isinstance(cpanels, (list, tuple)) and cpanels:
-            bits = []
-            for i, p in enumerate(cpanels):
-                if not isinstance(p, Mapping):
-                    continue
-                role = str(p.get("role") or "openable")
-                hs = str(p.get("handleSide") or p.get("handle") or "")
-                bits.append(f"P{i + 1} {role}" + (f" · handle {hs[0].upper()}" if hs and role != "fix" else ""))
-            if bits:
-                add("PANELS", "; ".join(bits))
+    # Panel mm / A1 A2 / shutter sides stay on the design drawing only.
     if weight is not None and float(weight or 0) > 0:
         add("WEIGHT", f"{weight} kg")
+
+    specs_in = line.get("specifications") if isinstance(line.get("specifications"), Mapping) else {}
+    alloy = (
+        specs_in.get("alloy")
+        or specs_in.get("aluminiumAlloy")
+        or opts.get("alloy")
+        or opts.get("aluminiumAlloy")
+        or line.get("alloy")
+        or section.get("alloy")
+    )
+    alu_brand = (
+        specs_in.get("aluminiumBrand")
+        or specs_in.get("profileBrand")
+        or specs_in.get("powderCoatingBrand")
+        or opts.get("aluminiumBrand")
+        or section.get("brand")
+    )
 
     glass = line.get("glass")
     if not (isinstance(glass, list) and glass):
         glass = opts.get("glass") or glass
+    gspec = line.get("glassSpec") if isinstance(line.get("glassSpec"), Mapping) else {}
     if isinstance(glass, list) and glass:
         g0 = glass[0] if isinstance(glass[0], Mapping) else {}
-        thick = g0.get("thicknessMm") or g0.get("thickness_mm")
-        gname = g0.get("name") or ""
-        gcolour = g0.get("colour") or g0.get("color") or opts.get("glassColour") or ""
+        thick = g0.get("thicknessMm") or g0.get("thickness_mm") or gspec.get("thicknessMm") or gspec.get("overallMm")
+        gname = g0.get("name") or gspec.get("name") or ""
+        gcolour = g0.get("colour") or g0.get("color") or opts.get("glassColour") or gspec.get("colour") or ""
+        gbrand = g0.get("brand") or opts.get("glassBrand") or gspec.get("brand") or ""
+        makeup = str(g0.get("makeup") or gspec.get("makeup") or g0.get("kind") or "").lower()
+        makeup_lbl = g0.get("makeupLabel") or gspec.get("makeupLabel") or ""
+        lam = _laminated_config_label(thick, makeup or gname)
+        if not lam and "+" in str(makeup_lbl):
+            lam = str(makeup_lbl).replace("PVB", "").replace("A+", "+").strip()
+            if lam and not lam.lower().endswith("mm"):
+                lam = f"{lam}mm" if "+" in lam else lam
         bits = []
         if thick not in (None, ""):
             bits.append(f"{thick:g} mm" if isinstance(thick, (int, float)) else f"{thick} mm")
-        if gname:
+        if lam:
+            bits.append(str(lam))
+        if gname and str(gname).lower() not in " ".join(str(b).lower() for b in bits):
             bits.append(str(gname))
         if gcolour:
             bits.append(f"colour {gcolour}")
+        if gbrand:
+            bits.append(str(gbrand))
         if bits:
             add("GLASS", " · ".join(bits))
     elif isinstance(glass, str) and glass.strip():
-        add("GLASS", str(glass).replace("_", " "))
+        raw_g = str(glass).replace("_", " ")
+        if "@" in raw_g:
+            raw_g = raw_g.split("@")[0].strip()
+        add("GLASS", raw_g)
 
     hw = line.get("hardware") or opts.get("hardware") or []
     if isinstance(hw, list) and hw:
@@ -694,15 +831,40 @@ def _spec_rows(line: Mapping[str, Any]) -> list[tuple[str, str]]:
         add("INTERLOCK", str(section["interlock"]))
     handle = opts.get("handle")
     handle_name = opts.get("handleName") or line.get("handleName")
-    if handle_name:
-        add("HANDLE", handle_name)
-    elif handle:
-        add("HANDLE", str(handle).replace("_", " ").title())
+    handle_finish = opts.get("handleFinish") or line.get("handleFinish") or opts.get("handleColour")
+    handle_brand = opts.get("handleBrand") or line.get("handleBrand") or specs_in.get("hardwareBrand")
+    if handle_name or handle or handle_brand:
+        hbits = [str(handle_name or (str(handle).replace("_", " ").title() if handle else "")).strip()]
+        if handle_brand:
+            hbits.append(str(handle_brand))
+        if handle_finish:
+            hbits.append(f"colour {handle_finish}")
+        add("HANDLE", " · ".join(x for x in hbits if x))
     mesh_name = opts.get("meshName") or line.get("meshName")
-    if not is_bifold and (layout.get("mesh") or (opts or {}).get("mesh")):
-        add("MESH", f"{mesh_name or 'Yes'} (track {float(tc or 3):g}, 1 panel wide)")
-    elif mesh_name:
-        add("MESH", mesh_name)
+    mesh_brand = opts.get("meshBrand") or line.get("meshBrand")
+    mesh_colour = opts.get("meshColour") or opts.get("meshColor") or line.get("meshColour")
+    mesh_on = bool((layout or {}).get("mesh") or (opts or {}).get("mesh") or (int(float(mesh_n or 0)) if mesh_n not in (None, "") else 0))
+    mesh_bits = ["yes" if mesh_on else "no"]
+    if mesh_name and mesh_on:
+        mesh_bits.append(str(mesh_name))
+    if mesh_brand:
+        mesh_bits.append(str(mesh_brand))
+    if mesh_colour:
+        mesh_bits.append(f"colour {mesh_colour}")
+    add("MESH", " · ".join(mesh_bits))
+    if alloy:
+        add("ALLOY", str(alloy))
+    alu_bits = []
+    if alu_brand:
+        alu_bits.append(str(alu_brand))
+    if pc_name:
+        alu_bits.append(str(pc_name))
+    elif colour:
+        alu_bits.append(str(colour).replace("_", " ").title())
+    if section.get("seriesTitle"):
+        alu_bits.insert(0, str(section["seriesTitle"]))
+    if alu_bits:
+        add("ALUMINIUM", " · ".join(alu_bits))
     if system == "grid":
         add("TYPE", "Partition grid (per-cell fix/sliding/openable)")
     elif system == "casement":
@@ -798,10 +960,10 @@ def _spec_rows(line: Mapping[str, Any]) -> list[tuple[str, str]]:
     return rows
 
 
-def _spec_lines(line: Mapping[str, Any]) -> list[str]:
+def _spec_lines(line: Mapping[str, Any], *, audience: str = "customer") -> list[str]:
     """Flat string form of specs (smoke tests / legacy). Prefer ``_spec_rows`` for PDF."""
     out: list[str] = []
-    for label, value in _spec_rows(line):
+    for label, value in _spec_rows(line, audience=audience):
         if label:
             out.append(f"{label}: {value}")
         else:
@@ -1089,10 +1251,8 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         c.setFillColorRGB(0.25, 0.25, 0.25)
         c.drawRightString(W - M, H - (M - 4), f"Quote No. {qid}")
         c.drawRightString(W - M, H - (M + 8), f"Quote Date {qdate}")
-        if updated_on:
-            c.setFillColorRGB(*accent)
-            c.drawRightString(W - M, H - (M + 19), f"Updated {updated_on}")
-            c.setFillColorRGB(0.25, 0.25, 0.25)
+        # Cover page already has a single "Updated on" date — do not reprint it
+        # here (the header rule sat on the divider and looked like a strike-through).
         c.setStrokeColorRGB(*primary)
         c.setLineWidth(1)
         c.line(M, H - (M + 16), W - M, H - (M + 16))

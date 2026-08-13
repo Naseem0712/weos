@@ -253,12 +253,45 @@ def _factory_reportlab(payload: Mapping[str, Any]) -> bytes:
                     c.setFont("Helvetica", 8)
                 if isinstance(it, Mapping):
                     name = it.get("item") or it.get("label") or it.get("name") or it.get("key")
+                    rate_bit = ""
+                    if it.get("rate") not in (None, "") or it.get("amount") not in (None, ""):
+                        rate_bit = f"  @ {it.get('rate')} = {it.get('amount')}"
                     c.drawString(
                         40, y,
                         f"{line.get('displayName')}: {name}  {it.get('qty')} {it.get('unit')}"
                         f"  size {it.get('sizeMm') or '—'}  color {it.get('color') or '—'}"
-                        f"  grade {it.get('grade') or '—'}"
+                        f"  grade {it.get('grade') or '—'}{rate_bit}"
                     )
+                y -= 11
+
+    # Other product BOM (shower / windows) with purchase rates — factory only
+    other_bom_lines = [ln for ln in (payload.get("lines") or []) if not _is_rail(ln) and (ln.get("bom") or ln.get("hardware"))]
+    if other_bom_lines:
+        y -= 8
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(40, y, "Product BOM / purchase")
+        y -= 14
+        c.setFont("Helvetica", 8)
+        for line in other_bom_lines:
+            bom = line.get("bom") or []
+            if not isinstance(bom, list) or not bom:
+                bom = line.get("hardware") or []
+            for it in bom:
+                if y < 60:
+                    c.showPage()
+                    y = H - 50
+                    c.setFont("Helvetica", 8)
+                if not isinstance(it, Mapping):
+                    continue
+                name = it.get("item") or it.get("label") or it.get("name") or it.get("key")
+                rate_bit = ""
+                if it.get("rate") not in (None, "") or it.get("amount") not in (None, ""):
+                    rate_bit = f"  @ {it.get('rate')} = {it.get('amount')}"
+                c.drawString(
+                    40, y,
+                    f"{line.get('displayName')}: {name}  {it.get('qty')} {it.get('unit') or ''}"
+                    f"{rate_bit}",
+                )
                 y -= 11
 
     y -= 8

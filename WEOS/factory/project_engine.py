@@ -452,6 +452,7 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
         lib_materials = []
 
     ptype = railing_product_type_for_line({**dict(line), "options": {**(opts_in or {}), "railing": cfg}, "railing": q})
+    photo = line.get("designPhoto") if isinstance(line.get("designPhoto"), Mapping) else None
     # Persist cfg + fresh quote so PDF draw_line_elevation / _spec_lines never lose the design.
     # Strip window layout keys so specs never mix Track / Fold / Panels S1 Sliding.
     opts_out = {
@@ -522,6 +523,7 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
         },
         "preview": {"svg": svg},
         "note": "Railing — BOM rates → cost cascade → per-unit rate; designer Manual rate only when set.",
+        **({"designPhoto": dict(photo)} if photo else {}),
     }
 
 
@@ -628,6 +630,7 @@ def _shower_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
         },
         "preview": {"svg": svg},
         "note": "Shower partition — selling rate × billed unit (sft/opening).",
+        **({"designPhoto": dict(line["designPhoto"])} if isinstance(line.get("designPhoto"), Mapping) else {}),
     }
 
 
@@ -842,6 +845,7 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
 
     result_base = {
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
+        **({"designPhoto": dict(line["designPhoto"])} if isinstance(line.get("designPhoto"), Mapping) else {}),
         "product": job.profile_id,
         "displayName": job.display_name,
         "description": line.get("description") or job.display_name,

@@ -383,6 +383,40 @@ def compute_shower(cfg: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _gi_plate(parts: list[str], cx: float, cy: float, size: float, stroke: str) -> None:
+    """Small GI connector plate at a frame junction."""
+    h = size / 2.0
+    parts.append(
+        f'<rect x="{cx - h:.1f}" y="{cy - h:.1f}" width="{size:.1f}" height="{size:.1f}" '
+        f'fill="#f4f4f4" stroke="{stroke}" stroke-width="0.7" data-gi-plate="1"/>'
+    )
+
+
+def _d_handle(parts: list[str], x: float, y_mid: float, h: float, *, flip: bool = False) -> None:
+    """D-type handle on the meeting stile."""
+    w = max(min(h * 0.22, 14.0), 7.0)
+    y0 = y_mid - h / 2.0
+    x0 = x - w if flip else x
+    parts.append(
+        f'<rect x="{x0:.1f}" y="{y0:.1f}" width="{w:.1f}" height="{h:.1f}" rx="{w * 0.45:.1f}" '
+        f'fill="none" stroke="#222" stroke-width="0.85"/>'
+    )
+    bar_x = x0 + (2.0 if not flip else w - 2.0)
+    parts.append(
+        f'<line x1="{bar_x:.1f}" y1="{y0 + 2:.1f}" x2="{bar_x:.1f}" y2="{y0 + h - 2:.1f}" '
+        f'stroke="#222" stroke-width="0.7"/>'
+    )
+
+
+def _lock_mark(parts: list[str], x: float, y: float) -> None:
+    parts.append(
+        f'<rect x="{x - 4:.1f}" y="{y - 5:.1f}" width="8" height="10" rx="1.2" '
+        f'fill="#fff" stroke="#333" stroke-width="0.7"/>'
+    )
+    parts.append(f'<circle cx="{x:.1f}" cy="{y - 0.5:.1f}" r="1.4" fill="none" stroke="#333" stroke-width="0.6"/>')
+    parts.append(f'<line x1="{x:.1f}" y1="{y + 1.0:.1f}" x2="{x:.1f}" y2="{y + 3.6:.1f}" stroke="#333" stroke-width="0.6"/>')
+
+
 def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> str:
     """Elevation + floor-plan SVG used by live canvas and customer PDF."""
     q = quote if isinstance(quote, Mapping) and quote else compute_shower(cfg)
@@ -399,122 +433,236 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
     front_w = sum(_f(p.get("widthMm")) for p in front_panels) or _f(q.get("widthMm"), 1200)
     shape = _s(q.get("shape"), "straight")
     colour = _s(q.get("colour"), "matt_black")
+    op = _s(q.get("operation"), "sliding")
+    frameless = bool(q.get("frameless"))
+    handle_on = bool(q.get("handle"))
+    lock_on = bool(q.get("lock"))
     stroke = "#1a1a1a"
-    glass_fill = "rgba(170, 205, 230, 0.28)"
-    slide_fill = "rgba(120, 170, 210, 0.38)"
-    open_fill = "rgba(210, 190, 140, 0.30)"
+    glass_fill = "rgba(170, 205, 230, 0.22)"
+    slide_fill = "rgba(120, 170, 210, 0.30)"
+    open_fill = "rgba(210, 190, 140, 0.26)"
+    sw = 0.75  # slim professional 2D
 
-    margin = 48.0
-    elev_h = 320.0
-    plan_h = 110.0 if shape != "straight" else 72.0
+    # 16×45 mm slim frame face in elevation
+    frame_face_mm = 45.0
+    connector_mm = 14.0
+    track_h_mm = 30.0
+    cover_h_mm = 12.0
+
+    margin = 52.0
+    elev_h = 340.0
+    depth_a_mm = _f(q.get("depthMm"))
+    depth_b_mm = _f(q.get("depthBMm"))
+    max_return = max(depth_a_mm, depth_b_mm, 1.0)
+    plan_scale = min(0.28, 200.0 / max(front_w, 1.0), 160.0 / max_return) if shape != "straight" else min(0.28, 220.0 / max(front_w, 1.0))
+    fw = front_w * plan_scale
+    da = depth_a_mm * plan_scale
+    db = depth_b_mm * plan_scale
+    plan_h = (max(da, db, 36.0) + 56.0) if shape != "straight" else 70.0
+
     scale = elev_h / max(height, 1.0)
+    frame_t = max(frame_face_mm * scale, 3.2)
+    conn_s = max(connector_mm * scale, 4.5)
+    track_h = track_h_mm * scale
+    cover_h = cover_h_mm * scale
     elev_w = max(front_w * scale, 180.0)
-    svg_w = elev_w + margin * 2 + 80
-    svg_h = elev_h + plan_h + margin * 2 + 36
+    track_extra = (track_h + cover_h + 6.0) if op == "sliding" else 0.0
+    svg_w = max(elev_w, fw + 90.0) + margin * 2 + 70
+    svg_h = 28.0 + track_extra + elev_h + 28.0 + plan_h + margin + 18.0
 
     parts: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{svg_w:.1f}" height="{svg_h:.1f}" '
         f'viewBox="0 0 {svg_w:.1f} {svg_h:.1f}" data-model-system="shower">',
         f"<title>Shower {escape(shape)} {front_w:g}×{height:g}</title>",
         '<rect width="100%" height="100%" fill="#ffffff"/>',
-        f'<text x="{margin}" y="22" font-size="13" font-family="sans-serif" fill="#222">'
-        f'Shower · {escape(shape)} · {escape(_s(q.get("operation"), "sliding"))}'
-        f' · {escape(colour.replace("_", " "))}</text>',
+        '<defs><marker id="shArrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">'
+        '<path d="M0,0 L7,3.5 L0,7 Z" fill="#0b3d7a"/></marker></defs>',
+        f'<text x="{margin}" y="18" font-size="12" font-family="sans-serif" fill="#222">'
+        f'Shower · {escape(shape)} · {escape(op)} · {escape(colour.replace("_", " "))}'
+        f' · 16×45 frame</text>',
     ]
 
     x0 = margin
-    y0 = 36.0
-    x = x0
-    for p in front_panels:
-        pw = _f(p.get("widthMm")) * scale
-        role = str(p.get("role") or "fix")
-        fill = slide_fill if role == "sliding" else (open_fill if role == "openable" else glass_fill)
+    y_frame0 = 26.0 + track_extra
+    # Top sliding track + cover plate (distinct from panel frames)
+    if op == "sliding":
+        ty = 26.0
         parts.append(
-            f'<rect x="{x:.1f}" y="{y0:.1f}" width="{pw:.1f}" height="{elev_h:.1f}" '
-            f'fill="{fill}" stroke="{stroke}" stroke-width="1.6"/>'
+            f'<rect x="{x0:.1f}" y="{ty:.1f}" width="{elev_w:.1f}" height="{cover_h:.1f}" '
+            f'fill="#f0f0f0" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
         )
         parts.append(
+            f'<text x="{x0 + elev_w / 2:.1f}" y="{ty + cover_h * 0.78:.1f}" text-anchor="middle" '
+            f'font-size="8" font-family="sans-serif" fill="#555">COVER PLATE</text>'
+        )
+        parts.append(
+            f'<rect x="{x0:.1f}" y="{ty + cover_h:.1f}" width="{elev_w:.1f}" height="{track_h:.1f}" '
+            f'fill="#e8e8ea" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
+        )
+        parts.append(
+            f'<line x1="{x0 + 4:.1f}" y1="{ty + cover_h + track_h * 0.45:.1f}" '
+            f'x2="{x0 + elev_w - 4:.1f}" y2="{ty + cover_h + track_h * 0.45:.1f}" '
+            f'stroke="#666" stroke-width="0.6" stroke-dasharray="4 2"/>'
+        )
+        parts.append(
+            f'<text x="{x0 + elev_w / 2:.1f}" y="{ty + cover_h + track_h * 0.82:.1f}" text-anchor="middle" '
+            f'font-size="8" font-family="sans-serif" fill="#555">TOP TRACK</text>'
+        )
+
+    x = x0
+    slide_plan_ranges: list[tuple[float, float, str]] = []  # mm along front
+    mm_cursor = 0.0
+    for p in front_panels:
+        pw_mm = _f(p.get("widthMm"))
+        pw = pw_mm * scale
+        role = str(p.get("role") or "fix")
+        fill = slide_fill if role == "sliding" else (open_fill if role == "openable" else glass_fill)
+        y0 = y_frame0
+        # Glass
+        parts.append(
+            f'<rect x="{x:.1f}" y="{y0:.1f}" width="{pw:.1f}" height="{elev_h:.1f}" '
+            f'fill="{fill}" stroke="none"/>'
+        )
+        if not frameless:
+            # Slim 16×45 aluminium frame (vert + horiz)
+            parts.append(
+                f'<rect x="{x:.1f}" y="{y0:.1f}" width="{pw:.1f}" height="{elev_h:.1f}" '
+                f'fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
+            )
+            inset = min(frame_t, pw * 0.18, elev_h * 0.08)
+            parts.append(
+                f'<rect x="{x + inset:.1f}" y="{y0 + inset:.1f}" width="{max(pw - 2 * inset, 1):.1f}" '
+                f'height="{max(elev_h - 2 * inset, 1):.1f}" fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
+            )
+            # GI connector plates at four corners
+            for cx, cy in (
+                (x + inset, y0 + inset),
+                (x + pw - inset, y0 + inset),
+                (x + inset, y0 + elev_h - inset),
+                (x + pw - inset, y0 + elev_h - inset),
+            ):
+                _gi_plate(parts, cx, cy, conn_s, stroke)
+        else:
+            parts.append(
+                f'<rect x="{x:.1f}" y="{y0:.1f}" width="{pw:.1f}" height="{elev_h:.1f}" '
+                f'fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
+            )
+        parts.append(
             f'<text x="{x + pw / 2:.1f}" y="{y0 + elev_h / 2:.1f}" text-anchor="middle" '
-            f'font-size="14" font-family="sans-serif" font-weight="700" fill="#0b3d7a">'
+            f'font-size="13" font-family="sans-serif" font-weight="700" fill="#0b3d7a">'
             f'{escape(str(p.get("label") or role.upper()))}</text>'
         )
         parts.append(
-            f'<text x="{x + pw / 2:.1f}" y="{y0 + elev_h + 16:.1f}" text-anchor="middle" '
-            f'font-size="11" font-family="sans-serif" fill="#444">{_f(p.get("widthMm")):g} mm</text>'
+            f'<text x="{x + pw / 2:.1f}" y="{y0 + elev_h + 14:.1f}" text-anchor="middle" '
+            f'font-size="10" font-family="sans-serif" fill="#444">{pw_mm:g} mm</text>'
         )
         if role == "sliding":
-            # arrow hint
             parts.append(
-                f'<line x1="{x + pw * 0.25:.1f}" y1="{y0 + elev_h * 0.72:.1f}" '
-                f'x2="{x + pw * 0.75:.1f}" y2="{y0 + elev_h * 0.72:.1f}" '
-                f'stroke="#0b3d7a" stroke-width="2" marker-end="url(#shArrow)"/>'
+                f'<line x1="{x + pw * 0.22:.1f}" y1="{y0 + elev_h * 0.70:.1f}" '
+                f'x2="{x + pw * 0.78:.1f}" y2="{y0 + elev_h * 0.70:.1f}" '
+                f'stroke="#0b3d7a" stroke-width="0.9" marker-end="url(#shArrow)"/>'
             )
+            slide_plan_ranges.append((mm_cursor, mm_cursor + pw_mm, "SLIDE"))
         if role == "openable":
-            hx = x + pw * 0.85
-            parts.append(
-                f'<rect x="{hx:.1f}" y="{y0 + elev_h * 0.42:.1f}" width="8" height="{elev_h * 0.18:.1f}" '
-                f'fill="#333" stroke="#111"/>'
-            )
+            slide_plan_ranges.append((mm_cursor, mm_cursor + pw_mm, "DOOR"))
+        if handle_on and role in ("sliding", "openable"):
+            meeting_right = role == "sliding"  # 1+1: handle on meeting stile toward FIX
+            hx = x + pw - frame_t * 0.35 if meeting_right else x + frame_t * 0.35
+            _d_handle(parts, hx, y0 + elev_h * 0.48, max(elev_h * 0.16, 28.0), flip=not meeting_right)
+            if lock_on:
+                _lock_mark(parts, hx + (6 if meeting_right else -6), y0 + elev_h * 0.48 + max(elev_h * 0.10, 18.0))
         x += pw
+        mm_cursor += pw_mm
 
-    parts.insert(
-        3,
-        '<defs><marker id="shArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">'
-        '<path d="M0,0 L8,4 L0,8 Z" fill="#0b3d7a"/></marker></defs>',
-    )
     parts.append(
-        f'<text x="{x0 + elev_w + 10:.1f}" y="{y0 + elev_h / 2:.1f}" font-size="11" '
+        f'<text x="{x0 + elev_w + 8:.1f}" y="{y_frame0 + elev_h / 2:.1f}" font-size="10" '
         f'font-family="sans-serif" fill="#8b1e1a">H {height:g}</text>'
     )
 
-    # Floor plan
-    py = y0 + elev_h + 36
+    # Floor plan — all sides dimensioned; door / SLIDE + track marked
+    py = y_frame0 + elev_h + 32.0
     parts.append(
-        f'<text x="{x0}" y="{py - 8:.1f}" font-size="11" font-family="sans-serif" fill="#555">'
+        f'<text x="{x0}" y="{py - 10:.1f}" font-size="11" font-family="sans-serif" fill="#555">'
         f'Floor plan · {escape(shape)}</text>'
     )
-    plan_scale = min(elev_w / max(front_w, 1.0), 0.22)
-    fw = front_w * plan_scale
-    da = _f(q.get("depthMm")) * plan_scale
-    db = _f(q.get("depthBMm")) * plan_scale
-    px = x0 + 8
+    px = x0 + (28.0 if shape != "straight" else 8.0)
+    plan_y = py + 8.0
+    psw = 1.15
+
+    def _dim_h(x1: float, x2: float, y: float, text: str) -> None:
+        parts.append(f'<line x1="{x1:.1f}" y1="{y:.1f}" x2="{x2:.1f}" y2="{y:.1f}" stroke="#8b1e1a" stroke-width="0.6"/>')
+        for xx in (x1, x2):
+            parts.append(f'<line x1="{xx:.1f}" y1="{y - 3:.1f}" x2="{xx:.1f}" y2="{y + 3:.1f}" stroke="#8b1e1a" stroke-width="0.6"/>')
+        parts.append(
+            f'<text x="{(x1 + x2) / 2:.1f}" y="{y - 4:.1f}" text-anchor="middle" font-size="10" '
+            f'font-family="sans-serif" fill="#8b1e1a">{escape(text)}</text>'
+        )
+
+    def _dim_v(y1: float, y2: float, x: float, text: str, *, left: bool = True) -> None:
+        parts.append(f'<line x1="{x:.1f}" y1="{y1:.1f}" x2="{x:.1f}" y2="{y2:.1f}" stroke="#8b1e1a" stroke-width="0.6"/>')
+        for yy in (y1, y2):
+            parts.append(f'<line x1="{x - 3:.1f}" y1="{yy:.1f}" x2="{x + 3:.1f}" y2="{yy:.1f}" stroke="#8b1e1a" stroke-width="0.6"/>')
+        tx = x - 6 if left else x + 6
+        parts.append(
+            f'<text x="{tx:.1f}" y="{(y1 + y2) / 2:.1f}" text-anchor="{"end" if left else "start"}" '
+            f'font-size="10" font-family="sans-serif" fill="#8b1e1a">{escape(text)}</text>'
+        )
+
+    def _mark_door_on_front(front_x0: float, front_y: float, front_len: float) -> None:
+        if not slide_plan_ranges or front_w <= 0:
+            return
+        a0, a1, lab = slide_plan_ranges[0]
+        t0 = front_x0 + (a0 / front_w) * front_len
+        t1 = front_x0 + (a1 / front_w) * front_len
+        mid = (t0 + t1) / 2.0
+        parts.append(
+            f'<line x1="{t0:.1f}" y1="{front_y:.1f}" x2="{t1:.1f}" y2="{front_y:.1f}" '
+            f'stroke="#0b3d7a" stroke-width="2.0"/>'
+        )
+        if op == "sliding":
+            parts.append(
+                f'<line x1="{t0:.1f}" y1="{front_y - 5:.1f}" x2="{t1:.1f}" y2="{front_y - 5:.1f}" '
+                f'stroke="#0b3d7a" stroke-width="0.7" stroke-dasharray="3 2"/>'
+            )
+            parts.append(
+                f'<text x="{mid:.1f}" y="{front_y - 8:.1f}" text-anchor="middle" font-size="9" '
+                f'font-family="sans-serif" fill="#0b3d7a">SLIDE + TRACK</text>'
+            )
+        else:
+            parts.append(
+                f'<text x="{mid:.1f}" y="{front_y - 8:.1f}" text-anchor="middle" font-size="9" '
+                f'font-family="sans-serif" fill="#0b3d7a">{escape(lab)} →</text>'
+            )
+
     if shape == "straight":
-        parts.append(
-            f'<line x1="{px:.1f}" y1="{py + 28:.1f}" x2="{px + fw:.1f}" y2="{py + 28:.1f}" '
-            f'stroke="{stroke}" stroke-width="3"/>'
-        )
-        parts.append(
-            f'<text x="{px + fw / 2:.1f}" y="{py + 48:.1f}" text-anchor="middle" font-size="10" '
-            f'font-family="sans-serif">{front_w:g}</text>'
-        )
+        fy = plan_y + 28.0
+        parts.append(f'<line x1="{px:.1f}" y1="{fy:.1f}" x2="{px + fw:.1f}" y2="{fy:.1f}" stroke="{stroke}" stroke-width="{psw:.2f}"/>')
+        _dim_h(px, px + fw, fy + 16.0, f"{front_w:g}")
+        _mark_door_on_front(px, fy, fw)
     elif shape == "L":
+        # Left return + front
         parts.append(
-            f'<polyline fill="none" stroke="{stroke}" stroke-width="3" '
-            f'points="{px:.1f},{py + 8 + da:.1f} {px:.1f},{py + 8:.1f} {px + fw:.1f},{py + 8:.1f}"/>'
+            f'<polyline fill="none" stroke="{stroke}" stroke-width="{psw:.2f}" '
+            f'points="{px:.1f},{plan_y + da:.1f} {px:.1f},{plan_y:.1f} {px + fw:.1f},{plan_y:.1f}"/>'
         )
+        _dim_h(px, px + fw, plan_y - 6.0, f"front {front_w:g}")
+        _dim_v(plan_y, plan_y + da, px - 10.0, f"L {depth_a_mm:g}", left=True)
+        _mark_door_on_front(px, plan_y, fw)
+    else:  # U — front + left + right, all dimensioned
         parts.append(
-            f'<text x="{px + fw / 2:.1f}" y="{py + 24:.1f}" text-anchor="middle" font-size="10" '
-            f'font-family="sans-serif">{front_w:g}</text>'
+            f'<polyline fill="none" stroke="{stroke}" stroke-width="{psw:.2f}" '
+            f'points="{px:.1f},{plan_y + da:.1f} {px:.1f},{plan_y:.1f} {px + fw:.1f},{plan_y:.1f} '
+            f'{px + fw:.1f},{plan_y + db:.1f}"/>'
         )
-        parts.append(
-            f'<text x="{px + 12:.1f}" y="{py + 8 + da / 2:.1f}" font-size="10" '
-            f'font-family="sans-serif">{_f(q.get("depthMm")):g}</text>'
-        )
-    else:  # U
-        parts.append(
-            f'<polyline fill="none" stroke="{stroke}" stroke-width="3" '
-            f'points="{px:.1f},{py + 8 + da:.1f} {px:.1f},{py + 8:.1f} {px + fw:.1f},{py + 8:.1f} '
-            f'{px + fw:.1f},{py + 8 + db:.1f}"/>'
-        )
-        parts.append(
-            f'<text x="{px + fw / 2:.1f}" y="{py + 24:.1f}" text-anchor="middle" font-size="10" '
-            f'font-family="sans-serif">{front_w:g}</text>'
-        )
+        _dim_h(px, px + fw, plan_y - 6.0, f"front {front_w:g}")
+        _dim_v(plan_y, plan_y + da, px - 10.0, f"L {depth_a_mm:g}", left=True)
+        _dim_v(plan_y, plan_y + db, px + fw + 10.0, f"R {depth_b_mm:g}", left=False)
+        _mark_door_on_front(px, plan_y, fw)
 
     glass_bit = f'{_f(q.get("glassThicknessMm")):g} mm {_s(q.get("glassColour"))}'
     parts.append(
-        f'<text x="{x0}" y="{svg_h - 12:.1f}" font-size="10" font-family="sans-serif" fill="#444">'
-        f'{escape(glass_bit)} · {_s(q.get("handleName") or "—")} · lock {"yes" if q.get("lock") else "no"}'
+        f'<text x="{x0}" y="{svg_h - 10:.1f}" font-size="10" font-family="sans-serif" fill="#444">'
+        f'{escape(glass_bit)} · {_s(q.get("handleName") or "—")} · lock {"yes" if lock_on else "no"}'
         f' · {round(_f(q.get("areaSqft")), 2)} sft</text>'
     )
     parts.append("</svg>")

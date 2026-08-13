@@ -75,8 +75,16 @@ def main() -> int:
     if not q2.get("items"):
         fails.append("pdf quote items empty")
     specs = _spec_lines(result)
-    if not any("Railing" in s or "Type =" in s for s in specs):
+    if not any("Railing" in s or s.startswith("TYPE:") or "Type =" in s for s in specs):
         fails.append(f"specs look wrong: {specs[:3]}")
+    cust_blob = " ".join(specs)
+    if " @ " in cust_blob or "@ " in cust_blob:
+        fails.append(f"customer specs leaked purchase rates: {specs}")
+    if any("wastage" in s.lower() and "purchased" in s.lower() for s in specs):
+        fails.append(f"customer specs leaked wastage/purchased: {specs}")
+    fact_specs = _spec_lines(result, audience="factory")
+    if not any("@" in s for s in fact_specs):
+        fails.append(f"factory specs missing purchase rates: {fact_specs[:8]}")
     if any("Track" in s and "track" in s.lower() for s in specs if "Track /" in s or s.startswith("Track =")):
         fails.append(f"window track leaked into railing specs: {specs}")
     if any("Fold" in s or "Sliding" == s.split("=")[-1].strip()[:7] for s in specs if "Panels" in s and "S1" in s):
@@ -165,7 +173,7 @@ def main() -> int:
     stair_specs = _spec_lines(stair_res)
     if any(s.startswith("Track") for s in stair_specs):
         fails.append("stair specs have Track")
-    if not any("Railing" in s or "Type =" in s or "Stairs" in s for s in stair_specs):
+    if not any("Railing" in s or s.startswith("TYPE:") or "Type =" in s or "Stairs" in s or "STAIRS" in s for s in stair_specs):
         fails.append(f"stair specs wrong: {stair_specs[:4]}")
     # Window series must never appear on staircase railing specs / calc result
     leak_keys = ("profileSeries", "sectionSizeMm", "standardLength", "wallThickness", "sectionSpecs")
@@ -317,6 +325,72 @@ def main() -> int:
     sk = {it["key"] for it in stair.get("items") or []}
     if "bottomRail" in sk:
         fails.append("stairs should not BOM bottom rail")
+
+    # Mount formula + beam overlap (studs side-mount)
+    from WEOS.factory.railing_engine import (
+        infer_railing_mount,
+        clamp_beam_overlap_mm,
+        side_stud_row_offsets_mm,
+        side_stud_column_xs,
+        side_stud_second_y_mm,
+    )
+    if infer_railing_mount(bottom_kind="studs") != "side_mount":
+        fails.append("infer studs != side_mount")
+    if infer_railing_mount(bottom_kind="block") != "top_mount":
+        fails.append("infer block != top_mount")
+    if infer_railing_mount(bottom_kind="continuous") != "top_mount":
+        fails.append("infer continuous != top_mount")
+    if infer_railing_mount(shape="staircase", stair_mount_type="step") != "step_mount":
+        fails.append("infer stair step != step_mount")
+    if infer_railing_mount(shape="staircase", stair_mount_type="side", stair_bottom_type="studs") != "side_mount":
+        fails.append("infer stair side studs != side_mount")
+    if infer_railing_mount(shape="staircase", stair_mount_type="side", stair_bottom_type="block") != "side_mount":
+        fails.append("infer stair side block != side_mount")
+    if clamp_beam_overlap_mm(None) != 200:
+        fails.append(f"default overlap {clamp_beam_overlap_mm(None)}")
+    if clamp_beam_overlap_mm(50) != 150 or clamp_beam_overlap_mm(900) != 450:
+        fails.append("overlap clamp 150–450 failed")
+    ov_q = compute_railing({
+        "shape": "straight", "lengthMm": 3000, "heightMm": 1000, "panels": 3,
+        "bottomKind": "studs", "studsPerGlass": 2,
+        "installComponents": {"bottomRail": False, "block": False, "ssPillar": False, "studs": True, "handrail": True, "glass": True},
+        "beamOverlapMm": 250,
+        "rates": {"glassPerSqft": 200, "studPerPc": 80},
+    })
+    if ov_q.get("mountType") != "side_mount":
+        fails.append(f"overlap cfg mount {ov_q.get('mountType')}")
+    if abs(float(ov_q.get("beamOverlapMm") or 0) - 250) > 0.1:
+        fails.append(f"beamOverlapMm not persisted {ov_q.get('beamOverlapMm')}")
+    ov_svg = railing_svg({
+        "shape": "straight", "lengthMm": 3000, "heightMm": 1000, "panels": 3,
+        "bottomKind": "studs", "beamOverlapMm": 250,
+        "installComponents": {"studs": True, "handrail": True, "glass": True},
+    }, quote=ov_q)
+    if "overlap 250" not in ov_svg.lower() and "overlap 250 mm" not in ov_svg.lower():
+        fails.append("straight svg missing overlap 250 mm label")
+    # Placement math: inset 100 both sides; row1=25; row2=overlap-50
+    if abs(side_stud_second_y_mm(150) - 100) > 0.05:
+        fails.append(f"secondY(150)={side_stud_second_y_mm(150)} != 100")
+    if abs(side_stud_second_y_mm(200) - 150) > 0.05:
+        fails.append(f"secondY(200)={side_stud_second_y_mm(200)} != 150")
+    xl, xr = side_stud_column_xs(0, 1200)
+    if abs(xl - 100) > 0.05 or abs(xr - 1100) > 0.05:
+        fails.append(f"columns {xl},{xr} != 100,1100")
+    off2 = side_stud_row_offsets_mm(2, overlap_mm=150, glass_height_from_bottom_mm=1050)
+    off4 = side_stud_row_offsets_mm(4, overlap_mm=150, glass_height_from_bottom_mm=1050)
+    off6 = side_stud_row_offsets_mm(6, overlap_mm=150, glass_height_from_bottom_mm=1050)
+    off8 = side_stud_row_offsets_mm(8, overlap_mm=150, glass_height_from_bottom_mm=1050)
+    if off2 != [25.0] and not (len(off2) == 1 and abs(off2[0] - 25) < 0.05):
+        fails.append(f"2pc rows {off2}")
+    if len(off4) != 2 or abs(off4[0] - 25) > 0.05 or abs(off4[1] - 100) > 0.05:
+        fails.append(f"4pc rows {off4}")
+    if len(off6) != 3 or abs(off6[2] - (150 + (1050 - 150) / 2)) > 1:
+        fails.append(f"6pc rows {off6}")
+    if len(off8) != 4 or abs(off8[2] - (150 + (1050 - 150) / 3)) > 1 or abs(off8[3] - (150 + 2 * (1050 - 150) / 3)) > 1:
+        fails.append(f"8pc rows {off8}")
+    n_ov_studs = ov_svg.count('data-side-stud="1"')
+    if n_ov_studs != 3 * 2:
+        fails.append(f"overlap svg stud count {n_ov_studs} != 6")
 
     if fails:
         print("FAIL:", "; ".join(fails))

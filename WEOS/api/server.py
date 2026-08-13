@@ -782,6 +782,27 @@ def _pdf_response(
             payload["updatedOn"] = updated_fmt
     except Exception:
         pass
+    # Keep uploaded design photos on calculated lines (calculate rebuilds line dicts).
+    try:
+        orig_lines = list(doc.get("lines") or [])
+        calc_lines = list(result.get("lines") or [])
+        by_id = {
+            str(ln.get("lineId")): ln
+            for ln in orig_lines
+            if isinstance(ln, dict) and ln.get("lineId")
+        }
+        for i, ln in enumerate(calc_lines):
+            if not isinstance(ln, dict) or ln.get("designPhoto"):
+                continue
+            src = by_id.get(str(ln.get("lineId") or ""))
+            if src is None and i < len(orig_lines) and isinstance(orig_lines[i], dict):
+                src = orig_lines[i]
+            photo = (src or {}).get("designPhoto") if isinstance((src or {}).get("designPhoto"), dict) else None
+            if photo:
+                ln["designPhoto"] = dict(photo)
+    except Exception:
+        _log.exception("design photo merge failed for %s", project_id)
+
     quote_no = payload.get("quotationId") or result.get("quotationId") or project_id
     name = _pdf_filename(quote_no, doc.get("customer") or payload.get("customer"), project_id, kind)
     try:
@@ -1463,6 +1484,79 @@ def api_factory_pdf(
         return _pdf_response(project_id, "factory", brand=brand, template_id=templateId, request=request)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/lines/{line_id}/design-photo")
+async def api_upload_design_photo(
+    project_id: str,
+    line_id: str,
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    from WEOS.factory.design_photo import save_design_photo
+    from WEOS.factory.project_store import load_project, save_project
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty upload")
+    try:
+        info = save_design_photo(
+            project_id,
+            line_id,
+            raw,
+            filename=file.filename,
+            content_type=file.content_type,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        doc = load_project(project_id)
+        for ln in doc.get("lines") or []:
+            if isinstance(ln, dict) and str(ln.get("lineId") or "") == str(line_id):
+                ln["designPhoto"] = {
+                    "key": info.get("key"),
+                    "url": info.get("url"),
+                    "contentType": info.get("contentType"),
+                    "filename": info.get("filename"),
+                }
+                break
+        else:
+            # Line not saved yet — still return the blob ref for the cart to attach.
+            pass
+        save_project(doc, action="design-photo")
+    except FileNotFoundError:
+        pass
+    except Exception:
+        _log.exception("design photo project attach failed")
+    return info
+
+
+@app.get("/api/projects/{project_id}/lines/{line_id}/design-photo")
+def api_get_design_photo(project_id: str, line_id: str) -> Response:
+    from WEOS.factory.design_photo import design_photo_bytes
+
+    raw, mime = design_photo_bytes(project_id, line_id)
+    if not raw:
+        raise HTTPException(status_code=404, detail="No design photo uploaded")
+    return Response(content=raw, media_type=mime or "image/jpeg")
+
+
+@app.delete("/api/projects/{project_id}/lines/{line_id}/design-photo")
+def api_delete_design_photo(project_id: str, line_id: str) -> dict[str, Any]:
+    from WEOS.factory.design_photo import delete_design_photo
+    from WEOS.factory.project_store import load_project, save_project
+
+    ok = delete_design_photo(project_id, line_id)
+    try:
+        doc = load_project(project_id)
+        for ln in doc.get("lines") or []:
+            if isinstance(ln, dict) and str(ln.get("lineId") or "") == str(line_id):
+                ln.pop("designPhoto", None)
+                if isinstance(ln.get("options"), dict):
+                    ln["options"].pop("designPhoto", None)
+        save_project(doc, action="design-photo-clear")
+    except Exception:
+        _log.exception("design photo clear on project failed")
+    return {"ok": ok}
 
 
 # Back-compat aliases
