@@ -324,10 +324,12 @@ def main() -> int:
     }
     pq = compute_railing(pillar_cfg)
     psvg = railing_svg(pillar_cfg, quote=pq)
-    if psvg.count('data-spigot="1"') != 3:
-        fails.append(f"1 glass 3 pillars spigots {psvg.count('data-spigot=\"1\"')} != 3")
-    if psvg.count('data-spigot-bolt="1"') != 12:
-        fails.append(f"3 spigots should show 12 bolt holes, got {psvg.count('data-spigot-bolt=\"1\"')}")
+    n_spigot = psvg.count('data-spigot="1"')
+    n_bolt = psvg.count('data-spigot-bolt="1"')
+    if n_spigot != 3:
+        fails.append(f"1 glass 3 pillars spigots {n_spigot} != 3")
+    if n_bolt != 12:
+        fails.append(f"3 spigots should show 12 bolt holes, got {n_bolt}")
     if 'data-handrail="1"' not in psvg:
         fails.append("ss pillar svg missing solid handrail outline")
     if 'data-side-stud="1"' in psvg:

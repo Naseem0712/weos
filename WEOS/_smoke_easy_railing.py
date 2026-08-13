@@ -123,10 +123,12 @@ def main() -> int:
             "handrail": True, "glass": True,
         },
     }, quote=blk)
-    if bsvg.count('data-spigot="1"') != 6:
-        fails.append(f"block 2/glass × 3 panels spigots {bsvg.count('data-spigot=\"1\"')} != 6")
-    if bsvg.count('data-spigot-bolt="1"') != 24:
-        fails.append(f"block spigot 4-hole plates {bsvg.count('data-spigot-bolt=\"1\"')} != 24")
+    n_spigot = bsvg.count('data-spigot="1"')
+    n_bolt = bsvg.count('data-spigot-bolt="1"')
+    if n_spigot != 6:
+        fails.append(f"block 2/glass x 3 panels spigots {n_spigot} != 6")
+    if n_bolt != 24:
+        fails.append(f"block spigot 4-hole plates {n_bolt} != 24")
     if 'data-handrail="1"' not in bsvg:
         fails.append("block svg missing solid black handrail")
     if 'data-side-stud="1"' in bsvg:
