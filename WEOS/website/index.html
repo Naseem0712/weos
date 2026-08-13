@@ -295,6 +295,9 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
           </div>
           <div class="row">
             <div class="grow"><label class="l">Product</label><select id="lineProduct"></select></div>
+            <div class="grow"><label class="l">Location / Position</label>
+              <input id="lineLocation" placeholder="e.g. Master Bedroom, Kitchen" style="width:100%" title="Optional. Prints with serial on quote PDF, e.g. W8 · Master Bedroom"/>
+            </div>
           </div>
           <div id="windowCartTools">
           <div class="row" style="margin-top:.5rem">
@@ -340,6 +343,14 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <strong style="font-size:.82rem">Partitions / panels</strong>
             <p class="muted" style="font-size:.72rem;margin:.15rem 0 .35rem">Click a panel on the drawing (or edit below): Fix vs Openable · handle L/R</p>
             <div id="casementPanelList"></div>
+            <div class="row" style="gap:.5rem;margin-top:.4rem;flex-wrap:wrap;align-items:flex-end">
+              <div><label class="l">Sash overlap mm</label>
+                <input id="lineSashOverlap" type="number" min="10" max="20" value="15" style="width:64px" title="Door overlap onto mullion and outer frame (10–20)"/>
+              </div>
+              <div><label class="l">Mullion gap mm</label>
+                <input id="lineMullionGap" type="number" min="10" max="20" value="15" style="width:64px" title="Gap / mullion between two openable doors (10–20)"/>
+              </div>
+            </div>
           </div>
           <div id="customGlassBox" style="display:none;margin-top:.4rem;padding:.5rem .6rem;border:1px dashed var(--line);border-radius:10px">
             <strong style="font-size:.8rem">Custom glass → Glass Library</strong>
@@ -367,6 +378,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                 <option value="bifold">Fold &amp; Sliding</option>
                 <option value="grid">Partition grid (mixed)</option>
                 <option value="shower">Shower partition</option>
+                <option value="ventilator">Bathroom ventilator</option>
               </select>
             </div>
             <div id="wrapGlassShutters"><label class="l" id="glassCountLbl">Glass shutters</label><input id="lineGlassShutters" type="number" min="1" value="2" style="width:90px"/></div>
@@ -929,7 +941,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                 <label class="chk" style="font-size:.78rem"><input id="shFrameless" type="checkbox"/> Frameless</label>
                 <label class="chk" style="font-size:.78rem"><input id="shHandle" type="checkbox" checked/> Handle</label>
                 <div><label class="l">Handle name</label><input id="shHandleName" value="D-type" style="width:100px"/></div>
-                <label class="chk" style="font-size:.78rem"><input id="shLock" type="checkbox"/> Lock</label>
+                <label class="chk" style="font-size:.78rem"><input id="shLock" type="checkbox"/> Mortice lock</label>
                 <div><label class="l">Origin</label>
                   <select id="shOrigin" style="width:100px"><option value="">—</option><option value="indian">Indian</option><option value="imported">Imported</option></select>
                 </div>
@@ -943,6 +955,93 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
               </div>
               <div id="showerBom" class="rt-bom"></div>
               <div class="err" id="showerErr" style="font-size:.75rem"></div>
+            </div>
+          </div>
+          <div id="ventTools" class="rail-tools hidden">
+            <div class="rt-head">
+              <strong style="font-size:.82rem">Bathroom ventilator</strong>
+              <div class="row" style="gap:.3rem;margin:0">
+                <button class="btn sm" type="button" id="btnVentCalc">Update</button>
+                <button class="btn sec sm" type="button" id="btnVentAdd">Add</button>
+              </div>
+            </div>
+            <div class="rt-body">
+              <div class="rt-row">
+                <span class="l" style="margin:0">Mode</span>
+                <div class="rt-shapes" id="vtModeBtns">
+                  <button type="button" data-vt-mode="split" class="active">Split</button>
+                  <button type="button" data-vt-mode="full_cutout">Full glass + fan cut-out</button>
+                </div>
+              </div>
+              <div class="rt-row" id="wrapVtSplit">
+                <div><label class="l">One side</label>
+                  <select id="vtLouversSide" style="width:72px"><option value="left" selected>Left</option><option value="right">Right</option></select>
+                </div>
+                <div><label class="l">That side</label>
+                  <select id="vtLouversFill" style="width:110px">
+                    <option value="glass">Fix glass</option>
+                    <option value="louvers">Horizontal louvers</option>
+                  </select>
+                </div>
+                <div><label class="l">Remaining</label>
+                  <select id="vtRemainFill" style="width:110px">
+                    <option value="glass">Fix glass</option>
+                    <option value="top_hung" selected>Top-hung</option>
+                  </select>
+                </div>
+              </div>
+              <div class="rt-row">
+                <label class="chk" id="wrapVtExhaust" style="font-size:.78rem"><input id="vtExhaust" type="checkbox"/> Exhaust fan</label>
+                <div><label class="l">Fan Ø mm</label><input id="vtFanDia" type="number" value="200" style="width:72px"/></div>
+                <div id="wrapVtFanSide"><label class="l">Fan side</label>
+                  <select id="vtFanSide" style="width:80px">
+                    <option value="left">Left</option>
+                    <option value="center" selected>Center</option>
+                    <option value="right">Right</option>
+                  </select>
+                </div>
+                <div id="wrapVtHinges"><label class="l">Hinges (top)</label>
+                  <select id="vtHinges" style="width:52px"><option selected>2</option><option>3</option><option>4</option></select>
+                </div>
+              </div>
+              <div class="rt-row">
+                <div><label class="l">W mm *</label><input id="vtW" type="number" value="600" style="width:80px"/></div>
+                <div><label class="l">H mm *</label><input id="vtH" type="number" value="450" style="width:80px"/></div>
+                <div><label class="l">Left W mm</label><input id="vtLeftW" type="number" placeholder="auto" style="width:72px"/></div>
+                <div><label class="l">Qty</label><input id="vtQty" type="number" min="1" value="1" style="width:48px"/></div>
+              </div>
+              <div class="rt-row">
+                <div><label class="l">Colour</label>
+                  <select id="vtColour" style="min-width:120px">
+                    <option value="matt_black" selected>Matt black</option>
+                    <option value="white">White</option>
+                    <option value="grey">Grey</option>
+                    <option value="wood_finish">Wood finish</option>
+                  </select>
+                </div>
+                <div><label class="l">Glass</label>
+                  <select id="vtGlass" style="min-width:170px">
+                    <option value="5mm_frosted_tuff" selected>5mm Frosted tuff</option>
+                    <option value="6mm_frosted_tuff">6mm Frosted tuff</option>
+                    <option value="8mm_frosted_tuff">8mm Frosted tuff</option>
+                    <option value="5mm_clear_tuff">5mm Clear tuff</option>
+                    <option value="5mm_grey_toughened">5mm Tinted grey tuff</option>
+                    <option value="8mm_toughened">8mm Clear tuff</option>
+                    <option value="8mm_grey_toughened">8mm Tinted grey tuff</option>
+                  </select>
+                </div>
+                <button class="btn ghost sm" type="button" id="btnVtAddGlass">+ glass</button>
+              </div>
+              <div class="rt-row">
+                <label class="chk" style="font-size:.78rem"><input id="vtHandle" type="checkbox" checked/> Handle (bottom)</label>
+                <div><label class="l">Handle name</label><input id="vtHandleName" value="D-type" style="width:100px"/></div>
+                <div><label class="l">Sale unit</label>
+                  <select id="vtSaleUnit" style="width:80px"><option value="sqft" selected>sft</option><option value="opening">opening</option></select>
+                </div>
+                <div><label class="l">Selling rate *</label><input id="vtSellRate" type="number" step="0.01" placeholder="₹ / unit" style="width:88px"/></div>
+              </div>
+              <div id="ventBom" class="rt-bom"></div>
+              <div class="err" id="ventErr" style="font-size:.75rem"></div>
             </div>
           </div>
           <div class="preview" id="livePreview"><span class="muted">SVG / hero</span></div>
@@ -1042,6 +1141,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                 <option value="sliding">Sliding</option>
                 <option value="style">Style / slide door</option>
                 <option value="shower_partition">Shower partition</option>
+                <option value="bathroom_ventilator">Bathroom ventilator</option>
               </select>
             </div>
             <div><label class="l">Category</label><input id="adCat" style="width:140px"/></div>
@@ -1844,6 +1944,8 @@ const state = {
   railStairBottom: 'block', // block | topiller
   railStairMount: 'side', // step | side — default side (table); step is explicit exception
   railingMode: false,
+  ventMode: false,
+  vtMode: 'split',
   railing: null,
   showerMode: false,
   shShape: 'straight',
@@ -2370,15 +2472,16 @@ function applySystemUiRules(opts) {
   const casement = sys === 'casement';
   const grid = sys === 'grid';
   const shower = sys === 'shower';
+  const ventilator = sys === 'ventilator';
   const hasTracks = productHasTracks(selectedProductMeta(), state.lines[state.selectedLine], sys);
   const show = (id, on) => { const el = $(id); if (el) el.style.display = on ? '' : 'none'; };
   show('bifoldRow', bifold);
   show('gridRow', grid);
-  show('wrapGlassShutters', !bifold && !grid && !shower);
-  show('wrapMeshShutters', hasTracks && !bifold && !casement && !grid && !shower);
-  show('wrapFixShutters', !bifold && !grid && !casement && !shower);
-  show('wrapTrack', hasTracks && !casement && !shower);
-  show('wrapMeshChk', hasTracks && !casement && !shower);
+  show('wrapGlassShutters', !bifold && !grid && !shower && !ventilator);
+  show('wrapMeshShutters', hasTracks && !bifold && !casement && !grid && !shower && !ventilator);
+  show('wrapFixShutters', !bifold && !grid && !casement && !shower && !ventilator);
+  show('wrapTrack', hasTracks && !casement && !shower && !ventilator);
+  show('wrapMeshChk', hasTracks && !casement && !shower && !ventilator);
   show('casementPanelBox', casement);
   if (casement) ensureCasementPanels();
   if (grid) ensureGridUI();
@@ -2405,6 +2508,7 @@ const PRODUCT_TYPE_CATEGORY = {
   railing: 'Railings', staircase_railing: 'Railings', windows: 'Windows', door: 'Doors',
   casements: 'Windows', pergolas: 'Pergolas', synchron: 'Windows', telescopic: 'Windows',
   fold: 'Windows', sliding: 'Windows', style: 'Doors', shower_partition: 'Bathrooms',
+  bathroom_ventilator: 'Bathrooms',
 };
 function systemForProduct(p) {
   if (!p) return null;
@@ -2412,7 +2516,8 @@ function systemForProduct(p) {
   const cat = String(p.category || '').toLowerCase();
   if (!t && !cat) return null;
   if (t.includes('rail') || cat.includes('rail')) return null; // railing world — no window system
-  if (t.includes('shower') || cat.includes('shower') || cat.includes('bathroom')) return 'shower';
+  if (t.includes('ventilat')) return 'ventilator';
+  if (t.includes('shower') || cat.includes('shower') || (cat.includes('bathroom') && !t.includes('ventilat'))) return 'shower';
   if (t.includes('casement') || t.includes('openable') || t.includes('opening')) return 'casement';
   if (t.includes('bifold') || t.includes('fold')) return 'bifold';
   if (t.includes('grid') || (t.includes('partition') && !t.includes('shower'))) return 'grid';
@@ -2429,10 +2534,54 @@ function selectedProductMeta() {
   if (!sel) return null;
   return (state.products || []).find(x => x && x.id === sel.value) || null;
 }
+function lineLocationName(ln) {
+  if (!ln) return ($('lineLocation') && $('lineLocation').value.trim()) || '';
+  return String(ln.locationName || ln.positionName
+    || (ln.options && (ln.options.locationName || ln.options.positionName)) || '').trim();
+}
+function currentLocationName() {
+  return ($('lineLocation') && $('lineLocation').value.trim()) || '';
+}
+function designSerialLabel(index, ln) {
+  const code = 'W' + (Math.max(0, parseInt(index, 10) || 0) + 1);
+  const loc = lineLocationName(ln) || currentLocationName();
+  return loc ? (code + ' · ' + loc) : code;
+}
+function quoteQtyBreakdown(lines) {
+  const order = ['Windows','Doors','Showers','Bathroom ventilators','Railings','Staircase railings','Louvers','ACP','HPL','Pergolas','Other'];
+  const counts = {};
+  (lines || []).forEach(ln => {
+    if (!ln) return;
+    const qty = Math.max(parseInt(ln.qty, 10) || 1, 0);
+    if (!qty) return;
+    const typ = String(ln.productType || (ln.options && ln.options.productType) || '').toLowerCase();
+    const pid = String(ln.product || ln.productId || '').toLowerCase();
+    const cat = String(ln.category || ln.displayName || '').toLowerCase();
+    const blob = `${typ} ${pid} ${cat}`;
+    let lab = 'Other';
+    if (typ.includes('ventilat') || pid.includes('ventilat') || blob.includes('ventilat')) lab = 'Bathroom ventilators';
+    else if (typ.includes('shower') || pid.includes('shower') || blob.includes('shower')) lab = 'Showers';
+    else if (typ.includes('stair') && blob.includes('rail')) lab = 'Staircase railings';
+    else if (typ.includes('rail') || pid.includes('rail') || cat.includes('rail')) lab = 'Railings';
+    else if (blob.includes('louver')) lab = 'Louvers';
+    else if (/\bacp\b/.test(blob) || pid.includes('acp')) lab = 'ACP';
+    else if (/\bhpl\b/.test(blob) || pid.includes('hpl')) lab = 'HPL';
+    else if (typ.includes('pergola') || blob.includes('pergola')) lab = 'Pergolas';
+    else if (typ === 'door' || typ === 'style' || cat === 'doors' || (blob.includes('door') && !blob.includes('window'))) lab = 'Doors';
+    else if (['windows','sliding','casements','telescopic','synchron','fold'].includes(typ) || cat === 'windows' || blob.includes('window') || blob.includes('casement') || blob.includes('slid')) lab = 'Windows';
+    else if (ln.displayName) lab = ln.displayName;
+    counts[lab] = (counts[lab] || 0) + qty;
+  });
+  return Object.keys(counts).map(k => [k, counts[k]]).sort((a, b) => {
+    const ia = order.indexOf(a[0]); const ib = order.indexOf(b[0]);
+    return (ia < 0 ? 80 : ia) - (ib < 0 ? 80 : ib) || a[0].localeCompare(b[0]);
+  });
+}
 function productWorldOf(p, ln) {
   const typ = String((p && p.productType) || (ln && ln.productType) || (ln && ln.options && ln.options.productType) || '').toLowerCase();
   if (typ === 'staircase_railing' || typ === 'staircase') return 'staircase_railing';
   if (typ.includes('rail')) return 'railing';
+  if (typ.includes('ventilat')) return 'ventilator';
   if (typ.includes('shower')) return 'shower';
   if (productLooksLikeRailing(p)) {
     if (typ.includes('stair') || String((p && p.category) || '').toLowerCase().includes('stair')) return 'staircase_railing';
@@ -2444,17 +2593,19 @@ function productWorldOf(p, ln) {
   }
   const pid = String((p && p.id) || (ln && ln.product) || '').toLowerCase();
   if (pid.includes('rail')) return 'railing';
-  if (pid.includes('shower') || String((p && p.category) || (ln && ln.category) || '').toLowerCase().includes('bathroom')) return 'shower';
+  if (pid.includes('ventilat') || typ.includes('ventilat')) return 'ventilator';
+  const cat = String((p && p.category) || (ln && ln.category) || '').toLowerCase();
+  if (pid.includes('shower') || typ.includes('shower') || (cat.includes('bathroom') && !pid.includes('ventilat') && !cat.includes('ventilat'))) return 'shower';
   return 'window';
 }
 function productHasTracks(p, ln, sys) {
   const s = String(sys || (ln && ln.system) || '').toLowerCase();
-  if (s === 'casement' || s === 'openable' || s === 'opening' || s === 'shower' || s === 'railing' || s === 'grid') return false;
+  if (s === 'casement' || s === 'openable' || s === 'opening' || s === 'shower' || s === 'ventilator' || s === 'railing' || s === 'grid') return false;
   if (s === 'sliding' || s === 'telescopic' || s === 'synchron' || s === 'style' || s === 'bifold' || s.indexOf('fold') >= 0) return true;
   const world = productWorldOf(p, ln);
-  if (world === 'railing' || world === 'staircase_railing' || world === 'shower') return false;
+  if (world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator') return false;
   const typ = String((p && p.productType) || (ln && ln.productType) || '').toLowerCase();
-  if (typ.includes('casement') || typ.includes('shower') || typ.includes('rail') || typ.includes('pergola')) return false;
+  if (typ.includes('casement') || typ.includes('shower') || typ.includes('ventilat') || typ.includes('rail') || typ.includes('pergola')) return false;
   if (typ.includes('slid') || typ.includes('tele') || typ.includes('sync') || typ.includes('fold') || typ === 'windows' || typ === 'door' || typ === 'style') return true;
   return s ? (s.indexOf('slid') >= 0 || s.indexOf('fold') >= 0) : false;
 }
@@ -2464,12 +2615,28 @@ function applyProductWorld() {
   const world = productWorldOf(p, ln);
   const win = $('windowCartTools');
   const addBtn = $('btnAddLine');
+  if (world === 'ventilator') {
+    state.ventMode = true;
+    state.showerMode = false;
+    state.railingMode = false;
+    if ($('lineSystem')) $('lineSystem').value = 'ventilator';
+    if (win) win.classList.add('hidden');
+    showRailTools(false);
+    showShowerTools(false);
+    showVentTools(true);
+    if (addBtn) addBtn.textContent = 'Add ventilator to cart';
+    if ($('lineSeries')) $('lineSeries').value = '';
+    ventCalc();
+    return;
+  }
   if (world === 'shower') {
     state.showerMode = true;
+    state.ventMode = false;
     state.railingMode = false;
     if ($('lineSystem')) $('lineSystem').value = 'shower';
     if (win) win.classList.add('hidden');
     showRailTools(false);
+    showVentTools(false);
     showShowerTools(true);
     if (addBtn) addBtn.textContent = 'Add shower to cart';
     if ($('lineSeries')) $('lineSeries').value = '';
@@ -2477,7 +2644,9 @@ function applyProductWorld() {
     return;
   }
   state.showerMode = false;
+  state.ventMode = false;
   showShowerTools(false);
+  showVentTools(false);
   if (world === 'railing' || world === 'staircase_railing') {
     state.railingMode = true;
     // Product-type lock: staircase_railing forces stairs. Generic railing must NOT
@@ -2582,6 +2751,14 @@ function syncDraftFromLine(ln) {
     if ($('gridCols')) $('gridCols').value = state.draftGrid.cols.join(',');
     if ($('gridRows')) $('gridRows').value = state.draftGrid.rows.join(',');
   }
+  if ($('lineSashOverlap')) {
+    const ov = ln.sashOverlapMm != null ? ln.sashOverlapMm : (ln.options && ln.options.sashOverlapMm);
+    $('lineSashOverlap').value = (ov != null && ov !== '') ? ov : 15;
+  }
+  if ($('lineMullionGap')) {
+    const gp = ln.mullionGapMm != null ? ln.mullionGapMm : (ln.options && ln.options.mullionGapMm);
+    $('lineMullionGap').value = (gp != null && gp !== '') ? gp : 15;
+  }
   if (Array.isArray(ln.casementPanels) && ln.casementPanels.length) {
     state.draftCasementPanels = ln.casementPanels.map((p, i) => ({
       index: i,
@@ -2601,6 +2778,9 @@ function syncDraftFromLine(ln) {
       });
     }
   }
+  if (ln.options && ln.options.ventilator && typeof ln.options.ventilator === 'object') {
+    populateVentTools(ln.options.ventilator);
+  }
   if (ln.options && ln.options.shower && typeof ln.options.shower === 'object') {
     const sh = ln.options.shower;
     if (sh.shape) state.shShape = sh.shape;
@@ -2615,6 +2795,10 @@ function syncDraftFromLine(ln) {
     setSh('shSellRate', sh.manualRatePerUnit || sh.sellingRate || ln.sellingRate);
     if (sh.lock != null && $('shLock')) $('shLock').checked = !!sh.lock;
     if (sh.handle != null && $('shHandle')) $('shHandle').checked = !!sh.handle;
+  }
+  if ($('lineLocation')) {
+    $('lineLocation').value = ln.locationName || ln.positionName
+      || (ln.options && (ln.options.locationName || ln.options.positionName)) || '';
   }
   renderPartChips();
   applyMeshTrackRules();
@@ -2646,6 +2830,8 @@ function currentLineDraft() {
     width: +$('lineW').value,
     height: +$('lineH').value,
     qty: +$('lineQty').value || 1,
+    locationName: ($('lineLocation') && $('lineLocation').value.trim()) || null,
+    positionName: ($('lineLocation') && $('lineLocation').value.trim()) || null,
     glass: $('lineGlass').value,
     colour: $('lineColour').value,
     handle: $('lineHandle').value,
@@ -2676,6 +2862,16 @@ function currentLineDraft() {
     panelFill: currentPanelFill(),
     features: currentPanelFill() ? [{ type: 'panel_fill', ...currentPanelFill() }] : null,
     casementPanels: (sys === 'casement') ? (state.draftCasementPanels || []).slice() : null,
+    sashOverlapMm: (function(){
+      if (sys !== 'casement') return null;
+      const n = $('lineSashOverlap') ? parseFloat($('lineSashOverlap').value) : 15;
+      return Math.min(20, Math.max(10, isFinite(n) ? n : 15));
+    })(),
+    mullionGapMm: (function(){
+      if (sys !== 'casement') return null;
+      const n = $('lineMullionGap') ? parseFloat($('lineMullionGap').value) : 15;
+      return Math.min(20, Math.max(10, isFinite(n) ? n : 15));
+    })(),
     handleOverrides: (function(){
       const base = (state.draftHandleOverrides && Object.keys(state.draftHandleOverrides).length) ? {...state.draftHandleOverrides} : null;
       if (sys !== 'casement' || !(state.draftCasementPanels || []).length) return base;
@@ -2880,7 +3076,7 @@ function renderCart() {
   $('cartBody').innerHTML = state.lines.map((ln,i) => `
     <tr style="${i===state.selectedLine?'background:#f3faf6':''}">
       <td>${i+1}</td>
-      <td>${ln.product}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}</td>
+      <td>${ln.product}${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${ln.locationName||ln.positionName}</div>`:''}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}</td>
       <td><input data-f="width" data-i="${i}" type="number" value="${ln.width}" style="width:70px"/>×<input data-f="height" data-i="${i}" type="number" value="${ln.height}" style="width:70px"/></td>
       <td><input data-f="qty" data-i="${i}" type="number" min="1" value="${ln.qty}" style="width:56px"/></td>
       <td style="font-size:.8rem">${ln.glass||''}<br>${ln.colour||''}</td>
@@ -2939,8 +3135,10 @@ function renderCart() {
       $('lineSellRate').value = ln.sellingRate != null ? ln.sellingRate : '';
       if ($('lineDesc')) $('lineDesc').value = ln.description || '';
       if ($('lineSeries')) $('lineSeries').value = ln.sectionSeries || '';
+      if ($('lineLocation')) $('lineLocation').value = ln.locationName || ln.positionName || (ln.options && (ln.options.locationName || ln.options.positionName)) || '';
       syncDraftFromLine(ln);
       if (ln.options && ln.options.railing) populateRailTools(ln.options.railing);
+      else if (ln.options && ln.options.ventilator) populateVentTools(ln.options.ventilator);
       else if (String(ln.product||'').toLowerCase().includes('rail')) { state.railingMode = true; }
       refreshDesignPhotoUi();
     }
@@ -2949,7 +3147,9 @@ function renderCart() {
   $('cartBody').querySelectorAll('[data-dup]').forEach(b => b.onclick = () => { const i=+b.dataset.dup; state.lines.splice(i+1,0,{...state.lines[i]}); renderCart(); scheduleSave(); });
   $('cartBody').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { state.lines.splice(+b.dataset.del,1); renderCart(); scheduleSave(); });
   const items = state.lines.reduce((s,l)=>s+(+l.qty||0),0);
-  $('cartMeta').textContent = `${state.lines.length} lines · ${items} items` + (state.projectId?` · ${state.projectId}`:'');
+  const groups = quoteQtyBreakdown(state.lines);
+  const groupTxt = groups.length ? ' · ' + groups.map(([lab, n]) => `${lab} ${n}`).join(' · ') : '';
+  $('cartMeta').textContent = `${state.lines.length} lines · ${items} items${groupTxt}` + (state.projectId?` · ${state.projectId}`:'');
   updatePdfLinks();
 }
 
@@ -3062,6 +3262,14 @@ function renderRailingLineSpecs(q, cfg) {
 }
 
 async function refreshPreview() {
+  if (state.ventMode || isVentMode()) {
+    try {
+      await ventCalc();
+    } catch (e) {
+      if ($('livePreview')) $('livePreview').innerHTML = '<span class="muted">Ventilator preview failed</span>';
+    }
+    return;
+  }
   if (state.showerMode || isShowerMode()) {
     try {
       await showerCalc();
@@ -3079,7 +3287,7 @@ async function refreshPreview() {
       const q = res.quote || {};
       state.railing = { cfg, quote: q };
       const shape = q.shape || cfg.shape || 'straight';
-      $('previewLabel').textContent = `Railing · ${shape} · ${q.panelCount || 0} panels · ${q.lengthMm || 0} mm`;
+      $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Railing · ${shape} · ${q.panelCount || 0} panels · ${q.lengthMm || 0} mm`;
       $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
       renderRailingBom(q);
       renderRailingLineSpecs(q, cfg);
@@ -3095,7 +3303,7 @@ async function refreshPreview() {
   showRailTools(false);
   const draft = currentLineDraft();
   const ln = state.lines[state.selectedLine] ? { ...state.lines[state.selectedLine], ...draft } : draft;
-  const bits = [`${ln.product}`, `${ln.width}×${ln.height}`];
+  const bits = [designSerialLabel(state.selectedLine, ln), `${ln.product}`, `${ln.width}×${ln.height}`];
   if (ln.mesh) bits.push('mesh');
   if ((ln.partitions||[]).length) bits.push(`${ln.partitions.length} fix`);
   bits.push(ln.colour||'');
@@ -3108,6 +3316,8 @@ async function refreshPreview() {
       mesh: !!ln.mesh,
       trackCount: productHasTracks(selectedProductMeta(), ln, ln.system) ? (ln.trackCount != null ? ln.trackCount : 2) : null,
       casementPanels: ln.casementPanels || state.draftCasementPanels || null,
+      sashOverlapMm: ln.sashOverlapMm != null ? ln.sashOverlapMm : (ln.system === 'casement' ? 15 : null),
+      mullionGapMm: ln.mullionGapMm != null ? ln.mullionGapMm : (ln.system === 'casement' ? 15 : null),
       sectionSeries: ln.sectionSeries || null,
       system: ln.system || 'sliding',
       glassShutters: ln.glassShutters != null ? ln.glassShutters : null,
@@ -3127,6 +3337,7 @@ async function refreshPreview() {
       features: ln.features || null,
       productType: ln.productType || null,
       shower: (ln.system === 'shower' || state.showerMode) ? showerConfig() : null,
+      ventilator: (ln.system === 'ventilator' || state.ventMode || ln.productType === 'bathroom_ventilator') ? ventConfig() : null,
     }});
     if (prev.meshTrack && prev.meshTrack.shifted && $('lineTrack')) {
       $('lineTrack').value = String(prev.trackCount || 3);
@@ -3395,7 +3606,10 @@ async function calculate() {
     });
     $('cartTotal').textContent = money(result.price?.total);
     const c = result.combined || {};
-    $('cartMeta').textContent = `${c.lineCount} lines · ${c.totalItems} items · Alu ${c.weight?.aluminiumKg} kg · ${ms} ms`;
+    const gtxt = (c.qtyByGroup || []).length
+      ? ' · ' + c.qtyByGroup.map(g => `${g.label} ${g.qty}`).join(' · ')
+      : '';
+    $('cartMeta').textContent = `${c.lineCount} lines · ${c.totalItems} items${gtxt} · Alu ${c.weight?.aluminiumKg} kg · ${ms} ms`;
     const opt = result.optimization || {};
     $('optBox').textContent = JSON.stringify({
       quotationId: result.quotationId,
@@ -3414,6 +3628,7 @@ $('btnAddLine').onclick = () => {
   // Product-type lock: railing world never pushes a window draft into the cart
   // (that caused PDF to print Track/Fold window drawings while canvas showed railing).
   if (isRailingMode()) { railingAdd(); return; }
+  if (isVentMode() || state.ventMode) { ventAdd(); return; }
   if (isShowerMode() || state.showerMode) { showerAdd(); return; }
   const draft = currentLineDraft();
   const p = selectedProductMeta();
@@ -4127,7 +4342,7 @@ async function railingCalc(){
       renderRailingBom(q);
       return { ...res, _lengthMissing: true };
     }
-    $('previewLabel').textContent = `Railing · ${q.shape || 'straight'} · ${q.lengthMm || 0} mm · ${q.panelCount || 0} panels`;
+    $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Railing · ${q.shape || 'straight'} · ${q.lengthMm || 0} mm · ${q.panelCount || 0} panels`;
     $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
     renderRailingBom(q);
     renderRailingLineSpecs(q, cfg);
@@ -4210,8 +4425,10 @@ async function railingAdd(){
     displayName: ptype === 'staircase_railing' ? 'Staircase railing' : (p && p.displayName) || 'Railing',
     width: q.lengthMm, height: q.heightMm || q.glassHeightMm, qty,
     saleUnit: q.saleUnit, sellingRate: q.sellingPerUnit,
+    locationName: currentLocationName() || null,
+    positionName: currentLocationName() || null,
     description: `Railing · ${q.shape||'straight'} · ${q.lengthMm} mm · ${q.panelCount||0} panels · ${q.glassThicknessMm||12}mm ${q.glassType||''} · ${q.sellingPerUnit}/${String(q.saleUnit||'rft').toUpperCase()}`,
-    options: { railing: cfg, railingQuote: q, productType: ptype, commercialOnly: q.commercial || { sellingRatePerUnit: q.sellingPerUnit, saleUnit: q.saleUnit } },
+    options: { railing: cfg, railingQuote: q, productType: ptype, commercialOnly: q.commercial || { sellingRatePerUnit: q.sellingPerUnit, saleUnit: q.saleUnit }, locationName: currentLocationName() || null },
   });
   // Never inherit window series from the product dropdown onto a railing line.
   delete state.lines[state.lines.length - 1].sectionSeries;
@@ -4356,7 +4573,7 @@ async function showerCalc() {
     const res = await api('/api/shower/quote', { method: 'POST', body: cfg });
     const q = res.quote || {};
     state.shower = { cfg, quote: q };
-    $('previewLabel').textContent = `Shower · ${q.shape || cfg.shape} · ${q.operation || ''} · ${q.widthMm || 0}×${q.heightMm || 0}`;
+    $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Shower · ${q.shape || cfg.shape} · ${q.operation || ''} · ${q.widthMm || 0}×${q.heightMm || 0}`;
     if ($('livePreview')) $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
     renderShowerBom(q);
     renderShowerLineSpecs(q, cfg);
@@ -4382,8 +4599,10 @@ async function showerAdd() {
     saleUnit: q.saleUnit, sellingRate: q.sellingPerUnit,
     colour: q.colour || cfg.colour,
     glass: cfg.glassId || cfg.glassLabel,
+    locationName: currentLocationName() || null,
+    positionName: currentLocationName() || null,
     description: `Shower · ${q.shape || 'straight'} · ${q.operation || ''} · ${q.widthMm}×${q.heightMm} mm · ${q.glassLabel || ''} · ₹${q.sellingPerUnit}/${String(q.saleUnit || 'sqft').toUpperCase()}`,
-    options: { shower: cfg, showerQuote: q, productType: 'shower_partition' },
+    options: { shower: cfg, showerQuote: q, productType: 'shower_partition', locationName: currentLocationName() || null },
     shower: cfg,
   });
   delete state.lines[state.lines.length - 1].sectionSeries;
@@ -4391,6 +4610,183 @@ async function showerAdd() {
   state.selectedLine = state.lines.length - 1;
   state.showerMode = true;
   renderCart(); scheduleSave(); refreshPreview(); toast('Shower added to cart');
+}
+function isVentMode() {
+  const p = selectedProductMeta();
+  const ln = state.lines[state.selectedLine];
+  return productWorldOf(p, ln) === 'ventilator' || !!state.ventMode;
+}
+function showVentTools(on) {
+  const el = $('ventTools');
+  if (!el) return;
+  el.classList.toggle('hidden', !on);
+  if (on) syncVentUi();
+}
+function syncVentUi() {
+  const mode = state.vtMode || 'split';
+  document.querySelectorAll('#vtModeBtns [data-vt-mode]').forEach(b => {
+    b.classList.toggle('active', b.dataset.vtMode === mode);
+  });
+  if ($('wrapVtSplit')) $('wrapVtSplit').style.display = mode === 'split' ? '' : 'none';
+  if ($('wrapVtExhaust')) $('wrapVtExhaust').style.display = mode === 'split' ? '' : 'none';
+  if ($('wrapVtFanSide')) $('wrapVtFanSide').style.display = mode === 'split' ? '' : 'none';
+  const remain = ($('vtRemainFill') && $('vtRemainFill').value) || 'top_hung';
+  if ($('wrapVtHinges')) $('wrapVtHinges').style.display = (mode === 'split' && remain === 'top_hung') ? '' : 'none';
+}
+function parseVentGlass(id) {
+  const s = String(id || '');
+  const m = s.match(/(\d+(?:\.\d+)?)\s*mm/i) || s.match(/(\d+)/);
+  const thk = m ? parseFloat(m[1]) : 5;
+  let colour = 'frosted';
+  if (/frost/i.test(s)) colour = 'frosted';
+  else if (/grey|gray/i.test(s)) colour = 'grey';
+  else if (/brown/i.test(s)) colour = 'brown';
+  else if (/clear/i.test(s)) colour = 'clear';
+  const opt = $('vtGlass') && $('vtGlass').options[$('vtGlass').selectedIndex];
+  return {
+    glassKind: /frost/i.test(s) ? 'frosted' : 'tinted',
+    glassThicknessMm: thk || 5,
+    glassColour: colour,
+    glassToughened: /tuff|tough/i.test(s) || true,
+    glassLabel: (opt && opt.textContent && opt.textContent.trim()) || s.replace(/_/g, ' '),
+    glassId: s,
+  };
+}
+function ventConfig() {
+  const g = parseVentGlass(($('vtGlass') && $('vtGlass').value) || '5mm_frosted_tuff');
+  const rateRaw = $('vtSellRate') ? $('vtSellRate').value : '';
+  const rate = rateRaw === '' ? null : +rateRaw;
+  const mode = state.vtMode || 'split';
+  return {
+    mode,
+    widthMm: ($('vtW') && +$('vtW').value) || 600,
+    heightMm: ($('vtH') && +$('vtH').value) || 450,
+    leftWidthMm: ($('vtLeftW') && $('vtLeftW').value !== '' ? +$('vtLeftW').value : null),
+    louversSide: ($('vtLouversSide') && $('vtLouversSide').value) || 'left',
+    louversFill: ($('vtLouversFill') && $('vtLouversFill').value) || 'glass',
+    remainFill: ($('vtRemainFill') && $('vtRemainFill').value) || 'top_hung',
+    exhaust: mode === 'full_cutout' ? true : !!( $('vtExhaust') && $('vtExhaust').checked ),
+    exhaustSide: ($('vtFanSide') && $('vtFanSide').value) || 'center',
+    fanDiameterMm: ($('vtFanDia') && +$('vtFanDia').value) || 200,
+    hingesPerDoor: ($('vtHinges') && +$('vtHinges').value) || 2,
+    hingeCount: ($('vtHinges') && +$('vtHinges').value) || 2,
+    colour: ($('vtColour') && $('vtColour').value) || 'matt_black',
+    handle: !!( !$('vtHandle') || $('vtHandle').checked ),
+    handleName: ($('vtHandleName') && $('vtHandleName').value.trim()) || 'D-type',
+    saleUnit: ($('vtSaleUnit') && $('vtSaleUnit').value) || 'sqft',
+    sellingRate: rate,
+    manualRatePerUnit: rate,
+    qty: ($('vtQty') && +$('vtQty').value) || 1,
+    ...g,
+  };
+}
+function populateVentTools(cfg) {
+  if (!cfg || typeof cfg !== 'object') return;
+  if (cfg.mode) state.vtMode = cfg.mode;
+  const setV = (id, v) => { if ($(id) && v != null && v !== '') $(id).value = v; };
+  setV('vtW', cfg.widthMm); setV('vtH', cfg.heightMm);
+  setV('vtLeftW', cfg.leftWidthMm);
+  setV('vtLouversSide', cfg.louversSide);
+  setV('vtLouversFill', cfg.louversFill);
+  setV('vtRemainFill', cfg.remainFill);
+  setV('vtFanDia', cfg.fanDiameterMm);
+  setV('vtFanSide', cfg.exhaustSide || cfg.fanSide);
+  setV('vtHinges', cfg.hingeCount || cfg.hingesPerDoor);
+  setV('vtColour', cfg.colour);
+  setV('vtSellRate', cfg.manualRatePerUnit || cfg.sellingRate);
+  setV('vtHandleName', cfg.handleName);
+  setV('vtSaleUnit', cfg.saleUnit);
+  setV('vtQty', cfg.qty);
+  if ($('vtExhaust')) $('vtExhaust').checked = !!cfg.exhaust && (cfg.mode !== 'full_cutout');
+  if (cfg.handle != null && $('vtHandle')) $('vtHandle').checked = !!cfg.handle;
+  if (cfg.glassId && $('vtGlass')) $('vtGlass').value = cfg.glassId;
+  syncVentUi();
+}
+function renderVentLineSpecs(q, cfg) {
+  if (!$('lineSpecs')) return;
+  const c = cfg || {};
+  const rows = [
+    ['Type', 'Bathroom ventilator'],
+    ['Mode', (q && q.mode) || c.mode || 'split'],
+    ['Size', `${(q && q.widthMm) || c.widthMm || 0} × ${(q && q.heightMm) || c.heightMm || 0} mm`],
+    ['Profile', `${(q && q.outerProfile) || '25×40'} outer`
+      + ((q && q.mode) === 'split' ? ` · ${(q && q.mullionProfile) || '25×40'} mullion` : '')
+      + ((q && q.remainFill) === 'top_hung' ? ` · ${(q && q.sashProfile) || '20×35'} sash` : '')],
+    ['Glass', (q && q.glassLabel) || c.glassLabel || '5mm Frosted tuff'],
+    ['Colour', String((q && q.colour) || c.colour || '').replace(/_/g, ' ')],
+    ['Layout', (q && q.mode) === 'full_cutout'
+      ? `fan cut-out Ø${(q && q.fanDiameterMm) || c.fanDiameterMm || 200}`
+      : `${(q && q.louversSide) || c.louversSide || 'left'} ${String((q && q.louversFill) || c.louversFill || 'glass').replace(/_/g,' ')} · remain ${String((q && q.remainFill) || c.remainFill || 'top_hung').replace(/_/g,' ')}`
+        + ((q && q.exhaust) ? ` · exhaust Ø${q.fanDiameterMm}` : '')],
+    ['Hardware', [
+      (q && q.handle) ? `${q.handleName || 'D-type'} (bottom)` : '',
+      (q && q.hingeCount) ? `${q.hingeCount} casement hinges (top)` : '',
+    ].filter(Boolean).join(' · ') || '—'],
+    ['Side', (q && q.louversSide) || c.louversSide || '—'],
+    ['Area', `${(q && q.areaSqft) != null ? q.areaSqft : '—'} Sq.Ft.`],
+    ['Rate', `₹${(q && q.sellingPerUnit) != null ? q.sellingPerUnit : '—'} / ${String((q && q.saleUnit) || 'sqft').toUpperCase()}`],
+    ['Amount', (q && q.sellingTotal) != null ? `₹${q.sellingTotal}` : '—'],
+    ['Qty', (q && q.qty) || c.qty || 1],
+  ].filter(([, v]) => v !== '' && v != null);
+  $('lineSpecs').innerHTML = rows.map(([k, v]) =>
+    `<div><span class="muted">${k}</span><div>${v ?? '—'}</div></div>`
+  ).join('');
+}
+function renderVentBom(q) {
+  if (!$('ventBom')) return;
+  const money0 = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  $('ventBom').innerHTML = `
+    <div>Bathroom ventilator · ${q.mode || ''} · ${q.widthMm || 0}×${q.heightMm || 0} mm · ${q.areaSqft || 0} sft</div>
+    <div style="margin-top:.25rem"><b>Amount:</b> ${money0(q.sellingTotal)}
+      <span class="muted">(${money0(q.sellingPerUnit)} / ${String(q.saleUnit || 'sqft').toUpperCase()})</span></div>`;
+}
+async function ventCalc() {
+  if ($('ventErr')) $('ventErr').textContent = '';
+  try {
+    state.ventMode = true;
+    showVentTools(true);
+    syncVentUi();
+    const cfg = ventConfig();
+    const res = await api('/api/ventilator/quote', { method: 'POST', body: cfg });
+    const q = res.quote || {};
+    state.ventilator = { cfg, quote: q };
+    $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Ventilator · ${q.mode || cfg.mode} · ${q.widthMm || 0}×${q.heightMm || 0}`;
+    if ($('livePreview')) $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
+    renderVentBom(q);
+    renderVentLineSpecs(q, cfg);
+    return res;
+  } catch (e) {
+    if ($('ventErr')) $('ventErr').textContent = e.message || String(e);
+    if ($('livePreview')) $('livePreview').innerHTML = '<span class="muted">Ventilator preview failed</span>';
+  }
+}
+async function ventAdd() {
+  const res = await ventCalc();
+  if (!res || !state.ventilator) return;
+  const { cfg, quote: q } = state.ventilator;
+  const prod = (($('lineProduct') && $('lineProduct').value) || 'bathroom_ventilator');
+  const p = (state.products || []).find(x => x && x.id === prod);
+  const qty = (cfg && cfg.qty) || 1;
+  state.lines.push({
+    product: (p && p.id) || 'bathroom_ventilator',
+    productType: 'bathroom_ventilator',
+    category: 'Bathrooms',
+    displayName: (p && p.displayName) || 'Bathroom ventilator',
+    width: q.widthMm, height: q.heightMm, qty,
+    saleUnit: q.saleUnit, sellingRate: q.sellingPerUnit,
+    colour: q.colour || cfg.colour,
+    glass: cfg.glassId || cfg.glassLabel,
+    locationName: currentLocationName() || null,
+    positionName: currentLocationName() || null,
+    description: `Bathroom ventilator · ${q.widthMm}×${q.heightMm} mm · ${q.glassLabel || ''} · ₹${q.sellingPerUnit}/${String(q.saleUnit || 'sqft').toUpperCase()}`,
+    options: { ventilator: cfg, ventilatorQuote: q, productType: 'bathroom_ventilator', locationName: currentLocationName() || null },
+    ventilator: cfg,
+  });
+  delete state.lines[state.lines.length - 1].sectionSeries;
+  delete state.lines[state.lines.length - 1].trackCount;
+  state.selectedLine = state.lines.length - 1;
+  state.ventMode = true;
+  renderCart(); scheduleSave(); refreshPreview(); toast('Ventilator added to cart');
 }
 function applyRailingModeFromProduct() {
   applyProductWorld();
@@ -4415,6 +4811,26 @@ if ($('btnRailCalc')) $('btnRailCalc').onclick = railingCalc;
 if ($('btnRailAdd')) $('btnRailAdd').onclick = railingAdd;
 if ($('btnShowerCalc')) $('btnShowerCalc').onclick = showerCalc;
 if ($('btnShowerAdd')) $('btnShowerAdd').onclick = showerAdd;
+if ($('btnVentCalc')) $('btnVentCalc').onclick = ventCalc;
+if ($('btnVentAdd')) $('btnVentAdd').onclick = ventAdd;
+document.querySelectorAll('#vtModeBtns [data-vt-mode]').forEach(btn => {
+  btn.onclick = () => { state.vtMode = btn.dataset.vtMode; state.ventMode = true; syncVentUi(); ventCalc(); };
+});
+['vtW','vtH','vtLeftW','vtQty','vtColour','vtGlass','vtLouversSide','vtLouversFill','vtRemainFill','vtFanDia','vtFanSide','vtHinges','vtHandleName','vtSaleUnit','vtSellRate'].forEach(id => {
+  const el = $(id); if (!el) return;
+  const go = () => { if (state.ventMode || isVentMode()) { syncVentUi(); ventCalc(); } };
+  el.addEventListener('change', go);
+  el.addEventListener('input', () => { clearTimeout(state._vtT); state._vtT = setTimeout(go, 280); });
+});
+['vtExhaust','vtHandle'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('change', () => { syncVentUi(); if (state.ventMode || isVentMode()) ventCalc(); });
+});
+if ($('btnVtAddGlass')) $('btnVtAddGlass').onclick = () => {
+  const box = $('customGlassBox'); if (box) box.style.display = '';
+  if ($('windowCartTools')) $('windowCartTools').classList.remove('hidden');
+  toast('Fill custom glass below, then Save to library');
+};
 document.querySelectorAll('#shShapeBtns [data-sh-shape]').forEach(btn => {
   btn.onclick = () => { state.shShape = btn.dataset.shShape; state.showerMode = true; syncShowerUi(); showerCalc(); };
 });
@@ -4697,6 +5113,21 @@ if ($('adminSectionsFile')) $('adminSectionsFile').onchange = async (ev) => {
   } catch(e){ toast('Import failed: ' + (e.message||e)); }
   ev.target.value = '';
 };
+if ($('lineLocation')) {
+  const applyLoc = () => {
+    const loc = currentLocationName();
+    const ln = state.lines[state.selectedLine];
+    if (ln) {
+      ln.locationName = loc || null;
+      ln.positionName = loc || null;
+      ln.options = Object.assign({}, ln.options || {}, { locationName: loc || null, positionName: loc || null });
+      scheduleSave();
+    }
+    refreshPreview();
+  };
+  $('lineLocation').addEventListener('input', () => { clearTimeout(state._locT); state._locT = setTimeout(applyLoc, 280); });
+  $('lineLocation').addEventListener('change', applyLoc);
+}
 ['lineW','lineH','lineQty','lineColour','lineGlass','lineProduct','lineSeries','lineSaleUnit','lineSellRate','lineHandle','lineDesc','cartCustomer','lineTrack','partSize'].forEach(id => {
   const el = $(id); if (!el) return;
   el.addEventListener('input', () => { if (id === 'lineProduct') { applyProductSystem(); loadCartGlassOptions(); loadCartColourOptions(); } scheduleLivePrice(); if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','partSize'].includes(id)) refreshPreview(); });
@@ -4723,7 +5154,7 @@ if ($('lineMesh')) {
 applyMeshNameVisibility();
 // Flexible window-config + Fold & Sliding controls
 ['lineSystem','lineFoldPreset','lineGlassShutters','lineMeshShutters','lineFixShutters',
- 'lineHandleFinish','lineHandleLevel','lineFoldLeft','lineFoldRight','secTop','secBottom','secJamb','secLeaf'].forEach(id => {
+ 'lineHandleFinish','lineHandleLevel','lineFoldLeft','lineFoldRight','secTop','secBottom','secJamb','secLeaf','lineSashOverlap','lineMullionGap'].forEach(id => {
   const el = $(id); if (!el) return;
   const handler = () => {
     if (id === 'lineFoldPreset') applySystemUiRules({ applyFoldPreset: true });

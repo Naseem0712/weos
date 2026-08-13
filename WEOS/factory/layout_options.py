@@ -293,6 +293,8 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
                 system_raw = "bifold"
             elif pt == "shower_partition":
                 system_raw = "shower"
+            elif pt == "bathroom_ventilator":
+                system_raw = "ventilator"
         except Exception:
             pass
     system = str(system_raw or "sliding").strip().lower()
@@ -300,12 +302,17 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
     is_casement = system in ("casement", "openable", "opening")
     is_grid = system == "grid"
     is_shower = system in ("shower", "shower_partition")
+    is_ventilator = system in ("ventilator", "bathroom_ventilator")
     if is_bifold:
         resolved_system = "bifold"
     elif is_casement:
         resolved_system = "casement"
     elif is_grid:
         resolved_system = "grid"
+    elif is_ventilator:
+        resolved_system = "ventilator"
+    elif is_shower:
+        resolved_system = "shower"
     else:
         resolved_system = "sliding"
 
@@ -358,6 +365,8 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
         "features": (opts or {}).get("features") if isinstance((opts or {}).get("features"), (list, dict)) else line.get("features"),
         "casementPanels": pick("casementPanels", "panelRoles"),
         "productType": pick("productType") or line.get("productType"),
+        "sashOverlapMm": pick("sashOverlapMm", "sash_overlap_mm", "sashOverlap"),
+        "mullionGapMm": pick("mullionGapMm", "mullion_gap_mm", "mullionGap"),
     }
 
 

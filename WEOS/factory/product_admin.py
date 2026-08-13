@@ -235,7 +235,7 @@ def update_product(product_id: str, payload: Mapping[str, Any]) -> dict[str, Any
     if "setup" in payload:
         setup = _normalize_setup_field(payload.get("setup"))
         meta["setup"] = setup
-        if setup and ptype not in ("railing", "staircase_railing", "pergolas", "shower_partition"):
+        if setup and ptype not in ("railing", "staircase_railing", "pergolas", "shower_partition", "bathroom_ventilator"):
             try:
                 sizes = (setup.get("derived") or {}).get("sectionSizes") or {}
                 if sizes:
@@ -248,7 +248,7 @@ def update_product(product_id: str, payload: Mapping[str, Any]) -> dict[str, Any
                 pass
 
     # Railing worlds must never keep window series / catalogue / setup metadata.
-    if ptype == "shower_partition":
+    if ptype in ("shower_partition", "bathroom_ventilator"):
         if "setup" in payload and isinstance(payload.get("setup"), Mapping):
             meta["setup"] = dict(payload.get("setup") or {})
         meta["sectionSeries"] = None

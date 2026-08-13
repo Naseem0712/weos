@@ -612,6 +612,8 @@ def draw_line_model_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
             handle_level=lo.get("handleLevel"),
             handle_overrides=lo.get("handleOverrides"),
             grid=lo.get("gridSpec"),
+            sash_overlap_mm=lo.get("sashOverlapMm"),
+            mullion_gap_mm=lo.get("mullionGapMm"),
         )
         draw_model_elevation(
             c,

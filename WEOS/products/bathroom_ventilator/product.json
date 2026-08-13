@@ -1,0 +1,67 @@
+{
+  "id": "bathroom_ventilator",
+  "displayName": "Bathroom ventilator",
+  "productType": "bathroom_ventilator",
+  "category": "Bathrooms",
+  "units": "mm",
+  "version": 1,
+  "status": "active",
+  "description": "Bathroom ventilator — outer frame always. Combine exhaust fan with fix glass or horizontal louvers on one side and fix glass or top-hung on the remaining area. Full-glass + round fan cut-out option. Same 2D on canvas and customer PDF.",
+  "tagline": "Bathroom ventilator · casement family · frosted glass default",
+  "warranty": "1 year",
+  "heroImage": "/static/products/placeholder.svg",
+  "gallery": ["/static/products/placeholder.svg"],
+  "specifications": {
+    "saleUnit": "sqft",
+    "outerProfile": "25×40 mm",
+    "sashProfile": "20×35 mm",
+    "mullionProfile": "25×40 mm",
+    "hingeType": "casement",
+    "hingesPerDoor": 2,
+    "handleDefault": "D-type",
+    "defaultGlass": "5mm frosted tuff",
+    "colours": ["matt_black", "white", "grey", "wood_finish"],
+    "glass": ["frosted 5/6/8 tuff", "clear / tinted library"]
+  },
+  "setup": {
+    "type": "ventilator",
+    "profiles": {
+      "outer": "25x40",
+      "sash": "20x35",
+      "mullion": "25x40"
+    },
+    "hardware": {
+      "handleDefault": "D-type",
+      "hingesPerDoor": 2,
+      "hingeType": "casement",
+      "hingeMin": 2,
+      "hingeMax": 4
+    },
+    "colours": ["matt_black", "white", "grey", "wood_finish"],
+    "defaultGlass": "frosted"
+  },
+  "formulas": {
+    "areaSqft": "AreaSqft",
+    "lengthRft": "LengthRft"
+  },
+  "materials": [
+    {
+      "id": "outer_25x40",
+      "name": "Outer frame 25×40",
+      "category": "profile",
+      "unit": "RFT",
+      "quantityFormula": "LengthRft",
+      "unitRate": 160,
+      "remarks": "Always — overridable in gallery"
+    },
+    {
+      "id": "sash_20x35",
+      "name": "Top-hung sash 20×35",
+      "category": "profile",
+      "unit": "RFT",
+      "quantityFormula": "LengthRft",
+      "unitRate": 140,
+      "remarks": "Top-hung only"
+    }
+  ]
+}

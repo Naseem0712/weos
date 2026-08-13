@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Sequence
+
 from WEOS.factory.types import Point, Polyline, Rect, Segment
 
 
@@ -82,4 +84,49 @@ def vertical_segment(x: float, y0: float, y1: float, *, layer: str = "0", name: 
 
 def horizontal_segment(y: float, x0: float, x1: float, *, layer: str = "0", name: str = "") -> Segment:
     return Segment(Point(x0, y), Point(x1, y), layer=layer, name=name)
+
+
+def subtract_intervals(
+    start: float,
+    end: float,
+    cuts: Sequence[tuple[float, float]],
+    *,
+    min_len: float = 0.6,
+) -> list[tuple[float, float]]:
+    """Keep [start, end] minus each cut interval — used to hide back edges under overlap."""
+    if end <= start:
+        return []
+    segs: list[tuple[float, float]] = [(float(start), float(end))]
+    for raw0, raw1 in cuts or ():
+        a, b = (float(raw0), float(raw1)) if raw0 <= raw1 else (float(raw1), float(raw0))
+        nxt: list[tuple[float, float]] = []
+        for s0, s1 in segs:
+            if b <= s0 or a >= s1:
+                nxt.append((s0, s1))
+                continue
+            if a > s0:
+                nxt.append((s0, min(a, s1)))
+            if b < s1:
+                nxt.append((max(b, s0), s1))
+        segs = nxt
+    return [(a, b) for a, b in segs if (b - a) >= min_len]
+
+
+def hinge_centers_mm(leaf_h_mm: float, count: int = 3) -> list[float]:
+    """Casement hinge cy from top of leaf (mm): 100 from top/bottom; extras stacked then mid-span."""
+    count = min(max(int(count), 2), 6)
+    h = max(float(leaf_h_mm), 240.0)
+    top = 100.0 if h >= 280.0 else min(100.0, h * 0.16)
+    bot = (h - 100.0) if h >= 280.0 else max(h - 100.0, h * 0.84)
+    if bot <= top + 30.0:
+        top, bot = h * 0.18, h * 0.82
+    if count == 2:
+        return [top, bot]
+    if count == 3:
+        return [top, (top + bot) / 2.0, bot]
+    stack = min(48.0, max(28.0, (bot - top) * 0.08))
+    top_b = top + stack
+    extra = count - 3
+    mids = [top_b + (bot - top_b) * i / (extra + 1) for i in range(1, extra + 1)]
+    return [top, top_b, *mids, bot]
 

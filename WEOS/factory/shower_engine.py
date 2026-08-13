@@ -20,7 +20,7 @@ DEFAULT_VERT = "16×45 mm slim"
 DEFAULT_HORIZ = "16×45 mm"
 DEFAULT_CHOKHAT = "22×50 mm"
 DEFAULT_HANDLE = "D-type"
-DEFAULT_HINGE = "butterfly"
+DEFAULT_HINGE = "casement"
 
 
 def _f(value: Any, default: float = 0.0) -> float:
@@ -92,6 +92,14 @@ def _handle_side(cfg: Mapping[str, Any], *, door_side: str) -> str:
 def _hinge_side(handle_side: str) -> str:
     """Hinges always sit on the opposite vertical from the handle."""
     return "left" if handle_side == "right" else "right"
+
+
+def _front_role(cfg: Mapping[str, Any]) -> str:
+    """Foreground leaf at the meeting: operable door/slide, or fix."""
+    raw = _s(cfg.get("frontPanel") or cfg.get("frontLeaf"), "").lower()
+    if raw in ("fix", "fixed", "back"):
+        return "fix"
+    return "door"
 
 
 def ensure_shower_dims(
@@ -411,31 +419,26 @@ def compute_shower(cfg: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _gi_plate(parts: list[str], cx: float, cy: float, size: float, stroke: str) -> None:
-    """Small GI connector plate at a frame junction."""
-    h = size / 2.0
-    parts.append(
-        f'<rect x="{cx - h:.1f}" y="{cy - h:.1f}" width="{size:.1f}" height="{size:.1f}" '
-        f'fill="#f4f4f4" stroke="{stroke}" stroke-width="0.7" data-gi-plate="1"/>'
+def _frame_d(x: float, y: float, w: float, h: float, t: float, omit_side: str | None) -> str:
+    x1, y1 = x + w, y + h
+    xi0, yi0, xi1, yi1 = x + t, y + t, x1 - t, y1 - t
+    if omit_side == "right":
+        return (
+            f"M {x1:.1f},{y:.1f} L {x:.1f},{y:.1f} L {x:.1f},{y1:.1f} L {x1:.1f},{y1:.1f} "
+            f"L {x1:.1f},{yi1:.1f} L {xi0:.1f},{yi1:.1f} L {xi0:.1f},{yi0:.1f} L {x1:.1f},{yi0:.1f} Z"
+        )
+    if omit_side == "left":
+        return (
+            f"M {x:.1f},{y:.1f} L {x1:.1f},{y:.1f} L {x1:.1f},{y1:.1f} L {x:.1f},{y1:.1f} "
+            f"L {x:.1f},{yi1:.1f} L {xi1:.1f},{yi1:.1f} L {xi1:.1f},{yi0:.1f} L {x:.1f},{yi0:.1f} Z"
+        )
+    return (
+        f"M {x:.1f},{y:.1f} L {x1:.1f},{y:.1f} L {x1:.1f},{y1:.1f} L {x:.1f},{y1:.1f} Z "
+        f"M {xi0:.1f},{yi0:.1f} L {xi0:.1f},{yi1:.1f} L {xi1:.1f},{yi1:.1f} L {xi1:.1f},{yi0:.1f} Z"
     )
 
 
-def _miter_corners(parts: list[str], x: float, y: float, w: float, h: float, t: float, stroke: str, sw: float) -> None:
-    """45° miters at four corners (outer corner → inner corner)."""
-    x1, y1 = x + w, y + h
-    for x0, y0, xi, yi in (
-        (x, y, x + t, y + t),
-        (x1, y, x1 - t, y + t),
-        (x1, y1, x1 - t, y1 - t),
-        (x, y1, x + t, y1 - t),
-    ):
-        parts.append(
-            f'<line x1="{x0:.1f}" y1="{y0:.1f}" x2="{xi:.1f}" y2="{yi:.1f}" '
-            f'stroke="{stroke}" stroke-width="{sw:.2f}" data-miter="1"/>'
-        )
-
-
-def _alu_frame(
+def _panel_frame(
     parts: list[str],
     x: float,
     y: float,
@@ -446,51 +449,74 @@ def _alu_frame(
     sw: float,
     *,
     tag: str = "frame",
+    omit_side: str | None = None,
+    skip_miters: frozenset[str] | set[str] | None = None,
+    meeting: bool = False,
 ) -> None:
-    """Mitred aluminium frame: outer + inner rect + 45° corner joints."""
+    """Aluminium leaf: filled ring + 45° miters. Back leaf omits meeting stile / miters."""
     t = min(max(t, 2.4), w / 2.4, h / 2.4)
+    skip = set(skip_miters or ())
+    if omit_side == "right":
+        skip.update(("tr", "br"))
+    elif omit_side == "left":
+        skip.update(("tl", "bl"))
+    d = _frame_d(x, y, w, h, t, omit_side)
+    extra = ' data-meeting-stile="1"' if meeting else ""
     parts.append(
-        f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
-        f'fill="none" stroke="{stroke}" stroke-width="{sw:.2f}" data-{tag}="1"/>'
+        f'<path d="{d}" fill="#f2f2f3" fill-rule="evenodd" stroke="{stroke}" '
+        f'stroke-width="{sw:.2f}" data-{tag}="1"{extra}/>'
     )
-    parts.append(
-        f'<rect x="{x + t:.1f}" y="{y + t:.1f}" width="{max(w - 2 * t, 1):.1f}" '
-        f'height="{max(h - 2 * t, 1):.1f}" fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
-    )
-    _miter_corners(parts, x, y, w, h, t, stroke, sw)
+    x1, y1 = x + w, y + h
+    corners = {
+        "tl": (x, y, x + t, y + t),
+        "tr": (x1, y, x1 - t, y + t),
+        "br": (x1, y1, x1 - t, y1 - t),
+        "bl": (x, y1, x + t, y1 - t),
+    }
+    for key, (x0, y0, xi, yi) in corners.items():
+        if key in skip:
+            continue
+        meet_flag = ' data-meeting-miter="1"' if meeting else ""
+        parts.append(
+            f'<line x1="{x0:.1f}" y1="{y0:.1f}" x2="{xi:.1f}" y2="{yi:.1f}" '
+            f'stroke="{stroke}" stroke-width="{sw:.2f}" data-miter="1"{meet_flag}"/>'
+        )
 
 
-def _meeting_stile(
+def _u_chokhat(
     parts: list[str],
     x: float,
     y: float,
-    t: float,
+    w: float,
     h: float,
+    t: float,
     stroke: str,
     sw: float,
 ) -> None:
-    """Single overlapping vertical at a sliding meeting stile (not two parallel frames)."""
+    """Hinged chokhat: both verticals + top only. No bottom member."""
+    t = min(max(t, 2.8), w / 2.8, h / 3.2)
+    fill = "#e6e6e8"
     parts.append(
-        f'<rect x="{x:.1f}" y="{y:.1f}" width="{t:.1f}" height="{h:.1f}" '
-        f'fill="#f2f2f3" stroke="{stroke}" stroke-width="{sw:.2f}" data-meeting-stile="1"/>'
+        f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{t:.1f}" fill="{fill}" '
+        f'stroke="{stroke}" stroke-width="{sw:.2f}" data-chokhat="1" data-chokhat-side="top" '
+        f'data-chokhat-overlap="1"/>'
     )
-    # 45° ticks where the stile miters into head / sill
-    mid = x + t / 2.0
     parts.append(
-        f'<line x1="{x:.1f}" y1="{y:.1f}" x2="{mid:.1f}" y2="{y - t:.1f}" '
+        f'<rect x="{x:.1f}" y="{y:.1f}" width="{t:.1f}" height="{h:.1f}" fill="{fill}" '
+        f'stroke="{stroke}" stroke-width="{sw:.2f}" data-chokhat="1" data-chokhat-side="left" '
+        f'data-chokhat-overlap="1"/>'
+    )
+    parts.append(
+        f'<rect x="{x + w - t:.1f}" y="{y:.1f}" width="{t:.1f}" height="{h:.1f}" fill="{fill}" '
+        f'stroke="{stroke}" stroke-width="{sw:.2f}" data-chokhat="1" data-chokhat-side="right" '
+        f'data-chokhat-overlap="1"/>'
+    )
+    parts.append(
+        f'<line x1="{x:.1f}" y1="{y:.1f}" x2="{x + t:.1f}" y2="{y + t:.1f}" '
         f'stroke="{stroke}" stroke-width="{sw:.2f}" data-miter="1"/>'
     )
     parts.append(
-        f'<line x1="{x + t:.1f}" y1="{y:.1f}" x2="{mid:.1f}" y2="{y - t:.1f}" '
-        f'stroke="{stroke}" stroke-width="{sw:.2f}" data-miter="1"/>'
-    )
-    yb = y + h
-    parts.append(
-        f'<line x1="{x:.1f}" y1="{yb:.1f}" x2="{mid:.1f}" y2="{yb + t:.1f}" '
-        f'stroke="{stroke}" stroke-width="{sw:.2f}" data-miter="1"/>'
-    )
-    parts.append(
-        f'<line x1="{x + t:.1f}" y1="{yb:.1f}" x2="{mid:.1f}" y2="{yb + t:.1f}" '
+        f'<line x1="{x + w:.1f}" y1="{y:.1f}" x2="{x + w - t:.1f}" y2="{y + t:.1f}" '
         f'stroke="{stroke}" stroke-width="{sw:.2f}" data-miter="1"/>'
     )
 
@@ -518,28 +544,96 @@ def _d_handle_on_glass(
     )
 
 
-def _lock_mark(parts: list[str], x: float, y: float) -> None:
+def _mortice_lock(
+    parts: list[str],
+    stile_x: float,
+    stile_t: float,
+    cy: float,
+    *,
+    glass_side: str,
+) -> None:
+    """Mortice lock: faceplate in the stile + case on the glass edge (not a lone dot)."""
+    fp_w = max(min(stile_t * 0.72, 5.2), 2.6)
+    fp_h = max(stile_t * 3.5, 15.0)
+    fp_x = stile_x + (stile_t - fp_w) / 2.0
     parts.append(
-        f'<rect x="{x - 4:.1f}" y="{y - 5:.1f}" width="8" height="10" rx="1.2" '
-        f'fill="#fff" stroke="#333" stroke-width="0.7" data-lock="1"/>'
+        f'<rect x="{fp_x:.1f}" y="{cy - fp_h / 2:.1f}" width="{fp_w:.1f}" height="{fp_h:.1f}" rx="0.6" '
+        f'fill="#ececec" stroke="#333" stroke-width="0.7" data-lock="1" data-lock-kind="mortice"/>'
     )
-    parts.append(f'<circle cx="{x:.1f}" cy="{y - 0.5:.1f}" r="1.4" fill="none" stroke="#333" stroke-width="0.6"/>')
-    parts.append(f'<line x1="{x:.1f}" y1="{y + 1.0:.1f}" x2="{x:.1f}" y2="{y + 3.6:.1f}" stroke="#333" stroke-width="0.6"/>')
+    case_w = max(stile_t * 1.25, 6.2)
+    case_h = fp_h * 0.58
+    if glass_side == "left":
+        case_x = stile_x - case_w + stile_t * 0.28
+        bolt_x = stile_x + stile_t
+    else:
+        case_x = stile_x + stile_t - stile_t * 0.28
+        bolt_x = stile_x - 2.3
+    parts.append(
+        f'<rect x="{case_x:.1f}" y="{cy - case_h / 2:.1f}" width="{case_w:.1f}" height="{case_h:.1f}" rx="0.8" '
+        f'fill="#f6f6f6" stroke="#333" stroke-width="0.75" data-lock="1"/>'
+    )
+    cyl_x = case_x + case_w / 2.0
+    cyl_r = min(case_h, case_w) * 0.20
+    parts.append(
+        f'<circle cx="{cyl_x:.1f}" cy="{cy:.1f}" r="{cyl_r:.1f}" fill="none" stroke="#333" '
+        f'stroke-width="0.65" data-lock="1"/>'
+    )
+    parts.append(f'<circle cx="{cyl_x:.1f}" cy="{cy:.1f}" r="0.7" fill="#333" data-lock="1"/>')
+    bolt_h = max(case_h * 0.26, 2.4)
+    parts.append(
+        f'<rect x="{bolt_x:.1f}" y="{cy - bolt_h / 2:.1f}" width="2.3" height="{bolt_h:.1f}" '
+        f'fill="#ddd" stroke="#333" stroke-width="0.5" data-lock="1"/>'
+    )
 
 
-def _butterfly_hinges(parts: list[str], x: float, y0: float, y1: float, count: int, stroke: str) -> None:
-    """Butterfly hinge symbols along the stile opposite the handle."""
+def _hinge_centers_mm(leaf_h_mm: float, count: int) -> list[float]:
+    """Hinge cy from top of door leaf (mm). Top/bottom at 100 mm; extras per casement rules."""
     count = min(max(int(count), 2), 6)
-    span = max(y1 - y0, 8.0)
-    for i in range(count):
-        cy = y0 + span * (i + 1) / (count + 1)
-        s = 4.8
-        parts.append(
-            f'<path d="M {x - s:.1f},{cy - s:.1f} L {x:.1f},{cy:.1f} L {x - s:.1f},{cy + s:.1f} '
-            f'M {x + s:.1f},{cy - s:.1f} L {x:.1f},{cy:.1f} L {x + s:.1f},{cy + s:.1f}" '
-            f'fill="none" stroke="{stroke}" stroke-width="0.85" data-hinge="1"/>'
-        )
-        parts.append(f'<circle cx="{x:.1f}" cy="{cy:.1f}" r="1.15" fill="{stroke}" data-hinge="1"/>')
+    h = max(float(leaf_h_mm), 240.0)
+    top = 100.0 if h >= 280.0 else min(100.0, h * 0.16)
+    bot = (h - 100.0) if h >= 280.0 else max(h - 100.0, h * 0.84)
+    if bot <= top + 30.0:
+        top, bot = h * 0.18, h * 0.82
+    if count == 2:
+        return [top, bot]
+    if count == 3:
+        return [top, (top + bot) / 2.0, bot]
+    stack = min(48.0, max(28.0, (bot - top) * 0.08))
+    top_b = top + stack
+    extra = count - 3
+    mids: list[float] = []
+    if extra > 0:
+        span = bot - top_b
+        for i in range(1, extra + 1):
+            mids.append(top_b + span * i / (extra + 1))
+    return [top, top_b, *mids, bot]
+
+
+def _casement_hinge(
+    parts: list[str],
+    cx: float,
+    cy: float,
+    stile_t: float,
+    stroke: str,
+    *,
+    from_top_mm: float,
+) -> None:
+    """Casement-style knuckle (rounded flap + pin) — not an X mark."""
+    hw = max(stile_t * 1.12, 5.2)
+    hh = max(stile_t * 1.7, 7.2)
+    parts.append(
+        f'<rect x="{cx - hw / 2:.1f}" y="{cy - hh / 2:.1f}" width="{hw:.1f}" height="{hh:.1f}" '
+        f'rx="{hw * 0.35:.1f}" fill="#f7f7f8" stroke="{stroke}" stroke-width="0.85" '
+        f'data-hinge="1" data-hinge-style="casement" data-hinge-from-top-mm="{from_top_mm:.0f}"/>'
+    )
+    parts.append(
+        f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{min(hw, hh) * 0.16:.1f}" fill="none" '
+        f'stroke="{stroke}" stroke-width="0.7"/>'
+    )
+    parts.append(
+        f'<line x1="{cx:.1f}" y1="{cy - hh / 2 + 1.2:.1f}" x2="{cx:.1f}" y2="{cy + hh / 2 - 1.2:.1f}" '
+        f'stroke="{stroke}" stroke-width="0.45"/>'
+    )
 
 
 def _open_arrow(parts: list[str], x0: float, x1: float, y: float, *, toward_left: bool) -> None:
@@ -593,9 +687,9 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
     frame_face_mm = 45.0
     chokhat_face_mm = 50.0
     chokhat_overlap_mm = 10.0
-    connector_mm = 14.0
     track_h_mm = 30.0
     cover_h_mm = 12.0
+    front_leaf = _front_role(cfg if isinstance(cfg, Mapping) else {})
 
     margin = 52.0
     elev_h = 340.0
@@ -612,23 +706,29 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
     frame_t = max(frame_face_mm * scale, 3.2)
     chok_t = max(chokhat_face_mm * scale, 3.6)
     overlap_px = max(chokhat_overlap_mm * scale, 2.0)
-    conn_s = max(connector_mm * scale, 4.5)
     track_h = track_h_mm * scale
     cover_h = cover_h_mm * scale
     elev_w = max(front_w * scale, 180.0)
-    track_extra = (track_h + cover_h + 6.0) if op == "sliding" else 0.0
+    # Track + cover sit immediately above the top rails (no floating gap).
+    track_extra = (track_h + cover_h) if op == "sliding" else 0.0
     svg_w = max(elev_w, fw + 90.0) + margin * 2 + 70
     svg_h = 28.0 + track_extra + elev_h + 28.0 + plan_h + margin + 18.0
 
     meeting_stiles = 0 if frameless else (1 if op == "sliding" else (2 if op == "hinged" else 0))
     arrow_dir = "left" if door_side == "right" else "right"
+    chok_bottom = "0" if (op == "hinged" and not frameless) else ""
+    track_gap = "0" if op == "sliding" else ""
+    hinge_style = "casement" if (op == "hinged" and not frameless) else ""
 
     parts: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{svg_w:.1f}" height="{svg_h:.1f}" '
         f'viewBox="0 0 {svg_w:.1f} {svg_h:.1f}" data-model-system="shower" '
         f'data-door-side="{door_side}" data-handle-side="{handle_side}" '
         f'data-hinge-side="{hinge_side or ""}" data-meeting-stiles="{meeting_stiles}" '
-        f'data-arrow-dir="{arrow_dir}" data-chokhat-overlap-mm="'
+        f'data-arrow-dir="{arrow_dir}" data-front-role="{front_leaf}" '
+        f'data-corner-markers="0" data-track-gap-px="{track_gap}" '
+        f'data-chokhat-bottom="{chok_bottom}" data-hinge-style="{hinge_style}" '
+        f'data-chokhat-overlap-mm="'
         f'{int(chokhat_overlap_mm) if op == "hinged" and not frameless else 0}">',
         f"<title>Shower {escape(shape)} {mm_n(front_w)}×{mm_n(height)}</title>",
         '<rect width="100%" height="100%" fill="#ffffff"/>',
@@ -641,12 +741,12 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
 
     x0 = margin
     y_frame0 = 26.0 + track_extra
-    # Top sliding track + cover plate (distinct from panel frames)
+    # Top sliding track + cover plate — immediately above panel head rails
     if op == "sliding":
         ty = 26.0
         parts.append(
             f'<rect x="{x0:.1f}" y="{ty:.1f}" width="{elev_w:.1f}" height="{cover_h:.1f}" '
-            f'fill="#f0f0f0" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
+            f'fill="#f0f0f0" stroke="{stroke}" stroke-width="{sw:.2f}" data-track="cover"/>'
         )
         parts.append(
             f'<text x="{x0 + elev_w / 2:.1f}" y="{ty + cover_h * 0.78:.1f}" text-anchor="middle" '
@@ -654,7 +754,7 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
         )
         parts.append(
             f'<rect x="{x0:.1f}" y="{ty + cover_h:.1f}" width="{elev_w:.1f}" height="{track_h:.1f}" '
-            f'fill="#e8e8ea" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
+            f'fill="#e8e8ea" stroke="{stroke}" stroke-width="{sw:.2f}" data-track="top"/>'
         )
         parts.append(
             f'<line x1="{x0 + 4:.1f}" y1="{ty + cover_h + track_h * 0.45:.1f}" '
@@ -684,6 +784,18 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
         x += pw
         mm_cursor += pw_mm
 
+    def _emit_panel_labels() -> None:
+        for p, px_i, pw, pw_mm in panel_geom:
+            parts.append(
+                f'<text x="{px_i + pw / 2:.1f}" y="{y0 + elev_h / 2:.1f}" text-anchor="middle" '
+                f'font-size="13" font-family="sans-serif" font-weight="700" fill="#0b3d7a">'
+                f'{escape(str(p.get("label") or str(p.get("role") or "").upper()))}</text>'
+            )
+            parts.append(
+                f'<text x="{px_i + pw / 2:.1f}" y="{y0 + elev_h + 14:.1f}" text-anchor="middle" '
+                f'font-size="10" font-family="sans-serif" fill="#444">{mm_n(pw_mm)} mm</text>'
+            )
+
     # Glass fills first
     for p, px_i, pw, _pw_mm in panel_geom:
         role = str(p.get("role") or "fix")
@@ -693,175 +805,142 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
             f'fill="{fill}" stroke="none"/>'
         )
 
+    door_box: tuple[float, float, float, float] | None = None
+
     if frameless:
-        for p, px_i, pw, pw_mm in panel_geom:
+        for p, px_i, pw, _pw_mm in panel_geom:
             parts.append(
                 f'<rect x="{px_i:.1f}" y="{y0:.1f}" width="{pw:.1f}" height="{elev_h:.1f}" '
                 f'fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
             )
-            parts.append(
-                f'<text x="{px_i + pw / 2:.1f}" y="{y0 + elev_h / 2:.1f}" text-anchor="middle" '
-                f'font-size="13" font-family="sans-serif" font-weight="700" fill="#0b3d7a">'
-                f'{escape(str(p.get("label") or str(p.get("role") or "").upper()))}</text>'
-            )
-            parts.append(
-                f'<text x="{px_i + pw / 2:.1f}" y="{y0 + elev_h + 14:.1f}" text-anchor="middle" '
-                f'font-size="10" font-family="sans-serif" fill="#444">{mm_n(pw_mm)} mm</text>'
-            )
+        _emit_panel_labels()
     elif op == "sliding" and len(panel_geom) >= 2:
-        # One outer mitred frame + ONE overlapping meeting stile (not two butted frames).
-        _alu_frame(parts, x0, y0, elev_w, elev_h, frame_t, stroke, sw, tag="frame")
+        # Two overlapping leaves; ONE visible meeting stile with 45° on the FRONT leaf only.
         junction = panel_geom[0][1] + panel_geom[0][2]
         stile_x = junction - frame_t / 2.0
-        _meeting_stile(parts, stile_x, y0 + frame_t, frame_t, max(elev_h - 2 * frame_t, 1.0), stroke, sw)
-        for cx, cy in (
-            (x0 + frame_t, y0 + frame_t),
-            (x0 + elev_w - frame_t, y0 + frame_t),
-            (x0 + frame_t, y0 + elev_h - frame_t),
-            (x0 + elev_w - frame_t, y0 + elev_h - frame_t),
-            (stile_x + frame_t / 2.0, y0 + frame_t),
-            (stile_x + frame_t / 2.0, y0 + elev_h - frame_t),
-        ):
-            _gi_plate(parts, cx, cy, conn_s, stroke)
-        for p, px_i, pw, pw_mm in panel_geom:
-            parts.append(
-                f'<text x="{px_i + pw / 2:.1f}" y="{y0 + elev_h / 2:.1f}" text-anchor="middle" '
-                f'font-size="13" font-family="sans-serif" font-weight="700" fill="#0b3d7a">'
-                f'{escape(str(p.get("label") or str(p.get("role") or "").upper()))}</text>'
-            )
-            parts.append(
-                f'<text x="{px_i + pw / 2:.1f}" y="{y0 + elev_h + 14:.1f}" text-anchor="middle" '
-                f'font-size="10" font-family="sans-serif" fill="#444">{mm_n(pw_mm)} mm</text>'
-            )
+        slide_g = next((g for g in panel_geom if str(g[0].get("role")) == "sliding"), None)
+        fix_g = next((g for g in panel_geom if str(g[0].get("role")) == "fix"), None)
+        slide_on_right = bool(slide_g and fix_g and slide_g[1] >= fix_g[1])
+        operable_is_front = front_leaf == "door"
+        front_is_right = slide_on_right if operable_is_front else (not slide_on_right)
+        if front_is_right:
+            back_box = (x0, y0, max(stile_x + frame_t - x0, frame_t * 2), elev_h)
+            fr_box = (stile_x, y0, max(x0 + elev_w - stile_x, frame_t * 2), elev_h)
+            back_omit: str | None = "right"
+        else:
+            fr_box = (x0, y0, max(stile_x + frame_t - x0, frame_t * 2), elev_h)
+            back_box = (stile_x, y0, max(x0 + elev_w - stile_x, frame_t * 2), elev_h)
+            back_omit = "left"
+        _panel_frame(parts, *back_box, frame_t, stroke, sw, tag="back-frame", omit_side=back_omit)
+        _panel_frame(parts, *fr_box, frame_t, stroke, sw, tag="front-frame", meeting=True)
+        door_box = fr_box if operable_is_front else back_box
+        if slide_g and not operable_is_front:
+            door_box = back_box
+        elif slide_g:
+            door_box = fr_box
+        _emit_panel_labels()
     elif op == "hinged" and len(panel_geom) >= 2:
-        # Outer chokhat + both leaf frames visible (two middle verticals) + 10 mm overlap onto door.
-        _alu_frame(parts, x0, y0, elev_w, elev_h, chok_t, stroke, sw, tag="chokhat")
+        # U-chokhat (L+T+R, no bottom) + both leaves; front leaf miters win at meeting.
         door_p = next((g for g in panel_geom if str(g[0].get("role")) == "openable"), None)
         fix_p = next((g for g in panel_geom if str(g[0].get("role")) == "fix"), None)
-        if door_p and door_side == "right":
-            parts.append(
-                f'<rect x="{door_p[1]:.1f}" y="{y0 + chok_t:.1f}" width="{door_p[2]:.1f}" height="{overlap_px:.1f}" '
-                f'fill="#f2f2f3" stroke="{stroke}" stroke-width="{sw:.2f}" data-chokhat-overlap="1"/>'
-            )
-            parts.append(
-                f'<rect x="{x0 + elev_w - chok_t - overlap_px:.1f}" y="{y0 + chok_t:.1f}" '
-                f'width="{overlap_px:.1f}" height="{max(elev_h - 2 * chok_t, 1):.1f}" '
-                f'fill="#f2f2f3" stroke="{stroke}" stroke-width="{sw:.2f}" data-chokhat-overlap="1"/>'
-            )
-        elif door_p and door_side == "left":
-            parts.append(
-                f'<rect x="{door_p[1]:.1f}" y="{y0 + chok_t:.1f}" width="{door_p[2]:.1f}" height="{overlap_px:.1f}" '
-                f'fill="#f2f2f3" stroke="{stroke}" stroke-width="{sw:.2f}" data-chokhat-overlap="1"/>'
-            )
-            parts.append(
-                f'<rect x="{x0 + chok_t:.1f}" y="{y0 + chok_t:.1f}" '
-                f'width="{overlap_px:.1f}" height="{max(elev_h - 2 * chok_t, 1):.1f}" '
-                f'fill="#f2f2f3" stroke="{stroke}" stroke-width="{sw:.2f}" data-chokhat-overlap="1"/>'
-            )
-        # Both sashes — full mitred frames (do not collapse the meeting to one member).
+        inner_x = x0 + chok_t
+        inner_r = x0 + elev_w - chok_t
         inner_y = y0 + chok_t
-        inner_h = max(elev_h - 2 * chok_t, 8.0)
-        if fix_p:
-            fx, fw_px = fix_p[1], fix_p[2]
-            if door_side == "right":
-                _alu_frame(parts, fx + chok_t, inner_y, max(fw_px - chok_t, frame_t * 2), inner_h, frame_t, stroke, sw, tag="fix-frame")
+        floor_y = y0 + elev_h
+        lap_meet = max(frame_t * 0.28, 1.4)
+        operable_is_front = front_leaf == "door"
+        fix_box: tuple[float, float, float, float] | None = None
+        fix_skip: frozenset[str] = frozenset()
+        door_skip: frozenset[str] = frozenset()
+        if door_p and fix_p and door_side == "right":
+            junction = door_p[1]
+            fix_box = (inner_x, inner_y, max(junction - inner_x, frame_t * 2), floor_y - inner_y)
+            door_x = junction
+            door_y = inner_y - overlap_px
+            door_r = inner_r + overlap_px
+            door_box = (door_x, door_y, max(door_r - door_x, frame_t * 2), floor_y - door_y)
+            if operable_is_front:
+                dx0, dy0, dw0, dh0 = door_box
+                door_box = (dx0 - lap_meet, dy0, dw0 + lap_meet, dh0)
+                fix_skip = frozenset({"tr", "br"})
             else:
-                _alu_frame(parts, fx, inner_y, max(fw_px - chok_t, frame_t * 2), inner_h, frame_t, stroke, sw, tag="fix-frame")
-        if door_p:
-            dx, dw_px = door_p[1], door_p[2]
-            if door_side == "right":
-                _alu_frame(
-                    parts, dx, inner_y + overlap_px,
-                    max(dw_px - chok_t, frame_t * 2), max(inner_h - overlap_px, frame_t * 2),
-                    frame_t, stroke, sw, tag="door-frame",
-                )
+                fx0, fy0, fw0, fh0 = fix_box
+                fix_box = (fx0, fy0, fw0 + lap_meet, fh0)
+                door_skip = frozenset({"tl", "bl"})
+        elif door_p and fix_p:
+            junction = door_p[1] + door_p[2]
+            door_x = inner_x - overlap_px
+            door_y = inner_y - overlap_px
+            door_box = (door_x, door_y, max(junction - door_x, frame_t * 2), floor_y - door_y)
+            fix_box = (junction, inner_y, max(inner_r - junction, frame_t * 2), floor_y - inner_y)
+            if operable_is_front:
+                dx0, dy0, dw0, dh0 = door_box
+                door_box = (dx0, dy0, dw0 + lap_meet, dh0)
+                fix_skip = frozenset({"tl", "bl"})
             else:
-                _alu_frame(
-                    parts, dx + chok_t, inner_y + overlap_px,
-                    max(dw_px - chok_t, frame_t * 2), max(inner_h - overlap_px, frame_t * 2),
-                    frame_t, stroke, sw, tag="door-frame",
-                )
-        for cx, cy in (
-            (x0 + chok_t, y0 + chok_t),
-            (x0 + elev_w - chok_t, y0 + chok_t),
-            (x0 + chok_t, y0 + elev_h - chok_t),
-            (x0 + elev_w - chok_t, y0 + elev_h - chok_t),
-        ):
-            _gi_plate(parts, cx, cy, conn_s, stroke)
-        for p, px_i, pw, pw_mm in panel_geom:
-            parts.append(
-                f'<text x="{px_i + pw / 2:.1f}" y="{y0 + elev_h / 2:.1f}" text-anchor="middle" '
-                f'font-size="13" font-family="sans-serif" font-weight="700" fill="#0b3d7a">'
-                f'{escape(str(p.get("label") or str(p.get("role") or "").upper()))}</text>'
-            )
-            parts.append(
-                f'<text x="{px_i + pw / 2:.1f}" y="{y0 + elev_h + 14:.1f}" text-anchor="middle" '
-                f'font-size="10" font-family="sans-serif" fill="#444">{mm_n(pw_mm)} mm</text>'
-            )
+                fx0, fy0, fw0, fh0 = fix_box
+                fix_box = (fx0 - lap_meet, fy0, fw0 + lap_meet, fh0)
+                door_skip = frozenset({"tr", "br"})
+        if operable_is_front:
+            if fix_box:
+                _panel_frame(parts, *fix_box, frame_t, stroke, sw, tag="fix-frame", skip_miters=fix_skip)
+            if door_box:
+                _panel_frame(parts, *door_box, frame_t, stroke, sw, tag="door-frame", skip_miters=door_skip, meeting=True)
+        else:
+            if door_box:
+                _panel_frame(parts, *door_box, frame_t, stroke, sw, tag="door-frame", skip_miters=door_skip)
+            if fix_box:
+                _panel_frame(parts, *fix_box, frame_t, stroke, sw, tag="fix-frame", skip_miters=fix_skip, meeting=True)
+        _u_chokhat(parts, x0, y0, elev_w, elev_h, chok_t, stroke, sw)
+        _emit_panel_labels()
     else:
-        # Fix-only / single leaf — one mitred frame.
-        _alu_frame(parts, x0, y0, elev_w, elev_h, frame_t, stroke, sw, tag="frame")
-        for cx, cy in (
-            (x0 + frame_t, y0 + frame_t),
-            (x0 + elev_w - frame_t, y0 + frame_t),
-            (x0 + frame_t, y0 + elev_h - frame_t),
-            (x0 + elev_w - frame_t, y0 + elev_h - frame_t),
-        ):
-            _gi_plate(parts, cx, cy, conn_s, stroke)
-        for p, px_i, pw, pw_mm in panel_geom:
-            parts.append(
-                f'<text x="{px_i + pw / 2:.1f}" y="{y0 + elev_h / 2:.1f}" text-anchor="middle" '
-                f'font-size="13" font-family="sans-serif" font-weight="700" fill="#0b3d7a">'
-                f'{escape(str(p.get("label") or str(p.get("role") or "").upper()))}</text>'
-            )
-            parts.append(
-                f'<text x="{px_i + pw / 2:.1f}" y="{y0 + elev_h + 14:.1f}" text-anchor="middle" '
-                f'font-size="10" font-family="sans-serif" fill="#444">{mm_n(pw_mm)} mm</text>'
-            )
+        _panel_frame(parts, x0, y0, elev_w, elev_h, frame_t, stroke, sw, tag="frame")
+        _emit_panel_labels()
+        door_g = next((g for g in panel_geom if str(g[0].get("role")) in ("sliding", "openable")), None)
+        if door_g:
+            door_box = (door_g[1], y0, door_g[2], elev_h)
 
-    # Arrow + handle (+ lock) + hinges on the door leaf
+    # Arrow + handle (on glass, touching stile) + mortice lock + casement hinges
     door_geom = next(
         (g for g in panel_geom if str(g[0].get("role")) in ("sliding", "openable")),
         None,
     )
-    if door_geom:
-        _dp, dx, dw, _dw_mm = door_geom
+    if door_box is None and door_geom:
+        door_box = (door_geom[1], y0, door_geom[2], elev_h)
+    if door_box:
+        dx, dy, dw, dh = door_box
         if op in ("sliding", "hinged"):
             _open_arrow(
                 parts,
                 dx + dw * 0.22,
                 dx + dw * 0.78,
-                y0 + elev_h * 0.70,
+                dy + dh * 0.70,
                 toward_left=(door_side == "right"),
             )
         if handle_on:
-            t_use = frame_t if (frameless or op != "hinged") else frame_t
             if handle_side == "right":
-                stile_inner = dx + dw - (chok_t if (op == "hinged" and not frameless and door_side == "right") else t_use)
+                stile_x = dx + dw - frame_t
+                stile_inner = stile_x
             else:
-                stile_inner = dx + (chok_t if (op == "hinged" and not frameless and door_side == "left") else t_use)
-            hy = y0 + elev_h * 0.48
-            hh = max(elev_h * 0.16, 28.0)
+                stile_x = dx
+                stile_inner = dx + frame_t
+            hy = dy + dh * 0.48
+            hh = max(dh * 0.16, 28.0)
             _d_handle_on_glass(parts, stile_inner, hy, hh, side=handle_side)
             if lock_on:
-                _lock_mark(
+                lock_cy = hy + hh * 0.55 + max(dh * 0.04, 8.0)
+                _mortice_lock(
                     parts,
-                    stile_inner + (-6 if handle_side == "right" else 6),
-                    hy + max(elev_h * 0.10, 18.0),
+                    stile_x,
+                    frame_t,
+                    lock_cy,
+                    glass_side=("left" if handle_side == "right" else "right"),
                 )
         if op == "hinged" and not frameless:
-            if hinge_side == "right":
-                hx_h = dx + dw - (chok_t if door_side == "right" else frame_t) / 2.0
-                if door_side == "right":
-                    hx_h = dx + dw - chok_t - overlap_px / 2.0
-                else:
-                    hx_h = dx + dw - frame_t / 2.0
-            else:
-                if door_side == "left":
-                    hx_h = dx + chok_t + overlap_px / 2.0
-                else:
-                    hx_h = dx + frame_t / 2.0
-            _butterfly_hinges(parts, hx_h, y0 + elev_h * 0.18, y0 + elev_h * 0.82, hinge_count, stroke)
+            hx_h = (dx + dw - frame_t / 2.0) if hinge_side == "right" else (dx + frame_t / 2.0)
+            leaf_h_mm = dh / scale if scale else height
+            for y_mm in _hinge_centers_mm(leaf_h_mm, hinge_count):
+                _casement_hinge(parts, hx_h, dy + y_mm * scale, frame_t, stroke, from_top_mm=y_mm)
 
     parts.append(
         f'<text x="{x0 + elev_w + 8:.1f}" y="{y_frame0 + elev_h / 2:.1f}" font-size="10" '

@@ -49,6 +49,10 @@ def main() -> int:
         fails.append("svg missing floor plan")
     if 'data-meeting-stiles="1"' not in svg:
         fails.append("sliding 1+1 should show one overlapping meeting stile")
+    if 'data-gi-plate' in svg:
+        fails.append("sliding svg still has corner dots")
+    if 'data-track-gap-px="0"' not in svg:
+        fails.append("sliding track gap should be 0 (sit on head rails)")
     if 'data-arrow-dir="left"' not in svg:
         fails.append("door-right sliding arrow should point left")
     if 'data-handle-side="right"' not in svg:
@@ -100,8 +104,25 @@ def main() -> int:
         fails.append("openable hinges should be on the right (opp. handle)")
     if 'data-hinge="1"' not in hsvg:
         fails.append("openable missing hinge symbols")
+    if 'data-hinge-style="casement"' not in hsvg:
+        fails.append("openable hinges should be casement-style (not X)")
+    n_hinge = hsvg.count('data-hinge="1"')
+    if n_hinge != 4:
+        fails.append(f"expected 4 casement hinges, got {n_hinge}")
+    if 'data-hinge-from-top-mm="100"' not in hsvg:
+        fails.append("top hinge should sit 100 mm from leaf top")
+    if 'data-chokhat-bottom="0"' not in hsvg:
+        fails.append("hinged chokhat must not include a bottom member")
+    if 'data-chokhat-side="bottom"' in hsvg:
+        fails.append("hinged svg still draws bottom chokhat")
+    if 'data-lock-kind="mortice"' not in hsvg:
+        fails.append("lock should draw as mortice, not a dot")
+    if 'data-gi-plate' in hsvg or 'data-corner-markers="0"' not in hsvg:
+        fails.append("corner dots / GI plates must not appear on hinged 2D")
     if 'data-miter="1"' not in hsvg:
         fails.append("openable missing 45° miters")
+    if 'data-meeting-miter="1"' not in hsvg:
+        fails.append("front leaf meeting stile missing 45° miters")
 
     # 2) L + U footprints
     ql = compute_shower({**cfg, "shape": "L", "depthMm": 900})
@@ -130,10 +151,14 @@ def main() -> int:
     for need in ("16x45", "FIX", "SLIDE", "front 1050", "L 1860", "R 900", "SLIDE + TRACK", "Floor plan"):
         if need not in uflat and need not in usvg:
             fails.append(f"U 1050 shower svg missing {need}")
-    if "data-gi-plate" not in usvg:
-        fails.append("U shower svg missing GI connector plates")
-    if "lock" not in usvg.lower():
-        fails.append("U shower svg missing lock mark")
+    if "data-gi-plate" in usvg:
+        fails.append("U shower svg still has corner GI plate dots")
+    if 'data-lock-kind="mortice"' not in usvg and "data-lock" not in usvg:
+        fails.append("U shower svg missing mortice lock mark")
+    if 'data-track-gap-px="0"' not in usvg:
+        fails.append("sliding track must sit immediately above the head rails")
+    if 'data-track="cover"' not in usvg or 'data-track="top"' not in usvg:
+        fails.append("sliding missing distinct cover plate + top track")
 
     # 3) Cart line → calculate → elevation SVG + PDF specs
     line = {

@@ -12,6 +12,9 @@ from WEOS.factory.optimize_engine import CutPiece, GlassPiece, optimize_project_
 _log = logging.getLogger("weos.project_engine")
 from WEOS.factory.line_kind import is_railing_cart_line as _is_railing_cart_line
 from WEOS.factory.line_kind import is_shower_cart_line as _is_shower_cart_line
+from WEOS.factory.line_kind import is_ventilator_cart_line as _is_ventilator_cart_line
+from WEOS.factory.line_kind import quote_qty_breakdown as _quote_qty_breakdown
+from WEOS.factory.line_kind import line_location_name as _line_location_name
 from WEOS.factory.pipeline import generate_job
 from WEOS.factory.product_loader import load_product
 from WEOS.factory.project_store import new_quotation_id
@@ -623,12 +626,136 @@ def _shower_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _ventilator_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
+    """Price a bathroom ventilator from designer config (unified canvas + PDF)."""
+    from WEOS.factory.ventilator_engine import (
+        compute_ventilator,
+        ensure_ventilator_dims,
+        format_ventilator_description,
+        ventilator_svg,
+    )
+
+    opts_in = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    cfg = (opts_in or {}).get("ventilator") if isinstance(opts_in, Mapping) else {}
+    cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
+    if not cfg and isinstance(line.get("ventilator"), Mapping):
+        cfg = dict(line.get("ventilator") or {})
+    cfg = ensure_ventilator_dims(
+        cfg,
+        width=float(line.get("width") or 0) or None,
+        height=float(line.get("height") or 0) or None,
+    )
+    if line.get("colour") and not cfg.get("colour"):
+        cfg["colour"] = line.get("colour")
+    if line.get("glass") and not cfg.get("glassLabel"):
+        cfg["glassLabel"] = str(line.get("glass")).replace("_", " ")
+    if line.get("saleUnit") and not cfg.get("saleUnit"):
+        cfg["saleUnit"] = line.get("saleUnit")
+    if cfg.get("manualRatePerUnit") in (None, "") and line.get("sellingRate") not in (None, ""):
+        cfg["sellingRate"] = line.get("sellingRate")
+    q = compute_ventilator(cfg)
+    qty = int(line.get("qty") or line.get("quantity") or 1)
+    unit_total = float(q.get("sellingTotal") or 0.0)
+    if int(q.get("qty") or 1) == 1 and qty > 1 and str(q.get("saleUnit") or "sqft") == "sqft":
+        unit_total = round(float(q.get("sellingPerUnit") or 0) * float(q.get("areaSqft") or 0) * qty, 2)
+    subtotal = round(unit_total, 2)
+    sale_unit = str(q.get("saleUnit") or line.get("saleUnit") or "sqft").lower()
+    svg = ventilator_svg(cfg, quote=q)
+    description = format_ventilator_description(q, cfg)
+    opts_out = {
+        "ventilator": cfg,
+        "ventilatorQuote": q,
+        "productType": "bathroom_ventilator",
+        "colour": q.get("colour") or line.get("colour"),
+        "glass": cfg.get("glassLabel") or line.get("glass"),
+    }
+    selling = {
+        "saleUnit": sale_unit,
+        "saleUnitLabel": f"Per {sale_unit.upper()}",
+        "sellingRate": float(q.get("sellingPerUnit") or 0.0),
+        "billableQty": float(q.get("billableQty") or q.get("areaSqft") or qty),
+        "sellingAmount": subtotal,
+        "qty": qty,
+    }
+    return {
+        "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
+        "product": str(line.get("product") or line.get("productId") or "bathroom_ventilator"),
+        "productType": "bathroom_ventilator",
+        "displayName": str(line.get("displayName") or "Bathroom ventilator"),
+        "category": "Bathrooms",
+        "status": "ventilator",
+        "description": description,
+        "width": float(line.get("width") or q.get("widthMm") or 0),
+        "height": float(line.get("height") or q.get("heightMm") or 0),
+        "qty": qty,
+        "saleUnit": sale_unit,
+        "sellingRate": float(q.get("sellingPerUnit") or 0.0),
+        "selling": selling,
+        "commercialTotal": subtotal,
+        "ventilator": q,
+        "options": opts_out,
+        "sectionSeries": None,
+        "sectionSpecs": {},
+        "sectionDetails": [],
+        "layout": {"system": "ventilator", "kind": "bathroom_ventilator", "panels": q.get("panels") or [],
+                   "trackCount": None},
+        "specifications": {},
+        "glass": [{"spec": q.get("glassLabel"), "thicknessMm": q.get("glassThicknessMm"),
+                   "colour": q.get("glassColour"), "qty": 1}],
+        "hardware": q.get("items") or [],
+        "materials": [],
+        "brush": {"totalMeters": 0, "pieces": []},
+        "trackRail": [],
+        "cutList": [],
+        "bom": [],
+        "weight": {"aluminiumKg": 0, "glassKg": 0, "hardwareKg": 0, "totalKg": 0},
+        "price": {
+            "currency": "INR",
+            "unitRate": float(q.get("sellingPerUnit") or 0.0),
+            "unitTotal": round(unit_total, 2),
+            "subtotal": subtotal,
+            "markupPercent": 0,
+            "gstPercent": 0,
+            "total": subtotal,
+            "saleUnit": sale_unit,
+        },
+        "preview": {"svg": svg},
+        "note": "Bathroom ventilator — selling rate × billed unit (sft/opening).",
+        **({"designPhoto": dict(line["designPhoto"])} if isinstance(line.get("designPhoto"), Mapping) else {}),
+    }
+
+
+def _attach_location(src: Mapping[str, Any] | None, result: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Copy optional location/position name onto a calculated line for PDF serial."""
+    out = dict(result or {})
+    loc = _line_location_name(src) or _line_location_name(out)
+    if not loc:
+        return out
+    out["locationName"] = loc
+    out["positionName"] = loc
+    opts = dict(out.get("options") or {}) if isinstance(out.get("options"), Mapping) else {}
+    opts["locationName"] = loc
+    opts["positionName"] = loc
+    out["options"] = opts
+    return out
+
+
 def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
+    """Calculate one cart line (product × size × qty × options)."""
+    return _attach_location(line, _calculate_line_raw(line))
+
+
+def _calculate_line_raw(line: Mapping[str, Any]) -> dict[str, Any]:
     """Calculate one cart line (product × size × qty × options)."""
     from WEOS.factory.live_pricing import apply_selling_to_line_result
 
     from WEOS.factory.layout_options import line_layout_options
-    from WEOS.factory.line_kind import is_railing_product_type, is_shower_product_type, product_world
+    from WEOS.factory.line_kind import (
+        is_railing_product_type,
+        is_shower_product_type,
+        is_ventilator_product_type,
+        product_world,
+    )
 
     product_id = str(line.get("product") or line.get("productId") or "29mm_sliding")
     # Railing lines are self-priced from their designer config.
@@ -638,6 +765,12 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
         except Exception as exc:  # pragma: no cover - keep the quote rendering
             _log.exception("railing line calc failed: %s", exc)
             return _error_line_result(line, f"railing calc failed: {exc}")
+    if _is_ventilator_cart_line(line):
+        try:
+            return _ventilator_line_result(line)
+        except Exception as exc:  # pragma: no cover
+            _log.exception("ventilator line calc failed: %s", exc)
+            return _error_line_result(line, f"ventilator calc failed: {exc}")
     if _is_shower_cart_line(line):
         try:
             return _shower_line_result(line)
@@ -651,6 +784,15 @@ def calculate_line(line: Mapping[str, Any]) -> dict[str, Any]:
         category=line.get("category") or product.get("category"),
         product_id=product_id,
     )
+    if world == "ventilator" or is_ventilator_product_type(product.get("productType")):
+        enriched = dict(line) if isinstance(line, Mapping) else {}
+        enriched.setdefault("productType", "bathroom_ventilator")
+        enriched.setdefault("category", product.get("category") or "Bathrooms")
+        try:
+            return _ventilator_line_result(enriched)
+        except Exception as exc:  # pragma: no cover
+            _log.exception("ventilator line calc failed: %s", exc)
+            return _error_line_result(enriched, f"ventilator calc failed: {exc}")
     if world == "shower" or is_shower_product_type(product.get("productType")):
         enriched = dict(line) if isinstance(line, Mapping) else {}
         enriched.setdefault("productType", "shower_partition")
@@ -984,6 +1126,7 @@ def combine_lines(line_results: list[dict[str, Any]]) -> dict[str, Any]:
         "brushMeters": round(brush_m, 3),
         "hardwareRolled": [{"name": k, "qty": v} for k, v in sorted(hardware_roll.items())],
         "trackRail": track_roll,
+        "qtyByGroup": [{"label": lab, "qty": n} for lab, n in _quote_qty_breakdown(line_results)],
     }
 
 

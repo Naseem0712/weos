@@ -145,6 +145,8 @@ class CartLine(BaseModel):
     powderCoatName: str | None = None
     productType: str | None = None
     casementPanels: list[dict[str, Any]] | None = None
+    sashOverlapMm: float | None = None
+    mullionGapMm: float | None = None
     shower: dict[str, Any] | None = None
     options: dict[str, Any] | None = None
 
@@ -172,6 +174,8 @@ class LivePriceRequest(BaseModel):
     system: str | None = None
     handleOverrides: dict[str, Any] | None = None
     casementPanels: list[dict[str, Any]] | None = None
+    sashOverlapMm: float | None = None
+    mullionGapMm: float | None = None
     shower: dict[str, Any] | None = None
     options: dict[str, Any] | None = None
 
@@ -280,11 +284,14 @@ class PreviewRequest(BaseModel):
     grid: Any = None
     railing: dict[str, Any] | None = None
     shower: dict[str, Any] | None = None
+    ventilator: dict[str, Any] | None = None
     productType: str | None = None
     category: str | None = None
     panelFill: dict[str, Any] | None = None
     features: list[dict[str, Any]] | None = None
     casementPanels: list[dict[str, Any]] | None = None
+    sashOverlapMm: float | None = None
+    mullionGapMm: float | None = None
 
 
 class FormulaPreviewRequest(BaseModel):
@@ -800,6 +807,18 @@ def _pdf_response(
             photo = (src or {}).get("designPhoto") if isinstance((src or {}).get("designPhoto"), dict) else None
             if photo:
                 ln["designPhoto"] = dict(photo)
+            loc = ""
+            if isinstance(src, dict):
+                loc = str(src.get("locationName") or src.get("positionName") or "").strip()
+                if not loc and isinstance(src.get("options"), dict):
+                    loc = str(src["options"].get("locationName") or src["options"].get("positionName") or "").strip()
+            if loc and not ln.get("locationName"):
+                ln["locationName"] = loc
+                ln["positionName"] = loc
+                opts = dict(ln.get("options") or {}) if isinstance(ln.get("options"), dict) else {}
+                opts["locationName"] = loc
+                opts["positionName"] = loc
+                ln["options"] = opts
     except Exception:
         _log.exception("design photo merge failed for %s", project_id)
 
@@ -874,6 +893,25 @@ def api_product_detail(product_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@app.post("/api/ventilator/quote")
+def api_ventilator_quote(body: dict[str, Any]) -> dict[str, Any]:
+    """Bathroom ventilator calculator + 2D elevation SVG (canvas === PDF)."""
+    try:
+        from WEOS.factory.ventilator_engine import compute_ventilator, ensure_ventilator_dims, ventilator_svg
+
+        raw = dict(body or {})
+        cfg = ensure_ventilator_dims(
+            raw,
+            width=float(raw.get("width") or raw.get("widthMm") or 0) or None,
+            height=float(raw.get("height") or raw.get("heightMm") or 0) or None,
+        )
+        quote = compute_ventilator(cfg)
+        svg = ventilator_svg(cfg, quote=quote)
+        return {"quote": quote, "svg": svg}
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=400, detail=f"ventilator quote failed: {exc}") from exc
+
+
 @app.post("/api/shower/quote")
 def api_shower_quote(body: dict[str, Any]) -> dict[str, Any]:
     """Shower partition calculator + 2D elevation / floor-plan SVG."""
@@ -939,16 +977,58 @@ def api_railing_quote(body: dict[str, Any]) -> dict[str, Any]:
 def api_preview(body: PreviewRequest) -> dict[str, Any]:
     """Fast SVG preview for live cart — uses geometry engine only path via generate_job."""
     # Railing is not a window — never route it through generate_job.
-    from WEOS.factory.line_kind import is_railing_product_type, is_shower_product_type, product_world
+    from WEOS.factory.line_kind import (
+        is_railing_product_type,
+        is_shower_product_type,
+        is_ventilator_product_type,
+        product_world,
+    )
 
     prod = str(getattr(body, "product", "") or "").lower()
     rail_cfg = getattr(body, "railing", None)
     shower_cfg = getattr(body, "shower", None)
+    vent_cfg = getattr(body, "ventilator", None)
     world = product_world(
         getattr(body, "productType", None),
         category=getattr(body, "category", None),
         product_id=prod,
     )
+    if (
+        world == "ventilator"
+        or is_ventilator_product_type(getattr(body, "productType", None))
+        or "ventilat" in prod
+        or isinstance(vent_cfg, dict)
+    ):
+        from WEOS.factory.ventilator_engine import compute_ventilator, ensure_ventilator_dims, ventilator_svg
+
+        cfg = ensure_ventilator_dims(
+            dict(vent_cfg or {}),
+            width=float(getattr(body, "width", 0) or 0) or None,
+            height=float(getattr(body, "height", 0) or 0) or None,
+        )
+        if getattr(body, "colour", None) and not cfg.get("colour"):
+            cfg["colour"] = body.colour
+        q = compute_ventilator(cfg)
+        return {
+            "svg": ventilator_svg(cfg, quote=q),
+            "system": "ventilator",
+            "productType": "bathroom_ventilator",
+            "ventilator": q,
+            "specifications": {
+                "type": f"Bathroom ventilator · {q.get('mode')}",
+                "size": f"{q.get('widthMm')}×{q.get('heightMm')} mm",
+                "glass": q.get("glassLabel"),
+                "colour": q.get("colour"),
+                "layout": (
+                    f"fan cut Ø{q.get('fanDiameterMm')}" if q.get("mode") == "full_cutout"
+                    else f"{q.get('louversSide')} {q.get('louversFill')} / remain {q.get('remainFill')}"
+                ),
+                "areaSqft": q.get("areaSqft"),
+                "sellingPerUnit": q.get("sellingPerUnit"),
+            },
+            "layout": {"system": "ventilator", "panels": q.get("panels") or [], "trackCount": None},
+            "sectionSpecs": {},
+        }
     if (
         world == "shower"
         or is_shower_product_type(getattr(body, "productType", None))
@@ -1086,6 +1166,8 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
                     handle_level=body.handleLevel,
                     handle_overrides=body.handleOverrides,
                     grid=body.grid if str(body.system or "").lower() == "grid" else None,
+                    sash_overlap_mm=getattr(body, "sashOverlapMm", None),
+                    mullion_gap_mm=getattr(body, "mullionGapMm", None),
                 )
                 break
             except Exception as exc:  # try next engine id

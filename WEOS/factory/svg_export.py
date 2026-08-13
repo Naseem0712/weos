@@ -923,7 +923,39 @@ def render_svg_string(
 
 def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> str | None:
     """Build quote/canvas SVG for a cart line from the same geometry engine as live preview."""
-    from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line
+    from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line, is_ventilator_cart_line
+
+    if is_ventilator_cart_line(line):
+        opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+        cfg = opts.get("ventilator") if isinstance(opts, Mapping) else None
+        cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
+        if not cfg and isinstance(line.get("ventilator"), Mapping):
+            cfg = dict(line.get("ventilator") or {})
+        try:
+            from WEOS.factory.ventilator_engine import (
+                compute_ventilator,
+                ensure_ventilator_dims,
+                ventilator_svg,
+            )
+
+            cfg = ensure_ventilator_dims(
+                cfg,
+                width=float(line.get("width") or 0) or None,
+                height=float(line.get("height") or 0) or None,
+            )
+            q = opts.get("ventilatorQuote") if isinstance(opts, Mapping) else None
+            if not isinstance(q, Mapping):
+                q = line.get("ventilator") if isinstance(line.get("ventilator"), Mapping) else None
+            if not isinstance(q, Mapping) or not q.get("widthMm"):
+                q = compute_ventilator(cfg)
+            svg = ventilator_svg(cfg, quote=q if isinstance(q, Mapping) else None)
+            if svg:
+                return str(svg)
+        except Exception:
+            pass
+        prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
+        svg = (prev or {}).get("svg")
+        return str(svg) if svg else None
 
     if is_shower_cart_line(line):
         opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
@@ -1041,6 +1073,8 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
             handle_level=lo.get("handleLevel"),
             handle_overrides=lo.get("handleOverrides"),
             grid=lo.get("gridSpec"),
+            sash_overlap_mm=lo.get("sashOverlapMm"),
+            mullion_gap_mm=lo.get("mullionGapMm"),
         )
         if lo.get("panelFill"):
             from WEOS.factory.panel_fills import attach_fill_to_drawing

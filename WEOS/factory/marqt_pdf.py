@@ -572,6 +572,68 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         from WEOS.factory.line_kind import is_shower_cart_line
     except Exception:
         is_shower_cart_line = lambda _l: False  # noqa: E731
+    try:
+        from WEOS.factory.line_kind import is_ventilator_cart_line
+    except Exception:
+        is_ventilator_cart_line = lambda _l: False  # noqa: E731
+    if is_ventilator_cart_line(line):
+        opts_v = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+        cfg_v = opts_v.get("ventilator") if isinstance(opts_v, Mapping) else None
+        cfg_v = dict(cfg_v) if isinstance(cfg_v, Mapping) else {}
+        qv = opts_v.get("ventilatorQuote") if isinstance(opts_v, Mapping) else None
+        if not isinstance(qv, Mapping):
+            qv = line.get("ventilator") if isinstance(line.get("ventilator"), Mapping) else {}
+        if (not qv or not qv.get("widthMm")) and cfg_v:
+            try:
+                from WEOS.factory.ventilator_engine import compute_ventilator, ensure_ventilator_dims
+
+                qv = compute_ventilator(ensure_ventilator_dims(cfg_v, width=w or None, height=h or None))
+            except Exception:
+                qv = qv if isinstance(qv, Mapping) else {}
+        from WEOS.factory.ventilator_engine import format_ventilator_description
+
+        add("", format_ventilator_description(qv, cfg_v))
+        add("TYPE", "Bathroom ventilator"
+            + (f" · {qv.get('mode')}" if qv.get("mode") else ""))
+        add("SIZE", f"{_mm(qv.get('widthMm') or w)} × {_mm(qv.get('heightMm') or h)} mm")
+        add("PROFILE", f"outer {qv.get('outerProfile') or '25×40'}"
+            + (f" · sash {qv.get('sashProfile')}" if qv.get('remainFill') == 'top_hung' or qv.get('mode') == 'split' else "")
+            + (f" · mullion {qv.get('mullionProfile')}" if qv.get("mode") == "split" else ""))
+        add("GLASS", qv.get("glassLabel") or f"{qv.get('glassThicknessMm') or 5} mm {qv.get('glassColour') or 'frosted'}")
+        add("COLOUR", str(qv.get("colour") or line.get("colour") or "").replace("_", " "))
+        layout_bits = []
+        if qv.get("mode") == "full_cutout":
+            layout_bits.append(f"full glass · fan cut-out Ø{_mm(qv.get('fanDiameterMm') or 200)} mm")
+        else:
+            layout_bits.append(f"{qv.get('louversSide') or 'left'} {(qv.get('louversFill') or 'glass').replace('_', ' ')}")
+            layout_bits.append(f"remain {(qv.get('remainFill') or 'top_hung').replace('_', ' ')}")
+            if qv.get("exhaust"):
+                layout_bits.append(f"exhaust Ø{_mm(qv.get('fanDiameterMm') or 200)} mm · {qv.get('exhaustSide') or 'center'}")
+        add("LAYOUT", " · ".join(layout_bits))
+        hw_v = []
+        if qv.get("hardwareBrand"):
+            hw_v.append(str(qv.get("hardwareBrand")))
+        if qv.get("hardwareOrigin"):
+            hw_v.append(str(qv.get("hardwareOrigin")))
+        if qv.get("handle"):
+            hw_v.append(f"handle {qv.get('handleName') or 'D-type'} (bottom)")
+        if qv.get("hingeCount"):
+            hw_v.append(f"{qv.get('hingeType') or 'casement'} ×{qv.get('hingeCount')} (top)")
+        if hw_v:
+            add("HARDWARE", " · ".join(hw_v))
+        add("SIDE", str(qv.get("louversSide") or qv.get("exhaustSide") or "—"))
+        add("AREA", f"{qv.get('areaSqft') or 0} Sq.Ft.")
+        sale_uv = str(qv.get("saleUnit") or line.get("saleUnit") or "sqft").upper()
+        add("RATE", f"{_money(qv.get('sellingPerUnit') or line.get('sellingRate') or 0)} / {sale_uv}")
+        add("AMOUNT", f"{_money(qv.get('sellingTotal') or line.get('commercialTotal') or 0)}")
+        add("QTY", str(line.get("qty") or qv.get("qty") or 1))
+        if factory:
+            for it in qv.get("items") or []:
+                if not isinstance(it, Mapping):
+                    continue
+                add("BOM", f"{it.get('label') or it.get('key')} · {it.get('qty')} {it.get('unit')} @ {it.get('rate')} = {it.get('amount')}")
+        return rows
+
     if is_shower_cart_line(line):
         opts_s = line.get("options") if isinstance(line.get("options"), Mapping) else {}
         cfg_s = opts_s.get("shower") if isinstance(opts_s, Mapping) else None
@@ -619,7 +681,7 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
             hw_s.append(f"handle {q.get('handleName') or 'D-type'}")
         hw_s.append(f"lock {'yes' if q.get('lock') else 'no'}")
         if q.get("hingesPerDoor"):
-            hw_s.append(f"{q.get('hingeType') or 'butterfly'} ×{q.get('hingesPerDoor')}/door")
+            hw_s.append(f"{q.get('hingeType') or 'casement'} ×{q.get('hingesPerDoor')}/door")
         add("HARDWARE", " · ".join(hw_s))
         add("COLOUR", str(q.get("colour") or line.get("colour") or "").replace("_", " "))
         add("AREA", f"{q.get('areaSqft') or 0} Sq.Ft. · qty {line.get('qty') or q.get('qty') or 1}")
@@ -1305,11 +1367,30 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
                 rate = 0
         grand += float(amount or 0)
 
+        from WEOS.factory.line_kind import design_serial_label, line_location_name
+
         code = f"W{idx + 1}"
-        # Design column — same geometry SVG as live canvas (not schematic stub)
+        loc = line_location_name(line)
+        design_label = design_serial_label(idx, line)
+        # Design column — reddish serial; location prints with it (under / beside W8).
         c.setFillColorRGB(*accent)
-        set_font(c, 9, bold=True)
-        c.drawString(M + 2, y + 4, code)
+        max_code_w = draw_w - 6
+        if loc:
+            try:
+                face = set_font(c, 9, bold=True) or "Helvetica-Bold"
+                combined_w = c.stringWidth(design_label, face, 9)
+            except Exception:
+                combined_w = len(design_label) * 5.2
+            if combined_w <= max_code_w:
+                set_font(c, 9, bold=True)
+                c.drawString(M + 2, y + 4, design_label)
+            else:
+                set_font(c, 9, bold=True)
+                c.drawString(M + 2, y + 4, code)
+                _draw_fit(c, loc, M + 2, y - 8, max_code_w, 7.5, bold=True, minimum=6.0)
+        else:
+            set_font(c, 9, bold=True)
+            c.drawString(M + 2, y + 4, code)
         try:
             draw_line_elevation(c, line, M, y - draw_h, draw_w, draw_h)
         except Exception:
@@ -1375,8 +1456,17 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     y -= 14
     c.setFillColorRGB(0, 0, 0)
     set_font(c, 8)
-    c.drawString(M, y, f"Total Area: {round(total_area, 3)} Sq.Ft.    Windows: {total_qty} Nos")
+    try:
+        from WEOS.factory.line_kind import format_qty_totals_lines, quote_qty_breakdown
+
+        qty_lines = format_qty_totals_lines(quote_qty_breakdown(lines), fallback_qty=total_qty)
+    except Exception:
+        qty_lines = [f"Items: {total_qty} Nos"]
+    c.drawString(M, y, f"Total Area: {round(total_area, 3)} Sq.Ft.")
     y -= 12
+    for ql in qty_lines:
+        c.drawString(M, y, ql)
+        y -= 12
     c.drawString(M, y, f"Basic / Project Value: {money_text(basic_ex)}")
     y -= 12
     c.drawString(M, y, f"GST @ {gst_pct:g}%: {money_text(gst_amt)}")

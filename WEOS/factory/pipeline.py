@@ -53,6 +53,8 @@ def generate_job(
     handle_level: float | None = None,
     handle_overrides: Mapping[Any, Any] | None = None,
     grid: Mapping[str, Any] | None = None,
+    sash_overlap_mm: float | None = None,
+    mullion_gap_mm: float | None = None,
 ) -> JobResult:
     from WEOS.factory.layout_options import resolve_mesh_track, resolve_shutter_config
 
@@ -124,6 +126,8 @@ def generate_job(
         handle_level=handle_level,
         handle_overrides=handle_overrides,
         grid=grid,
+        sash_overlap_mm=sash_overlap_mm,
+        mullion_gap_mm=mullion_gap_mm,
     )
     params = geometry_as_engine_dict(product)
     params["track_count"] = float(mesh_res["trackCount"])

@@ -21,7 +21,10 @@ from WEOS.factory.dimensioning import (
 )
 from WEOS.factory.geometry import (
     frame_miter_segments,
+    hinge_centers_mm,
+    horizontal_segment,
     rect_polyline,
+    subtract_intervals,
     u_polyline_open_left,
     u_polyline_open_right,
     vertical_segment,
@@ -33,6 +36,18 @@ from WEOS.factory.types import DrawingModel, Point, Rect, Segment
 MM_PER_FOOT = 304.8
 BIFOLD_MAX_WIDTH_MM = 25.0 * MM_PER_FOOT   # 7620 mm
 BIFOLD_MAX_HEIGHT_MM = 12.0 * MM_PER_FOOT  # 3657.6 mm
+DEFAULT_SASH_OVERLAP_MM = 15.0
+DEFAULT_MULLION_GAP_MM = 15.0
+
+
+def _clamp_mm(value: Any, lo: float, hi: float, default: float) -> float:
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        v = default
+    if v <= 0:
+        v = default
+    return min(max(v, lo), hi)
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,6 +333,151 @@ def _build_shutters(
     return panels, handles, hinges
 
 
+def _build_casement_leaves(
+    inner: Rect,
+    *,
+    frame_width: float,
+    outer_w: float,
+    outer_h: float,
+    glass_count: int,
+    sash_overlap: float,
+    mullion_gap: float,
+    handle_overrides: Mapping[Any, Any] | None,
+    handle_level: float,
+    handle_length: float | None,
+    fixed_set: set[int],
+) -> tuple[list[ShutterPanel], list[Rect], list[Rect], list[Rect]]:
+    """Casement partitions: mullions + sashes that overlap frame/mullion by sash_overlap."""
+    fw = float(frame_width)
+    G = max(int(glass_count), 1)
+    ov = float(sash_overlap)
+    mull_w = float(mullion_gap) if G >= 2 else 0.0
+    x0, y0, x1, y1 = inner.x0, inner.y0, inner.x1, inner.y1
+    inner_w = max(x1 - x0, fw * 2 * G + mull_w * max(G - 1, 0))
+    usable = max(inner_w - mull_w * (G - 1), fw * 2.2 * G)
+    cell_w = usable / G
+
+    overrides: dict[int, Mapping[str, Any]] = {}
+    for k, v in dict(handle_overrides or {}).items():
+        try:
+            overrides[int(k)] = v if isinstance(v, Mapping) else {}
+        except (TypeError, ValueError):
+            continue
+
+    roles: list[str] = []
+    for i in range(G):
+        ov_cfg = overrides.get(i) or {}
+        role = str(ov_cfg.get("role") or "").strip().lower()
+        if i in fixed_set or role in ("fix", "fixed"):
+            roles.append("fix")
+        else:
+            roles.append("openable")
+
+    mullions: list[Rect] = []
+    cell_bounds: list[tuple[float, float]] = []
+    cursor = x0
+    for i in range(G):
+        cx0, cx1 = cursor, cursor + cell_w
+        cell_bounds.append((cx0, cx1))
+        cursor = cx1
+        if i < G - 1:
+            mullions.append(Rect(cursor, y0, cursor + mull_w, y1))
+            cursor += mull_w
+
+    band_h = y1 - y0
+    hlen = float(handle_length) if handle_length and handle_length > 0 else max(min(band_h * 0.16, 300.0), 120.0)
+    hlen = min(hlen, max(band_h * 0.9, 40.0))
+    hw = max(fw * 0.5, 12.0)
+    hlevel = min(max(float(handle_level), 0.04), 0.96)
+    knuckle_w = max(fw * 0.7, 14.0)
+    knuckle_h = max(band_h * 0.05, 18.0)
+    n_open = sum(1 for r in roles if r != "fix")
+    center_l = max(n_open - 1, 0) // 2
+
+    panels: list[ShutterPanel] = []
+    handles: list[Rect] = []
+    hinges: list[Rect] = []
+    open_seen = 0
+
+    for i, (cx0, cx1) in enumerate(cell_bounds):
+        is_fixed = roles[i] == "fix"
+        ov_cfg = overrides.get(i) or {}
+        if is_fixed:
+            outer = Rect(cx0, y0, cx1, y1)
+            glass = outer.inset(fw * 0.55, fw * 0.55, fw * 0.55, fw * 0.55)
+            depth = G + 2  # always behind openable leaves
+            handle_side = None
+            handle_rect = None
+            hinge_side = None
+            open_dir = 0
+        else:
+            xa = max(cx0 - ov, 0.4)
+            xb = min(cx1 + ov, outer_w - 0.4)
+            ya = max(y0 - ov, 0.4)
+            yb = min(y1 + ov, outer_h - 0.4)
+            outer = Rect(xa, ya, xb, yb)
+            glass = outer.inset(fw, fw, fw, fw)
+            # Left openable is back at a shared mullion; right is front.
+            depth = (G - i)
+            default_side = "right" if open_seen <= center_l else "left"
+            raw_side = ov_cfg.get("side") if "side" in ov_cfg else default_side
+            handle_side = None if raw_side in (None, "none") else ("left" if str(raw_side).lower() == "left" else "right")
+            y_frac = hlevel
+            try:
+                y_frac = float(ov_cfg["y"]) if "y" in ov_cfg else hlevel
+            except (TypeError, ValueError):
+                y_frac = hlevel
+            x_frac = ov_cfg.get("x")
+            try:
+                x_frac = float(x_frac) if x_frac is not None else None
+            except (TypeError, ValueError):
+                x_frac = None
+            yc = outer.y0 + outer.height * y_frac
+            if handle_side and x_frac is not None:
+                xc = outer.x0 + outer.width * min(max(x_frac, 0.0), 1.0)
+            elif handle_side == "right":
+                xc = outer.x1 - fw / 2.0
+            elif handle_side == "left":
+                xc = outer.x0 + fw / 2.0
+            else:
+                xc = None
+            handle_rect = (
+                Rect(xc - hw / 2.0, yc - hlen / 2.0, xc + hw / 2.0, yc + hlen / 2.0)
+                if xc is not None and handle_side
+                else None
+            )
+            if handle_rect is not None:
+                handles.append(handle_rect)
+            hinge_side = ("left" if handle_side == "right" else "right") if handle_side else None
+            if hinge_side:
+                hx = outer.x0 + fw / 2.0 if hinge_side == "left" else outer.x1 - fw / 2.0
+                for y_mm in hinge_centers_mm(outer.height, 3):
+                    ky = outer.y0 + y_mm
+                    hinges.append(Rect(hx - knuckle_w / 2.0, ky - knuckle_h / 2.0, hx + knuckle_w / 2.0, ky + knuckle_h / 2.0))
+            open_dir = 1 if handle_side != "left" else -1
+            open_seen += 1
+
+        panels.append(
+            ShutterPanel(
+                index=i,
+                role="glass",
+                operable=not is_fixed,
+                outer=outer,
+                glass=glass,
+                depth=depth,
+                track_label="fix" if is_fixed else "sash",
+                open_dir=open_dir,
+                handle_side=handle_side,
+                handle=handle_rect,
+                nom_x0=cx0,
+                nom_x1=cx1,
+                hinge_side=hinge_side,
+            )
+        )
+
+    return panels, handles, hinges, mullions
+
+
 def _build_bifold_leaves(
     area: Rect,
     *,
@@ -464,6 +624,8 @@ class SlidingLayout:
     section_sizes: Mapping[str, float] | None = None
     notes: tuple[str, ...] = ()
     grid_spec: Mapping[str, Any] | None = None
+    sash_overlap_mm: float = 0.0
+    mullion_gap_mm: float = 0.0
 
     @property
     def left_shutter_width(self) -> float:
@@ -509,6 +671,8 @@ class SlidingLayout:
             "mesh_count": int(self.mesh_count),
             "opening": str(self.opening),
             "system": str(self.system),
+            "sashOverlapMm": round(float(self.sash_overlap_mm), 1) if self.sash_overlap_mm else None,
+            "mullionGapMm": round(float(self.mullion_gap_mm), 1) if self.mullion_gap_mm else None,
             "fold_left": int(self.fold_left),
             "fold_right": int(self.fold_right),
             "hinges": [
@@ -608,6 +772,8 @@ def compute_two_track_layout(
     handle_level: float | None = None,
     handle_overrides: Mapping[Any, Any] | None = None,
     grid: Mapping[str, Any] | None = None,
+    sash_overlap_mm: float | None = None,
+    mullion_gap_mm: float | None = None,
 ) -> SlidingLayout:
     """Core sliding formulas from profile geometry + optional fix partitions / mesh.
 
@@ -684,21 +850,41 @@ def compute_two_track_layout(
     handle_length = float(geometry["handleLengthMm"]) if geometry.get("handleLengthMm") else None
     is_casement = sys_kind in ("casement", "openable", "opening")
     h_level = float(handle_level) if handle_level is not None else 0.5
+    sash_ov = _clamp_mm(sash_overlap_mm, 10.0, 20.0, DEFAULT_SASH_OVERLAP_MM) if is_casement else 0.0
+    mull_gap = _clamp_mm(mullion_gap_mm, 10.0, 20.0, DEFAULT_MULLION_GAP_MM) if is_casement else 0.0
 
-    shutters, handles, hinges = _build_shutters(
-        sliding_area,
-        frame_width=fw,
-        glass_clip=gc,
-        interlock_width=iw,
-        glass_count=g_count,
-        mesh_count=m_count,
-        opening=mode,
-        fixed_set=fixed_set,
-        handle_length=handle_length,
-        system="casement" if is_casement else "sliding",
-        handle_level=h_level,
-        handle_overrides=handle_overrides,
-    )
+    if is_casement:
+        # Full inner opening is the casement daylight; mullions split it (not sliding tracks).
+        sliding_area = track
+        shutters, handles, hinges, casement_mullions = _build_casement_leaves(
+            track,
+            frame_width=fw,
+            outer_w=W,
+            outer_h=H,
+            glass_count=g_count,
+            sash_overlap=sash_ov,
+            mullion_gap=mull_gap,
+            handle_overrides=handle_overrides,
+            handle_level=h_level,
+            handle_length=handle_length,
+            fixed_set=fixed_set,
+        )
+    else:
+        shutters, handles, hinges = _build_shutters(
+            sliding_area,
+            frame_width=fw,
+            glass_clip=gc,
+            interlock_width=iw,
+            glass_count=g_count,
+            mesh_count=m_count,
+            opening=mode,
+            fixed_set=fixed_set,
+            handle_length=handle_length,
+            system="sliding",
+            handle_level=h_level,
+            handle_overrides=handle_overrides,
+        )
+        casement_mullions = []
 
     glass_panels = [sp for sp in shutters if sp.role == "glass"]
     first = glass_panels[0]
@@ -723,36 +909,30 @@ def compute_two_track_layout(
     fix_panels: list[FixPanel] = []
     mullions: list[Rect] = []
 
-    if top_fix > 0:
+    if (not is_casement) and top_fix > 0:
         outer = Rect(track.x0, track.y1 - top_fix, track.x1, track.y1)
         glass = outer.inset_uniform(fw * 0.55)
         fix_panels.append(FixPanel("top", top_fix, "fix", outer, glass))
         mullions.append(Rect(track.x0, slide_y1, track.x1, track.y1 - top_fix))
-    if bot_fix > 0:
+    if (not is_casement) and bot_fix > 0:
         outer = Rect(track.x0, track.y0, track.x1, track.y0 + bot_fix)
         glass = outer.inset_uniform(fw * 0.55)
         fix_panels.append(FixPanel("bottom", bot_fix, "fix", outer, glass))
         mullions.append(Rect(track.x0, track.y0 + bot_fix, track.x1, slide_y0))
-    if left_fix > 0:
+    if (not is_casement) and left_fix > 0:
         # Left fix spans sliding height (between top/bottom mullions)
         outer = Rect(track.x0, slide_y0, track.x0 + left_fix, slide_y1)
         glass = outer.inset_uniform(fw * 0.55)
         fix_panels.append(FixPanel("left", left_fix, "fix", outer, glass))
         mullions.append(Rect(track.x0 + left_fix, slide_y0, slide_x0, slide_y1))
-    if right_fix > 0:
+    if (not is_casement) and right_fix > 0:
         outer = Rect(track.x1 - right_fix, slide_y0, track.x1, slide_y1)
         glass = outer.inset_uniform(fw * 0.55)
         fix_panels.append(FixPanel("right", right_fix, "fix", outer, glass))
         mullions.append(Rect(slide_x1, slide_y0, track.x1 - right_fix, slide_y1))
 
-    # Casement/openable: a vertical mullion sits BETWEEN adjacent leaves. It is the
-    # member that carries the hinges (jamb side) and the meeting-stile lock. Emit a
-    # thin section on each interior leaf boundary so 2+ door windows read correctly
-    # (both live canvas and PDF draw L.mullions as clean 2D profiles).
-    if is_casement and len(glass_panels) >= 2:
-        for gp in glass_panels[1:]:
-            bx = float(gp.nom_x0)
-            mullions.append(Rect(bx - fw / 2.0, sliding_area.y0, bx + fw / 2.0, sliding_area.y1))
+    if is_casement:
+        mullions.extend(casement_mullions)
 
     tc = float(track_count) if track_count is not None else float(geometry.get("trackCount") or 2)
     if mesh and tc < 2.5:
@@ -787,6 +967,8 @@ def compute_two_track_layout(
         opening=mode,
         system="casement" if is_casement else "sliding",
         hinges=tuple(hinges),
+        sash_overlap_mm=sash_ov,
+        mullion_gap_mm=mull_gap,
     )
 
 
@@ -1120,7 +1302,115 @@ def build_drawing(
     return model
 
 
+def _build_casement_profiles(model: DrawingModel, L: SlidingLayout) -> None:
+    """Outer frame 45° miters, mullions 90° T-joints, sashes overlap + hide back edges."""
+    outer = Rect(0.0, 0.0, L.W, L.H)
+    inner = L.track
+    ov = float(L.sash_overlap_mm or 0.0)
+    model.add_polyline(rect_polyline(outer, closed=True, layer="PROFILES", name="outer_frame"))
+    # 45° outer-frame joints (never 45° on mullions)
+    model.extend_segments(frame_miter_segments(outer, inner, layer="PROFILES", name_prefix="frame_miter"))
+
+    glass_panels = [sp for sp in L.shutters if sp.role == "glass"]
+    openables = [sp for sp in glass_panels if sp.operable]
+    # Inner frame edges: hide only the side a sash actually overlaps (kills stray head line on A1).
+    cuts_top: list[tuple[float, float]] = []
+    cuts_bot: list[tuple[float, float]] = []
+    cuts_left: list[tuple[float, float]] = []
+    cuts_right: list[tuple[float, float]] = []
+    for sp in openables:
+        if sp.outer.y1 > inner.y1 - 0.3:
+            cuts_top.append((sp.outer.x0 + 0.2, sp.outer.x1 - 0.2))
+        if sp.outer.y0 < inner.y0 + 0.3:
+            cuts_bot.append((sp.outer.x0 + 0.2, sp.outer.x1 - 0.2))
+        if sp.outer.x0 < inner.x0 + 0.3:
+            cuts_left.append((sp.outer.y0 + 0.2, sp.outer.y1 - 0.2))
+        if sp.outer.x1 > inner.x1 - 0.3:
+            cuts_right.append((sp.outer.y0 + 0.2, sp.outer.y1 - 0.2))
+    for i, (a, b) in enumerate(subtract_intervals(inner.x0, inner.x1, cuts_top)):
+        model.add_segment(horizontal_segment(inner.y1, a, b, layer="PROFILES", name=f"frame_inner_top_{i}"))
+    for i, (a, b) in enumerate(subtract_intervals(inner.x0, inner.x1, cuts_bot)):
+        model.add_segment(horizontal_segment(inner.y0, a, b, layer="PROFILES", name=f"frame_inner_bot_{i}"))
+    for i, (a, b) in enumerate(subtract_intervals(inner.y0, inner.y1, cuts_left)):
+        model.add_segment(vertical_segment(inner.x0, a, b, layer="PROFILES", name=f"frame_inner_left_{i}"))
+    for i, (a, b) in enumerate(subtract_intervals(inner.y0, inner.y1, cuts_right)):
+        model.add_segment(vertical_segment(inner.x1, a, b, layer="PROFILES", name=f"frame_inner_right_{i}"))
+
+    # Mullions: 90° T into outer frame (verticals only, no 45°, no top/bottom caps).
+    # Hide the portion covered by a front sash overlap.
+    for mi, m in enumerate(L.mullions):
+        hide_l: list[tuple[float, float]] = []
+        hide_r: list[tuple[float, float]] = []
+        for sp in openables:
+            if sp.outer.x0 < m.x0 + 0.4 and sp.outer.x1 > m.x0 - 0.2:
+                hide_l.append((max(sp.outer.y0, m.y0), min(sp.outer.y1, m.y1)))
+            if sp.outer.x1 > m.x1 - 0.4 and sp.outer.x0 < m.x1 + 0.2:
+                hide_r.append((max(sp.outer.y0, m.y0), min(sp.outer.y1, m.y1)))
+        for j, (a, b) in enumerate(subtract_intervals(m.y0, m.y1, hide_l)):
+            model.add_segment(vertical_segment(m.x0, a, b, layer="PROFILES", name=f"mullion_{mi+1}_L_{j}"))
+        for j, (a, b) in enumerate(subtract_intervals(m.y0, m.y1, hide_r)):
+            model.add_segment(vertical_segment(m.x1, a, b, layer="PROFILES", name=f"mullion_{mi+1}_R_{j}"))
+
+    by_pos = sorted(glass_panels, key=lambda p: p.nom_x0)
+    pos_of = {id(p): k for k, p in enumerate(by_pos)}
+
+    def neighbour_front_left(sp: ShutterPanel) -> bool:
+        k = pos_of[id(sp)]
+        return k > 0 and by_pos[k - 1].operable and by_pos[k - 1].depth < sp.depth
+
+    def neighbour_front_right(sp: ShutterPanel) -> bool:
+        k = pos_of[id(sp)]
+        return k < len(by_pos) - 1 and by_pos[k + 1].operable and by_pos[k + 1].depth < sp.depth
+
+    # Back leaves first so front sash + 45° miters cover the overlap.
+    for sp in sorted(glass_panels, key=lambda p: -p.depth):
+        o, g = sp.outer, sp.glass
+        fixed = not sp.operable
+        prefix = "fix_shutter" if fixed else "shutter"
+        oname = f"{prefix}_{sp.index}_outer"
+        ol = neighbour_front_left(sp)
+        orr = neighbour_front_right(sp)
+        if fixed:
+            # Fix lite: glass + rebate. Omit edges coincident with outer-frame inner.
+            model.add_polyline(rect_polyline(g, closed=True, layer="GLASS", name=f"{prefix}_{sp.index}_glass"))
+            k = pos_of[id(sp)]
+            # Mullion-adjacent stiles only (90°). Hide if a front openable covers that edge.
+            if k > 0 and not neighbour_front_left(sp):
+                model.add_segment(vertical_segment(o.x0, o.y0 + ov * 0.25, o.y1 - ov * 0.25, layer="PROFILES", name=f"{oname}_meet_l"))
+            if k < len(by_pos) - 1 and not neighbour_front_right(sp):
+                model.add_segment(vertical_segment(o.x1, o.y0 + ov * 0.25, o.y1 - ov * 0.25, layer="PROFILES", name=f"{oname}_meet_r"))
+            continue
+        if ol and orr:
+            model.add_segment(Segment(Point(o.x0, o.y1), Point(o.x1, o.y1), layer="PROFILES", name=f"{oname}_top"))
+            model.add_segment(Segment(Point(o.x0, o.y0), Point(o.x1, o.y0), layer="PROFILES", name=f"{oname}_bot"))
+        elif orr:
+            model.add_polyline(u_polyline_open_right(o, layer="PROFILES", name=oname))
+        elif ol:
+            model.add_polyline(u_polyline_open_left(o, layer="PROFILES", name=oname))
+        else:
+            model.add_polyline(rect_polyline(o, closed=True, layer="PROFILES", name=oname))
+        model.add_polyline(rect_polyline(g, closed=True, layer="GLASS", name=f"{prefix}_{sp.index}_glass"))
+        miters = (
+            ("bl", Point(o.x0, o.y0), Point(g.x0, g.y0), ol),
+            ("br", Point(o.x1, o.y0), Point(g.x1, g.y0), orr),
+            ("tr", Point(o.x1, o.y1), Point(g.x1, g.y1), orr),
+            ("tl", Point(o.x0, o.y1), Point(g.x0, g.y1), ol),
+        )
+        for tag, p0, p1, back_lap in miters:
+            if back_lap:
+                continue  # back leaf at lap — front sash draws the 45°
+            model.add_segment(Segment(p0, p1, layer="PROFILES", name=f"{prefix}_{sp.index}_miter_{tag}"))
+
+    for sp in glass_panels:
+        if sp.handle is None:
+            continue
+        model.add_polyline(rect_polyline(sp.handle, closed=True, layer="HARDWARE", name=f"handle_{sp.index}"))
+
+
 def _build_profiles(model: DrawingModel, L: SlidingLayout) -> None:
+    if L.system in ("casement", "openable", "opening"):
+        _build_casement_profiles(model, L)
+        return
     outer = Rect(0.0, 0.0, L.W, L.H)
     model.add_polyline(rect_polyline(outer, closed=True, layer="PROFILES", name="outer_frame"))
     model.add_polyline(rect_polyline(L.track, closed=True, layer="Defpoints", name="track_inner"))
