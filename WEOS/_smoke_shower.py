@@ -59,6 +59,17 @@ def main() -> int:
         fails.append("door-right sliding handle should be on the right")
     if 'data-miter="1"' not in svg:
         fails.append("sliding missing 45° miters")
+    if q.get("frameKind") != "profile":
+        fails.append(f"default frameKind {q.get('frameKind')}")
+    if 'data-frame-kind="profile"' not in svg:
+        fails.append("profile sliding missing data-frame-kind")
+    n_roll = svg.count('data-roller="1"')
+    if n_roll != 2:
+        fails.append(f"profile sliding should have 2 rollers, got {n_roll}")
+    if 'data-handle-kind="d-cylinder"' not in svg:
+        fails.append("profile sliding missing cylindrical D-handle")
+    if 'data-hinge="1"' in svg:
+        fails.append("sliding must not draw casement hinges")
     if q.get("doorSide") != "right":
         fails.append(f"quote doorSide {q.get('doorSide')}")
 
@@ -123,6 +134,38 @@ def main() -> int:
         fails.append("openable missing 45° miters")
     if 'data-meeting-miter="1"' not in hsvg:
         fails.append("front leaf meeting stile missing 45° miters")
+    if hsvg.count('data-roller="1"'):
+        fails.append("hinged door must not draw sliding rollers")
+    if "#f3f2ee" not in hsvg:
+        fails.append("hinged capsule hinge missing light fill")
+
+    # 1d) Frameless sliding 1+1 — glass-on-glass, jambs, guide, 2 wheels, no sash miters
+    fcfg = {**cfg, "frameKind": "frameless", "frameless": True}
+    fq = compute_shower(fcfg)
+    fsvg = shower_svg(fcfg, quote=fq)
+    if fq.get("frameKind") != "frameless":
+        fails.append(f"frameless quote frameKind {fq.get('frameKind')}")
+    if 'data-frame-kind="frameless"' not in fsvg:
+        fails.append("frameless sliding missing data-frame-kind")
+    if 'data-meeting-stiles="0"' not in fsvg:
+        fails.append("frameless sliding should be glass-on-glass (0 meeting stiles)")
+    if 'data-glass-overlap="1"' not in fsvg:
+        fails.append("frameless sliding missing glass overlap")
+    if 'data-jamb="left"' not in fsvg or 'data-jamb="right"' not in fsvg:
+        fails.append("frameless sliding missing side jambs")
+    if 'data-guide="bottom"' not in fsvg:
+        fails.append("frameless sliding missing bottom guide")
+    n_froll = fsvg.count('data-roller="1"')
+    if n_froll != 2:
+        fails.append(f"frameless sliding should have 2 rollers, got {n_froll}")
+    if 'data-handle-kind="d-cylinder"' not in fsvg:
+        fails.append("frameless sliding missing cylindrical D-handle")
+    if 'data-hinge="1"' in fsvg:
+        fails.append("frameless sliding must not draw hinges")
+    if 'data-miter="1"' in fsvg:
+        fails.append("frameless sliding should not draw 4-side sash miters")
+    if "frameless" not in fsvg.lower():
+        fails.append("frameless label missing on canvas")
 
     # 2) L + U footprints
     ql = compute_shower({**cfg, "shape": "L", "depthMm": 900})

@@ -130,3 +130,43 @@ def hinge_centers_mm(leaf_h_mm: float, count: int = 3) -> list[float]:
     mids = [top_b + (bot - top_b) * i / (extra + 1) for i in range(1, extra + 1)]
     return [top, top_b, *mids, bot]
 
+
+# Sleek 2D casement hinge — light capsule + slight diagonal (two leaves).
+HINGE_FILL = "#f3f2ee"
+HINGE_FILL_RGB = (0.953, 0.949, 0.933)
+HINGE_STROKE = "#1a1a1a"
+
+
+def casement_hinge_svg(
+    cx: float,
+    cy: float,
+    *,
+    w: float,
+    h: float,
+    stroke: str = HINGE_STROKE,
+    stroke_width: float = 0.75,
+    extra_attrs: str = "",
+) -> str:
+    """Tall/wide rounded capsule with a thin outline and a slight mid diagonal.
+
+    ``(cx, cy)`` is the hinge centre in the same SVG space as ``w`` / ``h``.
+    Place that centre on the outer-frame | sash gap so the split reads as two leaves.
+    """
+    ww = max(float(w), 0.8)
+    hh = max(float(h), 0.8)
+    x = float(cx) - ww / 2.0
+    y = float(cy) - hh / 2.0
+    rx = min(ww, hh) * 0.49
+    dx = ww * 0.28
+    dy = hh * 0.20
+    extra = f" {extra_attrs.strip()}" if extra_attrs and extra_attrs.strip() else ""
+    sw = max(float(stroke_width), 0.35)
+    return (
+        f'<rect x="{x:.2f}" y="{y:.2f}" width="{ww:.2f}" height="{hh:.2f}" '
+        f'rx="{rx:.2f}" fill="{HINGE_FILL}" stroke="{stroke}" stroke-width="{sw:.2f}" '
+        f'data-hinge="1"{extra}/>'
+        f'<line x1="{float(cx) - dx:.2f}" y1="{float(cy) - dy:.2f}" '
+        f'x2="{float(cx) + dx:.2f}" y2="{float(cy) + dy:.2f}" '
+        f'stroke="{stroke}" stroke-width="{max(sw * 0.65, 0.35):.2f}"/>'
+    )
+

@@ -13,6 +13,7 @@ from typing import Any, Mapping
 from xml.sax.saxutils import escape
 
 from WEOS.factory.fmt import mm_n, money_n
+from WEOS.factory.geometry import casement_hinge_svg
 
 MM_PER_FT = 304.8
 SQMM_PER_SQFT = 92903.04
@@ -411,7 +412,18 @@ def _handle_bottom(parts: list[str], x: float, y_bot: float, w: float) -> None:
     )
 
 
-def _top_hinges(parts: list[str], x: float, y: float, w: float, t: float, count: int, stroke: str) -> None:
+def _top_hinges(
+    parts: list[str],
+    x: float,
+    y: float,
+    w: float,
+    t: float,
+    count: int,
+    stroke: str,
+    *,
+    gap_y: float | None = None,
+) -> None:
+    """Top-hung hinges: horizontal capsule centred on the outer | sash head gap."""
     count = min(max(int(count), 2), 4)
     inset = min(max(w * 0.12, 10.0), w * 0.22)
     if count == 2:
@@ -421,22 +433,20 @@ def _top_hinges(parts: list[str], x: float, y: float, w: float, t: float, count:
     else:
         span = w - 2 * inset
         xs = [x + inset + span * i / (count - 1) for i in range(count)]
-    hw = max(min(t * 1.35, 8.5), 4.8)
-    hh = max(min(t * 0.95, 5.8), 3.4)
-    cy = y + t / 2.0
-    for i, cx in enumerate(xs):
+    hw = max(min(t * 1.55, 10.0), 5.4)
+    hh = max(min(t * 1.05, 6.4), 3.6)
+    cy = float(gap_y) if gap_y is not None else (y + t / 2.0)
+    for cx in xs:
         parts.append(
-            f'<rect x="{cx - hw / 2:.1f}" y="{cy - hh / 2:.1f}" width="{hw:.1f}" height="{hh:.1f}" '
-            f'rx="{hh * 0.35:.1f}" fill="#f7f7f8" stroke="{stroke}" stroke-width="0.8" '
-            f'data-hinge="1" data-hinge-style="casement" data-hinge-pos="top"/>'
-        )
-        parts.append(
-            f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{min(hw, hh) * 0.18:.1f}" fill="none" '
-            f'stroke="{stroke}" stroke-width="0.65"/>'
-        )
-        parts.append(
-            f'<line x1="{cx - hw / 2 + 1:.1f}" y1="{cy:.1f}" x2="{cx + hw / 2 - 1:.1f}" y2="{cy:.1f}" '
-            f'stroke="{stroke}" stroke-width="0.4"/>'
+            casement_hinge_svg(
+                cx,
+                cy,
+                w=hw,
+                h=hh,
+                stroke=stroke,
+                stroke_width=0.75,
+                extra_attrs='data-hinge-style="casement" data-hinge-pos="top"',
+            )
         )
 
 
@@ -588,7 +598,7 @@ def ventilator_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = Non
                 _sash_frame(parts, sx, sy, swd, sh, sash_t, stroke, sw)
                 if handle_on:
                     _handle_bottom(parts, sx + sash_t, sy + sh - sash_t, max(swd - 2 * sash_t, 8))
-                _top_hinges(parts, sx, sy, swd, sash_t, hinge_n, stroke)
+                _top_hinges(parts, sx, sy, swd, sash_t, hinge_n, stroke, gap_y=inner_y)
                 # opening hint (down for top-hung)
                 mx = sx + swd / 2.0
                 parts.append(

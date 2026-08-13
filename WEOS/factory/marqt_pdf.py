@@ -670,7 +670,8 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
             ))
         add("PROFILE", f"{q.get('verticalProfile') or '16×45'} vert"
             + (f" · {q.get('horizontalProfile')} horiz" if q.get("horizontalProfile") else "")
-            + (f" · chokhat {q.get('chokhat')}" if q.get("chokhat") else " · frameless"))
+            + (f" · {q.get('frameKind')}" if q.get("frameKind") else
+               (f" · chokhat {q.get('chokhat')}" if q.get("chokhat") else " · frameless")))
         add("GLASS", q.get("glassLabel") or f"{q.get('glassThicknessMm') or ''} mm {q.get('glassColour') or ''}")
         hw_s = []
         if q.get("hardwareBrand"):

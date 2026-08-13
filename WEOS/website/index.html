@@ -921,6 +921,13 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                   <button type="button" data-sh-op="fixed">Fix only</button>
                 </div>
               </div>
+              <div class="rt-row">
+                <span class="l" style="margin:0">Frame</span>
+                <div class="rt-shapes" id="shFrameBtns">
+                  <button type="button" data-sh-frame="profile" class="active">Profile</button>
+                  <button type="button" data-sh-frame="frameless">Frameless</button>
+                </div>
+              </div>
               <div class="rt-row" id="wrapShDoorHandle">
                 <div id="wrapShDoorSide"><label class="l">Door position</label>
                   <select id="shDoorSide" style="width:90px"><option value="right" selected>Right</option><option value="left">Left</option></select>
@@ -969,7 +976,6 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                 <button class="btn ghost sm" type="button" id="btnShAddGlass">+ glass</button>
               </div>
               <div class="rt-row">
-                <label class="chk" style="font-size:.78rem"><input id="shFrameless" type="checkbox"/> Frameless</label>
                 <label class="chk" style="font-size:.78rem"><input id="shHandle" type="checkbox" checked/> Handle</label>
                 <div><label class="l">Handle name</label><input id="shHandleName" value="D-type" style="width:100px"/></div>
                 <label class="chk" style="font-size:.78rem"><input id="shLock" type="checkbox"/> Mortice lock</label>
@@ -1981,6 +1987,7 @@ const state = {
   showerMode: false,
   shShape: 'straight',
   shOp: 'sliding',
+  shFrameKind: 'profile',
   draftCasementPanels: [],
   selectedCasementPanel: null,
 };
@@ -2835,6 +2842,8 @@ function syncDraftFromLine(ln) {
     const sh = ln.options.shower;
     if (sh.shape) state.shShape = sh.shape;
     if (sh.operation || sh.openingType) state.shOp = sh.operation || sh.openingType;
+    const fk = String(sh.frameKind || (sh.frameless ? 'frameless' : 'profile')).toLowerCase();
+    state.shFrameKind = fk === 'frameless' ? 'frameless' : 'profile';
     const setSh = (id, v) => { if ($(id) && v != null && v !== '') $(id).value = v; };
     setSh('shW', sh.widthMm || ln.width); setSh('shH', sh.heightMm || ln.height);
     setSh('shDepth', sh.depthMm); setSh('shDepthB', sh.depthBMm);
@@ -4566,13 +4575,17 @@ function syncShowerUi() {
   document.querySelectorAll('#shOpBtns [data-sh-op]').forEach(b => {
     b.classList.toggle('active', b.dataset.shOp === op);
   });
+  const frameKind = state.shFrameKind || 'profile';
+  document.querySelectorAll('#shFrameBtns [data-sh-frame]').forEach(b => {
+    b.classList.toggle('active', b.dataset.shFrame === frameKind);
+  });
   if ($('wrapShDepth')) $('wrapShDepth').style.display = (shape === 'L' || shape === 'U') ? '' : 'none';
   if ($('wrapShDepthB')) $('wrapShDepthB').style.display = shape === 'U' ? '' : 'none';
   if ($('wrapShDoorSide')) $('wrapShDoorSide').style.display = (op === 'sliding' || op === 'hinged') ? '' : 'none';
   const handleOn = !!( !$('shHandle') || $('shHandle').checked );
   if ($('wrapShHandleSide')) $('wrapShHandleSide').style.display = (op === 'hinged' && handleOn) ? '' : 'none';
   if ($('wrapShDoorW')) $('wrapShDoorW').style.display = op === 'hinged' ? '' : 'none';
-  const frameless = !!( $('shFrameless') && $('shFrameless').checked );
+  const frameless = frameKind === 'frameless';
   if ($('wrapShHinges')) $('wrapShHinges').style.display = (op === 'hinged' && !frameless) ? '' : 'none';
 }
 function parseShowerGlass(id) {
@@ -4618,7 +4631,8 @@ function showerConfig() {
     hingesPerDoor: ($('shHinges') && +$('shHinges').value) || 3,
     hingeCount: ($('shHinges') && +$('shHinges').value) || 3,
     colour: ($('shColour') && $('shColour').value) || 'matt_black',
-    frameless: !!( $('shFrameless') && $('shFrameless').checked ),
+    frameKind: state.shFrameKind || 'profile',
+    frameless: (state.shFrameKind || 'profile') === 'frameless',
     handle: !!( !$('shHandle') || $('shHandle').checked ),
     handleName: ($('shHandleName') && $('shHandleName').value.trim()) || 'D-type',
     lock: !!( $('shLock') && $('shLock').checked ),
@@ -4656,6 +4670,7 @@ function renderShowerLineSpecs(q, cfg) {
         : `Straight · ${q.footprint.frontMm}`)) || 'Straight'],
     ['Glass', (q && q.glassLabel) || c.glassLabel || ''],
     ['Colour', String((q && q.colour) || c.colour || '').replace(/_/g, ' ')],
+    ['Frame', (q && q.frameKind) || (c.frameless ? 'frameless' : (c.frameKind || 'profile'))],
     ['Door', String((q && q.doorSide) || c.doorSide || c.slidingSide || 'right')],
     ['Handle', (q && q.handle)
       ? `${q.handleName || 'D-type'} · ${q.handleSide || c.handleSide || 'right'}`
@@ -4951,13 +4966,19 @@ document.querySelectorAll('#shOpBtns [data-sh-op]').forEach(btn => {
     state.showerMode = true; syncShowerUi(); showerCalc();
   };
 });
+document.querySelectorAll('#shFrameBtns [data-sh-frame]').forEach(btn => {
+  btn.onclick = () => {
+    state.shFrameKind = btn.dataset.shFrame === 'frameless' ? 'frameless' : 'profile';
+    state.showerMode = true; syncShowerUi(); showerCalc();
+  };
+});
 ['shW','shH','shDepth','shDepthB','shQty','shColour','shGlass','shDoorSide','shHandleSide','shDoorW','shHinges','shHandleName','shOrigin','shHwBrand','shSaleUnit','shSellRate'].forEach(id => {
   const el = $(id); if (!el) return;
   const go = () => { if (state.showerMode || isShowerMode()) showerCalc(); };
   el.addEventListener('change', go);
   el.addEventListener('input', () => { clearTimeout(state._shT); state._shT = setTimeout(go, 280); });
 });
-['shFrameless','shHandle','shLock'].forEach(id => {
+['shHandle','shLock'].forEach(id => {
   const el = $(id); if (!el) return;
   el.addEventListener('change', () => { syncShowerUi(); if (state.showerMode || isShowerMode()) showerCalc(); });
 });

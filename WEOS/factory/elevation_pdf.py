@@ -6,6 +6,7 @@ from typing import Any, Mapping
 
 from typing import Mapping as _Mapping
 
+from WEOS.factory.geometry import HINGE_FILL_RGB
 from WEOS.factory.svg_export import _parse_grid
 from WEOS.factory.types import DrawingModel, Polyline
 
@@ -43,6 +44,25 @@ def _glasses(model: DrawingModel) -> list[tuple[str, float, float, float, float]
             out.append((pl.name or f"glass_{len(out)+1}", *bb))
     out.sort(key=lambda g: (-(g[4] + g[2]) / 2.0, g[1]))  # top→bottom, then left→right
     return out
+
+
+def _draw_casement_hinge_pdf(c, px, py, scale: float, x0: float, y0: float, x1: float, y1: float, stroke_rgb, *, lw: float = 0.5) -> None:
+    """Light capsule hinge + slight diagonal — same glyph as live SVG preview."""
+    w = (float(x1) - float(x0)) * scale
+    h = (float(y1) - float(y0)) * scale
+    if w <= 0.2 or h <= 0.2:
+        return
+    rx = min(abs(w), abs(h)) * 0.49
+    c.setFillColorRGB(*HINGE_FILL_RGB)
+    c.setStrokeColorRGB(*stroke_rgb)
+    c.setLineWidth(lw)
+    c.roundRect(px(float(x0)), py(float(y0)), w, h, rx, fill=1, stroke=1)
+    cx = (float(x0) + float(x1)) / 2.0
+    cy = (float(y0) + float(y1)) / 2.0
+    dx = (float(x1) - float(x0)) * 0.28
+    dy = (float(y1) - float(y0)) * 0.20
+    c.setLineWidth(max(lw * 0.7, 0.3))
+    c.line(px(cx - dx), py(cy - dy), px(cx + dx), py(cy + dy))
 
 
 def _hollow_plan_band(c, x: float, y: float, w: float, h: float, *, lw: float = 0.55) -> None:
@@ -114,11 +134,13 @@ def _draw_grid_pdf(c, *, px, py, scale, meta, W, H, finish, stroke, dim, glass_s
             dirx = 1 if ax1 > ax0 else -1
             c.line(px(ax1), py(ay1), px(ax1) - dirx * ah, py(ay1) + ah * 0.7)
             c.line(px(ax1), py(ay1), px(ax1) - dirx * ah, py(ay1) - ah * 0.7)
-        # Hinges (outline)
+        # Hinges (capsule + diagonal split)
         for hg in cell.get("hinges") or []:
-            c.setStrokeColorRGB(*fc["stroke"])
-            c.setLineWidth(0.5)
-            c.roundRect(px(float(hg["x0"])), py(float(hg["y0"])), (float(hg["x1"]) - float(hg["x0"])) * scale, (float(hg["y1"]) - float(hg["y0"])) * scale, 1.0, fill=0, stroke=1)
+            _draw_casement_hinge_pdf(
+                c, px, py, scale,
+                float(hg["x0"]), float(hg["y0"]), float(hg["x1"]), float(hg["y1"]),
+                fc["stroke"], lw=0.5,
+            )
         # Handles (outline lever)
         for hd in cell.get("handles") or []:
             hx0, hy0, hx1, hy1 = float(hd["x0"]), float(hd["y0"]), float(hd["x1"]), float(hd["y1"])
@@ -290,15 +312,13 @@ def draw_model_elevation(
             c.setLineWidth(0.38)
         c.line(px(seg.start.x), py(seg.start.y), px(seg.end.x), py(seg.end.y))
 
-    # Hardware — hinge knuckles + lever handles as clean 2D OUTLINES (no fill)
+    # Hardware — casement hinge capsules + lever handles (outline)
     fc = _handle_finish_rgb(finish)
     for h in meta.get("hinges") or []:
         if not isinstance(h, _Mapping):
             continue
         hx0, hy0, hx1, hy1 = float(h["x0"]), float(h["y0"]), float(h["x1"]), float(h["y1"])
-        c.setStrokeColorRGB(*fc["stroke"])
-        c.setLineWidth(0.5)
-        c.roundRect(px(hx0), py(hy0), (hx1 - hx0) * scale, (hy1 - hy0) * scale, 1.2, fill=0, stroke=1)
+        _draw_casement_hinge_pdf(c, px, py, scale, hx0, hy0, hx1, hy1, fc["stroke"], lw=0.5)
     for sp in meta.get("shutters") or []:
         if not isinstance(sp, _Mapping):
             continue

@@ -7,6 +7,7 @@ from typing import Any, Mapping
 from xml.sax.saxutils import escape
 
 from WEOS.factory.fmt import mm_n
+from WEOS.factory.geometry import casement_hinge_svg
 from WEOS.factory.types import DrawingModel, Polyline
 
 
@@ -291,18 +292,48 @@ def _draw_lever_handle(
     parts.append("".join(group))
 
 
+def _draw_casement_hinge_svg(
+    parts: list[str],
+    *,
+    tx,
+    ty,
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    stroke: str,
+    stroke_width: float,
+    extra_attrs: str = "",
+) -> None:
+    """Same capsule hinge glyph as shower / ventilator (preview === PDF)."""
+    w = abs(float(x1) - float(x0))
+    h = abs(float(y1) - float(y0))
+    sx0, sy_top = tx(float(x0)), ty(max(float(y0), float(y1)))
+    parts.append(
+        casement_hinge_svg(
+            sx0 + w / 2.0,
+            sy_top + h / 2.0,
+            w=w,
+            h=h,
+            stroke=stroke,
+            stroke_width=stroke_width,
+            extra_attrs=extra_attrs,
+        )
+    )
+
+
 def _draw_hardware(parts: list[str], *, tx, ty, model: DrawingModel, finish: str, k: float) -> None:
-    """Draw handles (from shutter meta, oriented) and hinge knuckles — 2D outline."""
+    """Draw handles (from shutter meta, oriented) and casement hinge capsules."""
     meta = model.metadata or {}
     c = _handle_finish_colors(finish)
-    # Hinge knuckles (outline)
+    # Hinge capsules (light fill + diagonal split), centred on stile gap in geometry.
     for h in meta.get("hinges") or []:
         if not isinstance(h, Mapping):
             continue
         x0, y0, x1, y1 = float(h["x0"]), float(h["y0"]), float(h["x1"]), float(h["y1"])
-        parts.append(
-            f'<rect x="{tx(x0):.2f}" y="{ty(y1):.2f}" width="{(x1 - x0):.2f}" height="{(y1 - y0):.2f}" '
-            f'rx="{(x1 - x0) * 0.35:.2f}" fill="none" stroke="{c["stroke"]}" stroke-width="{0.9 * k:.2f}"/>'
+        _draw_casement_hinge_svg(
+            parts, tx=tx, ty=ty, x0=x0, y0=y0, x1=x1, y1=y1,
+            stroke=c["stroke"], stroke_width=0.9 * k,
         )
     # Handles
     for sp in meta.get("shutters") or []:
@@ -374,13 +405,13 @@ def _draw_grid_svg(
         # Arrows (sliding)
         for a in cell.get("arrows") or []:
             _arrow(parts, tx=tx, ty=ty, x0=float(a["x0"]), y0=float(a["y0"]), x1=float(a["x1"]), y1=float(a["y1"]))
-        # Hinges (openable) — 2D outline
+        # Hinges (openable) — capsule + diagonal split
         hc = _handle_finish_colors(finish)
         for hg in cell.get("hinges") or []:
-            parts.append(
-                f'<rect x="{tx(float(hg["x0"])):.2f}" y="{ty(float(hg["y1"])):.2f}" '
-                f'width="{tx(float(hg["x1"]))-tx(float(hg["x0"])):.2f}" height="{ty(float(hg["y0"]))-ty(float(hg["y1"])):.2f}" '
-                f'rx="{(float(hg["x1"])-float(hg["x0"]))*0.35:.2f}" fill="none" stroke="{hc["stroke"]}" stroke-width="{0.9*k:.2f}"/>'
+            _draw_casement_hinge_svg(
+                parts, tx=tx, ty=ty,
+                x0=float(hg["x0"]), y0=float(hg["y0"]), x1=float(hg["x1"]), y1=float(hg["y1"]),
+                stroke=hc["stroke"], stroke_width=0.9 * k,
             )
         # Handles — 2D lever outline
         for hd in cell.get("handles") or []:

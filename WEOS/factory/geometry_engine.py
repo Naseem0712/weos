@@ -272,7 +272,8 @@ def _build_shutters(
             handle_cx = (handle_rect.x0 + handle_rect.x1) / 2.0
             on_right = handle_cx > (nom_x0 + nom_x1) / 2.0
             hinge_side = "left" if on_right else "right"
-            hx = nom_x0 + knuckle_w * 0.0 + fw / 2.0 if hinge_side == "left" else nom_x1 - fw / 2.0
+            # Centre on the outer-frame | sash gap (not stile mid).
+            hx = nom_x0 if hinge_side == "left" else nom_x1
             for t in (0.18, 0.5, 0.82):
                 ky = y0 + band_h * t
                 hinges.append(Rect(hx - knuckle_w / 2.0, ky - knuckle_h / 2.0, hx + knuckle_w / 2.0, ky + knuckle_h / 2.0))
@@ -448,7 +449,8 @@ def _build_casement_leaves(
                 handles.append(handle_rect)
             hinge_side = ("left" if handle_side == "right" else "right") if handle_side else None
             if hinge_side:
-                hx = outer.x0 + fw / 2.0 if hinge_side == "left" else outer.x1 - fw / 2.0
+                # Cell bound = outer-frame inner / mullion face (gap through hinge centre).
+                hx = cx0 if hinge_side == "left" else cx1
                 for y_mm in hinge_centers_mm(outer.height, 3):
                     ky = outer.y0 + y_mm
                     hinges.append(Rect(hx - knuckle_w / 2.0, ky - knuckle_h / 2.0, hx + knuckle_w / 2.0, ky + knuckle_h / 2.0))
@@ -1237,8 +1239,8 @@ def _compute_grid_layout(
                 yc = y0 + ch * hlevel
                 hx = (x1 - fw / 2.0) if handle_side == "right" else (x0 + fw / 2.0)
                 cell["handles"] = [{"x0": round(hx - hw / 2, 1), "y0": round(yc - hlen / 2, 1), "x1": round(hx + hw / 2, 1), "y1": round(yc + hlen / 2, 1), "side": handle_side}]
-                # Hinge knuckles on the opposite (hinge) stile
-                khx = (x0 + fw / 2.0) if hinge == "left" else (x1 - fw / 2.0)
+                # Hinge knuckles centred on the outer | sash gap (cell edge).
+                khx = x0 if hinge == "left" else x1
                 kw = max(fw * 0.7, 14.0)
                 kh = max(ch * 0.05, 18.0)
                 for t in (0.18, 0.5, 0.82):
