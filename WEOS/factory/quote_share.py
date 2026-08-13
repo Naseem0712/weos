@@ -570,10 +570,13 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     links = []
     if all_url:
         links.append(f'<a class="btn" href="{esc(all_url)}" target="_blank" rel="noopener">Download all (A4 PDF)</a>')
+        links.append(f'<a class="btn ghost" href="{esc(all_url)}" target="_blank" rel="noopener">🖨 Print all</a>')
     if pdf_url:
         links.append(f'<a class="btn ghost" href="{esc(pdf_url)}" target="_blank" rel="noopener">Customer PDF</a>')
+        links.append(f'<a class="btn ghost" href="{esc(pdf_url)}" target="_blank" rel="noopener">🖨 Print quote</a>')
     if led_url:
         links.append(f'<a class="btn ghost" href="{esc(led_url)}" target="_blank" rel="noopener">Ledger PDF</a>')
+        links.append(f'<a class="btn ghost" href="{esc(led_url)}" target="_blank" rel="noopener">🖨 Print ledger</a>')
     if led_html:
         links.append(f'<a class="btn ghost" href="{esc(led_html)}" target="_blank" rel="noopener">Ledger</a>')
     links_html = " ".join(links) if links else ""
@@ -612,6 +615,13 @@ th{{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mu
 .item{{padding:.45rem 0;border-bottom:1px solid var(--line)}}
 .item:last-child{{border-bottom:0}}
 .foot{{margin-top:.8rem;font-size:.75rem;color:var(--muted)}}
+@page{{size:A4 portrait;margin:12mm}}
+@media print{{
+  html,body{{background:#fff!important}}
+  .wrap{{max-width:none;margin:0;padding:0}}
+  .card{{box-shadow:none;break-inside:avoid;border-radius:8px}}
+  .btn{{display:none!important}}
+}}
 </style>
 </head>
 <body>

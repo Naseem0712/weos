@@ -208,6 +208,29 @@ def _line_design_photo_bytes(line: Mapping[str, Any]) -> tuple[bytes | None, str
         return None, None
 
 
+def line_elevation_png_bytes(line: Mapping[str, Any], *, scale: float = 1.8) -> bytes | None:
+    """PNG of the customer design column (photo or canvas SVG) for Excel embed.
+
+    Does not change PDF layout — same sources as ``draw_line_elevation``.
+    """
+    photo_raw, _ct = _line_design_photo_bytes(line)
+    if photo_raw:
+        return photo_raw
+    try:
+        from WEOS.factory.image_engine import svg_to_png_bytes
+        from WEOS.factory.svg_export import elevation_svg_for_line
+
+        svg = elevation_svg_for_line(line, style="pdf")
+        if not svg:
+            prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
+            svg = (prev or {}).get("svg")
+        if svg:
+            return svg_to_png_bytes(str(svg), scale=scale)
+    except Exception:
+        _log.debug("excel elevation png skipped", exc_info=True)
+    return None
+
+
 def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
     """Draw the live-canvas SVG (or user-uploaded design photo) into the design column.
 

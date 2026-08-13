@@ -163,6 +163,14 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 .sug-card{border:1px solid var(--line);border-radius:10px;padding:.65rem .75rem;margin-bottom:.5rem;background:#fff}
 .sug-card .sug-act{font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;color:var(--green);font-weight:600}
 .fx-live{font-family:ui-monospace,monospace;font-size:.85rem;background:#f7f4ee;border-radius:8px;padding:.55rem .7rem;margin-top:.4rem}
+@page{size:A4 portrait;margin:12mm}
+@media print{
+  html,body{background:#fff!important}
+  .side,.top,.burger,.weos-agent-fab,.navbtn,.btn,.agent{display:none!important}
+  .app{display:block}
+  .main{padding:0}
+  .card,.panel{box-shadow:none;break-inside:avoid}
+}
 </style>
 </head>
 <body>
@@ -7271,8 +7279,11 @@ async function loadPublicScan(token) {
       ${renderScanPack(rec)}
       <div class="row" style="gap:.4rem;flex-wrap:wrap">
         ${rec.allPdfUrl?`<a class="btn sm" href="${API_BASE}${rec.allPdfUrl}" target="_blank">Download all (A4 PDF)</a>`:''}
+        ${rec.allPdfUrl?`<a class="btn ghost sm" href="${API_BASE}${rec.allPdfUrl}" target="_blank" title="Open the same A4 PDF to print">🖨 Print all</a>`:''}
         ${rec.customerPdfUrl?`<a class="btn ghost sm" href="${API_BASE}${rec.customerPdfUrl}" target="_blank">Customer PDF</a>`:''}
+        ${rec.customerPdfUrl?`<a class="btn ghost sm" href="${API_BASE}${rec.customerPdfUrl}" target="_blank" title="Print the customer quote PDF">🖨 Print quote</a>`:''}
         ${rec.ledgerPdfUrl?`<a class="btn ghost sm" href="${API_BASE}${rec.ledgerPdfUrl}" target="_blank">Ledger PDF</a>`:''}
+        ${rec.ledgerPdfUrl?`<a class="btn ghost sm" href="${API_BASE}${rec.ledgerPdfUrl}" target="_blank" title="Print ledger PDF">🖨 Print ledger</a>`:''}
         ${rec.ledgerHtmlUrl?`<a class="btn ghost sm" href="${API_BASE}${rec.ledgerHtmlUrl}" target="_blank">Ledger</a>`:''}
       </div>
       <p class="muted" style="margin:.7rem 0 0;font-size:.75rem">Last updated ${esc(rec.updatedAt||'—')}. This page always reads the live project — not a frozen PDF snapshot.</p>`;
@@ -7376,7 +7387,7 @@ async function loadCustomerLedger(name, quotesFallback) {
   const xl = $('btnCpLedgerXlsx');
   if (xl) {
     xl.style.display = 'inline-flex';
-    xl.href = base + '/ledger.xlsx';
+    xl.href = base + '/ledger.xlsx' + gstQ;
   }
   // Refresh customer stamp/signature previews
   ['cpStampImg','cpSignImg'].forEach(id => {

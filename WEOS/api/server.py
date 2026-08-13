@@ -1748,7 +1748,8 @@ def api_customer_pdf(
     templateId: str | None = Query(None),
 ) -> Response:
     try:
-        return _pdf_response(project_id, "customer", brand=brand, template_id=templateId, request=request)
+        # Inline so Print / scan / browser open the same A4 quote PDF (not a download).
+        return _pdf_response(project_id, "customer", brand=brand, template_id=templateId, request=request, inline=True)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -2591,21 +2592,26 @@ def api_customer_ledger_pdf(customer: str, gst: str | None = Query(None)) -> Res
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        headers={"Content-Disposition": f'inline; filename="{fname}"'},
     )
 
 
 @app.get("/api/customers/{customer}/ledger.xlsx")
-def api_customer_ledger_xlsx(customer: str) -> Response:
-    from WEOS.factory.company_store import load_company
+def api_customer_ledger_xlsx(customer: str, gst: str | None = Query(None)) -> Response:
+    from WEOS.factory.company_store import company_branding, load_company, load_company_by_gst, logo_file
     from WEOS.factory.export_xlsx import export_ledger_xlsx, safe_xlsx_name
     from WEOS.factory.ledger_store import build_ledger
 
     try:
-        ledger = build_ledger(customer)
+        ledger = build_ledger(customer, company_gst=gst)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    raw = export_ledger_xlsx(ledger, load_company())
+    co = dict((load_company_by_gst(gst) if gst else None) or load_company() or {})
+    co.update({k: v for k, v in company_branding(gst=gst).items() if v})
+    lf = logo_file()
+    if lf:
+        co["logoPath"] = str(lf)
+    raw = export_ledger_xlsx(ledger, co)
     fname = safe_xlsx_name(customer, "ledger")
     return Response(
         content=raw,
@@ -2694,13 +2700,13 @@ def api_advance_slip_pdf(customer: str, advance_id: int) -> Response:
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        headers={"Content-Disposition": f'inline; filename="{fname}"'},
     )
 
 
 @app.get("/api/customers/{customer}/advances/{advance_id}/slip.xlsx")
 def api_advance_slip_xlsx(customer: str, advance_id: int) -> Response:
-    from WEOS.factory.company_store import load_company
+    from WEOS.factory.company_store import company_branding, load_company, logo_file
     from WEOS.factory.export_xlsx import export_advance_xlsx, safe_xlsx_name
     from WEOS.factory.ledger_store import build_ledger
 
@@ -2713,7 +2719,16 @@ def api_advance_slip_xlsx(customer: str, advance_id: int) -> Response:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    raw = export_advance_xlsx(adv, company=load_company(), ledger=ledger, customer=customer)
+    co = dict(load_company() or {})
+    co.update({k: v for k, v in company_branding().items() if v})
+    lf = logo_file()
+    if lf:
+        co["logoPath"] = str(lf)
+    for p in ledger.get("projects") or []:
+        if str(p.get("projectId") or "") and str(p.get("projectId")) == str(adv.get("projectId") or ""):
+            adv = {**adv, "projectName": p.get("name"), "linkedQuote": p}
+            break
+    raw = export_advance_xlsx(adv, company=co, ledger=ledger, customer=customer)
     fname = safe_xlsx_name(customer, "advance", str(advance_id))
     return Response(
         content=raw,
@@ -2724,31 +2739,27 @@ def api_advance_slip_xlsx(customer: str, advance_id: int) -> Response:
 
 @app.get("/api/projects/{project_id}/customer.xlsx")
 def api_customer_quote_xlsx(project_id: str, brand: str | None = Query(None)) -> Response:
-    """Excel export mirroring the customer quote PDF section order."""
-    from WEOS.factory.company_store import company_branding, load_company
-    from WEOS.factory.export_xlsx import export_quote_xlsx, safe_xlsx_name
+    """Excel export mirroring the customer quote PDF (A4 + formulas, no factory BOM)."""
+    from WEOS.factory.export_xlsx import export_quote_xlsx, prepare_customer_export_payload, safe_xlsx_name
     from WEOS.factory.project_store import load_project
 
     try:
         doc = load_project(project_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    # Prefer last calculation payload when present
-    calc = doc.get("lastCalculation") if isinstance(doc.get("lastCalculation"), dict) else {}
-    payload = {
-        "quotationId": doc.get("quotationId") or (calc or {}).get("quotationId"),
-        "customer": doc.get("customer"),
-        "name": doc.get("name"),
-        "quoteDate": doc.get("createdAt"),
-        "lines": (calc or {}).get("lines") or doc.get("lines") or [],
-        "price": (calc or {}).get("price") or {},
-        "combined": (calc or {}).get("combined") or {},
-        "terms": doc.get("terms"),
-        "description": doc.get("description"),
-    }
-    co = dict(load_company() or {})
-    co.update({k: v for k, v in company_branding().items() if v})
-    raw = export_quote_xlsx(payload, co)
+    payload, co = prepare_customer_export_payload(doc)
+    if brand and not payload.get("brand"):
+        payload["brand"] = brand
+    ledger = None
+    cust = str(doc.get("customer") or payload.get("customer") or "").strip()
+    if cust and cust != "—":
+        try:
+            from WEOS.factory.ledger_store import build_ledger
+
+            ledger = build_ledger(cust, company_gst=str(doc.get("companyGst") or "") or None)
+        except Exception:
+            ledger = None
+    raw = export_quote_xlsx(payload, co, ledger=ledger)
     fname = safe_xlsx_name(payload.get("quotationId") or project_id, doc.get("customer") or "quote")
     return Response(
         content=raw,

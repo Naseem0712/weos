@@ -399,6 +399,13 @@ th{{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mu
 .btn{{display:inline-block;background:var(--green);color:#f4faf7;text-decoration:none;border-radius:10px;
   padding:.45rem .75rem;font-weight:600;font-size:.85rem;margin:.15rem .25rem 0 0}}
 .btn.ghost{{background:transparent;color:var(--green);border:1px solid var(--green)}}
+@page{{size:A4 portrait;margin:12mm}}
+@media print{{
+  html,body{{background:#fff!important}}
+  .wrap{{max-width:none;margin:0;padding:0}}
+  .card{{box-shadow:none;break-inside:avoid;border-radius:8px}}
+  .btn{{display:none!important}}
+}}
 </style>
 </head>
 <body>
