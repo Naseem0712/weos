@@ -418,6 +418,12 @@ class ProjectStatusBody(BaseModel):
     status: str
 
 
+class PackUpdateBody(BaseModel):
+    text: str
+    date: str | None = None
+    gstNo: str | None = None
+
+
 class TemplateBody(BaseModel):
     model_config = {"extra": "allow"}
 
@@ -786,11 +792,14 @@ def _pdf_response(
         "projectId": project_id,
         "customer": bill_to,
         "name": doc.get("name"),
-        "brand": brand or doc.get("brand") or "woodenmax",
+        "brand": brand or doc.get("brand") or "",
         "templateId": template_id,
         "createdAt": created_at,
         "updatedAt": updated_at,
         "version": version,
+        "status": doc.get("status"),
+        "quotationId": doc.get("quotationId") or doc.get("quoteNumber") or doc.get("quoteId"),
+        "companyGst": doc.get("companyGst"),
         # Per-quote description + terms (terms override the company default).
         "description": doc.get("description"),
         "terms": doc.get("terms"),
@@ -798,6 +807,29 @@ def _pdf_response(
         "publicBaseUrl": _public_base_url(request),
         "quoteRef": doc.get("quoteId") or doc.get("quoteNumber") or project_id,
     }
+    try:
+        from WEOS.factory.company_store import company_branding, load_company, load_company_by_gst
+
+        gst = str(doc.get("companyGst") or "").strip()
+        co = (load_company_by_gst(gst) if gst else None) or load_company() or {}
+        branding = company_branding(gst=gst or None)
+        if co:
+            payload["company"] = {
+                "companyName": co.get("companyName") or co.get("name") or "",
+                "name": co.get("companyName") or co.get("name") or "",
+                "gstNo": co.get("gstNo") or gst,
+                "phone": co.get("phone") or "",
+                "email": co.get("email") or "",
+                "address": co.get("address") or "",
+                "website": co.get("website") or "",
+                "logoPath": co.get("logoPath") or branding.get("logoPath"),
+            }
+        if branding:
+            payload["branding"] = branding
+            if branding.get("companyName") and not payload.get("brand"):
+                payload["brand"] = "allkraft"
+    except Exception:
+        _log.debug("PDF company branding overlay skipped", exc_info=True)
     try:
         from WEOS.factory.quote_share import ensure_project_share_token
 
@@ -1482,6 +1514,101 @@ def api_project_set_status(project_id: str, body: ProjectStatusBody) -> dict[str
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/projects/{project_id}/pack")
+def api_project_pack(project_id: str, gst: str | None = Query(None)) -> dict[str, Any]:
+    from WEOS.factory.project_pack import list_pack
+
+    try:
+        return list_pack(project_id, company_gst=gst)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/pack/updates")
+def api_project_pack_update(project_id: str, body: PackUpdateBody, gst: str | None = Query(None)) -> dict[str, Any]:
+    from WEOS.factory.project_pack import add_update
+
+    try:
+        item = add_update(
+            project_id,
+            body.text,
+            date=body.date,
+            company_gst=gst or body.gstNo,
+        )
+        return {"ok": True, "item": item}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/pack/files")
+async def api_project_pack_file(
+    project_id: str,
+    file: UploadFile = File(...),
+    kind: str = Query("photo"),
+    note: str | None = Query(None),
+    date: str | None = Query(None),
+    gst: str | None = Query(None),
+) -> dict[str, Any]:
+    from WEOS.factory.project_pack import add_file
+
+    raw = await file.read()
+    try:
+        item = add_file(
+            project_id,
+            kind=kind,
+            raw=raw,
+            filename=file.filename,
+            content_type=file.content_type,
+            note=note,
+            date=date,
+            company_gst=gst,
+        )
+        return {"ok": True, "item": item}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.delete("/api/projects/{project_id}/pack/{item_id}")
+def api_project_pack_delete(project_id: str, item_id: str, gst: str | None = Query(None)) -> dict[str, Any]:
+    from WEOS.factory.project_pack import delete_item
+
+    try:
+        return delete_item(project_id, item_id, company_gst=gst)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@app.get("/api/projects/{project_id}/pack/files/{item_id}")
+def api_project_pack_get_file(project_id: str, item_id: str) -> Response:
+    from WEOS.factory.project_pack import get_file
+
+    raw, ct, fname, item = get_file(project_id, item_id)
+    if not raw:
+        raise HTTPException(status_code=404, detail="File not found")
+    name = fname or (item or {}).get("filename") or "file"
+    return Response(
+        content=raw,
+        media_type=ct or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{name}"'},
+    )
+
+
 @app.post("/api/projects/{project_id}/undo")
 def api_undo(project_id: str) -> dict[str, Any]:
     try:
@@ -1756,6 +1883,27 @@ def api_delete_design_photo(project_id: str, line_id: str) -> dict[str, Any]:
     return {"ok": ok}
 
 
+def _public_ledger_html(record: dict[str, Any], request: Request) -> HTMLResponse:
+    from WEOS.factory.ledger_pdf import render_ledger_html
+    from WEOS.factory.ledger_store import build_ledger
+
+    cust = ((record.get("customer") or {}).get("name") or "").strip()
+    if not cust:
+        raise HTTPException(status_code=404, detail="No customer on this quote")
+    gst = ((record.get("company") or {}).get("gstNo") or "").strip() or None
+    try:
+        ledger = build_ledger(cust, company_gst=gst)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        ledger = build_ledger(cust)
+    co = dict(record.get("company") or {})
+    if co.get("name") and not co.get("companyName"):
+        co["companyName"] = co["name"]
+    html = render_ledger_html(ledger, co, base_url=_public_base_url(request))
+    return HTMLResponse(html)
+
+
 # Back-compat aliases
 @app.get("/api/projects/{project_id}/pdf/customer")
 def api_pdf_customer_alias(project_id: str, request: Request, brand: str | None = Query(None)) -> Response:
@@ -1772,8 +1920,23 @@ def _public_scan_response(ref: str, request: Request, *, fmt: str | None = None)
     from WEOS.factory.quote_share import build_public_quote_record, render_scan_html
 
     base = _public_base_url(request)
-    want_pdf = (fmt or "").strip().lower() in ("pdf", "download", "file")
+    kind = (fmt or "").strip().lower()
+    want_pdf = kind in ("pdf", "download", "file")
+    want_all = kind in ("all", "pack", "allpdf")
+    want_ledger = kind in ("ledger", "account")
     record = build_public_quote_record(ref)
+    if record and want_ledger:
+        return _public_ledger_html(record, request)
+    if record and want_all:
+        from WEOS.factory.scan_all_pdf import render_scan_all_pdf
+
+        pdf = render_scan_all_pdf(record)
+        qn = str(record.get("quoteNumber") or ref or "quote").replace("/", "-")
+        return Response(
+            content=pdf,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{qn}_all.pdf"'},
+        )
     if record and not want_pdf:
         html = render_scan_html(record, base_url=base)
         return HTMLResponse(html)
@@ -1829,6 +1992,21 @@ def _public_scan_response(ref: str, request: Request, *, fmt: str | None = None)
         raise HTTPException(status_code=404, detail=f"Quote not found: {ref}") from exc
 
 
+@app.get("/q/{ref}/ledger")
+@app.get("/scan/{ref}/ledger")
+def public_quote_ledger(ref: str, request: Request) -> Response:
+    """Public customer ledger HTML (card layout, same language as scan)."""
+    return _public_scan_response(ref, request, fmt="ledger")
+
+
+@app.get("/q/{ref}/all.pdf")
+@app.get("/scan/{ref}/all.pdf")
+@app.get("/api/public/quote/{ref}/all.pdf")
+def public_quote_all_pdf(ref: str, request: Request) -> Response:
+    """Single-click A4 PDF of the live scan page (quote + pack)."""
+    return _public_scan_response(ref, request, fmt="all")
+
+
 @app.get("/q/{ref}")
 def public_quote(ref: str, request: Request, format: str | None = Query(None)) -> Response:
     """Public QR target: live project record (HTML). ``?format=pdf`` downloads PDF."""
@@ -1850,6 +2028,31 @@ def api_public_quote(ref: str) -> dict[str, Any]:
     if not rec:
         raise HTTPException(status_code=404, detail=f"Quote not found: {ref}")
     return rec
+
+
+@app.get("/api/public/quote/{ref}/pack/files/{item_id}")
+def api_public_pack_file(ref: str, item_id: str) -> Response:
+    """Public download of an approved project-pack file (bill / warranty / photo)."""
+    from WEOS.factory.project_pack import get_file
+    from WEOS.factory.quote_share import build_public_quote_record
+
+    rec = build_public_quote_record(ref)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    if not rec.get("approved"):
+        raise HTTPException(status_code=404, detail="Available after approval")
+    pid = str(rec.get("projectId") or "").strip()
+    if not pid:
+        raise HTTPException(status_code=404, detail="No project on this quote")
+    raw, ct, fname, item = get_file(pid, item_id)
+    if not raw:
+        raise HTTPException(status_code=404, detail="File not found")
+    name = fname or (item or {}).get("filename") or "file"
+    return Response(
+        content=raw,
+        media_type=ct or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{name}"'},
+    )
 
 
 @app.post("/api/projects/import")
@@ -2349,18 +2552,36 @@ def api_delete_customer_advance(customer: str, advance_id: int) -> dict[str, Any
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@app.get("/api/customers/{customer}/ledger.html")
+def api_customer_ledger_html(customer: str, request: Request, gst: str | None = Query(None)) -> HTMLResponse:
+    from WEOS.factory.company_store import company_branding, load_company, load_company_by_gst
+    from WEOS.factory.ledger_pdf import render_ledger_html
+    from WEOS.factory.ledger_store import build_ledger
+
+    try:
+        ledger = build_ledger(customer, company_gst=gst)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    co = dict((load_company_by_gst(gst) if gst else None) or load_company() or {})
+    branding = company_branding(gst=gst)
+    co.update({k: v for k, v in branding.items() if v})
+    if branding.get("companyName") and not co.get("companyName"):
+        co["companyName"] = branding["companyName"]
+    return HTMLResponse(render_ledger_html(ledger, co, base_url=_public_base_url(request)))
+
+
 @app.get("/api/customers/{customer}/ledger.pdf")
-def api_customer_ledger_pdf(customer: str) -> Response:
-    from WEOS.factory.company_store import company_branding, load_company, logo_file
+def api_customer_ledger_pdf(customer: str, gst: str | None = Query(None)) -> Response:
+    from WEOS.factory.company_store import company_branding, load_company, load_company_by_gst, logo_file
     from WEOS.factory.ledger_pdf import ledger_filename, render_ledger_pdf
     from WEOS.factory.ledger_store import build_ledger
 
     try:
-        ledger = build_ledger(customer)
+        ledger = build_ledger(customer, company_gst=gst)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    co = dict(load_company() or {})
-    branding = company_branding()
+    co = dict((load_company_by_gst(gst) if gst else None) or load_company() or {})
+    branding = company_branding(gst=gst)
     co.update({k: v for k, v in branding.items() if v})
     lf = logo_file()
     if lf:

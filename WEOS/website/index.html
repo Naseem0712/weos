@@ -1305,6 +1305,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
             <img id="cpSignImg" alt="signature" style="max-height:40px;max-width:110px;display:none;border:1px solid var(--line);border-radius:6px;background:#fff"/>
           </div>
           <div class="row" style="margin-top:.55rem;flex-wrap:wrap;gap:.4rem" id="cpExportRow">
+            <a class="btn ghost sm" id="btnCpLedgerHtml" href="#" target="_blank" style="display:none">View ledger</a>
             <a class="btn ghost sm" id="btnCpLedgerPdf" href="#" target="_blank" style="display:none">Ledger PDF</a>
             <a class="btn ghost sm" id="btnCpLedgerPrint" href="#" target="_blank" style="display:none">Print ledger</a>
             <a class="btn ghost sm" id="btnCpLedgerXlsx" href="#" style="display:none">Ledger Excel</a>
@@ -7190,6 +7191,42 @@ if ($('btnHubQuotesBulkUnused')) $('btnHubQuotesBulkUnused').onclick = async () 
     refreshCompanyHub(gst);
   } catch(e) { toast(e.message); }
 };
+function renderScanPack(rec) {
+  const pack = rec.pack || {};
+  if (!rec.approved) {
+    return '<div class="card" style="padding:.7rem .8rem;margin:.2rem 0 .8rem"><strong style="font-size:.88rem">Process pack</strong><p class="muted" style="margin:.3rem 0 0;font-size:.8rem">Available after approval</p></div>';
+  }
+  const upd = pack.updates || [];
+  const docs = pack.documents || [];
+  const photos = pack.photos || [];
+  const labels = {bill:'Bill', warranty:'Warranty card', challan:'Delivery challan'};
+  const updHtml = upd.length
+    ? upd.map(u => `<div style="padding:.4rem 0;border-bottom:1px solid var(--line)"><div class="muted" style="font-size:.72rem">${esc(fmtDate(u.date||u.createdAt))}</div><div>${esc(u.text||u.note||'')}</div></div>`).join('')
+    : '<p class="muted" style="font-size:.8rem">No process updates yet</p>';
+  const docHtml = docs.length
+    ? docs.map(d => {
+        const href = API_BASE + (d.url || '#');
+        const kind = labels[d.kind] || (d.kind||'File');
+        const thumb = (d.contentType||'').startsWith('image/')
+          ? `<a href="${href}" target="_blank"><img src="${href}" alt="" style="max-height:64px;max-width:96px;border-radius:8px;border:1px solid var(--line);object-fit:cover"/></a>`
+          : '';
+        return `<div class="row" style="gap:.55rem;align-items:center;flex-wrap:wrap;padding:.35rem 0">${thumb}<div><strong>${esc(kind)}</strong><div class="muted" style="font-size:.72rem">${esc(fmtDate(d.date||d.createdAt))} · ${esc(d.note||d.filename||'')}</div><a class="btn ghost sm" href="${href}" target="_blank">Open / download</a></div></div>`;
+      }).join('')
+    : '<p class="muted" style="font-size:.8rem">No bills, warranty cards, or delivery challans yet</p>';
+  const photoHtml = photos.length
+    ? `<div class="row" style="gap:.5rem;flex-wrap:wrap">${photos.map(ph => {
+        const href = API_BASE + (ph.url || '#');
+        return `<a href="${href}" target="_blank"><img src="${href}" alt="${esc(ph.note||ph.filename||'Photo')}" style="max-height:120px;max-width:160px;border-radius:10px;border:1px solid var(--line);object-fit:cover"/><div class="muted" style="font-size:.7rem">${esc(fmtDate(ph.date||ph.createdAt))}</div></a>`;
+      }).join('')}</div>`
+    : '<p class="muted" style="font-size:.8rem">No process photos yet</p>';
+  return `
+    <strong style="font-size:.88rem">Process updates</strong>
+    <div style="margin:.35rem 0 .8rem">${updHtml}</div>
+    <strong style="font-size:.88rem">Bills / warranty / delivery challan</strong>
+    <div style="margin:.35rem 0 .8rem">${docHtml}</div>
+    <strong style="font-size:.88rem">Process photos</strong>
+    <div style="margin:.35rem 0 .8rem">${photoHtml}</div>`;
+}
 async function loadPublicScan(token) {
   if ($('scanStatus')) $('scanStatus').textContent = 'Loading live quote…';
   if ($('scanBody')) $('scanBody').innerHTML = '';
@@ -7226,10 +7263,17 @@ async function loadPublicScan(token) {
       <tbody>${adv.length ? adv.map(a => `<tr><td>${a.n}</td><td>${money(a.amount)}</td><td>${esc(a.paymentMode)}</td><td>${fmtDate(a.date)}</td><td>${money(a.runningTotal)}</td></tr>`).join('') : '<tr><td colspan="5" class="muted">No advances yet</td></tr>'}</tbody></table>
       <strong style="font-size:.88rem">Products</strong>
       <table style="margin:.4rem 0 .8rem"><thead><tr><th>Serial</th><th>Location</th><th>Type</th><th>Size</th><th>Qty</th><th>Amount</th></tr></thead>
-      <tbody>${prods.length ? prods.map(p => `<tr><td>${esc(p.serial)}</td><td>${esc(p.location)}</td><td>${esc(p.type)}</td><td>${esc(p.size)}</td><td>${esc(p.qty)}</td><td>${p.amount!=null?money(p.amount):'—'}</td></tr>`).join('') : '<tr><td colspan="6" class="muted">No products</td></tr>'}</tbody></table>
+      <tbody>${prods.length ? prods.map(p => {
+        const loc = p.location || p.locationName || p.positionName || '—';
+        const extra = [p.glass && p.glass !== '—' ? p.glass : '', p.colour && p.colour !== '—' ? p.colour : ''].filter(Boolean).join(' · ');
+        return `<tr><td>${esc(p.serial)}</td><td>${esc(loc)}</td><td>${esc(p.type)}${extra?`<div class="muted" style="font-size:.72rem">${esc(extra)}</div>`:''}</td><td>${esc(p.size)}</td><td>${esc(p.qty)}</td><td>${p.amount!=null?money(p.amount):'—'}</td></tr>`;
+      }).join('') : '<tr><td colspan="6" class="muted">No products</td></tr>'}</tbody></table>
+      ${renderScanPack(rec)}
       <div class="row" style="gap:.4rem;flex-wrap:wrap">
-        ${rec.customerPdfUrl?`<a class="btn sm" href="${API_BASE}${rec.customerPdfUrl}" target="_blank">Customer PDF</a>`:''}
+        ${rec.allPdfUrl?`<a class="btn sm" href="${API_BASE}${rec.allPdfUrl}" target="_blank">Download all (A4 PDF)</a>`:''}
+        ${rec.customerPdfUrl?`<a class="btn ghost sm" href="${API_BASE}${rec.customerPdfUrl}" target="_blank">Customer PDF</a>`:''}
         ${rec.ledgerPdfUrl?`<a class="btn ghost sm" href="${API_BASE}${rec.ledgerPdfUrl}" target="_blank">Ledger PDF</a>`:''}
+        ${rec.ledgerHtmlUrl?`<a class="btn ghost sm" href="${API_BASE}${rec.ledgerHtmlUrl}" target="_blank">Ledger</a>`:''}
       </div>
       <p class="muted" style="margin:.7rem 0 0;font-size:.75rem">Last updated ${esc(rec.updatedAt||'—')}. This page always reads the live project — not a frozen PDF snapshot.</p>`;
   } catch(e) {
@@ -7305,22 +7349,29 @@ async function openCustomer(name) {
     $('cpEmail').value = p.email || '';
     $('cpSite').value = p.site || '';
     $('cpStateCode').value = p.stateCode || '';
-    renderCustomerQuotes(acc.quotes || []);
+    await renderCustomerQuotes(acc.quotes || []);
     $('cpQuoteCount').textContent = `(${acc.quoteCount||0})`;
     await loadCustomerLedger(name, acc.quotes || []);
   } catch(e) { $('cpErr').textContent = e.message; }
 }
 async function loadCustomerLedger(name, quotesFallback) {
   const base = API_BASE + '/api/customers/' + encodeURIComponent(name);
+  const gst = state.companyGst || savedCompanyGst() || '';
+  const gstQ = gst ? ('?gst='+encodeURIComponent(gst)) : '';
+  const htmlBtn = $('btnCpLedgerHtml');
+  if (htmlBtn) {
+    htmlBtn.style.display = 'inline-flex';
+    htmlBtn.href = base + '/ledger.html' + gstQ;
+  }
   const pdf = $('btnCpLedgerPdf');
   if (pdf) {
     pdf.style.display = 'inline-flex';
-    pdf.href = base + '/ledger.pdf';
+    pdf.href = base + '/ledger.pdf' + gstQ;
   }
   const pr = $('btnCpLedgerPrint');
   if (pr) {
     pr.style.display = 'inline-flex';
-    pr.href = base + '/ledger.pdf';
+    pr.href = base + '/ledger.pdf' + gstQ;
   }
   const xl = $('btnCpLedgerXlsx');
   if (xl) {
@@ -7464,19 +7515,58 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
     if (state.companyGst) refreshCompanyHub(state.companyGst);
   } catch(e) { $('cpErr').textContent = e.message; toast(e.message); }
 };
-function renderCustomerQuotes(quotes) {
+function isQuoteApprovedStatus(st) {
+  return ['confirmed','accepted','approved','finalized','ordered','won','order'].includes(String(st||'').toLowerCase());
+}
+function renderQuotePackBlock(q, pack) {
+  if (!isQuoteApprovedStatus(q.status)) {
+    return `<p class="muted" style="margin:.45rem 0 0;font-size:.75rem">Process updates, bills, warranty, challan &amp; photos unlock after approval.</p>`;
+  }
+  const gst = state.companyGst || savedCompanyGst() || '';
+  const upd = (pack && pack.updates) || [];
+  const docs = (pack && pack.documents) || [];
+  const photos = (pack && pack.photos) || [];
+  const labels = {bill:'Bill', warranty:'Warranty', challan:'Challan'};
+  const list = []
+    .concat(upd.map(u => `<div class="muted" style="font-size:.75rem">• ${esc(fmtDate(u.date||u.createdAt))} — ${esc(u.text||'')}</div>`))
+    .concat(docs.map(d => `<div class="muted" style="font-size:.75rem">• ${esc(labels[d.kind]||d.kind)} — <a href="${API_BASE}${d.url||''}" target="_blank">${esc(d.filename||d.note||d.kind)}</a> <button class="btn ghost sm" data-del-pack="${esc(q.projectId)}" data-del-item="${esc(d.id)}" type="button">✕</button></div>`))
+    .concat(photos.map(p => `<div class="muted" style="font-size:.75rem">• Photo — <a href="${API_BASE}${p.url||''}" target="_blank">${esc(p.filename||p.note||'photo')}</a> <button class="btn ghost sm" data-del-pack="${esc(q.projectId)}" data-del-item="${esc(p.id)}" type="button">✕</button></div>`))
+    .join('') || '<div class="muted" style="font-size:.75rem">Nothing uploaded yet</div>';
+  return `<div style="margin-top:.55rem;padding-top:.5rem;border-top:1px solid var(--line)">
+    <strong style="font-size:.8rem">Process pack (after approval)</strong>
+    <div style="margin:.35rem 0">${list}</div>
+    <div class="row" style="gap:.4rem;flex-wrap:wrap;align-items:flex-end;margin-top:.35rem">
+      <div class="grow"><label class="l">Process update</label><input data-pack-note="${esc(q.projectId)}" placeholder="What was done…"/></div>
+      <div><label class="l">Date</label><input type="date" data-pack-date="${esc(q.projectId)}"/></div>
+      <button class="btn sm" type="button" data-pack-add="${esc(q.projectId)}">Add update</button>
+    </div>
+    <div class="row" style="gap:.35rem;flex-wrap:wrap;margin-top:.4rem">
+      <label class="btn ghost sm" style="margin:0">Bill<input type="file" accept="application/pdf,image/*" hidden data-pack-file="${esc(q.projectId)}" data-pack-kind="bill"/></label>
+      <label class="btn ghost sm" style="margin:0">Warranty<input type="file" accept="application/pdf,image/*" hidden data-pack-file="${esc(q.projectId)}" data-pack-kind="warranty"/></label>
+      <label class="btn ghost sm" style="margin:0">Challan<input type="file" accept="application/pdf,image/*" hidden data-pack-file="${esc(q.projectId)}" data-pack-kind="challan"/></label>
+      <label class="btn ghost sm" style="margin:0">Photo<input type="file" accept="image/*" hidden data-pack-file="${esc(q.projectId)}" data-pack-kind="photo"/></label>
+    </div>
+  </div>`;
+}
+async function renderCustomerQuotes(quotes) {
   if (!quotes.length) { $('cpQuotes').innerHTML = '<p class="muted">No quotes yet for this customer</p>'; return; }
   const billed = quotes.reduce((s,q) => {
     // Prefer latest live row total for display roll-up note (versions listed separately).
     return s + (q.grandTotal != null ? +q.grandTotal : 0);
   }, 0);
+  const gst = state.companyGst || savedCompanyGst() || '';
+  const packs = {};
+  await Promise.all((quotes||[]).filter(q => isQuoteApprovedStatus(q.status) && q.projectId).map(async q => {
+    try {
+      packs[q.projectId] = await api('/api/projects/'+q.projectId+'/pack'+(gst?('?gst='+encodeURIComponent(gst)):''));
+    } catch(_) { packs[q.projectId] = {updates:[], documents:[], photos:[]}; }
+  }));
   $('cpQuotes').innerHTML = `<p class="muted" style="font-size:.78rem;margin:0 0 .5rem">All quote versions listed. Live total value (sum of current rows): <strong>${money(billed)}</strong> — account billed uses latest per quotation number.</p>` + quotes.map(q => {
-    const brand = 'marqt';
     const versions = (q.versions||[]).map(v =>
-      `<span class="chip">v${v.version} ${v.grandTotal!=null?money(v.grandTotal):''} <a href="${API_BASE}/api/projects/${q.projectId}/customer-pdf?brand=${brand}" target="_blank" title="Print current">🖨</a></span>`
+      `<span class="chip">v${v.version} ${v.grandTotal!=null?money(v.grandTotal):''} <a href="${API_BASE}/api/projects/${q.projectId}/customer-pdf" target="_blank" title="Print current">🖨</a></span>`
     ).join(' ');
     const st = (q.status||'').toLowerCase();
-    const confLabel = ['confirmed','accepted','approved','finalized','ordered','won'].includes(st) ? 'Approved' : 'Approve';
+    const confLabel = isQuoteApprovedStatus(st) ? 'Approved' : 'Approve';
     return `<div class="card" style="padding:.65rem .8rem;margin-bottom:.55rem">
       <div class="row" style="justify-content:space-between;align-items:center">
         <div>
@@ -7486,13 +7576,14 @@ function renderCustomerQuotes(quotes) {
         </div>
         <div class="actions-inline">
           <button class="btn ghost sm" data-confirm-q="${q.projectId}" type="button">${confLabel}</button>
-          <a class="btn ghost sm" href="${API_BASE}/api/projects/${q.projectId}/customer-pdf?brand=marqt" target="_blank">Print</a>
+          <a class="btn ghost sm" href="${API_BASE}/api/projects/${q.projectId}/customer-pdf" target="_blank">Print</a>
           <button class="btn ghost sm" data-scan-q="${q.projectId}" type="button">Scan link</button>
           <button class="btn ghost sm" data-open-q="${q.projectId}">Edit</button>
           <button class="btn ghost sm" data-reuse-q="${q.projectId}">Reuse</button>
         </div>
       </div>
       ${versions?('<div style="margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.3rem">Versions: '+versions+'</div>'):''}
+      ${renderQuotePackBlock(q, packs[q.projectId])}
     </div>`;
   }).join('');
   $('cpQuotes').querySelectorAll('[data-open-q]').forEach(b => b.onclick = async () => { await openProject(b.dataset.openQ); setView('cart'); });
@@ -7515,6 +7606,46 @@ function renderCustomerQuotes(quotes) {
       const url = (API_BASE || location.origin) + (r.scanPath || ('/q/'+r.shareToken));
       try { await navigator.clipboard.writeText(url); toast('Public scan link copied'); }
       catch(_) { prompt('Public scan URL', url); }
+    } catch(e) { toast(e.message); }
+  });
+  $('cpQuotes').querySelectorAll('[data-pack-add]').forEach(b => b.onclick = async () => {
+    const pid = b.dataset.packAdd;
+    const noteEl = document.querySelector('[data-pack-note="'+pid+'"]');
+    const dateEl = document.querySelector('[data-pack-date="'+pid+'"]');
+    const text = (noteEl && noteEl.value || '').trim();
+    if (!text) { toast('Enter a process update'); return; }
+    try {
+      await api('/api/projects/'+pid+'/pack/updates'+(gst?('?gst='+encodeURIComponent(gst)):''), {
+        method:'POST',
+        body: { text, date: (dateEl && dateEl.value) || null, gstNo: gst || undefined },
+      });
+      toast('Process update saved');
+      if (state.selectedCustomer) await openCustomer(state.selectedCustomer);
+    } catch(e) { toast(e.message); }
+  });
+  $('cpQuotes').querySelectorAll('[data-pack-file]').forEach(inp => {
+    inp.onchange = async (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      const pid = inp.dataset.packFile;
+      const kind = inp.dataset.packKind || 'photo';
+      const fd = new FormData();
+      fd.append('file', f);
+      const qs = ['kind='+encodeURIComponent(kind)];
+      if (gst) qs.push('gst='+encodeURIComponent(gst));
+      try {
+        await api('/api/projects/'+pid+'/pack/files?'+qs.join('&'), {method:'POST', body: fd});
+        toast((kind[0].toUpperCase()+kind.slice(1))+' uploaded');
+        if (state.selectedCustomer) await openCustomer(state.selectedCustomer);
+      } catch(e) { toast(e.message); }
+      inp.value = '';
+    };
+  });
+  $('cpQuotes').querySelectorAll('[data-del-pack]').forEach(b => b.onclick = async () => {
+    try {
+      await api('/api/projects/'+b.dataset.delPack+'/pack/'+b.dataset.delItem+(gst?('?gst='+encodeURIComponent(gst)):''), {method:'DELETE'});
+      toast('Removed');
+      if (state.selectedCustomer) await openCustomer(state.selectedCustomer);
     } catch(e) { toast(e.message); }
   });
 }

@@ -1041,7 +1041,12 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
 
         selling = line.get("selling") or {}
         rate = selling.get("sellingRate")
-        amount = selling.get("sellingAmount")
+        try:
+            from WEOS.factory.customer_line_view import customer_line_amount
+
+            amount = customer_line_amount(line)
+        except Exception:
+            amount = selling.get("sellingAmount")
         if amount is None:
             amount = line.get("commercialTotal")
         if amount is None:

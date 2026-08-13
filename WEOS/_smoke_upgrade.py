@@ -165,6 +165,11 @@ def main() -> int:
     p0 = prods[0] if prods else {}
     _ok("serial" in p0 and "location" in p0 and "type" in p0 and "size" in p0 and "qty" in p0, "scan product fields", fails)
     _ok("Master" in str(p0.get("location") or "") or "Bedroom" in str(p0.get("location") or ""), "scan location", fails)
+    _ok(float(p0.get("amount") or 0) > 0, f"scan product amount got {p0.get('amount')}", fails)
+    _ok(str(p0.get("serial") or "").upper().startswith("W"), f"scan serial W1… got {p0.get('serial')}", fails)
+    _ok("coming soon" not in str(p0.get("type") or "").lower(), "scan type not coming soon", fails)
+    _ok(not rec.get("pack") or rec.get("approved"), "approved quote exposes pack", fails)
+    _ok(bool((rec.get("pack") or {}).get("available")), "approved pack available", fails)
     _ok(rec.get("updatedAt"), "scan last updated", fails)
     html = render_scan_html(rec, base_url="https://example.test")
     blob = html.lower()
@@ -173,6 +178,111 @@ def main() -> int:
 
     rec2 = build_public_quote_record(token)
     _ok((rec2 or {}).get("shareToken") == token, "token stable after re-read", fails)
+    _ok("14,580" in html or "14580" in html.replace(",", ""), "scan html shows product amount", fails)
+    _ok("download all" in blob, "scan html download all button", fails)
+
+    # ── B2) project pack after approval only ──────────────────────────────
+    from WEOS.factory.customer_quote_pdf import render_customer_quote_sheet
+    from WEOS.factory.ledger_pdf import render_ledger_html, render_ledger_pdf
+    from WEOS.factory.ledger_store import build_ledger
+    from WEOS.factory.project_pack import add_file, add_update
+    from WEOS.factory.scan_all_pdf import render_scan_all_pdf
+
+    draft = empty_project(name="Draft no pack", customer="Alpha Cust")
+    draft["companyGst"] = gst_a
+    draft["quotationId"] = "AG-26/00099/A1"
+    draft["status"] = "draft"
+    draft["lines"] = [
+        {
+            "product": "casement_stub",
+            "displayName": "Fixed Light (coming soon)",
+            "productType": "casements",
+            "width": 1000,
+            "height": 1200,
+            "qty": 1,
+            "sellingRate": 800,
+            "saleUnit": "sqft",
+            "locationName": "Kitchen",
+            "glass": "8mm_toughened",
+            "colour": "white",
+        }
+    ]
+    draft["lastCalculation"] = {"price": {"total": 0}}
+    draft = save_project(draft, action="smoke")
+    rec_d = build_public_quote_record(str(draft.get("shareToken") or draft["projectId"])) or {}
+    p_d = (rec_d.get("products") or [{}])[0]
+    _ok(float(p_d.get("amount") or 0) > 0, f"draft amount recomputed got {p_d.get('amount')}", fails)
+    _ok("casement" in str(p_d.get("type") or "").lower(), f"casement human type got {p_d.get('type')}", fails)
+    _ok("coming soon" not in str(p_d.get("type") or "").lower(), "no coming soon on draft type", fails)
+    _ok("Kitchen" in str(p_d.get("location") or ""), "draft location", fails)
+    _ok(not rec_d.get("approved"), "draft not approved", fails)
+    _ok(not (rec_d.get("pack") or {}).get("available"), "draft pack not available", fails)
+    html_d = render_scan_html(rec_d).lower()
+    _ok("available after approval" in html_d, "draft scan hides pack", fails)
+    try:
+        add_update(draft["projectId"], "Should fail")
+        fails.append("pack update must fail before approval")
+    except (PermissionError, ValueError):
+        print("OK: pack blocked before approval")
+    except Exception as exc:
+        print("OK: pack blocked before approval", type(exc).__name__, exc)
+
+    set_project_status(draft["projectId"], "approved")
+    note = add_update(draft["projectId"], "Frame installed on site", date="2026-08-13")
+    _ok(note.get("kind") == "update", "process update saved", fails)
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05"
+        b"\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    photo = add_file(
+        draft["projectId"], kind="photo", raw=png, filename="site.png", content_type="image/png", note="Site photo"
+    )
+    _ok(photo.get("kind") == "photo", "process photo saved", fails)
+    challan = add_file(
+        draft["projectId"],
+        kind="challan",
+        raw=b"%PDF-1.4 fake",
+        filename="dc.pdf",
+        content_type="application/pdf",
+        note="DC-01",
+    )
+    _ok(challan.get("kind") == "challan", "challan saved", fails)
+
+    rec_a = build_public_quote_record(str(draft.get("shareToken") or draft["projectId"])) or {}
+    _ok(rec_a.get("approved"), "approved after status", fails)
+    pack = rec_a.get("pack") or {}
+    _ok(pack.get("available"), "pack available after approval", fails)
+    _ok(len(pack.get("updates") or []) >= 1, "scan shows process update", fails)
+    _ok(len(pack.get("photos") or []) >= 1, "scan shows photo", fails)
+    _ok(any(d.get("kind") == "challan" for d in (pack.get("documents") or [])), "scan shows challan", fails)
+    html_a = render_scan_html(rec_a, base_url="https://example.test").lower()
+    _ok("process updates" in html_a, "approved html process updates", fails)
+    _ok("frame installed" in html_a, "approved html update text", fails)
+    _ok("download all" in html_a, "download all button after approval", fails)
+    _ok("available after approval" not in html_a, "approved html does not hide pack", fails)
+    all_pdf = render_scan_all_pdf(rec_a)
+    _ok(all_pdf.startswith(b"%PDF"), "all.pdf valid", fails)
+
+    sheet = render_customer_quote_sheet(
+        {
+            "company": {"companyName": "ALLUKRAFT", "gstNo": gst_a},
+            "customer": "Alpha Cust",
+            "quotationId": "AG-26/00099/A1",
+            "status": "approved",
+            "lines": draft["lines"],
+        }
+    )
+    _ok(sheet.startswith(b"%PDF"), "customer quote sheet pdf", fails)
+    _ok(b"%PDF" in sheet[:8], "quote sheet not empty", fails)
+
+    led = build_ledger("Alpha Cust")
+    led_pdf = render_ledger_pdf(led, {"companyName": "Alpha Glass Works", "gstNo": gst_a})
+    _ok(led_pdf.startswith(b"%PDF"), "ledger pdf valid", fails)
+    _ok(len(led_pdf) > 800, "ledger pdf has content", fails)
+    led_html = render_ledger_html(led, {"companyName": "Alpha Glass Works", "gstNo": gst_a}).lower()
+    _ok("customer account ledger" in led_html, "ledger html title", fails)
+    _ok("taxable" in led_html and "balance" in led_html, "ledger html totals grid", fails)
 
     # ── C) formula recall + suggestions (no invented weights, no auto-apply) ─
     from WEOS.learning.material_formulas import get_formula, recall_approved_formulas, recall_formula_for_context

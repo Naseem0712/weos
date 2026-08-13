@@ -27,16 +27,24 @@ def render_template_pdf(
     except FileNotFoundError:
         template = load_template(f"woodenmax_{kind}")
 
-    # Overlay saved Company Setup identity onto template branding (auto-applied to
+    # Overlay GST workspace identity onto template branding (auto-applied to
     # every quote header). Company name renders in UPPERCASE for headers.
     try:
         from WEOS.factory.company_store import company_branding
 
-        overlay = company_branding()
+        gst = (
+            payload.get("companyGst")
+            or (payload.get("company") or {}).get("gstNo")
+            or (payload.get("branding") or {}).get("gstNo")
+        )
+        overlay = company_branding(gst=gst)
         if overlay:
             template = dict(template)
             branding = dict(template.get("branding") or {})
             branding.update({k: v for k, v in overlay.items() if v})
+            if overlay.get("companyName"):
+                branding["logoText"] = overlay["companyName"]
+                branding["footerName"] = overlay["companyName"]
             template["branding"] = branding
     except Exception:
         pass
@@ -54,6 +62,15 @@ def render_template_pdf(
         from WEOS.factory.marqt_pdf import render_marqt_pdf
 
         return render_marqt_pdf(template, payload)
+    # WoodenMax / AllKraft block templates: dummy "Product" box + 0.00 amounts.
+    # Replace with the scan-parity customer quote sheet (GST branding + live totals).
+    if kind != "factory" and tkind != "factory":
+        try:
+            from WEOS.factory.customer_quote_pdf import render_customer_quote_sheet
+
+            return render_customer_quote_sheet(payload, branding=template.get("branding"))
+        except Exception:
+            pass
     return _render_reportlab(template, payload)
 
 

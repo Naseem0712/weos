@@ -400,9 +400,20 @@ def logo_data_url() -> str | None:
     return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
 
 
-def company_branding() -> dict[str, Any]:
-    """Branding dict for PDF templates. Company name in UPPERCASE for headers."""
-    doc = load_company()
+def company_branding(gst: str | None = None) -> dict[str, Any]:
+    """Branding dict for PDF templates. Company name in UPPERCASE for headers.
+
+    When ``gst`` is set, prefer that workspace profile (quote's company GST)
+    over the currently open hub — so ALLUKRAFT quotes never print WoodenMax.
+    """
+    doc: dict[str, Any] = {}
+    g = normalise_gstin(gst or "")
+    if g:
+        by = load_company_by_gst(g)
+        if isinstance(by, dict) and (by.get("companyName") or by.get("gstNo")):
+            doc = dict(by)
+    if not doc:
+        doc = load_company()
     name = (doc.get("companyName") or "").strip()
     branding: dict[str, Any] = {}
     if name:

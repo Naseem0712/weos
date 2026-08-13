@@ -189,43 +189,19 @@ def _money(n: Any) -> float:
         return 0.0
 
 
-def _customer_safe_products(lines: list[Any] | None) -> list[dict[str, Any]]:
+def _customer_safe_products(lines: list[Any] | None, *, doc: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
     """Customer-facing line list — no factory BOM / purchase rates."""
-    from WEOS.factory.line_kind import design_serial_label, line_location_name
+    from WEOS.factory.customer_line_view import public_product_row, public_products_from_doc
 
+    if isinstance(doc, Mapping):
+        rows = public_products_from_doc(doc)
+        if rows:
+            return rows
     out: list[dict[str, Any]] = []
     for i, ln in enumerate(lines or []):
         if not isinstance(ln, dict):
             continue
-        w, h = ln.get("width"), ln.get("height")
-        try:
-            size = f"{int(float(w))}×{int(float(h))} mm" if w and h else (str(ln.get("size") or "").strip() or "—")
-        except (TypeError, ValueError):
-            size = str(ln.get("size") or "—")
-        price = ln.get("price") if isinstance(ln.get("price"), dict) else {}
-        amt = price.get("total")
-        if amt is None:
-            amt = ln.get("sellingAmount") or ln.get("lineTotal") or ln.get("amount")
-        ptype = (
-            ln.get("displayName")
-            or ln.get("productLabel")
-            or ln.get("productType")
-            or ln.get("product")
-            or ""
-        )
-        qty = ln.get("qty") or ln.get("quantity") or 1
-        loc = line_location_name(ln)
-        serial = str(ln.get("serial") or ln.get("serialLabel") or "").strip() or design_serial_label(i, ln)
-        out.append(
-            {
-                "serial": serial,
-                "location": loc or "—",
-                "type": str(ptype),
-                "size": size,
-                "qty": qty,
-                "amount": round(_money(amt), 2) if amt is not None else None,
-            }
-        )
+        out.append(public_product_row(i, ln))
     return out
 
 
@@ -346,7 +322,16 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
     version_count = max(int(doc.get("version") or 1), len(versions) + 1)
 
     status = str(doc.get("status") or "draft").strip().lower() or "draft"
-    products = _customer_safe_products(list(doc.get("lines") or []))
+    products = _customer_safe_products(list(doc.get("lines") or []), doc=doc)
+    from WEOS.factory.customer_line_view import totals_by_type
+    from WEOS.factory.ledger_store import CONFIRMED_STATUSES
+    from WEOS.factory.project_pack import public_pack_payload
+
+    approved = status in CONFIRMED_STATUSES or bool(advances)
+    type_totals = totals_by_type(list(doc.get("lines") or []))
+    pack = public_pack_payload(doc, share_token=token, approved=approved)
+    ledger_html = f"/q/{token}/ledger" if token else None
+    all_pdf = f"/api/public/quote/{token}/all.pdf" if token else None
 
     return {
         "ok": True,
@@ -368,7 +353,7 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
         ],
         "status": status,
         "approvalStatus": status,
-        "approved": status in {"approved", "confirmed", "accepted", "finalized", "ordered", "won"},
+        "approved": approved,
         "customer": {
             "name": customer_name or customer_profile.get("name") or "—",
             "phone": doc.get("customerMobile") or customer_profile.get("phone") or "",
@@ -396,10 +381,14 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
         "balanceWithGst": balance_gst,
         "products": products,
         "productCount": len(products),
+        "typeTotals": type_totals,
+        "pack": pack,
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt") or _now_iso(),
         "customerPdfUrl": f"/api/projects/{pid}/customer-pdf" if pid else None,
         "ledgerPdfUrl": f"/api/customers/{customer_name}/ledger.pdf" if customer_name else None,
+        "ledgerHtmlUrl": ledger_html,
+        "allPdfUrl": all_pdf,
     }
 
 
@@ -463,13 +452,96 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     prod_rows = ""
     for p in record.get("products") or []:
         amt = inr(p.get("amount")) if p.get("amount") is not None else "—"
+        loc = p.get("location") or p.get("locationName") or p.get("positionName") or "—"
+        extra = " · ".join(
+            x
+            for x in (
+                "" if not p.get("glass") or str(p.get("glass")) == "—" else str(p.get("glass")),
+                "" if not p.get("colour") or str(p.get("colour")) == "—" else str(p.get("colour")),
+            )
+            if x
+        )
+        type_cell = esc(p.get("type"))
+        if extra:
+            type_cell += f'<div class="muted" style="font-size:.72rem">{esc(extra)}</div>'
         prod_rows += (
-            f"<tr><td>{esc(p.get('serial'))}</td><td>{esc(p.get('location'))}</td>"
-            f"<td>{esc(p.get('type'))}</td><td>{esc(p.get('size'))}</td>"
+            f"<tr><td>{esc(p.get('serial'))}</td><td>{esc(loc)}</td>"
+            f"<td>{type_cell}</td><td>{esc(p.get('size'))}</td>"
             f"<td>{esc(p.get('qty'))}</td><td>{amt}</td></tr>"
         )
     if not prod_rows:
         prod_rows = '<tr><td colspan="6" class="muted">No products on this quote</td></tr>'
+
+    type_tot_html = ""
+    for trow in record.get("typeTotals") or []:
+        type_tot_html += (
+            f"<div class='muted' style='margin:.15rem 0'>{esc(trow.get('type'))} × {esc(trow.get('qty'))}"
+            f" · {inr(trow.get('amount'))}</div>"
+        )
+
+    pack = record.get("pack") or {}
+    pack_html = ""
+    if approved:
+        upd_html = ""
+        for u in pack.get("updates") or []:
+            upd_html += (
+                f"<div class='item'><div class='muted'>{fmt_dt(u.get('date') or u.get('createdAt'))}</div>"
+                f"<div>{esc(u.get('text') or u.get('note') or '')}</div></div>"
+            )
+        if not upd_html:
+            upd_html = '<p class="muted">No process updates yet</p>'
+        doc_html = ""
+        labels = {"bill": "Bill", "warranty": "Warranty card", "challan": "Delivery challan"}
+        for d in pack.get("documents") or []:
+            href = esc(d.get("url") or "#")
+            if base_url and href.startswith("/"):
+                href = base_url.rstrip("/") + href
+            kind = labels.get(str(d.get("kind") or ""), str(d.get("kind") or "File").title())
+            note = esc(d.get("note") or d.get("filename") or kind)
+            ct = str(d.get("contentType") or "")
+            thumb = ""
+            if ct.startswith("image/"):
+                thumb = f'<a href="{href}" target="_blank" rel="noopener"><img src="{href}" alt="" style="max-height:72px;max-width:110px;border-radius:8px;border:1px solid var(--line);object-fit:cover"/></a>'
+            doc_html += (
+                f'<div class="item" style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">'
+                f"{thumb}<div><strong>{esc(kind)}</strong>"
+                f'<div class="muted">{fmt_dt(d.get("date") or d.get("createdAt"))} · {note}</div>'
+                f'<a class="btn ghost" href="{href}" target="_blank" rel="noopener">Open / download</a></div></div>'
+            )
+        if not doc_html:
+            doc_html = '<p class="muted">No bills, warranty cards, or delivery challans yet</p>'
+        photo_html = ""
+        for ph in pack.get("photos") or []:
+            href = esc(ph.get("url") or "#")
+            if base_url and href.startswith("/"):
+                href = base_url.rstrip("/") + href
+            cap = esc(ph.get("note") or ph.get("filename") or "Photo")
+            photo_html += (
+                f'<a href="{href}" target="_blank" rel="noopener" style="display:inline-block;margin:.2rem">'
+                f'<img src="{href}" alt="{cap}" style="max-height:140px;max-width:180px;border-radius:10px;border:1px solid var(--line);object-fit:cover"/>'
+                f'<div class="muted" style="font-size:.72rem">{fmt_dt(ph.get("date") or ph.get("createdAt"))} · {cap}</div></a>'
+            )
+        if not photo_html:
+            photo_html = '<p class="muted">No process photos yet</p>'
+        pack_html = f"""
+  <div class="card">
+    <h2>Process updates</h2>
+    {upd_html}
+  </div>
+  <div class="card">
+    <h2>Bills / warranty / delivery challan</h2>
+    {doc_html}
+  </div>
+  <div class="card">
+    <h2>Process photos</h2>
+    {photo_html}
+  </div>"""
+    else:
+        pack_html = """
+  <div class="card">
+    <h2>Process pack</h2>
+    <p class="muted">Available after approval</p>
+  </div>"""
 
     ver_bits = []
     for v in record.get("versions") or []:
@@ -482,18 +554,28 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
 
     pdf_url = record.get("customerPdfUrl") or ""
     led_url = record.get("ledgerPdfUrl") or ""
+    all_url = record.get("allPdfUrl") or ""
+    led_html = record.get("ledgerHtmlUrl") or ""
     if base_url:
         b = base_url.rstrip("/")
         if pdf_url and pdf_url.startswith("/"):
             pdf_url = b + pdf_url
         if led_url and led_url.startswith("/"):
             led_url = b + led_url
+        if all_url and all_url.startswith("/"):
+            all_url = b + all_url
+        if led_html and led_html.startswith("/"):
+            led_html = b + led_html
 
     links = []
+    if all_url:
+        links.append(f'<a class="btn" href="{esc(all_url)}" target="_blank" rel="noopener">Download all (A4 PDF)</a>')
     if pdf_url:
-        links.append(f'<a class="btn" href="{esc(pdf_url)}" target="_blank" rel="noopener">Customer PDF</a>')
+        links.append(f'<a class="btn ghost" href="{esc(pdf_url)}" target="_blank" rel="noopener">Customer PDF</a>')
     if led_url:
         links.append(f'<a class="btn ghost" href="{esc(led_url)}" target="_blank" rel="noopener">Ledger PDF</a>')
+    if led_html:
+        links.append(f'<a class="btn ghost" href="{esc(led_html)}" target="_blank" rel="noopener">Ledger</a>')
     links_html = " ".join(links) if links else ""
 
     co_name = esc(co.get("name") or "WEOS")
@@ -527,6 +609,8 @@ th{{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mu
 .btn{{display:inline-block;background:var(--green);color:#f4faf7;text-decoration:none;border-radius:10px;
   padding:.45rem .75rem;font-weight:600;font-size:.85rem;margin:.15rem .25rem 0 0}}
 .btn.ghost{{background:transparent;color:var(--green);border:1px solid var(--green)}}
+.item{{padding:.45rem 0;border-bottom:1px solid var(--line)}}
+.item:last-child{{border-bottom:0}}
 .foot{{margin-top:.8rem;font-size:.75rem;color:var(--muted)}}
 </style>
 </head>
@@ -575,7 +659,9 @@ th{{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mu
       <thead><tr><th>Serial</th><th>Location</th><th>Type</th><th>Size</th><th>Qty</th><th>Amount</th></tr></thead>
       <tbody>{prod_rows}</tbody>
     </table>
+    {f'<div style="margin-top:.55rem">{type_tot_html}</div>' if type_tot_html else ''}
   </div>
+  {pack_html}
   <p class="foot">Last updated {fmt_dt(record.get('updatedAt'))}. This page always loads the live project from the company database — not a PDF snapshot.</p>
 </div>
 </body>

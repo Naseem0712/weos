@@ -127,11 +127,10 @@ def main() -> int:
     for needle in (
         "CUSTOMER ACCOUNT LEDGER",
         "RUNNING QUOTES",
-        "ADVANCE BREAKDOWN",
-        "TOTAL ADVANCE",
-        "TOTAL TAXABLE",
-        "TOTAL WITH GST",
-        "TOTAL BALANCE",
+        "ADVANCES",
+        "TAXABLE",
+        "WITH GST",
+        "BALANCE",
         "HUB PERSIST CO",
     ):
         if needle not in text:
