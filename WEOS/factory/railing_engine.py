@@ -1067,6 +1067,15 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         want_studs = bottom_kind == "studs"
         want_pillars = want_block or want_ss
         cfg["bottomKind"] = bottom_kind
+        # Continuous rail: no pillars / blocks / studs / brackets — only rail + handrail + glass + end/wall joins.
+        if bottom_kind == "continuous":
+            want_bottom = True
+            want_block = False
+            want_ss = False
+            want_studs = False
+            want_pillars = False
+            cfg["blocksPerGlass"] = 0
+            cfg["continuousRail"] = True
     if want_ss and not want_block:
         cfg["pillarType"] = "ss"
     elif want_block and not str(cfg.get("pillarType") or "").lower().startswith("ss"):
@@ -1074,7 +1083,7 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
 
     panels_cfg = max(_i(cfg.get("panels") or cfg.get("glassPanels"), 1), 1)
     blocks_per_glass = max(_i(cfg.get("blocksPerGlass"), 0), 0)
-    if not want_pillars:
+    if not want_pillars or bottom_kind == "continuous":
         blocks_per_glass = 0
     if want_studs:
         blocks_per_glass = 0
@@ -1112,10 +1121,10 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         L = total_length_mm
         run_details.append({
             "index": 0,
-            "lengthMm": round(L, 1),
+            "lengthMm": int(round(L)),
             "turnDeg": 0.0,
             "kind": "staircase",
-            "panelWidthsMm": [round(w, 1) for w in all_panel_widths],
+            "panelWidthsMm": [int(round(w)) for w in all_panel_widths],
             "pillarPositionsMm": [],
             "wallStart": wall_start,
             "wallEnd": wall_end,
@@ -1176,11 +1185,11 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
             run_details.append({
                 "index": si,
                 "label": span_label,
-                "lengthMm": round(L, 1),
+                "lengthMm": int(round(L)),
                 "turnDeg": _f(seg.get("turnDeg")),
                 "kind": seg.get("kind") or "straight",
-                "panelWidthsMm": [round(w, 1) for w in widths],
-                "pillarPositionsMm": [round(p, 1) for p in positions],
+                "panelWidthsMm": [int(round(w)) for w in widths],
+                "pillarPositionsMm": [int(round(p)) for p in positions],
                 "blocksPerGlass": seg_blocks,
                 "wallStart": w_left,
                 "wallEnd": w_right,
@@ -1349,16 +1358,32 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         length_rft, length_rmt = slope_rft, slope_rmt
         total_length_mm = slope_mm
 
-    width_unit = commercial_rmt if sale_unit == "rmt" else commercial_rft
+    from WEOS.factory.fmt import mm_n, money_n, rft_n
+
+    width_unit = rft_n(commercial_rmt if sale_unit == "rmt" else commercial_rft)
 
     anchors_per_rft = _f(cfg.get("anchorsPerRft"), 0.0)
     include_base = bool(cfg.get("includeBaseAnchors", False))
     base_anchors = math.ceil(length_rft * anchors_per_rft) if (include_base and anchors_per_rft) else 0
     anchor_count = pillar_anchors + base_anchors + stair_stud_anchors + (normal_studs if want_studs else 0)
-    if anchor_count == 0 and not pillar_count and shape != "staircase" and not want_studs:
+    # Continuous bottom rail: do not invent 1/RFT anchors/brackets.
+    if shape != "staircase" and str(cfg.get("bottomKind") or "").lower() == "continuous":
+        anchor_count = base_anchors if include_base else 0
+        pillar_count = 0
+    elif anchor_count == 0 and not pillar_count and shape != "staircase" and not want_studs:
         anchor_count = math.ceil(length_rft * (anchors_per_rft or 1.0))
 
-    rail_unit_len = width_unit
+    # One run length for handrail + continuous bottom rail (same mm / same RFT).
+
+    run_len_mm = mm_n(total_length_mm)
+    run_len_rft = rft_n(run_len_mm / MM_PER_FT if run_len_mm else length_rft)
+    continuous_bottom = shape != "staircase" and str(cfg.get("bottomKind") or "").lower() == "continuous"
+    if continuous_bottom:
+        rail_unit_len = run_len_rft
+        rail_bill_unit = "rft"
+    else:
+        rail_unit_len = rft_n(width_unit) if sale_unit in ("rft", "rmt") else round(width_unit, 3)
+        rail_bill_unit = sale_unit
     items: list[dict[str, Any]] = []
 
     def _mat_for(*roles: str) -> dict[str, Any]:
@@ -1376,10 +1401,12 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         weight: float | None = None, *, material: Mapping[str, Any] | None = None,
         color_role: str | None = None,
     ) -> None:
-        amount = round(qty * rate, 2)
+        amount = money_n(qty * rate)
         row: dict[str, Any] = {
-            "key": key, "label": label, "qty": round(qty, 3), "unit": unit,
-            "rate": round(rate, 3), "amount": amount,
+            "key": key, "label": label,
+            "qty": rft_n(qty) if str(unit).lower() in ("rft", "rmt", "sqft", "sqm") else round(qty, 3),
+            "unit": unit,
+            "rate": money_n(rate), "amount": amount,
         }
         if weight is not None:
             row["weightKg"] = round(weight, 3)
@@ -1507,18 +1534,24 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         br_label = f"Bottom / continuous rail · {mount_hint}"
         if cfg.get("bottomSize"):
             br_label += f" · {cfg.get('bottomSize')}"
-        add("bottomRail", br_label, round(rail_unit_len, 3), sale_unit, r_brail,
+        add("bottomRail", br_label, rail_unit_len, rail_bill_unit, r_brail,
             weight=rail_unit_len * w_brail if w_brail else None, material=brail_mat, color_role="bottom_rail")
-        if items and cfg.get("bottomSize") and not items[-1].get("sizeMm"):
-            items[-1]["sizeMm"] = str(cfg.get("bottomSize"))
+        if items:
+            items[-1]["sizeMm"] = str(cfg.get("bottomSize") or items[-1].get("sizeMm") or "")
+            items[-1]["lengthMm"] = run_len_mm
+            items[-1]["lengthRft"] = run_len_rft
     if handrail_on and r_hrail and total_length_mm:
         hr_label = "Handrail"
         if cfg.get("handrailSize"):
             hr_label += f" · {cfg.get('handrailSize')}"
-        add("handrail", hr_label, round(rail_unit_len, 3), sale_unit, r_hrail,
-            weight=rail_unit_len * w_hrail if w_hrail else None, material=_mat_for("handrail"), color_role="handrail")
-        if items and cfg.get("handrailSize") and not items[-1].get("sizeMm"):
-            items[-1]["sizeMm"] = str(cfg.get("handrailSize"))
+        hr_qty = run_len_rft if continuous_bottom else rail_unit_len
+        hr_unit = "rft" if continuous_bottom else rail_bill_unit
+        add("handrail", hr_label, hr_qty, hr_unit, r_hrail,
+            weight=hr_qty * w_hrail if w_hrail else None, material=_mat_for("handrail"), color_role="handrail")
+        if items:
+            items[-1]["sizeMm"] = str(cfg.get("handrailSize") or items[-1].get("sizeMm") or "")
+            items[-1]["lengthMm"] = run_len_mm
+            items[-1]["lengthRft"] = run_len_rft
     if bend_count and (r_bend or True):
         add("modularBend", "Modular bend (corners)", bend_count, "pc", r_bend, material=_mat_for("bend"), color_role="bend")
     if connector_180 and (r_conn180 or True):
@@ -1592,23 +1625,23 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     # Treat 0 as "no override" so empty/zero inputs don't wipe the cascade.
     if manual_rate is not None and manual_rate <= 0:
         manual_rate = None
-    selling_per_unit = manual_rate if manual_rate is not None else per_unit_rate
-    selling_total = round(selling_per_unit * width_unit, 2) if width_unit else round(total, 2)
+    selling_per_unit = money_n(manual_rate if manual_rate is not None else per_unit_rate)
+    selling_total = money_n(selling_per_unit * width_unit) if width_unit else money_n(total)
     if extras_total:
-        selling_total = round(selling_total + extras_total, 2)
+        selling_total = money_n(selling_total + extras_total)
 
     # Customer-facing commercial (only final rate) vs internal breakdown
     commercial = {
         "saleUnit": sale_unit,
         "measurementBasis": basis,
-        "sellingRatePerUnit": round(selling_per_unit, 4),
+        "sellingRatePerUnit": money_n(selling_per_unit),
         "sellingTotal": selling_total,
-        "sellingRatePerRFT": cost["sellingRatePerRFT"] if manual_rate is None else (
-            round(selling_total / commercial_rft, 4) if commercial_rft else 0.0
-        ),
-        "sellingRatePerRMT": cost["sellingRatePerRMT"] if manual_rate is None else (
-            round(selling_total / commercial_rmt, 4) if commercial_rmt else 0.0
-        ),
+        "sellingRatePerRFT": money_n(cost["sellingRatePerRFT"] if manual_rate is None else (
+            selling_total / commercial_rft if commercial_rft else 0.0
+        )),
+        "sellingRatePerRMT": money_n(cost["sellingRatePerRMT"] if manual_rate is None else (
+            selling_total / commercial_rmt if commercial_rmt else 0.0
+        )),
     }
     internal = {
         "netGlassAreaSqFt": cost["netGlassAreaSqFt"],
@@ -1659,6 +1692,8 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
             "color": it.get("color"),
             "grade": it.get("grade"),
             "sizeMm": it.get("sizeMm"),
+            "lengthMm": it.get("lengthMm"),
+            "lengthRft": it.get("lengthRft"),
             "mountType": it.get("mountType") or (mount_hint if it.get("key") in ("blocks", "bottomRail") else None),
             "materialId": it.get("materialId"),
             "bends": bend_count if it.get("key") == "modularBend" else None,
@@ -1706,8 +1741,10 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
 
     return {
         "shape": shape,
-        "lengthMm": round(total_length_mm, 2), "heightMm": round(height_mm if height_mm > 0 else glass_height_mm, 2),
-        "glassHeightMm": round(glass_height_mm, 2),
+        "lengthMm": mm_n(total_length_mm), "heightMm": mm_n(height_mm if height_mm > 0 else glass_height_mm),
+        "glassHeightMm": mm_n(glass_height_mm),
+        "runLengthMm": run_len_mm,
+        "runLengthRft": run_len_rft,
         "glassThicknessMm": glass_thickness,
         "glassType": glass_type,
         "glassColour": glass_type,
@@ -1717,14 +1754,15 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
             "bottomRail": want_bottom,
             "block": want_block,
             "ssPillar": want_ss,
+            "studs": want_studs,
             "handrail": handrail_on,
             "glass": want_glass,
         },
         "colorMode": color_mode,
         "systemColor": system_color or None,
         "componentColors": dict(component_colors) if component_colors else {},
-        "lengthRft": round(length_rft, 3), "lengthRmt": round(length_rmt, 3),
-        "saleUnit": sale_unit, "measurementBasis": basis, "widthUnit": round(width_unit, 3),
+        "lengthRft": rft_n(length_rft), "lengthRmt": rft_n(length_rmt),
+        "saleUnit": sale_unit, "measurementBasis": basis, "widthUnit": rft_n(width_unit),
         "commercialRailingLengthRFT": round(commercial_rft, 4),
         "commercialRailingLengthRMT": round(commercial_rmt, 4),
         "panelCount": panel_count, "gapMm": gap, "wallGapMm": wall_gap,
@@ -1781,9 +1819,9 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "costCascade": cost,
         "internal": internal,
         "commercial": commercial,
-        "total": total, "perUnitRate": round(float(per_unit_rate), 4),
-        "manualRatePerUnit": manual_rate,
-        "sellingPerUnit": round(float(selling_per_unit), 4), "sellingTotal": selling_total,
+        "total": money_n(total), "perUnitRate": money_n(per_unit_rate),
+        "manualRatePerUnit": money_n(manual_rate) if manual_rate is not None else None,
+        "sellingPerUnit": money_n(selling_per_unit), "sellingTotal": money_n(selling_total),
         "sellingRatePerRFT": commercial["sellingRatePerRFT"],
         "sellingRatePerRMT": commercial["sellingRatePerRMT"],
         "geometry": geometry,
@@ -1901,14 +1939,36 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
         '<defs><pattern id="beamHatch" patternUnits="userSpaceOnUse" width="8" height="8">'
         '<path d="M0,8 L8,0" stroke="#b8c0c8" stroke-width="0.8"/></pattern></defs>',
     ]
+    continuous = str(bottom_kind) == "continuous" or bool(q.get("continuousRail"))
+    br_sz = str(q.get("bottomSize") or (cfg or {}).get("bottomSize") or "").strip()
+    hr_sz = str(q.get("handrailSize") or (cfg or {}).get("handrailSize") or "").strip()
+    try:
+        from WEOS.factory.fmt import mm_n, rft_str
+
+        L_mm = mm_n(L)
+        rft_lbl = rft_str(q.get("runLengthRft") or q.get("lengthRft") or q.get("widthUnit") or (L / 304.8))
+    except Exception:
+        L_mm = int(round(L))
+        rft_lbl = f"{(q.get('lengthRft') or 0)} RFT"
     if not side_studs:
         p.append(
             f'<rect x="{X(0):.1f}" y="{Y(rail_h):.1f}" width="{L:.1f}" height="{rail_h:.1f}" '
             f'fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
         )
+        br_txt = "Bottom rail" + (f" {br_sz}" if br_sz else "") + f" · {L_mm} mm · {rft_lbl}"
+        p.append(
+            f'<text x="{X(L / 2):.1f}" y="{Y(rail_h * 0.45):.1f}" text-anchor="middle" '
+            f'font-size="{fs * 0.62:.1f}" fill="#333">{escape(br_txt)}</text>'
+        )
     if hand_h > 0:
         p.append(f'<rect x="{X(0):.1f}" y="{Y(Hgt):.1f}" width="{L:.1f}" height="{hand_h:.1f}" fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>')
-    if not side_studs:
+        hr_txt = "Handrail" + (f" {hr_sz}" if hr_sz else "") + f" · {L_mm} mm · {rft_lbl}"
+        p.append(
+            f'<text x="{X(L / 2):.1f}" y="{Y(Hgt - hand_h * 0.35):.1f}" text-anchor="middle" '
+            f'font-size="{fs * 0.62:.1f}" fill="#333">{escape(hr_txt)}</text>'
+        )
+    # Continuous rail: no end pillars / posts — only the rails + glass + wall ticks.
+    if not side_studs and not continuous:
         for px in (0.0, L - post_w):
             p.append(f'<rect x="{X(px):.1f}" y="{Y(Hgt):.1f}" width="{post_w:.1f}" height="{Hgt:.1f}" fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>')
 
@@ -1939,6 +1999,9 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
                      f'font-size="{fs*0.65:.1f}" fill="#666">gap {gap:.0f}</text>')
         n_block = _i((cfg or {}).get("blocksPerGlass"), _i((segs[0] if segs else {}).get("blocksPerGlass"), 0))
         n_studs = _i((cfg or {}).get("studsPerGlass") or (q.get("studsPerGlass")), 0)
+        if continuous:
+            n_block = 0
+            n_studs = 0
         n_sup = n_studs if side_studs else n_block
         if side_studs and n_sup <= 0:
             n_sup = max(_i((cfg or {}).get("studsPerGlass") or (cfg or {}).get("blocksPerGlass"), 2), 0)
@@ -1981,7 +2044,7 @@ def _svg_elevation_straight(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
         p.append(f'<rect x="{X(L+10):.1f}" y="{Y(Hgt):.1f}" width="30" height="{Hgt:.1f}" fill="#dfe6ea" stroke="{stroke}" stroke-width="{sw*0.6:.2f}"/>')
         p.append(f'<text x="{X(L+25):.1f}" y="{Y(Hgt/2):.1f}" text-anchor="middle" font-size="{fs*0.7:.1f}" fill="#444" transform="rotate(-90 {X(L+25):.1f} {Y(Hgt/2):.1f})">Wall</text>')
 
-    _dim_h(p, X(0), X(L), Y(0) + fs * 3.4, f'{L:.0f} mm  ·  {q.get("lengthRft")} RFT', dim, sw, fs)
+    _dim_h(p, X(0), X(L), Y(0) + fs * 3.4, f'{L_mm} mm  ·  {rft_lbl}', dim, sw, fs)
     _dim_v(p, Y(0), Y(Hgt), X(0) - fs * 1.6, f'{Hgt:.0f}', dim, sw, fs)
     mount_lbl = q.get("mountLabel") or railing_mount_label(q.get("mountType") or mount)
     summ = (f'Railing · straight · {q.get("panelCount")} panels · {q.get("glassAreaSqft")} sft · '
@@ -2066,7 +2129,10 @@ def _svg_shop_drawing_multi(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
     gap = _f(g.get("gap"), DEFAULT_GLASS_GAP_MM)
     wall_gap = _f(g.get("wallGap"), DEFAULT_GLASS_GAP_MM)
     handrail = bool(g.get("handrail") or q.get("handrail"))
-    blocks_default = _i(cfg.get("blocksPerGlass"), 0)
+    continuous = str(q.get("bottomKind") or "").lower() == "continuous" or bool(q.get("continuousRail"))
+    blocks_default = 0 if continuous else _i(cfg.get("blocksPerGlass"), 0)
+    br_sz = str(q.get("bottomSize") or cfg.get("bottomSize") or "").strip()
+    hr_sz = str(q.get("handrailSize") or cfg.get("handrailSize") or "").strip()
 
     pts_raw = g.get("points") or []
     pts = [(_f(p.get("x")), _f(p.get("y"))) for p in pts_raw]
@@ -2091,7 +2157,7 @@ def _svg_shop_drawing_multi(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
         label = str(seg.get("label") or f"Span {chr(65 + si)}")
         pstart = _i(seg.get("panelStartIndex"), 1)
         bpg = _i(seg.get("blocksPerGlass"), blocks_default)
-        title = f"{label} elevation · {len(widths)} panels · {L:.0f} mm"
+        title = f"{label} elevation · {len(widths)} panels · {int(round(L))} mm"
         parts, dw, dh = _svg_elevation_span(
             L=L, Hgt=Hgt, widths=widths, gap=gap, wall_gap=wall_gap,
             wall_left=bool(seg.get("wallStart")), wall_right=bool(seg.get("wallEnd")),
@@ -2118,7 +2184,9 @@ def _svg_shop_drawing_multi(cfg: Mapping[str, Any], q: Mapping[str, Any], g: Map
         f'<text x="20" y="28" font-size="22" fill="#111" font-weight="600">'
         f'Railing shop drawing · {escape(str(q.get("shape")))} · '
         f'{q.get("panelCount")} panels · '
-        f'{escape(str(q.get("mountLabel") or railing_mount_label(q.get("mountType"))))}</text>',
+        f'{escape(str(q.get("mountLabel") or railing_mount_label(q.get("mountType"))))}'
+        f'{(" · bottom " + br_sz) if br_sz else ""}'
+        f'{(" · handrail " + hr_sz) if hr_sz else ""}</text>',
         f'<svg x="0" y="36" width="{plan_w:.1f}" height="{plan_h:.1f}" viewBox="0 0 {plan_w:.1f} {plan_h:.1f}">',
         inner,
         '</svg>',

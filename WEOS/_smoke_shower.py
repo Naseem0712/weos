@@ -47,6 +47,61 @@ def main() -> int:
         fails.append("svg missing FIX/SLIDE")
     if "Floor plan" not in svg:
         fails.append("svg missing floor plan")
+    if 'data-meeting-stiles="1"' not in svg:
+        fails.append("sliding 1+1 should show one overlapping meeting stile")
+    if 'data-arrow-dir="left"' not in svg:
+        fails.append("door-right sliding arrow should point left")
+    if 'data-handle-side="right"' not in svg:
+        fails.append("door-right sliding handle should be on the right")
+    if 'data-miter="1"' not in svg:
+        fails.append("sliding missing 45° miters")
+    if q.get("doorSide") != "right":
+        fails.append(f"quote doorSide {q.get('doorSide')}")
+
+    # 1b) Door left — arrow → , handle left
+    cfg_left = {**cfg, "doorSide": "left", "slidingSide": "left"}
+    q_left = compute_shower(cfg_left)
+    svg_left = shower_svg(cfg_left, quote=q_left)
+    if q_left.get("doorSide") != "left":
+        fails.append(f"door-left quote doorSide {q_left.get('doorSide')}")
+    if 'data-arrow-dir="right"' not in svg_left:
+        fails.append("door-left sliding arrow should point right")
+    if 'data-handle-side="left"' not in svg_left:
+        fails.append("door-left sliding handle should be on the left")
+    if 'data-meeting-stiles="1"' not in svg_left:
+        fails.append("door-left sliding should still be one meeting stile")
+
+    # 1c) Hinged — both frames, 10mm chokhat overlap, independent handle, hinges opposite
+    hcfg = {
+        **cfg,
+        "operation": "hinged",
+        "doorSide": "right",
+        "handleSide": "left",
+        "lock": True,
+        "hingeCount": 4,
+        "hingesPerDoor": 4,
+        "doorWidthMm": 700,
+    }
+    hq = compute_shower(hcfg)
+    hsvg = shower_svg(hcfg, quote=hq)
+    if hq.get("doorSide") != "right" or hq.get("handleSide") != "left":
+        fails.append(f"hinged sides door={hq.get('doorSide')} handle={hq.get('handleSide')}")
+    if hq.get("hingeSide") != "right":
+        fails.append(f"hinges should be opposite handle, got {hq.get('hingeSide')}")
+    if int(hq.get("hingeCount") or 0) != 4:
+        fails.append(f"hingeCount {hq.get('hingeCount')}")
+    if 'data-meeting-stiles="2"' not in hsvg:
+        fails.append("openable should keep both frames at the meeting")
+    if 'data-chokhat-overlap-mm="10"' not in hsvg:
+        fails.append("openable missing 10mm chokhat overlap")
+    if 'data-handle-side="left"' not in hsvg:
+        fails.append("openable handle independent (left)")
+    if 'data-hinge-side="right"' not in hsvg:
+        fails.append("openable hinges should be on the right (opp. handle)")
+    if 'data-hinge="1"' not in hsvg:
+        fails.append("openable missing hinge symbols")
+    if 'data-miter="1"' not in hsvg:
+        fails.append("openable missing 45° miters")
 
     # 2) L + U footprints
     ql = compute_shower({**cfg, "shape": "L", "depthMm": 900})

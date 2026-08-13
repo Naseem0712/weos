@@ -254,9 +254,16 @@ def rupee_prefix() -> str:
 
 
 def money_text(v: Any, *, decimals: int = 2) -> str:
+    """Always exactly 2 decimal places for rupee amounts (decimals arg kept for API)."""
     prefix = rupee_prefix()
     try:
-        return f"{prefix} {float(v):,.{decimals}f}"
+        from WEOS.factory.fmt import money_n
+
+        n = money_n(v)
+        places = 2 if decimals is None else max(int(decimals), 0)
+        if places != 2:
+            return f"{prefix} {n:,.{places}f}"
+        return f"{prefix} {n:,.2f}"
     except (TypeError, ValueError):
         return f"{prefix} \u2014"
 
@@ -288,6 +295,8 @@ def set_font(c, size: float, *, bold: bool = False) -> str:
 def rate_text(rate: Any, unit: str = "sqft") -> str:
     prefix = rupee_prefix()
     try:
-        return f"{prefix}{float(rate):g} / {unit}"
+        from WEOS.factory.fmt import money_n
+
+        return f"{prefix}{money_n(rate):,.2f} / {unit}"
     except (TypeError, ValueError):
         return f"{prefix}\u2014 / {unit}"

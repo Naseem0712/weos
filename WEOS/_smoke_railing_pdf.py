@@ -302,6 +302,8 @@ def main() -> int:
     keys = {it["key"] for it in cont.get("items") or []}
     if "blocks" in keys:
         fails.append("continuous-only should omit blocks BOM")
+    if "studs" in keys or "anchors" in keys:
+        fails.append(f"continuous-only extra hardware {keys}")
 
     # Stairs engine: no bottom rail
     stair = compute_railing({

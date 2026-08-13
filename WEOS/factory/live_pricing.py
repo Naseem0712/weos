@@ -102,11 +102,13 @@ def sell_amount(
     else:  # opening
         billable = float(q)
 
-    amount = round(billable * rate, 2)
+    from WEOS.factory.fmt import money_n
+
+    amount = money_n(billable * rate)
     return {
         "saleUnit": unit,
         "saleUnitLabel": SALE_UNITS[unit]["label"],
-        "sellingRate": rate,
+        "sellingRate": money_n(rate),
         "billableQty": round(billable, 4),
         "sellingAmount": amount,
         **metrics,

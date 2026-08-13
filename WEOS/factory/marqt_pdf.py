@@ -22,6 +22,12 @@ def _money(v: Any) -> str:
     return money_text(v)
 
 
+def _mm(v: Any) -> str:
+    from WEOS.factory.fmt import mm_str
+
+    return mm_str(v, suffix="")
+
+
 def _set_font(c, size: float, *, bold: bool = False) -> str:
     from WEOS.factory.pdf_fonts import set_font
 
@@ -121,7 +127,7 @@ def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: flo
     c.line(x, dim_y - 3, x, dim_y + 3)
     c.line(x + box_w, dim_y - 3, x + box_w, dim_y + 3)
     c.setFont("Helvetica", 6)
-    c.drawCentredString(x + box_w / 2, dim_y - 10, f"W = {width_mm:g} mm")
+    c.drawCentredString(x + box_w / 2, dim_y - 10, f"W = {_mm(width_mm)} mm")
 
     dim_x = x + box_w + 10
     c.line(dim_x, y, dim_x, y + box_h)
@@ -130,7 +136,7 @@ def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: flo
     c.saveState()
     c.translate(dim_x + 8, y + box_h / 2)
     c.rotate(90)
-    c.drawCentredString(0, 0, f"H = {height_mm:g} mm")
+    c.drawCentredString(0, 0, f"H = {_mm(height_mm)} mm")
     c.restoreState()
 
 
@@ -230,62 +236,8 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
         except Exception:
             _log.exception("design photo embed failed; falling back to canvas SVG")
 
-    # Railing lines carry their own 2D designer geometry — never fall through to
-    # window elevation (that produced blank/wrong "window" drawings on quotes).
-    if _line_is_railing(line):
-        rail_cfg, rail_q = _railing_cfg_and_quote(line)
-        svg = None
-        try:
-            from WEOS.factory.railing_engine import railing_svg
-
-            svg = railing_svg(rail_cfg or {}, quote=rail_q or None)
-        except Exception:
-            _log.exception("railing_svg failed; trying stored preview")
-            prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
-            svg = (prev or {}).get("svg")
-
-        if svg:
-            try:
-                drawing = svg_to_rl_drawing(str(svg))
-                if drawing is not None and getattr(drawing, "width", 0) and getattr(drawing, "height", 0):
-                    from reportlab.graphics import renderPDF
-
-                    dwid, dhei = float(drawing.width), float(drawing.height)
-                    scale = min(box_w / dwid, box_h / dhei)
-                    dw, dh = dwid * scale, dhei * scale
-                    drawing.scale(scale, scale)
-                    drawing.width, drawing.height = dw, dh
-                    renderPDF.draw(drawing, c, x + (box_w - dw) / 2.0, y + (box_h - dh))
-                    return True
-            except Exception:
-                _log.exception("railing vector embed failed; trying PNG")
-
-            png = svg_to_png_bytes(str(svg), scale=2.0)
-            if png:
-                img = ImageReader(io.BytesIO(png))
-                iw, ih = img.getSize()
-                if iw > 0 and ih > 0:
-                    scale = min(box_w / float(iw), box_h / float(ih))
-                    dw, dh = iw * scale, ih * scale
-                    c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh), width=dw, height=dh, mask="auto")
-                    return True
-
-        # Last resort: labelled box so the design column is never a window stub.
-        c.setStrokeColorRGB(0.35, 0.35, 0.35)
-        c.setFillColorRGB(0.96, 0.96, 0.97)
-        c.rect(x + 4, y + 4, box_w - 8, box_h - 8, stroke=1, fill=1)
-        c.setFillColorRGB(0.2, 0.2, 0.2)
-        _set_font(c, 8, bold=True)
-        c.drawCentredString(x + box_w / 2, y + box_h / 2 + 6, "Railing design")
-        _set_font(c, 7)
-        shape = (rail_q or {}).get("shape") or (rail_cfg or {}).get("shape") or "—"
-        c.drawCentredString(x + box_w / 2, y + box_h / 2 - 8, f"{shape} · {w:g}×{h:g} mm")
-        return True
-
-    # The live canvas is rendered by svg_export.render_svg_string. To guarantee the
-    # PDF matches the canvas 1:1 (same geometry, labels, hinges, mullions, arrows,
-    # grid cell labels, fold L/R leaves), embed that SAME SVG — prefer PNG of the
-    # canvas SVG for visual fidelity (svglib often drops rgba/markers), then vector.
+    # One elevation path: live canvas SVG (shower / railing / window) via
+    # elevation_svg_for_line. PNG first for fidelity, then vector.
     svg = elevation_svg_for_line(line, style="pdf")
     if not svg:
         prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
@@ -318,6 +270,20 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
                 return True
         except Exception:
             _log.exception("svg vector embed failed; trying model fallback")
+
+    # Railing must never fall through to a window stub.
+    if _line_is_railing(line):
+        rail_cfg, rail_q = _railing_cfg_and_quote(line)
+        c.setStrokeColorRGB(0.35, 0.35, 0.35)
+        c.setFillColorRGB(0.96, 0.96, 0.97)
+        c.rect(x + 4, y + 4, box_w - 8, box_h - 8, stroke=1, fill=1)
+        c.setFillColorRGB(0.2, 0.2, 0.2)
+        _set_font(c, 8, bold=True)
+        c.drawCentredString(x + box_w / 2, y + box_h / 2 + 6, "Railing design")
+        _set_font(c, 7)
+        shape = (rail_q or {}).get("shape") or (rail_cfg or {}).get("shape") or "—"
+        c.drawCentredString(x + box_w / 2, y + box_h / 2 - 8, f"{shape} · {w:g}×{h:g} mm")
+        return True
 
     # 3) ReportLab model re-draw (only if the SVG path is unavailable).
     try:
@@ -420,9 +386,9 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         add("", title)
         add("TYPE", f"{shape} · {mount_lbl}")
         add("MOUNT", mount_lbl)
-        add("SIZE", f"{q.get('lengthMm') or w:g} × {q.get('heightMm') or h:g} mm")
+        add("SIZE", f"{_mm(q.get('lengthMm') or w)} × {_mm(q.get('heightMm') or h)} mm")
         gh = q.get("glassHeightMm") or q.get("heightMm") or h
-        add("GLASS HEIGHT", f"{gh:g} mm")
+        add("GLASS HEIGHT", f"{_mm(gh)} mm")
 
         bom = list(q.get("bomDetails") or q.get("items") or [])
         def _bom(key: str) -> Mapping[str, Any] | None:
@@ -447,10 +413,19 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
             b_bits.append(f"color {sys_color}")
         elif b_item and b_item.get("color"):
             b_bits.append(f"color {b_item.get('color')}")
+        br_size = (
+            (b_item or {}).get("sizeMm")
+            or q.get("bottomSize")
+            or (rail_cfg or {}).get("bottomSize")
+        )
+        if br_size:
+            b_bits.append(f"size {br_size}")
         if b_item:
             b_bits.append(f"qty {b_item.get('qty')} {b_item.get('unit') or ''}".strip())
-            if b_item.get("sizeMm"):
-                b_bits.append(f"size {b_item.get('sizeMm')}")
+            if b_item.get("lengthMm"):
+                b_bits.append(f"{_mm(b_item.get('lengthMm'))} mm")
+            elif bottom_kind == "continuous" and (q.get("runLengthMm") or q.get("lengthMm")):
+                b_bits.append(f"{_mm(q.get('runLengthMm') or q.get('lengthMm'))} mm")
         elif q.get("lengthRft"):
             b_bits.append(f"len {q.get('lengthRft')} rft")
         b_bits.append(mount_lbl)
@@ -463,7 +438,7 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
             or q.get("studSizeMm")
             or (b_item or {}).get("sizeMm")
         )
-        if pillar_sz:
+        if pillar_sz and bottom_kind not in ("continuous", "rail", ""):
             add("PILLAR", f"{pillar_sz}" + (f" · {kind_label}" if kind_label else ""))
 
         supports = q.get("glassSupports") or []
@@ -497,8 +472,9 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
             if hr.get("color") or sys_color:
                 hr_bits.append(f"color {hr.get('color') or sys_color}")
             hr_bits.append(f"{hr_len_rft} {hr_unit}")
-            if hr_mm:
-                hr_bits.append(f"{hr_mm:g} mm")
+            hr_len_mm = hr.get("lengthMm") or q.get("runLengthMm") or hr_mm or q.get("lengthMm")
+            if hr_len_mm:
+                hr_bits.append(f"{_mm(hr_len_mm)} mm")
             add("HANDRAIL", " · ".join(str(x) for x in hr_bits if x))
 
         thk = q.get("glassThicknessMm") or (rail_cfg or {}).get("glassThicknessMm") or 12
@@ -615,7 +591,7 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         add("", format_shower_description(q, cfg_s))
         add("TYPE", f"{q.get('shape') or 'straight'} · {q.get('operation') or 'sliding'}"
             + (f" · 1+1 slide {(q.get('slidingSide') or 'right')}" if q.get("operation") == "sliding" else ""))
-        add("SIZE", f"{q.get('widthMm') or w:g} × {q.get('heightMm') or h:g} mm")
+        add("SIZE", f"{_mm(q.get('widthMm') or w)} × {_mm(q.get('heightMm') or h)} mm")
         fp = q.get("footprint") if isinstance(q.get("footprint"), Mapping) else {}
         if fp:
             if fp.get("kind") == "L":
@@ -627,7 +603,7 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         panels_s = q.get("panels") or []
         if panels_s:
             add("PANELS", "; ".join(
-                f"{p.get('label') or p.get('role')} {p.get('widthMm')}×{p.get('heightMm')}"
+                f"{p.get('label') or p.get('role')} {_mm(p.get('widthMm'))}×{_mm(p.get('heightMm'))}"
                 for p in panels_s if isinstance(p, Mapping)
             ))
         add("PROFILE", f"{q.get('verticalProfile') or '16×45'} vert"
@@ -648,13 +624,13 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         add("COLOUR", str(q.get("colour") or line.get("colour") or "").replace("_", " "))
         add("AREA", f"{q.get('areaSqft') or 0} Sq.Ft. · qty {line.get('qty') or q.get('qty') or 1}")
         sale_u = str(q.get("saleUnit") or line.get("saleUnit") or "sqft").upper()
-        add("AMOUNT", f"{q.get('sellingPerUnit') or line.get('sellingRate') or 0} / {sale_u} → "
-            f"{q.get('sellingTotal') or line.get('commercialTotal') or 0}")
+        add("AMOUNT", f"{_money(q.get('sellingPerUnit') or line.get('sellingRate') or 0)} / {sale_u} → "
+            f"{_money(q.get('sellingTotal') or line.get('commercialTotal') or 0)}")
         return rows
 
     title = str(line.get("description") or line.get("displayName") or line.get("product") or "Window")
     add("", title)
-    add("SIZE", f"{w:g} × {h:g} mm")
+    add("SIZE", f"{_mm(w)} × {_mm(h)} mm")
     add("AREA", f"{_area_sqft(w, h)} Sq.Ft.")
 
     glass_n = (

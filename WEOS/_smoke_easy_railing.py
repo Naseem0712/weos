@@ -34,6 +34,42 @@ def main() -> int:
         fails.append("continuous missing bottomRail BOM")
     if "blocks" in keys:
         fails.append("continuous should not BOM blocks")
+    if "studs" in keys:
+        fails.append("continuous should not BOM studs")
+    if "anchors" in keys:
+        fails.append("continuous should not BOM anchors/brackets")
+    if int(cont.get("pillarCount") or 0) != 0:
+        fails.append(f"continuous pillarCount {cont.get('pillarCount')}")
+    br = next((it for it in (cont.get("items") or []) if it.get("key") == "bottomRail"), {})
+    hr = next((it for it in (cont.get("items") or []) if it.get("key") == "handrail"), {})
+    if abs(float(br.get("qty") or 0) - float(hr.get("qty") or 0)) > 0.011:
+        fails.append(f"continuous handrail qty {hr.get('qty')} != bottom rail {br.get('qty')}")
+    if str(br.get("unit") or "").lower() != "rft" or str(hr.get("unit") or "").lower() != "rft":
+        fails.append(f"continuous rail units br={br.get('unit')} hr={hr.get('unit')}")
+    if abs(float(br.get("lengthMm") or 0) - float(hr.get("lengthMm") or 0)) > 0.5:
+        fails.append(f"continuous lengthMm br={br.get('lengthMm')} hr={hr.get('lengthMm')}")
+    if "50x10" not in str(br.get("sizeMm") or br.get("label") or "").replace("×", "x"):
+        fails.append(f"continuous missing bottom size on BOM {br}")
+    if "38" not in str(hr.get("sizeMm") or hr.get("label") or ""):
+        fails.append(f"continuous missing handrail size on BOM {hr}")
+    csvg = None
+    try:
+        from WEOS.factory.railing_engine import railing_svg
+        csvg = railing_svg({
+            "shape": "straight", "lengthMm": 3000, "heightMm": 1000, "panels": 2,
+            "bottomKind": "continuous", "bottomSize": "50x10", "handrailSize": "Ø38",
+            "continuousRail": True, "handrail": True,
+            "installComponents": {"bottomRail": True, "block": False, "ssPillar": False, "handrail": True, "glass": True},
+        }, quote=cont)
+    except Exception as exc:
+        fails.append(f"continuous svg {exc}")
+    if csvg:
+        if "50x10" not in csvg.replace("×", "x") and "50×10" not in csvg:
+            fails.append("continuous svg missing bottom rail size")
+        if "Ø38" not in csvg and "38" not in csvg:
+            fails.append("continuous svg missing handrail size")
+        if "RFT" not in csvg.upper() and "rft" not in csvg.lower():
+            fails.append("continuous svg missing RFT length")
     if abs(float(cont.get("sellingPerUnit") or 0) - 450) > 0.01:
         fails.append(f"manual rate not applied: {cont.get('sellingPerUnit')}")
     if cont.get("wastageEnabled") is not False:

@@ -878,9 +878,12 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
                   <button type="button" data-sh-op="fixed">Fix only</button>
                 </div>
               </div>
-              <div class="rt-row" id="wrapShSlideSide">
-                <div><label class="l">Sliding half</label>
-                  <select id="shSlideSide" style="width:90px"><option value="right" selected>Right</option><option value="left">Left</option></select>
+              <div class="rt-row" id="wrapShDoorHandle">
+                <div id="wrapShDoorSide"><label class="l">Door position</label>
+                  <select id="shDoorSide" style="width:90px"><option value="right" selected>Right</option><option value="left">Left</option></select>
+                </div>
+                <div id="wrapShHandleSide" style="display:none"><label class="l">Handle position</label>
+                  <select id="shHandleSide" style="width:90px"><option value="right" selected>Right</option><option value="left">Left</option></select>
                 </div>
                 <div id="wrapShDoorW" style="display:none"><label class="l">Door W mm</label><input id="shDoorW" type="number" value="700" style="width:72px"/></div>
                 <div id="wrapShHinges" style="display:none">
@@ -1972,7 +1975,18 @@ function setView(v) {
 document.querySelectorAll('.navbtn').forEach(b => b.onclick = () => setView(b.dataset.view));
 $('burger').onclick = () => $('side').classList.toggle('open');
 
-function money(n){ return n==null ? '—' : '₹ '+Number(n).toLocaleString('en-IN'); }
+function money(n){
+  if (n == null || n === '') return '—';
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '—';
+  return '₹ ' + v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function mm(n){
+  if (n == null || n === '') return '—';
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '—';
+  return String(Math.round(v));
+}
 
 async function loadDashboard() {
   const d = await api('/api/dashboard');
@@ -2594,8 +2608,13 @@ function syncDraftFromLine(ln) {
     const setSh = (id, v) => { if ($(id) && v != null && v !== '') $(id).value = v; };
     setSh('shW', sh.widthMm || ln.width); setSh('shH', sh.heightMm || ln.height);
     setSh('shDepth', sh.depthMm); setSh('shDepthB', sh.depthBMm);
-    setSh('shSlideSide', sh.slidingSide); setSh('shColour', sh.colour);
+    setSh('shDoorSide', sh.doorSide || sh.slidingSide);
+    setSh('shHandleSide', sh.handleSide || sh.doorSide || sh.slidingSide);
+    setSh('shHinges', sh.hingeCount || sh.hingesPerDoor);
+    setSh('shColour', sh.colour);
     setSh('shSellRate', sh.manualRatePerUnit || sh.sellingRate || ln.sellingRate);
+    if (sh.lock != null && $('shLock')) $('shLock').checked = !!sh.lock;
+    if (sh.handle != null && $('shHandle')) $('shHandle').checked = !!sh.handle;
   }
   renderPartChips();
   applyMeshTrackRules();
@@ -3019,14 +3038,21 @@ function renderRailingLineSpecs(q, cfg) {
   const rows = [
     ['Type', shape],
     ['Mount', mountLbl],
-    ['Length', `${(q && q.lengthMm) || c.lengthMm || 0} mm · ${(q && (q.lengthRft || q.widthUnit)) || 0} RFT`],
-    ['Height', `${(q && (q.heightMm || q.glassHeightMm)) || c.heightMm || c.glassHeightMm || 0} mm`],
-    ['Panels', `${(q && q.panelCount) || c.panels || 0} · gap ${(q && q.gapMm) || c.gapMm || 12} mm`],
-    ['Glass', `${(q && q.glassThicknessMm) || c.glassThicknessMm || 12} mm ${(q && q.glassType) || c.glassType || ''}`.trim()],
-    ['Sale', `₹${(q && q.sellingPerUnit) != null ? q.sellingPerUnit : '—'} / ${String((q && q.saleUnit) || c.saleUnit || 'rft').toUpperCase()}`],
+    ['Length', `${mm((q && q.lengthMm) || c.lengthMm || 0)} mm · ${Number((q && (q.runLengthRft || q.lengthRft || q.widthUnit)) || 0).toFixed(2)} RFT`],
+    ['Height', `${mm((q && (q.heightMm || q.glassHeightMm)) || c.heightMm || c.glassHeightMm || 0)} mm`],
+    ['Panels', `${(q && q.panelCount) || c.panels || 0} · gap ${mm((q && q.gapMm) || c.gapMm || 12)} mm`],
+    ['Glass', `${mm((q && q.glassThicknessMm) || c.glassThicknessMm || 12)} mm ${(q && q.glassType) || c.glassType || ''}`.trim()],
+    ['Sale', `${(q && q.sellingPerUnit) != null ? money(q.sellingPerUnit) : '—'} / ${String((q && q.saleUnit) || c.saleUnit || 'rft').toUpperCase()}`],
   ];
   const ov = (q && q.beamOverlapMm) || c.beamOverlapMm;
-  if (ov) rows.splice(2, 0, ['Overlap', `${ov} mm over beam / slab`]);
+  if (ov) rows.splice(2, 0, ['Overlap', `${mm(ov)} mm over beam / slab`]);
+  const bk = String((q && q.bottomKind) || c.bottomKind || '');
+  if (bk === 'continuous' || (q && q.continuousRail)) {
+    rows.splice(2, 0, ['Bottom rail', `${(q && q.bottomSize) || c.bottomSize || '—'} · ${mm((q && (q.runLengthMm || q.lengthMm)) || c.lengthMm || 0)} mm · ${Number((q && (q.runLengthRft || q.lengthRft)) || 0).toFixed(2)} RFT`]);
+    if (q && q.handrail) {
+      rows.splice(3, 0, ['Handrail', `${(q && q.handrailSize) || c.handrailSize || '—'} · ${mm((q && (q.runLengthMm || q.lengthMm)) || 0)} mm · ${Number((q && (q.runLengthRft || q.lengthRft)) || 0).toFixed(2)} RFT`]);
+    }
+  }
   if (shape === 'staircase' || sg.steps) {
     rows.splice(ov ? 3 : 2, 0, ['Stairs', `${sg.steps || c.stairSteps || '—'} steps · riser ${sg.riserMm || c.stairRiseMm || '—'} · tread ${sg.treadMm || c.stairRunMm || '—'}`]);
   }
@@ -3982,7 +4008,7 @@ function railingConfig(){
 }
 function renderRailingBom(q){
   if (!$('railingBreakdown')) return;
-  const money0 = (n)=>'₹'+Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2});
+  const money0 = (n)=>'₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
   const hw = `bends ${q.bendCount||0} · 180° ${q.connector180Count||0} · caps ${q.endCapCount||0} · wall ${q.wallConnectors||0}`;
   const sg = q.stairGeometry || {};
   const stair = (q.shape === 'staircase')
@@ -4217,8 +4243,9 @@ function syncShowerUi() {
   });
   if ($('wrapShDepth')) $('wrapShDepth').style.display = (shape === 'L' || shape === 'U') ? '' : 'none';
   if ($('wrapShDepthB')) $('wrapShDepthB').style.display = shape === 'U' ? '' : 'none';
-  const slideHalf = $('wrapShSlideSide') && $('wrapShSlideSide').querySelector('div');
-  if (slideHalf) slideHalf.style.display = op === 'sliding' ? '' : 'none';
+  if ($('wrapShDoorSide')) $('wrapShDoorSide').style.display = (op === 'sliding' || op === 'hinged') ? '' : 'none';
+  const handleOn = !!( !$('shHandle') || $('shHandle').checked );
+  if ($('wrapShHandleSide')) $('wrapShHandleSide').style.display = (op === 'hinged' && handleOn) ? '' : 'none';
   if ($('wrapShDoorW')) $('wrapShDoorW').style.display = op === 'hinged' ? '' : 'none';
   const frameless = !!( $('shFrameless') && $('shFrameless').checked );
   if ($('wrapShHinges')) $('wrapShHinges').style.display = (op === 'hinged' && !frameless) ? '' : 'none';
@@ -4253,9 +4280,18 @@ function showerConfig() {
     heightMm: ($('shH') && +$('shH').value) || 2000,
     depthMm: ($('shDepth') && +$('shDepth').value) || 900,
     depthBMm: ($('shDepthB') && +$('shDepthB').value) || 900,
-    slidingSide: ($('shSlideSide') && $('shSlideSide').value) || 'right',
+    doorSide: ($('shDoorSide') && $('shDoorSide').value) || 'right',
+    slidingSide: ($('shDoorSide') && $('shDoorSide').value) || 'right',
+    handleSide: (function(){
+      const door = ($('shDoorSide') && $('shDoorSide').value) || 'right';
+      if ((state.shOp || 'sliding') === 'hinged') {
+        return ($('shHandleSide') && $('shHandleSide').value) || door;
+      }
+      return door;
+    })(),
     doorWidthMm: ($('shDoorW') && +$('shDoorW').value) || 700,
     hingesPerDoor: ($('shHinges') && +$('shHinges').value) || 3,
+    hingeCount: ($('shHinges') && +$('shHinges').value) || 3,
     colour: ($('shColour') && $('shColour').value) || 'matt_black',
     frameless: !!( $('shFrameless') && $('shFrameless').checked ),
     handle: !!( !$('shHandle') || $('shHandle').checked ),
@@ -4272,7 +4308,7 @@ function showerConfig() {
 }
 function renderShowerBom(q) {
   if (!$('showerBom')) return;
-  const money0 = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  const money0 = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const rows = (q.items || []).map(it =>
     `<tr><td>${it.label || it.key}</td><td style="text-align:right">${it.qty} ${it.unit}</td><td style="text-align:right">${money0(it.amount)}</td></tr>`
   ).join('');
@@ -4295,11 +4331,17 @@ function renderShowerLineSpecs(q, cfg) {
         : `Straight · ${q.footprint.frontMm}`)) || 'Straight'],
     ['Glass', (q && q.glassLabel) || c.glassLabel || ''],
     ['Colour', String((q && q.colour) || c.colour || '').replace(/_/g, ' ')],
-    ['Handle', (q && q.handle) ? (q.handleName || 'D-type') : 'No'],
+    ['Door', String((q && q.doorSide) || c.doorSide || c.slidingSide || 'right')],
+    ['Handle', (q && q.handle)
+      ? `${q.handleName || 'D-type'} · ${q.handleSide || c.handleSide || 'right'}`
+      : 'No'],
+    ['Hinges', (q && q.hingeCount)
+      ? `${q.hingeCount} · ${q.hingeSide || 'opp. handle'}`
+      : ((q && q.operation) === 'hinged' || c.operation === 'hinged' ? '—' : '')],
     ['Lock', (q && q.lock) ? 'Yes' : 'No'],
     ['Sale', `₹${(q && q.sellingPerUnit) != null ? q.sellingPerUnit : '—'} / ${String((q && q.saleUnit) || 'sqft').toUpperCase()}`],
     ['Amount', (q && q.sellingTotal) != null ? `₹${q.sellingTotal}` : '—'],
-  ];
+  ].filter(([, v]) => v !== '' && v != null);
   $('lineSpecs').innerHTML = rows.map(([k, v]) =>
     `<div><span class="muted">${k}</span><div>${v ?? '—'}</div></div>`
   ).join('');
@@ -4377,9 +4419,15 @@ document.querySelectorAll('#shShapeBtns [data-sh-shape]').forEach(btn => {
   btn.onclick = () => { state.shShape = btn.dataset.shShape; state.showerMode = true; syncShowerUi(); showerCalc(); };
 });
 document.querySelectorAll('#shOpBtns [data-sh-op]').forEach(btn => {
-  btn.onclick = () => { state.shOp = btn.dataset.shOp; state.showerMode = true; syncShowerUi(); showerCalc(); };
+  btn.onclick = () => {
+    state.shOp = btn.dataset.shOp;
+    if (state.shOp === 'hinged' && $('shHandleSide') && $('shDoorSide')) {
+      $('shHandleSide').value = $('shDoorSide').value || 'right';
+    }
+    state.showerMode = true; syncShowerUi(); showerCalc();
+  };
 });
-['shW','shH','shDepth','shDepthB','shQty','shColour','shGlass','shSlideSide','shDoorW','shHinges','shHandleName','shOrigin','shHwBrand','shSaleUnit','shSellRate'].forEach(id => {
+['shW','shH','shDepth','shDepthB','shQty','shColour','shGlass','shDoorSide','shHandleSide','shDoorW','shHinges','shHandleName','shOrigin','shHwBrand','shSaleUnit','shSellRate'].forEach(id => {
   const el = $(id); if (!el) return;
   const go = () => { if (state.showerMode || isShowerMode()) showerCalc(); };
   el.addEventListener('change', go);

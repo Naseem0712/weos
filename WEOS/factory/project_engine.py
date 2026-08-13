@@ -10,6 +10,8 @@ from typing import Any, Mapping
 from WEOS.factory.optimize_engine import CutPiece, GlassPiece, optimize_project_materials
 
 _log = logging.getLogger("weos.project_engine")
+from WEOS.factory.line_kind import is_railing_cart_line as _is_railing_cart_line
+from WEOS.factory.line_kind import is_shower_cart_line as _is_shower_cart_line
 from WEOS.factory.pipeline import generate_job
 from WEOS.factory.product_loader import load_product
 from WEOS.factory.project_store import new_quotation_id
@@ -242,13 +244,6 @@ def _error_line_result(line: Mapping[str, Any], error: str = "") -> dict[str, An
         "price": {"currency": "INR", "unitTotal": 0, "subtotal": 0, "total": 0},
         "preview": {"svg": None},
     }
-
-
-def _is_railing_cart_line(line: Mapping[str, Any]) -> bool:
-    """True when a cart line is a railing designer product (not a window)."""
-    from WEOS.factory.line_kind import is_railing_cart_line
-
-    return is_railing_cart_line(line)
 
 
 def _railing_weight_summary(
@@ -525,12 +520,6 @@ def _railing_line_result(line: Mapping[str, Any]) -> dict[str, Any]:
         "note": "Railing — BOM rates → cost cascade → per-unit rate; designer Manual rate only when set.",
         **({"designPhoto": dict(photo)} if photo else {}),
     }
-
-
-def _is_shower_cart_line(line: Mapping[str, Any]) -> bool:
-    from WEOS.factory.line_kind import is_shower_cart_line
-
-    return is_shower_cart_line(line)
 
 
 def _shower_line_result(line: Mapping[str, Any]) -> dict[str, Any]:

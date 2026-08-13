@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Mapping
 from xml.sax.saxutils import escape
 
+from WEOS.factory.fmt import mm_n
 from WEOS.factory.types import DrawingModel, Polyline
 
 
@@ -958,7 +959,12 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
         cfg = opts.get("railing") if isinstance(opts, Mapping) else None
         cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
         try:
-            from WEOS.factory.railing_engine import compute_railing, ensure_railing_dims, railing_svg
+            from WEOS.factory.railing_engine import (
+                compute_railing,
+                ensure_railing_dims,
+                railing_quote_matches_cfg,
+                railing_svg,
+            )
 
             cfg = ensure_railing_dims(
                 cfg,
@@ -971,6 +977,7 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
             if (
                 not isinstance(q, Mapping)
                 or float((q or {}).get("lengthMm") or 0) <= 1.0
+                or not railing_quote_matches_cfg(q, cfg)
             ) and cfg:
                 q = compute_railing(cfg)
             svg = railing_svg(cfg or {}, quote=q if isinstance(q, Mapping) else None)
@@ -1072,10 +1079,10 @@ def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[
                 "role": "fix",
                 "side": side,
                 "label": "Fix",
-                "widthMm": round(float(part.get("widthMm") or 0), 1),
-                "heightMm": round(float(part.get("heightMm") or part.get("sizeMm") or 0), 1),
-                "glassWidthMm": round(float(part.get("glassWidthMm") or 0), 1),
-                "glassHeightMm": round(float(part.get("glassHeightMm") or 0), 1),
+                "widthMm": mm_n(part.get("widthMm")),
+                "heightMm": mm_n(part.get("heightMm") or part.get("sizeMm")),
+                "glassWidthMm": mm_n(part.get("glassWidthMm")),
+                "glassHeightMm": mm_n(part.get("glassHeightMm")),
             }
         )
     shutters = [s for s in (meta.get("shutters") or []) if isinstance(s, dict)]
@@ -1088,7 +1095,7 @@ def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[
                 panels.append(
                     {
                         "id": f"M{m_idx}", "role": "mesh", "side": "mesh", "label": "Mesh",
-                        "widthMm": round(float(s.get("widthMm") or 0), 1), "heightMm": round(shutter_h, 1),
+                        "widthMm": mm_n(s.get("widthMm")), "heightMm": mm_n(shutter_h),
                     }
                 )
                 continue
@@ -1118,9 +1125,9 @@ def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[
                     "id": pid, "role": role, "side": s.get("track") or s.get("pack") or hs or None,
                     "label": label,
                     "track": s.get("track"), "depth": s.get("depth"), "pack": s.get("pack"),
-                    "widthMm": round(float(s.get("widthMm") or 0), 1), "heightMm": round(shutter_h, 1),
-                    "glassWidthMm": round(float(s.get("glassWidthMm") or 0), 1),
-                    "glassHeightMm": round(float(s.get("glassHeightMm") or 0), 1),
+                    "widthMm": mm_n(s.get("widthMm")), "heightMm": mm_n(shutter_h),
+                    "glassWidthMm": mm_n(s.get("glassWidthMm")),
+                    "glassHeightMm": mm_n(s.get("glassHeightMm")),
                     "handle": bool(s.get("handle")),
                     "handleSide": hs or None,
                     "operable": not fixed,
@@ -1130,13 +1137,13 @@ def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[
         panels.extend(
             [
                 {"id": "S1", "role": "sliding", "side": "left", "label": "Sliding",
-                 "widthMm": round(float(meta.get("left_shutter_width") or 0), 1), "heightMm": round(shutter_h, 1),
-                 "glassWidthMm": round(float(meta.get("left_glass_width") or 0), 1),
-                 "glassHeightMm": round(float(meta.get("glass_height") or 0), 1)},
+                 "widthMm": mm_n(meta.get("left_shutter_width")), "heightMm": mm_n(shutter_h),
+                 "glassWidthMm": mm_n(meta.get("left_glass_width")),
+                 "glassHeightMm": mm_n(meta.get("glass_height"))},
                 {"id": "S2", "role": "sliding", "side": "right", "label": "Sliding",
-                 "widthMm": round(float(meta.get("right_shutter_width") or 0), 1), "heightMm": round(shutter_h, 1),
-                 "glassWidthMm": round(float(meta.get("right_glass_width") or 0), 1),
-                 "glassHeightMm": round(float(meta.get("glass_height") or 0), 1)},
+                 "widthMm": mm_n(meta.get("right_shutter_width")), "heightMm": mm_n(shutter_h),
+                 "glassWidthMm": mm_n(meta.get("right_glass_width")),
+                 "glassHeightMm": mm_n(meta.get("glass_height"))},
             ]
         )
     clean_meta: dict[str, Any] = {}
