@@ -2203,17 +2203,14 @@ function money(n){
   return '₹ ' + v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function isRailCartLine(ln) {
-  if (!ln) return false;
-  const pt = String(ln.productType || (ln.options && ln.options.productType) || '').toLowerCase();
-  if (pt.includes('rail')) return true;
-  if (ln.options && (ln.options.railing || ln.options.railingQuote)) return true;
-  return String(ln.product || '').toLowerCase().includes('rail');
+  const w = productWorldOf(null, ln);
+  return w === 'railing' || w === 'staircase_railing';
 }
 function isShowerCartLine(ln) {
-  if (!ln) return false;
-  const pt = String(ln.productType || '').toLowerCase();
-  if (pt.includes('shower')) return true;
-  return !!(ln.options && (ln.options.shower || ln.options.showerQuote)) || String(ln.product || '').toLowerCase().includes('shower');
+  return productWorldOf(null, ln) === 'shower';
+}
+function isVentCartLine(ln) {
+  return productWorldOf(null, ln) === 'ventilator';
 }
 function lineLiveAmount(ln) {
   if (!ln) return null;
@@ -3195,31 +3192,67 @@ function scheduleLivePrice() {
   state.liveTimer = setTimeout(refreshLivePrice, 220);
 }
 
+function applySpecialLivePrice(kind) {
+  let q = {};
+  let label = '';
+  if (kind === 'railing') {
+    q = (state.railing && state.railing.quote) || {};
+    label = `Railing · ${q.shape||'straight'} · ${q.lengthMm||0} mm · ${q.panelCount||0} panels · ${String(q.saleUnit||'rft').toUpperCase()}`;
+  } else if (kind === 'shower') {
+    q = (state.shower && state.shower.quote) || {};
+    label = `Shower · ${q.shape||''} · ${q.widthMm||0}×${q.heightMm||0}`;
+  } else {
+    q = (state.ventilator && state.ventilator.quote) || {};
+    label = `Ventilator · ${q.mode||''} · ${q.widthMm||0}×${q.heightMm||0}`;
+  }
+  if ($('liveCost')) $('liveCost').textContent = money(q.costTotal || q.materialCost || 0);
+  if ($('liveMeta')) $('liveMeta').textContent = label;
+  if ($('liveSell')) $('liveSell').textContent = money(q.sellingTotal || 0);
+  if ($('liveMargin')) {
+    $('liveMargin').textContent = q.sellingPerUnit != null
+      ? `Rate ₹${q.sellingPerUnit}/${String(q.saleUnit||'sqft').toUpperCase()}`
+      : '';
+  }
+  if ($('lineSellRate') && $('lineSellRate').value === '' && q.sellingPerUnit != null) {
+    $('lineSellRate').value = q.sellingPerUnit;
+  }
+  const ln = state.lines[state.selectedLine];
+  if (!ln) return;
+  if (q.sellingPerUnit != null) ln.sellingRate = q.sellingPerUnit;
+  if (q.saleUnit) ln.saleUnit = q.saleUnit;
+  if (q.sellingTotal != null) {
+    const qty = Math.max(1, Number(ln.qty || 1) || 1);
+    ln.commercialTotal = kind === 'railing'
+      ? Math.round(Number(q.sellingTotal) * qty * 100) / 100
+      : Number(q.sellingTotal);
+  }
+  stampLineAmount(ln);
+  updateLiveCartTotal();
+}
 async function refreshLivePrice() {
   if (!$('liveCost')) return;
   if (isRailingMode()) {
     try {
-      const res = await railingCalc();
-      const q = (res && res.quote) || (state.railing && state.railing.quote) || {};
-      $('liveCost').textContent = money(q.costTotal || q.materialCost || 0);
-      $('liveMeta').textContent = `Railing · ${q.shape||'straight'} · ${q.lengthMm||0} mm · ${q.panelCount||0} panels · ${String(q.saleUnit||'rft').toUpperCase()}`;
-      $('liveSell').textContent = money(q.sellingTotal || 0);
-      $('liveMargin').textContent = q.sellingPerUnit != null ? `Rate ₹${q.sellingPerUnit}/${String(q.saleUnit||'rft').toUpperCase()}` : '';
-      // Mirror manual/computed rate into cart selling field when empty so Calculate picks it up.
-      if ($('lineSellRate') && $('lineSellRate').value === '' && q.sellingPerUnit != null) {
-        $('lineSellRate').value = q.sellingPerUnit;
-      }
-      const rln = state.lines[state.selectedLine];
-      if (rln && (isRailCartLine(rln) || (rln.options && rln.options.railing))) {
-        if (q.sellingPerUnit != null) rln.sellingRate = q.sellingPerUnit;
-        if (q.saleUnit) rln.saleUnit = q.saleUnit;
-        if (q.sellingTotal != null) {
-          const qty = Math.max(1, Number(rln.qty || 1) || 1);
-          rln.commercialTotal = Math.round(Number(q.sellingTotal) * qty * 100) / 100;
-        }
-        stampLineAmount(rln);
-        updateLiveCartTotal();
-      }
+      if (!(state.railing && state.railing.quote)) await railingCalc();
+      applySpecialLivePrice('railing');
+    } catch (_) {
+      $('liveCost').textContent = '₹ —';
+    }
+    return;
+  }
+  if (isShowerMode()) {
+    try {
+      if (!(state.shower && state.shower.quote)) await showerCalc();
+      applySpecialLivePrice('shower');
+    } catch (_) {
+      $('liveCost').textContent = '₹ —';
+    }
+    return;
+  }
+  if (isVentMode()) {
+    try {
+      if (!(state.ventilator && state.ventilator.quote)) await ventCalc();
+      applySpecialLivePrice('ventilator');
     } catch (_) {
       $('liveCost').textContent = '₹ —';
     }
@@ -3517,8 +3550,15 @@ function renderRailingLineSpecs(q, cfg) {
   ).join('');
 }
 
+let _previewGen = 0;
+let _specialPreviewAt = 0;
+function markSpecialPreview() { _specialPreviewAt = Date.now(); }
+function specialPreviewFresh() { return (Date.now() - _specialPreviewAt) < 450; }
+
 async function refreshPreview() {
+  const gen = ++_previewGen;
   if (state.ventMode || isVentMode()) {
+    if (specialPreviewFresh()) return;
     try {
       await ventCalc();
     } catch (e) {
@@ -3527,6 +3567,7 @@ async function refreshPreview() {
     return;
   }
   if (state.showerMode || isShowerMode()) {
+    if (specialPreviewFresh()) return;
     try {
       await showerCalc();
     } catch (e) {
@@ -3536,17 +3577,9 @@ async function refreshPreview() {
   }
   // Railing mode: shared livePreview shows railing 2D drawing (never window geometry).
   if (isRailingMode()) {
+    if (specialPreviewFresh()) return;
     try {
-      // Prefer live tools config so the shared canvas updates while designing.
-      const cfg = railingConfig();
-      const res = await api('/api/railing/quote', { method:'POST', body: cfg });
-      const q = res.quote || {};
-      state.railing = { cfg, quote: q };
-      const shape = q.shape || cfg.shape || 'straight';
-      $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Railing · ${shape} · ${q.panelCount || 0} panels · ${q.lengthMm || 0} mm`;
-      $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
-      renderRailingBom(q);
-      renderRailingLineSpecs(q, cfg);
+      await railingCalc();
       refreshDesignPhotoUi();
       showRailTools(true);
     } catch (e) {
@@ -3628,6 +3661,7 @@ async function refreshPreview() {
       if (ln.colour) hdr.push(ln.colour);
       $('previewLabel').textContent = hdr.filter(Boolean).join(' · ');
     }
+    if (gen !== _previewGen) return;
     if (prev.svg) { $('livePreview').innerHTML = prev.svg; attachHandleDrag($('livePreview'), (prev.layout && prev.layout.meta) || prev.meta || null, ln.system || prev.system || 'sliding'); }
     else if (prev.heroImage) $('livePreview').innerHTML = `<img src="${prev.heroImage}" alt=""/>`;
     else $('livePreview').innerHTML = '<span class="muted">No preview</span>';
@@ -4731,12 +4765,15 @@ async function railingCalc(){
       $('previewLabel').textContent = `Railing · ${shape} · length required`;
       $('livePreview').innerHTML = res.svg || `<span class="muted">${msg}</span>`;
       renderRailingBom(q);
+      markSpecialPreview();
       return { ...res, _lengthMissing: true };
     }
     $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Railing · ${q.shape || 'straight'} · ${q.lengthMm || 0} mm · ${q.panelCount || 0} panels`;
     $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
     renderRailingBom(q);
     renderRailingLineSpecs(q, cfg);
+    markSpecialPreview();
+    applySpecialLivePrice('railing');
     return res;
   } catch(e){ if ($('railingErr')) $('railingErr').textContent = e.message; }
 }
@@ -4748,10 +4785,7 @@ function syncSelectedRailingLineFromTools() {
   const i = state.selectedLine;
   if (i == null || i < 0 || !state.lines[i]) return false;
   const ln = state.lines[i];
-  const isRail = (ln.options && ln.options.railing)
-    || String(ln.productType || '').toLowerCase().includes('rail')
-    || String(ln.product || '').toLowerCase().includes('rail')
-    || isRailingMode();
+  const isRail = isRailCartLine(ln) || isRailingMode();
   if (!isRail) return false;
   const cfg = railingConfig(); // includes designer Manual rate only (rManual)
   const q = (state.railing && state.railing.quote) || null;
@@ -4829,7 +4863,7 @@ async function railingAdd(){
   if ($('lineSeries')) $('lineSeries').value = '';
   state.selectedLine = state.lines.length-1;
   state.railingMode = true;
-  renderCart(); scheduleSave(); refreshPreview(); toast('Railing added to cart');
+  renderCart(); scheduleSave(); toast('Railing added to cart');
 }
 
 function isShowerMode() {
@@ -4977,6 +5011,8 @@ async function showerCalc() {
     if ($('livePreview')) $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
     renderShowerBom(q);
     renderShowerLineSpecs(q, cfg);
+    markSpecialPreview();
+    applySpecialLivePrice('shower');
     return res;
   } catch (e) {
     if ($('showerErr')) $('showerErr').textContent = e.message || String(e);
@@ -5012,7 +5048,7 @@ async function showerAdd() {
   delete state.lines[state.lines.length - 1].trackCount;
   state.selectedLine = state.lines.length - 1;
   state.showerMode = true;
-  renderCart(); scheduleSave(); refreshPreview(); toast('Shower added to cart');
+  renderCart(); scheduleSave(); toast('Shower added to cart');
 }
 function isVentMode() {
   const p = selectedProductMeta();
@@ -5157,6 +5193,8 @@ async function ventCalc() {
     if ($('livePreview')) $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
     renderVentBom(q);
     renderVentLineSpecs(q, cfg);
+    markSpecialPreview();
+    applySpecialLivePrice('ventilator');
     return res;
   } catch (e) {
     if ($('ventErr')) $('ventErr').textContent = e.message || String(e);
@@ -5189,7 +5227,7 @@ async function ventAdd() {
   delete state.lines[state.lines.length - 1].trackCount;
   state.selectedLine = state.lines.length - 1;
   state.ventMode = true;
-  renderCart(); scheduleSave(); refreshPreview(); toast('Ventilator added to cart');
+  renderCart(); scheduleSave(); toast('Ventilator added to cart');
 }
 function applyRailingModeFromProduct() {
   applyProductWorld();
@@ -5562,6 +5600,10 @@ function stampSelectedDraftAmount() {
   el.addEventListener('input', () => {
     if (id === 'lineProduct') { applyProductSystem(); loadCartGlassOptions(); loadCartColourOptions(); }
     if (['lineW','lineH','lineQty','lineSaleUnit','lineSellRate'].includes(id)) stampSelectedDraftAmount();
+    if (isRailingMode() || isShowerMode() || isVentMode()) {
+      if (['lineW','lineH','lineProduct'].includes(id)) refreshPreview();
+      return;
+    }
     scheduleLivePrice();
     if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','partSize','lineFrameMaterial'].includes(id)) refreshPreview();
   });
@@ -5569,6 +5611,11 @@ function stampSelectedDraftAmount() {
     if (id === 'lineProduct') { applyProductSystem(); loadCartGlassOptions(); loadCartColourOptions(); }
     if (id === 'lineFrameMaterial') applyFrameMaterialUi();
     if (['lineW','lineH','lineQty','lineSaleUnit','lineSellRate'].includes(id)) stampSelectedDraftAmount();
+    if (isRailingMode() || isShowerMode() || isVentMode()) {
+      if (['lineW','lineH','lineProduct','lineSeries','lineFrameMaterial'].includes(id)) refreshPreview();
+      if (id === 'cartCustomer') maybeAskCustomerMemory();
+      return;
+    }
     scheduleLivePrice();
     if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','lineSeries','lineFrameMaterial'].includes(id)) refreshPreview();
     if (id === 'cartCustomer') maybeAskCustomerMemory();

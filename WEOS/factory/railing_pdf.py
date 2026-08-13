@@ -71,7 +71,7 @@ def _section_face_mm(raw: Any, default: float = 40.0) -> float:
     return face if face >= 8.0 else default
 
 
-def _cfg_and_quote(line: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+def railing_cfg_and_quote(line: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
     cfg = opts.get("railing") if isinstance(opts, Mapping) else None
     cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
@@ -106,7 +106,7 @@ def _cfg_and_quote(line: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, A
 
 def draw_railing_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
     """Draw railing 2D into a PDF cell. Always draws geometry — never a text placeholder."""
-    cfg, q = _cfg_and_quote(line)
+    cfg, q = railing_cfg_and_quote(line)
     g = q.get("geometry") if isinstance(q.get("geometry"), Mapping) else {}
     shape = str(g.get("shape") or q.get("shape") or cfg.get("shape") or "straight").lower()
     try:

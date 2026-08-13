@@ -116,6 +116,75 @@ def sell_amount(
     }
 
 
+def line_sell_amount(
+    line: Mapping[str, Any] | None,
+    *,
+    selling_rate: Any = None,
+    sale_unit: str | None = None,
+    qty: int | None = None,
+    width_mm: float | None = None,
+    height_mm: float | None = None,
+) -> dict[str, Any] | None:
+    """One amount helper for cart / PDF / scan / excel.
+
+    Railing = running length (RFT/RMT); windows/shower/vent = area or opening.
+    """
+    from WEOS.factory.fmt import money_n
+    from WEOS.factory.line_kind import is_railing_cart_line, line_world
+
+    line = line if isinstance(line, Mapping) else {}
+    try:
+        q = int(qty if qty is not None else (line.get("qty") or line.get("quantity") or 1))
+    except (TypeError, ValueError):
+        q = 1
+    q = max(q, 1)
+    try:
+        w = float(width_mm if width_mm is not None else (line.get("width") or 0))
+        h = float(height_mm if height_mm is not None else (line.get("height") or 0))
+    except (TypeError, ValueError):
+        w = h = 0.0
+    selling = line.get("selling") if isinstance(line.get("selling"), Mapping) else {}
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    rq = opts.get("railingQuote") if isinstance(opts, Mapping) and isinstance(opts.get("railingQuote"), Mapping) else {}
+    rate = selling_rate
+    if rate is None or str(rate).strip() == "":
+        rate = line.get("sellingRate") or selling.get("sellingRate") or line.get("customerRate")
+        if rate is None or str(rate).strip() == "":
+            rate = rq.get("sellingPerUnit") or rq.get("sellingRate")
+    try:
+        rate_n = float(rate)
+    except (TypeError, ValueError):
+        return None
+    unit = str(
+        sale_unit or line.get("saleUnit") or selling.get("saleUnit") or rq.get("saleUnit") or "sqft"
+    ).strip() or "sqft"
+    world = line_world(line)
+    if world in ("railing", "staircase_railing") or is_railing_cart_line(line):
+        length = w
+        if length <= 0:
+            try:
+                length = float(rq.get("lengthMm") or 0)
+            except (TypeError, ValueError):
+                length = 0.0
+        u = unit.lower()
+        if u == "rmt":
+            billable = (length / 1000.0) * q
+        elif u in ("opening", "pc", "nos", "each"):
+            billable = float(q)
+        else:
+            billable = (length / 304.8) * q
+            u = u if u in SALE_UNITS else "rft"
+        return {
+            "saleUnit": u if u in SALE_UNITS else "rft",
+            "saleUnitLabel": SALE_UNITS.get(u, SALE_UNITS["rft"])["label"],
+            "sellingRate": money_n(rate_n),
+            "billableQty": round(billable, 4),
+            "sellingAmount": money_n(billable * rate_n),
+            "qty": q,
+        }
+    return sell_amount(width_mm=w, height_mm=h, qty=q, selling_rate=rate_n, sale_unit=unit)
+
+
 def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
     """Reactive quote preview: factory cost + optional customer selling amount."""
     from WEOS.factory.project_engine import calculate_line
@@ -137,13 +206,11 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
     payload.setdefault("handle", line.get("handle") or "standard")
     calc = calculate_line(payload, include_preview=False)
 
-    from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line, is_ventilator_cart_line
+    from WEOS.factory.line_kind import line_world
 
-    special = (
-        is_railing_cart_line(payload) or is_railing_cart_line(calc)
-        or is_shower_cart_line(payload) or is_shower_cart_line(calc)
-        or is_ventilator_cart_line(payload) or is_ventilator_cart_line(calc)
-    )
+    special = line_world(payload) in ("railing", "staircase_railing", "shower", "ventilator") or line_world(
+        calc
+    ) in ("railing", "staircase_railing", "shower", "ventilator")
 
     cost_total = float((calc.get("price") or {}).get("total") or 0)
     cost_unit = float((calc.get("price") or {}).get("unitTotal") or (cost_total / max(qty, 1)))
@@ -157,34 +224,14 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
         sell = dict(calc["selling"])
         sale_unit = str(sell.get("saleUnit") or sale_unit)
     elif has_sell:
-        if special and (is_railing_cart_line(payload) or is_railing_cart_line(calc)):
-            # Running-ft along length, not window perimeter.
-            unit = (sale_unit or "rft").lower()
-            length = float(calc.get("width") or width or 0)
-            if unit == "rmt":
-                billable = (length / 1000.0) * max(qty, 1)
-            elif unit in ("opening", "pc", "nos"):
-                billable = float(max(qty, 1))
-            else:
-                billable = (length / 304.8) * max(qty, 1)
-            from WEOS.factory.fmt import money_n
-
-            sell = {
-                "saleUnit": unit if unit in SALE_UNITS else "rft",
-                "saleUnitLabel": SALE_UNITS.get(unit, SALE_UNITS["rft"])["label"],
-                "sellingRate": money_n(float(selling_rate)),
-                "billableQty": round(billable, 4),
-                "sellingAmount": money_n(billable * float(selling_rate)),
-                "qty": max(qty, 1),
-            }
-        else:
-            sell = sell_amount(
-                width_mm=width,
-                height_mm=height,
-                qty=qty,
-                selling_rate=float(selling_rate),
-                sale_unit=sale_unit,
-            )
+        sell = line_sell_amount(
+            calc if special else payload,
+            selling_rate=float(selling_rate),
+            sale_unit=sale_unit,
+            qty=qty,
+            width_mm=float(calc.get("width") or width or 0),
+            height_mm=float(calc.get("height") or height or 0),
+        )
 
     metrics = area_metrics(width, height)
     margin = None
@@ -247,14 +294,11 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
 
 def apply_selling_to_line_result(result: dict[str, Any], line: Mapping[str, Any]) -> dict[str, Any]:
     """Attach commercial selling fields onto a calculate_line result."""
-    from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line
+    from WEOS.factory.line_kind import line_world
 
-    # Railing / shower lines already carry commercial totals from the designer — do not
-    # attach window sectionSpecs / series metadata or reprice via sqft sell_amount.
-    if (
-        is_railing_cart_line(result) or is_railing_cart_line(line)
-        or is_shower_cart_line(result) or is_shower_cart_line(line)
-    ):
+    # Designer lines already carry commercial totals — do not reprice via window sqft.
+    _special = ("railing", "staircase_railing", "shower", "ventilator")
+    if line_world(result) in _special or line_world(line) in _special:
         out = dict(result)
         out.setdefault("sectionSeries", None)
         out.setdefault("sectionSpecs", {})

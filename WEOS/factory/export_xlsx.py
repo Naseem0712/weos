@@ -352,7 +352,7 @@ def prepare_customer_export_payload(doc: Mapping[str, Any]) -> tuple[dict[str, A
     try:
         from WEOS.factory.project_engine import calculate_project
 
-        result = calculate_project(doc, optimize=False)
+        result = calculate_project(doc, optimize=False, include_preview=False)
     except Exception:
         result = {"lines": list(doc.get("lines") or []), "combined": {}, "price": {}}
     calc_lines = list(result.get("lines") or [])

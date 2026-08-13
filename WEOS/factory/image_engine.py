@@ -24,6 +24,33 @@ def sanitize_svg_for_pdf(svg: str) -> str:
     return s
 
 
+def normalize_svg_viewbox(svg: str, *, max_px: float = 1000.0) -> str:
+    """Keep the canvas viewBox, but set CSS width/height to a small pixel size.
+
+    Railing/window SVGs use model-mm viewBoxes (2000–4000). Cairo/svglib treat
+    those as pixels and hang. Shower SVG is already ~px — this is a no-op.
+    """
+    s = str(svg or "")
+    if not s.strip():
+        return s
+    vb_w, vb_h = _svg_wh(s)
+    long = max(vb_w, vb_h, 1.0)
+    cap = max(float(max_px or 1000.0), 160.0)
+    if long > cap:
+        k = cap / long
+        out_w, out_h = vb_w * k, vb_h * k
+    else:
+        out_w, out_h = vb_w, vb_h
+    m = re.search(r"<svg\b[^>]*>", s, flags=re.I)
+    if not m:
+        return s
+    tag = m.group(0)
+    tag = re.sub(r"\swidth\s*=\s*['\"][^'\"]*['\"]", "", tag, flags=re.I)
+    tag = re.sub(r"\sheight\s*=\s*['\"][^'\"]*['\"]", "", tag, flags=re.I)
+    tag = re.sub(r"<svg\b", f'<svg width="{out_w:.1f}" height="{out_h:.1f}"', tag, count=1, flags=re.I)
+    return s[: m.start()] + tag + s[m.end() :]
+
+
 def _svg_wh(svg: str) -> tuple[float, float]:
     m = re.search(r'viewBox\s*=\s*["\']\s*[\d.+-]+\s+[\d.+-]+\s+([\d.+-]+)\s+([\d.+-]+)', svg, re.I)
     if m:
@@ -114,9 +141,11 @@ def svg_to_png_bytes(
     explode into multi-megapixel rasters that hang Quote PDF.
     """
     svg = sanitize_svg_for_pdf(svg)
+    svg = normalize_svg_viewbox(svg, max_px=max_px)
     if not svg.strip():
         return None
-    use_scale = _capped_scale(svg, scale, max_px)
+    # Width/height already pixel-capped — keep scale modest so RIP stays fast.
+    use_scale = min(max(float(scale or 1.0), 0.5), 1.6)
     try:
         import cairosvg
 
@@ -149,6 +178,7 @@ def svg_to_png_bytes(
 def svg_to_rl_drawing(svg: str):
     """Best-effort SVG → ReportLab vector Drawing (svglib). Returns None if unavailable."""
     svg = sanitize_svg_for_pdf(svg)
+    svg = normalize_svg_viewbox(svg, max_px=900.0)
     if not svg.strip():
         return None
     try:

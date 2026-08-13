@@ -1644,7 +1644,8 @@ def api_project_calculate(project_id: str, body: ProjectCalculateOpts | None = N
     optimize = True if body is None else body.optimize
     if body is not None and body.quotationId:
         doc["quotationId"] = body.quotationId
-    result = calculate_project(doc, optimize=optimize)
+    # Live canvas uses /api/preview + designer quotes — do not regenerate SVG here.
+    result = calculate_project(doc, optimize=optimize, include_preview=False)
     doc["quotationId"] = result["quotationId"]
     doc["status"] = "active"
     doc["lastCalculation"] = {
@@ -1716,7 +1717,7 @@ def api_quotation(project_id: str) -> dict[str, Any]:
         doc = load_project(project_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    result = calculate_project(doc, optimize=True)
+    result = calculate_project(doc, optimize=True, include_preview=False)
     return {
         "projectId": project_id,
         "quotationId": result["quotationId"],

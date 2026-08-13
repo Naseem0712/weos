@@ -76,7 +76,7 @@ def line_export_fingerprint(line: Mapping[str, Any] | None, *, extra: str = "") 
             }
             if isinstance(rail, Mapping)
             else None,
-            "slim": "solid-print-v2",
+            "slim": "canvas-print-v3",
             "svgLen": len(svg),
             "svgHead": svg[:240],
         }
@@ -196,8 +196,10 @@ def png_for_line(
     try:
         from WEOS.factory.image_engine import svg_to_png_bytes
 
-        # Never use slow svglib+renderPM — it blocks quote PDF and fattens strokes.
         png = svg_to_png_bytes(str(svg), scale=float(scale) or 1.0, allow_slow=False, max_px=1100)
+        if not png:
+            # Pixel-normalized SVG is small enough for svglib when Cairo is missing.
+            png = svg_to_png_bytes(str(svg), scale=1.0, allow_slow=True, max_px=900)
     except Exception:
         _log.debug("svg rasterize skipped", exc_info=True)
         png = None

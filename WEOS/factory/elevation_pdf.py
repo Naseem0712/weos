@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from typing import Mapping as _Mapping
-
 from WEOS.factory.geometry import HINGE_FILL_RGB, hinge_capsule_geom
 from WEOS.factory.svg_export import _parse_grid
 from WEOS.factory.types import DrawingModel, Polyline
@@ -18,7 +16,7 @@ def _handle_finish_rgb(finish: str) -> dict[str, tuple[float, float, float]]:
     return {"stroke": (0.42, 0.45, 0.47)}
 
 
-def _resolve_finish(meta: _Mapping, colour: str | None) -> str:
+def _resolve_finish(meta: Mapping, colour: str | None) -> str:
     f = str(meta.get("handle_finish") or "")
     if f:
         return f
@@ -109,7 +107,7 @@ def _draw_grid_pdf(c, *, px, py, scale, meta, W, H, finish, stroke, dim, glass_s
             c.setLineWidth(0.55)
             c.line(px(float(sx)), py(y0), px(float(sx)), py(y1))
         m = cell.get("mesh")
-        if isinstance(m, _Mapping):
+        if isinstance(m, Mapping):
             c.setStrokeColorRGB(0.15, 0.45, 0.30)
             c.setLineWidth(0.55)
             c.rect(px(float(m["x0"])), py(float(m["y0"])), (float(m["x1"]) - float(m["x0"])) * scale, (float(m["y1"]) - float(m["y0"])) * scale, fill=0, stroke=1)
@@ -311,15 +309,15 @@ def draw_model_elevation(
     # Hardware — casement hinge capsules + lever handles (outline)
     fc = _handle_finish_rgb(finish)
     for h in meta.get("hinges") or []:
-        if not isinstance(h, _Mapping):
+        if not isinstance(h, Mapping):
             continue
         hx0, hy0, hx1, hy1 = float(h["x0"]), float(h["y0"]), float(h["x1"]), float(h["y1"])
         _draw_casement_hinge_pdf(c, px, py, scale, hx0, hy0, hx1, hy1, fc["stroke"], lw=0.40)
     for sp in meta.get("shutters") or []:
-        if not isinstance(sp, _Mapping):
+        if not isinstance(sp, Mapping):
             continue
         hd = sp.get("handle")
-        if not isinstance(hd, _Mapping):
+        if not isinstance(hd, Mapping):
             continue
         hx0, hy0, hx1, hy1 = float(hd["x0"]), float(hd["y0"]), float(hd["x1"]), float(hd["y1"])
         hcx, hcy = (hx0 + hx1) / 2.0, (hy0 + hy1) / 2.0
@@ -362,7 +360,7 @@ def draw_model_elevation(
     shutters_by_idx = {
         int(s["index"]): s
         for s in (meta.get("shutters") or [])
-        if isinstance(s, _Mapping) and s.get("index") is not None
+        if isinstance(s, Mapping) and s.get("index") is not None
     }
     c.setFont("Helvetica-Bold", 7)
     slide_idx = 0
@@ -462,7 +460,7 @@ def draw_model_elevation(
         c.drawCentredString(0, 0, text)
         c.restoreState()
 
-    shutters_meta = [s for s in (meta.get("shutters") or []) if isinstance(s, _Mapping)]
+    shutters_meta = [s for s in (meta.get("shutters") or []) if isinstance(s, Mapping)]
     glass_meta = [s for s in shutters_meta if s.get("role") == "glass"]
     mesh_meta = [s for s in shutters_meta if s.get("role") == "mesh"]
     mesh = bool(meta.get("mesh"))
@@ -485,7 +483,7 @@ def draw_model_elevation(
 
     # Section sizes (bifold): top/bottom rail + jamb/leaf stile — printed on the PDF
     sec = meta.get("sectionSizes")
-    if isinstance(sec, _Mapping):
+    if isinstance(sec, Mapping):
         c.setFont("Helvetica", 5.5)
         c.setFillColorRGB(*dim)
         bits = [
@@ -570,10 +568,10 @@ def draw_model_elevation(
 
 def draw_line_model_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
     """Regenerate geometry for a cart line and draw it. Returns False if unavailable."""
-    from WEOS.factory.line_kind import is_railing_cart_line
+    from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line, is_ventilator_cart_line
 
-    # Never regenerate window geometry for railing lines (caller should use railing_svg).
-    if is_railing_cart_line(line):
+    # Never regenerate window geometry for designer lines (ReportLab drawers handle them).
+    if is_railing_cart_line(line) or is_shower_cart_line(line) or is_ventilator_cart_line(line):
         return False
     w = float(line.get("width") or 0)
     h = float(line.get("height") or 0)

@@ -1,4 +1,8 @@
-"""MAR-QT-style customer quotation PDF — drawings with W/H callouts + detail specs."""
+"""MAR-QT-style customer quotation PDF — drawings with W/H callouts + detail specs.
+
+DESIGN column: uploaded photo, else the live-canvas SVG (same as ``#livePreview``),
+sanitized + pixel-normalized then rasterized. Never a dumbed-down schematic stub.
+"""
 
 from __future__ import annotations
 
@@ -140,54 +144,6 @@ def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: flo
     c.restoreState()
 
 
-def _line_is_railing(line: Mapping[str, Any]) -> bool:
-    """Detect railing designer lines even when product id varies."""
-    from WEOS.factory.line_kind import is_railing_cart_line
-
-    return is_railing_cart_line(line)
-
-
-def _railing_cfg_and_quote(line: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
-    cfg = opts.get("railing") if isinstance(opts, Mapping) else None
-    cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
-    try:
-        from WEOS.factory.railing_engine import ensure_railing_dims
-
-        cfg = ensure_railing_dims(
-            cfg,
-            width=float(line.get("width") or 0) or None,
-            height=float(line.get("height") or 0) or None,
-        )
-    except Exception:
-        pass
-    q = opts.get("railingQuote") if isinstance(opts, Mapping) else None
-    if not isinstance(q, Mapping):
-        q = line.get("railing") if isinstance(line.get("railing"), Mapping) else {}
-    # Recompute when quote is missing, length collapsed, or shape/panels diverge
-    # from options.railing (stale staircase quote on a straight design, etc.).
-    need_recompute = False
-    if not isinstance(q, Mapping) or not q:
-        need_recompute = bool(cfg)
-    else:
-        try:
-            from WEOS.factory.railing_engine import railing_quote_matches_cfg
-
-            if not railing_quote_matches_cfg(q, cfg):
-                need_recompute = True
-        except Exception:
-            if float(q.get("lengthMm") or 0) <= 1.0 and float(cfg.get("lengthMm") or line.get("width") or 0) > 1.0:
-                need_recompute = True
-    if need_recompute and cfg:
-        try:
-            from WEOS.factory.railing_engine import compute_railing
-
-            q = compute_railing(cfg)
-        except Exception:
-            q = q if isinstance(q, Mapping) else {}
-    return cfg, dict(q) if isinstance(q, Mapping) else {}
-
-
 def _line_design_photo_bytes(line: Mapping[str, Any]) -> tuple[bytes | None, str | None]:
     """Uploaded design photo (durable blob), if the line has one."""
     photo = line.get("designPhoto") if isinstance(line.get("designPhoto"), Mapping) else None
@@ -224,45 +180,37 @@ def line_elevation_png_bytes(line: Mapping[str, Any], *, scale: float = 0.55, ma
 
 
 def _special_line_svg(line: Mapping[str, Any]) -> str:
-    """Railing / shower / ventilator SVG for PDF when preview was skipped."""
-    prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
-    live = str((prev or {}).get("svg") or (prev or {}).get("pdfSvg") or "").strip()
-    if live and "<svg" in live.lower():
-        return live
+    """Tiny SVG fallback for vent / last-resort PNG — not the customer PDF elevation path."""
     try:
-        from WEOS.factory.line_kind import is_shower_cart_line, is_ventilator_cart_line
+        from WEOS.factory.svg_export import elevation_svg_for_line
 
-        if _line_is_railing(line):
-            from WEOS.factory.railing_engine import railing_svg
-
-            cfg, q = _railing_cfg_and_quote(line)
-            return str(railing_svg(cfg or {}, quote=q) or "")
-        if is_shower_cart_line(line):
-            from WEOS.factory.shower_engine import compute_shower, ensure_shower_dims, shower_svg
-
-            opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
-            cfg = ensure_shower_dims((opts or {}).get("shower") or {}, width=line.get("width"), height=line.get("height"))
-            return str(shower_svg(cfg, quote=compute_shower(cfg)) or "")
-        if is_ventilator_cart_line(line):
-            from WEOS.factory.ventilator_engine import compute_ventilator, ensure_ventilator_dims, ventilator_svg
-
-            opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
-            cfg = ensure_ventilator_dims((opts or {}).get("ventilator") or {}, width=line.get("width"), height=line.get("height"))
-            return str(ventilator_svg(cfg, quote=compute_ventilator(cfg)) or "")
+        svg = elevation_svg_for_line(line, style="preview") or ""
+        return str(svg) if svg else ""
     except Exception:
         _log.debug("special-line svg rebuild skipped", exc_info=True)
-    return ""
+        return ""
+
+
+def _embed_png(c, png: bytes, x: float, y: float, box_w: float, box_h: float) -> bool:
+    from reportlab.lib.utils import ImageReader
+
+    img = ImageReader(io.BytesIO(png))
+    iw, ih = img.getSize()
+    if iw <= 0 or ih <= 0:
+        return False
+    scale = min(box_w / float(iw), box_h / float(ih))
+    dw, dh = iw * scale, ih * scale
+    c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
+    return True
 
 
 def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
-    """Draw the design column. Windows / railing / shower use ReportLab (fast, solid).
+    """DESIGN column = uploaded photo, else live canvas SVG (same as ``#livePreview``).
 
-    Never rasterize huge mm-viewBox SVGs (Cairo hang). Photo still wins.
-    Ventilator may use a tiny PNG; railing never falls back to a text placeholder.
+    Rasterize only after sanitizing dashes and normalizing viewBox to ~px
+    (never treat 2000–4000 mm as pixels). Never grey placeholder / shower stub.
     """
-    from reportlab.lib.utils import ImageReader
-
-    from WEOS.factory.line_kind import is_shower_cart_line, is_ventilator_cart_line
+    from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line, is_ventilator_cart_line
 
     w = float(line.get("width") or 0)
     h = float(line.get("height") or 0)
@@ -274,105 +222,39 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
     photo_raw, _photo_ct = _line_design_photo_bytes(line)
     if photo_raw:
         try:
-            img = ImageReader(io.BytesIO(photo_raw))
-            iw, ih = img.getSize()
-            if iw > 0 and ih > 0:
-                scale = min(box_w / float(iw), box_h / float(ih))
-                dw, dh = iw * scale, ih * scale
-                c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
+            if _embed_png(c, photo_raw, x, y, box_w, box_h):
                 return True
         except Exception:
-            _log.exception("design photo embed failed; falling back to elevation")
+            _log.exception("design photo embed failed; falling back to canvas SVG")
 
-    is_rail = _line_is_railing(line)
-    is_shower = is_shower_cart_line(line)
-    is_vent = is_ventilator_cart_line(line)
+    png = None
+    try:
+        from WEOS.factory.elevation_cache import png_for_line
 
-    if is_rail:
-        try:
-            from WEOS.factory.railing_pdf import draw_railing_elevation
-
-            if draw_railing_elevation(c, line, x, y, box_w, box_h):
-                return True
-        except Exception:
-            _log.exception("reportlab railing elevation failed")
-        # Last resort: tiny PNG of railing SVG — never a grey text box.
-        try:
-            svg = _special_line_svg(line)
-            if svg:
-                from WEOS.factory.image_engine import svg_to_png_bytes
-
-                png = svg_to_png_bytes(str(svg), scale=1.0, allow_slow=False, max_px=700)
-                if png:
-                    img = ImageReader(io.BytesIO(png))
-                    iw, ih = img.getSize()
-                    if iw > 0 and ih > 0:
-                        scale = min(box_w / float(iw), box_h / float(ih))
-                        dw, dh = iw * scale, ih * scale
-                        c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
-                        return True
-        except Exception:
-            _log.debug("railing tiny png skipped", exc_info=True)
-        # Absolute last: still draw a real (schematic) railing, not placeholder text.
-        try:
-            from WEOS.factory.railing_pdf import draw_railing_elevation
-
-            return bool(draw_railing_elevation(c, {"width": w or 2000, "height": h or 1000,
-                                                   "productType": "railing",
-                                                   "options": {"railing": {"shape": "straight",
-                                                                           "lengthMm": w or 2000,
-                                                                           "heightMm": h or 1000,
-                                                                           "panels": 3,
-                                                                           "bottomKind": "continuous",
-                                                                           "handrail": True}}},
-                                               x, y, box_w, box_h))
-        except Exception:
-            return False
-
-    if is_shower:
-        try:
-            from WEOS.factory.shower_pdf import draw_shower_elevation
-
-            if draw_shower_elevation(c, line, x, y, box_w, box_h):
-                return True
-        except Exception:
-            _log.exception("reportlab shower elevation failed")
-        try:
-            svg = _special_line_svg(line)
-            if svg:
-                from WEOS.factory.image_engine import svg_to_png_bytes
-
-                png = svg_to_png_bytes(str(svg), scale=1.0, allow_slow=False, max_px=700)
-                if png:
-                    img = ImageReader(io.BytesIO(png))
-                    iw, ih = img.getSize()
-                    if iw > 0 and ih > 0:
-                        scale = min(box_w / float(iw), box_h / float(ih))
-                        dw, dh = iw * scale, ih * scale
-                        c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
-                        return True
-        except Exception:
-            _log.debug("shower tiny png skipped", exc_info=True)
-
-    if is_vent:
+        png = png_for_line(line, scale=1.35, max_px=1100)
+    except Exception:
+        _log.debug("elevation_cache png skipped", exc_info=True)
+    if not png:
         svg = _special_line_svg(line)
         if svg:
             try:
                 from WEOS.factory.image_engine import svg_to_png_bytes
 
-                png = svg_to_png_bytes(str(svg), scale=1.0, allow_slow=False, max_px=600)
-                if png:
-                    img = ImageReader(io.BytesIO(png))
-                    iw, ih = img.getSize()
-                    if iw > 0 and ih > 0:
-                        scale = min(box_w / float(iw), box_h / float(ih))
-                        dw, dh = iw * scale, ih * scale
-                        c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
-                        return True
+                png = svg_to_png_bytes(str(svg), scale=1.35, allow_slow=False, max_px=1000)
+                if not png:
+                    png = svg_to_png_bytes(str(svg), scale=1.0, allow_slow=True, max_px=900)
             except Exception:
-                _log.debug("vent tiny png skipped", exc_info=True)
+                _log.debug("canvas svg rasterize skipped", exc_info=True)
+    if png:
+        try:
+            if _embed_png(c, png, x, y, box_w, box_h):
+                return True
+        except Exception:
+            _log.exception("canvas png embed failed")
 
-    # Windows / doors / casement / fold: known-good ReportLab path (miters, handles).
+    # Windows only — never substitute shower/railing ReportLab stubs for the canvas.
+    if is_railing_cart_line(line) or is_shower_cart_line(line) or is_ventilator_cart_line(line):
+        return False
     try:
         from WEOS.factory.elevation_pdf import draw_line_model_elevation
 
@@ -386,34 +268,6 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
     track_count = max(len(panels), 2)
     draw_window_elevation(c, x, y, box_w, box_h, w, h, track_count=track_count)
     return False
-
-
-def _laminated_config_label(thickness_mm: Any, glass_type: str = "") -> str | None:
-    """Customer-facing laminated makeup e.g. ``5+1.52+6mm``."""
-    try:
-        thk = float(thickness_mm or 0)
-    except (TypeError, ValueError):
-        thk = 0.0
-    gt = str(glass_type or "").lower()
-    if thk <= 0 and "lam" not in gt:
-        return None
-    try:
-        from WEOS.factory.glass_catalogue import LAMINATED_MAKEUPS_MM, default_layers_for
-
-        layers = default_layers_for("laminated", thk) if thk else {}
-        if not layers and thk:
-            # nearest catalogue overall
-            nearest = min(LAMINATED_MAKEUPS_MM.keys(), key=lambda k: abs(k - thk), default=None)
-            if nearest is not None and abs(nearest - thk) < 0.6:
-                layers = dict(LAMINATED_MAKEUPS_MM[nearest])
-        if not layers and "lam" in gt:
-            layers = default_layers_for("laminated", 13.52) or {}
-        g1, pvb, g2 = layers.get("glass1Mm"), layers.get("pvbMm"), layers.get("glass2Mm")
-        if g1 and pvb and g2:
-            return f"{g1:g}+{pvb:g}+{g2:g}mm"
-    except Exception:
-        pass
-    return None
 
 
 def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[tuple[str, str]]:
@@ -447,8 +301,11 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         rows.append((str(label or "").strip().upper(), v))
 
     # ── Railing lines: product → bottom → handrail → glass → hardware → qty → amount
-    if _line_is_railing(line):
-        rail_cfg, q = _railing_cfg_and_quote(line)
+    from WEOS.factory.line_kind import is_railing_cart_line
+    from WEOS.factory.railing_pdf import railing_cfg_and_quote
+
+    if is_railing_cart_line(line):
+        rail_cfg, q = railing_cfg_and_quote(line)
         shape = q.get("shape") or (rail_cfg or {}).get("shape") or "straight"
         color_mode = (rail_cfg or {}).get("colorMode") or "global"
         sys_color = (rail_cfg or {}).get("systemColor") or q.get("systemColor") or ""
@@ -574,7 +431,9 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         gtype = (rail_cfg or {}).get("glassType") or q.get("glassType") or ""
         gcol = (rail_cfg or {}).get("glassColour") or q.get("glassColour") or ""
         gbrand = q.get("glassBrand") or (rail_cfg or {}).get("glassBrand") or ""
-        lam = _laminated_config_label(thk, gtype)
+        from WEOS.factory.window_specs import _laminated_config_label as laminated_config_label
+
+        lam = laminated_config_label(thk, gtype)
         glass_bits = [f"{thk:g} mm"]
         if lam:
             glass_bits.append(lam)
@@ -675,14 +534,7 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
                 add("BOM", " · ".join(bits))
         return rows
 
-    try:
-        from WEOS.factory.line_kind import is_shower_cart_line
-    except Exception:
-        is_shower_cart_line = lambda _l: False  # noqa: E731
-    try:
-        from WEOS.factory.line_kind import is_ventilator_cart_line
-    except Exception:
-        is_ventilator_cart_line = lambda _l: False  # noqa: E731
+    from WEOS.factory.line_kind import is_shower_cart_line, is_ventilator_cart_line
     if is_ventilator_cart_line(line):
         opts_v = line.get("options") if isinstance(line.get("options"), Mapping) else {}
         cfg_v = opts_v.get("ventilator") if isinstance(opts_v, Mapping) else None
@@ -884,6 +736,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas
 
+    from WEOS.factory.line_kind import is_railing_cart_line
     from WEOS.factory.pdf_fonts import ensure_rupee_font, money_text, rupee_prefix, set_font
 
     ensure_rupee_font()  # register before any drawString with ₹
@@ -1166,11 +1019,13 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
                 rate = float(amount) / float(selling["billableQty"])
             except (TypeError, ValueError, ZeroDivisionError):
                 rate = None
-        if rate is None and _line_is_railing(line):
+        if rate is None and is_railing_cart_line(line):
             # Prefer railing commercial RFT/RMT rate — never fake sqft from length×height.
             rate = line.get("sellingRate") or (line.get("price") or {}).get("unitRate")
             if rate is None:
-                _, rq = _railing_cfg_and_quote(line)
+                from WEOS.factory.railing_pdf import railing_cfg_and_quote
+
+                _, rq = railing_cfg_and_quote(line)
                 rate = (rq or {}).get("sellingPerUnit")
         if rate is None:
             # derive from cost / area for display

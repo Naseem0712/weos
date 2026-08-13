@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import sys
 
-from WEOS.factory.marqt_pdf import _line_is_railing, _railing_cfg_and_quote, _spec_lines
+from WEOS.factory.line_kind import is_railing_cart_line
+from WEOS.factory.marqt_pdf import _spec_lines
 from WEOS.factory.project_engine import calculate_line, _is_railing_cart_line
 from WEOS.factory.railing_engine import compute_railing, railing_svg
+from WEOS.factory.railing_pdf import railing_cfg_and_quote
 
 
 def main() -> int:
@@ -67,9 +69,9 @@ def main() -> int:
         fails.append("options.railingQuote missing after calculate")
     if not (result.get("preview") or {}).get("svg"):
         fails.append("preview.svg missing")
-    if not _line_is_railing(result):
+    if not is_railing_cart_line(result):
         fails.append("result not detected as railing for PDF")
-    cfg2, q2 = _railing_cfg_and_quote(result)
+    cfg2, q2 = railing_cfg_and_quote(result)
     if not cfg2:
         fails.append("pdf cfg empty")
     if not q2.get("items"):
@@ -168,7 +170,7 @@ def main() -> int:
     stair_res = calculate_line(stair_cart)
     if stair_res.get("productType") != "staircase_railing":
         fails.append(f"stair productType {stair_res.get('productType')}")
-    if not _line_is_railing(stair_res):
+    if not is_railing_cart_line(stair_res):
         fails.append("stair result not railing for PDF")
     stair_specs = _spec_lines(stair_res)
     if any(s.startswith("Track") for s in stair_specs):

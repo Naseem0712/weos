@@ -1,4 +1,8 @@
-"""Project engine — multi-line cart calculate + combine + optimize."""
+"""Project engine — multi-line cart calculate + combine + optimize.
+
+Single calc gate: ``line_world`` → railing / shower / ventilator / window.
+Preview SVG is optional (``include_preview``); PDF export keeps it False.
+"""
 
 from __future__ import annotations
 
@@ -10,9 +14,8 @@ from typing import Any, Mapping
 from WEOS.factory.optimize_engine import CutPiece, GlassPiece, optimize_project_materials
 
 _log = logging.getLogger("weos.project_engine")
-from WEOS.factory.line_kind import is_railing_cart_line as _is_railing_cart_line
-from WEOS.factory.line_kind import is_shower_cart_line as _is_shower_cart_line
-from WEOS.factory.line_kind import is_ventilator_cart_line as _is_ventilator_cart_line
+from WEOS.factory.line_kind import is_railing_cart_line as _is_railing_cart_line  # noqa: F401 — smoke import
+from WEOS.factory.line_kind import line_world as _line_world
 from WEOS.factory.line_kind import quote_qty_breakdown as _quote_qty_breakdown
 from WEOS.factory.line_kind import line_location_name as _line_location_name
 from WEOS.factory.pipeline import generate_job
@@ -771,41 +774,31 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
     from WEOS.factory.live_pricing import apply_selling_to_line_result
 
     from WEOS.factory.layout_options import line_layout_options
-    from WEOS.factory.line_kind import (
-        is_railing_product_type,
-        is_shower_product_type,
-        is_ventilator_product_type,
-        product_world,
-    )
 
     product_id = str(line.get("product") or line.get("productId") or "29mm_sliding")
-    # Railing lines are self-priced from their designer config.
-    if _is_railing_cart_line(line):
+    world = _line_world(line)
+    if world in ("railing", "staircase_railing"):
         try:
             return _railing_line_result(line, include_preview=include_preview)
         except Exception as exc:  # pragma: no cover - keep the quote rendering
             _log.exception("railing line calc failed: %s", exc)
             return _error_line_result(line, f"railing calc failed: {exc}")
-    if _is_ventilator_cart_line(line):
+    if world == "ventilator":
         try:
             return _ventilator_line_result(line, include_preview=include_preview)
         except Exception as exc:  # pragma: no cover
             _log.exception("ventilator line calc failed: %s", exc)
             return _error_line_result(line, f"ventilator calc failed: {exc}")
-    if _is_shower_cart_line(line):
+    if world == "shower":
         try:
             return _shower_line_result(line, include_preview=include_preview)
         except Exception as exc:  # pragma: no cover
             _log.exception("shower line calc failed: %s", exc)
             return _error_line_result(line, f"shower calc failed: {exc}")
     product = load_product(product_id, strict=False)
-    # Product Library type lock: even without options.railing yet, never run window geometry.
-    world = product_world(
-        line.get("productType") or product.get("productType"),
-        category=line.get("category") or product.get("category"),
-        product_id=product_id,
-    )
-    if world == "ventilator" or is_ventilator_product_type(product.get("productType")):
+    # Product Library type lock: even without designer blobs, never run window geometry.
+    world = _line_world(line, product=product)
+    if world == "ventilator":
         enriched = dict(line) if isinstance(line, Mapping) else {}
         enriched.setdefault("productType", "bathroom_ventilator")
         enriched.setdefault("category", product.get("category") or "Bathrooms")
@@ -814,7 +807,7 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
         except Exception as exc:  # pragma: no cover
             _log.exception("ventilator line calc failed: %s", exc)
             return _error_line_result(enriched, f"ventilator calc failed: {exc}")
-    if world == "shower" or is_shower_product_type(product.get("productType")):
+    if world == "shower":
         enriched = dict(line) if isinstance(line, Mapping) else {}
         enriched.setdefault("productType", "shower_partition")
         enriched.setdefault("category", product.get("category") or "Bathrooms")
@@ -823,7 +816,7 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
         except Exception as exc:  # pragma: no cover
             _log.exception("shower line calc failed: %s", exc)
             return _error_line_result(enriched, f"shower calc failed: {exc}")
-    if world in ("railing", "staircase_railing") or is_railing_product_type(product.get("productType")):
+    if world in ("railing", "staircase_railing"):
         enriched = dict(line) if isinstance(line, Mapping) else {}
         enriched.setdefault("productType", product.get("productType") or world)
         enriched.setdefault("category", product.get("category") or "Railings")

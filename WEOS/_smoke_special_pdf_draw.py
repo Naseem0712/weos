@@ -11,6 +11,7 @@ from WEOS.factory.marqt_pdf import draw_line_elevation, render_marqt_pdf
 from WEOS.factory.project_engine import calculate_line
 from WEOS.factory.railing_engine import compute_railing
 from WEOS.factory.shower_engine import compute_shower
+from WEOS.factory.svg_export import elevation_svg_for_line
 
 
 def _ok(cond: bool, msg: str, fails: list[str]) -> None:
@@ -139,8 +140,11 @@ def main() -> int:
     ok_draw = draw_line_elevation(c, calc_rail, 20, 80, 200, 210)
     c.save()
     pdf_cell = buf.getvalue()
+    rail_svg = elevation_svg_for_line(calc_rail) or ""
+    _ok("<svg" in rail_svg.lower(), "railing canvas SVG", fails)
     _ok(ok_draw, "railing draw_line_elevation returned True", fails)
     _ok(b"Railing design" not in pdf_cell, "no grey placeholder text in railing cell", fails)
+    _ok(b"/Image" in pdf_cell or b"IDAT" in pdf_cell, "railing cell embeds canvas PNG", fails)
     _ok(pdf_cell.startswith(b"%PDF") or b"PDF" in pdf_cell[:20] or len(pdf_cell) > 200, f"cell pdf bytes {len(pdf_cell)}", fails)
 
     # 3) Shower L hinged draw
@@ -157,13 +161,40 @@ def main() -> int:
         "options": {"shower": sh_cfg, "showerQuote": sh_q},
     }
     calc_sh = calculate_line(sh_line, include_preview=False)
+    sh_svg = elevation_svg_for_line(calc_sh) or ""
+    _ok('data-model-system="shower"' in sh_svg, "shower canvas SVG", fails)
+    _ok("data-corner-markers=\"0\"" in sh_svg or "data-corner-markers='0'" in sh_svg, "shower no stray corner markers", fails)
     buf2 = io.BytesIO()
     c2 = rl_canvas.Canvas(buf2, pagesize=(400, 500))
     ok_sh = draw_line_elevation(c2, calc_sh, 20, 80, 200, 210)
     c2.save()
+    pdf_sh = buf2.getvalue()
     _ok(ok_sh, "shower draw_line_elevation returned True", fails)
+    _ok(b"/Image" in pdf_sh or b"IDAT" in pdf_sh, "shower cell embeds canvas PNG", fails)
     sh_amt = customer_line_amount(sh_line) or customer_line_amount(calc_sh) or 0
     _ok(sh_amt > 0, f"shower live amount {sh_amt}", fails)
+
+    # Straight sliding shower — the screenshot stub (triangles / messy join)
+    slide_cfg = {
+        "shape": "straight", "operation": "sliding", "widthMm": 1200, "heightMm": 2000,
+        "doorSide": "right", "frameKind": "profile", "glassThicknessMm": 8,
+        "saleUnit": "sqft", "manualRatePerUnit": 800,
+    }
+    slide_line = calculate_line({
+        "product": "shower_partition", "productType": "shower_partition",
+        "width": 1200, "height": 2000, "qty": 1, "sellingRate": 800, "saleUnit": "sqft",
+        "options": {"shower": slide_cfg, "showerQuote": compute_shower(slide_cfg)},
+    }, include_preview=False)
+    slide_svg = elevation_svg_for_line(slide_line) or ""
+    _ok('data-model-system="shower"' in slide_svg, "straight sliding canvas SVG", fails)
+    _ok("TOP TRACK" in slide_svg or 'data-track="top"' in slide_svg, "sliding has canvas track", fails)
+    _ok("COVER PLATE" in slide_svg or 'data-track="cover"' in slide_svg, "sliding has canvas cover", fails)
+    buf3 = io.BytesIO()
+    c3 = rl_canvas.Canvas(buf3, pagesize=(400, 500))
+    ok_slide = draw_line_elevation(c3, slide_line, 20, 80, 200, 210)
+    c3.save()
+    _ok(ok_slide, "straight sliding shower PDF cell drew", fails)
+    _ok(b"/Image" in buf3.getvalue() or b"IDAT" in buf3.getvalue(), "sliding shower PNG not schematic", fails)
 
     # 4) 15-line mixed quote PDF speed
     lines = [_win(i) for i in range(11)]

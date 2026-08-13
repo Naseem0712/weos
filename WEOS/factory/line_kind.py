@@ -145,6 +145,30 @@ def is_staircase_product_type(product_type: Any) -> bool:
     return normalize_product_type(product_type) == "staircase_railing"
 
 
+def line_world(line: Mapping[str, Any] | None = None, *, product: Mapping[str, Any] | None = None) -> str:
+    """Single cart-line world for calc / PDF / UI.
+
+    Prefer live designer blobs (``options.railing`` / shower / vent), then Product Library type.
+    """
+    if is_ventilator_cart_line(line):
+        return "ventilator"
+    if is_shower_cart_line(line):
+        return "shower"
+    if is_railing_cart_line(line):
+        return railing_product_type_for_line(line)
+    pt = cat = pid = None
+    if isinstance(line, Mapping):
+        opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+        pt = line.get("productType") or (opts.get("productType") if isinstance(opts, Mapping) else None)
+        cat = line.get("category")
+        pid = line.get("product") or line.get("productId")
+    if isinstance(product, Mapping):
+        pt = pt or product.get("productType")
+        cat = cat or product.get("category")
+        pid = pid or product.get("id")
+    return product_world(pt, category=cat, product_id=pid)
+
+
 def product_world(product_type: Any = None, *, category: Any = None, product_id: Any = None) -> str:
     """High-level cart world: railing / staircase / shower / ventilator / window / other."""
     pt = normalize_product_type(product_type)

@@ -230,40 +230,22 @@ def customer_line_amount(line: Mapping[str, Any] | None) -> float | None:
     sale_unit = str(
         line.get("saleUnit") or selling.get("saleUnit") or rq.get("saleUnit") or "sqft"
     ).strip() or "sqft"
-    # Railing bills running length (RFT/RMT), never window perimeter 2×(W+H).
     try:
-        if is_railing_cart_line(line):
-            length = width
-            if length <= 0:
-                length = float(rq.get("lengthMm") or 0)
-            unit = sale_unit.lower()
-            if unit == "rmt":
-                billable = (length / 1000.0) * qty
-            elif unit in ("opening", "pc", "nos", "each"):
-                billable = float(qty)
-            else:  # rft default
-                billable = (length / 304.8) * qty
-            amt = _money(billable * rate_n)
-            if amt is not None and amt > 0:
-                return round(amt, 2)
-    except Exception:
-        pass
-    try:
-        from WEOS.factory.live_pricing import sell_amount
+        from WEOS.factory.live_pricing import line_sell_amount
 
-        sell = sell_amount(
-            width_mm=width,
-            height_mm=height,
-            qty=qty,
+        sell = line_sell_amount(
+            line,
             selling_rate=rate_n,
             sale_unit=sale_unit,
+            qty=qty,
+            width_mm=width,
+            height_mm=height,
         )
-        amt = _money(sell.get("sellingAmount"))
+        amt = _money((sell or {}).get("sellingAmount"))
         if amt is not None and amt > 0:
             return round(amt, 2)
     except Exception:
         pass
-    # Per-opening / per-piece fallback when size is missing.
     if sale_unit.lower() in ("opening", "pc", "nos", "each") or (not width and not height):
         return round(rate_n * qty, 2)
     return None
