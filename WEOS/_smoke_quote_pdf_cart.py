@@ -1,6 +1,7 @@
 """Immediate cart PDF + short window specs + SG/DG + weight + visual scale."""
 from __future__ import annotations
 
+import io
 import os
 import tempfile
 from pathlib import Path
@@ -11,7 +12,13 @@ os.environ.pop("DATABASE_URL", None)
 os.environ.pop("WEOS_DATABASE_URL", None)
 os.environ.pop("POSTGRES_URL", None)
 
-from WEOS.factory.marqt_pdf import _spec_rows, render_marqt_pdf
+from WEOS.factory.marqt_pdf import (
+    _design_column_header_lines,
+    _measure_spec_rows,
+    _spec_rows,
+    _wrap_text,
+    render_marqt_pdf,
+)
 from WEOS.factory.pipeline import generate_job
 from WEOS.factory.project_engine import calculate_line, calculate_project
 from WEOS.factory.project_store import empty_project
@@ -58,6 +65,10 @@ def main() -> None:
         "sellingRate": 890,
         "saleUnit": "sqft",
         "locationName": "Master Bedroom",
+        "description": (
+            "Aluminium Profiles Make Hindalco / Vitco, Alloy 6063 T6, "
+            "Powder Coting Akzonobel, Glass Siant-Gobian 24MM"
+        ),
     }
     calc_sg = calculate_line(win_sg)
     fam = glass_family_from_line(calc_sg)
@@ -71,8 +82,40 @@ def main() -> None:
         _ok(need in labels, f"customer has {need} in {labels}")
     for ban in ("SERIES", "ALUMINIUM", "JOINT", "INTERLOCK", "SECTION"):
         _ok(ban not in labels, f"customer must not dump {ban}: {labels}")
+    full_desc = (
+        "Aluminium Profiles Make Hindalco / Vitco, Alloy 6063 T6, "
+        "Powder Coting Akzonobel, Glass Siant-Gobian 24MM"
+    )
+    title = next((v for a, v in rows if not a), "")
+    _ok(full_desc in title, f"full saved description in specs, got {title!r}")
     _ok("shutter_0_glass" not in blob.lower(), f"no internal glass id: {blob}")
     _ok("sg, dg" not in blob.lower() and "sg,dg" not in blob.lower().replace(" ", ""), f"no dual sg,dg: {blob}")
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas as rl_canvas
+
+    wrap_c = rl_canvas.Canvas(io.BytesIO(), pagesize=A4)
+    spec_w = 158.0
+    wrapped_desc = _wrap_text(wrap_c, full_desc, spec_w, 7.0, bold=True)
+    _ok(len(wrapped_desc) >= 2, f"long description wraps, got {wrapped_desc}")
+    _ok("".join(wrapped_desc).replace(" ", "") == full_desc.replace(" ", ""), f"wrap keeps full desc {wrapped_desc}")
+    meas = _measure_spec_rows(wrap_c, [("", full_desc)], max_width=spec_w, font_size=7.0)
+    _ok(meas >= 10.0 * len(wrapped_desc), f"measure uses all wrap lines {meas} vs {len(wrapped_desc)}")
+
+    short_hdr = _design_column_header_lines(wrap_c, "W1", "Ground floor", 194.0)
+    _ok(short_hdr[0][0] == "W1 · Ground floor", f"combined header {short_hdr}")
+    long_loc = "Ground floor living room balcony towards the east garden elevation"
+    long_hdr = _design_column_header_lines(wrap_c, "W1", long_loc, 194.0)
+    _ok(long_hdr[0][0] == "W1", f"serial stays on first line {long_hdr}")
+    _ok(len(long_hdr) >= 2, f"long location wraps under serial {long_hdr}")
+    joined = " ".join(t for t, _ in long_hdr)
+    _ok("Ground floor" in joined and "east garden" in joined, f"full location kept {joined}")
+    from WEOS.factory.pdf_fonts import set_font as pdf_set_font
+
+    for t, sz in long_hdr:
+        face = pdf_set_font(wrap_c, sz, bold=True)
+        _ok(wrap_c.stringWidth(t, face, sz) <= 194.5, f"header line overflow {t!r} @ {sz}")
+
     wt = calc_sg.get("weight") or {}
     _ok(float(wt.get("glassKg") or 0) > 0, f"glass kg {wt}")
     _ok(wt.get("weightSource") in ("glass+20%", "catalogue", "glass"), f"weightSource {wt.get('weightSource')}")
@@ -119,7 +162,7 @@ def main() -> None:
 
     # Immediate PDF from 8+ mixed in-memory lines (no wait / stale snapshot)
     lines = [
-        calculate_line({**win_sg, "qty": 1, "locationName": "MB"}),
+        calculate_line({**win_sg, "width": 2760, "height": 2380, "qty": 1, "locationName": "Ground floor"}),
         calculate_line({**win_dg, "width": 1440, "height": 1800, "locationName": "Kit"}),
         calculate_line({
             "product": "29mm_sliding", "system": "casement", "width": 1200, "height": 2100, "qty": 1,

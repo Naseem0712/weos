@@ -64,6 +64,42 @@ def _draw_fit(c, text: str, x: float, y: float, max_width: float, base: float, *
     c.drawString(x, y, text)
 
 
+_DESIGN_HDR_SERIAL = 9.0
+_DESIGN_HDR_LOC = 7.5
+
+
+def _design_column_header_lines(
+    c, serial: str, location: str, max_width: float
+) -> list[tuple[str, float]]:
+    """DESIGN header lines: serial + location, wrapped to ``max_width`` only.
+
+    Prefers ``W1 · Ground floor`` on one line. If that overflows the DESIGN
+    column, serial stays on the first line and location wraps underneath
+    (slightly smaller) — never into SPECIFICATIONS or the elevation.
+    """
+    serial = str(serial or "").strip() or "W1"
+    loc = str(location or "").strip()
+    if not loc:
+        return [(serial, _DESIGN_HDR_SERIAL)]
+    combined = f"{serial} · {loc}"
+    face = "Helvetica-Bold"
+    try:
+        face = _set_font(c, _DESIGN_HDR_SERIAL, bold=True) or face
+    except Exception:
+        pass
+    try:
+        fits = c.stringWidth(combined, face, _DESIGN_HDR_SERIAL) <= max_width
+    except Exception:
+        fits = len(combined) * 5.2 <= max_width
+    if fits:
+        return [(combined, _DESIGN_HDR_SERIAL)]
+    lines: list[tuple[str, float]] = [(serial, _DESIGN_HDR_SERIAL)]
+    wrap_w = max(24.0, float(max_width) - 1.0)
+    for wl in _wrap_text(c, loc, wrap_w, _DESIGN_HDR_LOC, bold=True):
+        lines.append((wl, _DESIGN_HDR_LOC))
+    return lines or [(serial, _DESIGN_HDR_SERIAL)]
+
+
 def _wrap_text(c, text: str, max_width: float, font_size: float = 7.0, *, bold: bool = False) -> list[str]:
     """Word-wrap ``text`` so each line fits within ``max_width`` (no mid-word hard truncate)."""
     face = "Helvetica-Bold" if bold else "Helvetica"
@@ -771,7 +807,11 @@ def _draw_spec_rows(
     label_col: float = 72.0,
     line_h: float = 10.0,
 ) -> float:
-    """Draw aligned LABEL: / value columns; returns y after last line."""
+    """Draw aligned LABEL: / value columns; returns y after last line.
+
+    Title / description rows (empty label) wrap fully inside ``max_width`` —
+    never hard-truncate, never spill into QTY/RATE/AMOUNT.
+    """
     value_x = x + label_col
     value_w = max(36.0, max_width - label_col)
     sy = y
@@ -791,13 +831,11 @@ def _draw_spec_rows(
         else:
             set_font(c, font_size, bold=True)
             wrapped = _wrap_text(c, value, max_width, font_size, bold=True) or [""]
-            for i, wl in enumerate(wrapped):
+            for wl in wrapped:
                 set_font(c, font_size, bold=True)
                 c.drawString(x, sy, wl)
                 sy -= line_h
-                if i >= 2:
-                    break
-            sy -= 3.5  # small heading-to-heading gap (not a wall of text)
+            sy -= 3.5  # small heading-to-body gap
     return sy
 
 
@@ -820,7 +858,7 @@ def _measure_spec_rows(
             lines += len(wrapped)
         else:
             wrapped = _wrap_text(c, value, max_width, font_size, bold=True) or [""]
-            lines += min(len(wrapped), 3)
+            lines += len(wrapped)
             extra += 3.5
     return max(lines * line_h + extra, 24.0)
 
@@ -1079,7 +1117,14 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             _log.exception("marqt spec build failed for line %d; using name only", idx)
             spec_rows = [("", str(line.get("displayName") or line.get("product") or "Window"))]
         text_h = _measure_spec_rows(c, spec_rows, max_width=spec_max_w, font_size=7.0, label_col=72.0)
-        need = max(draw_h, text_h) + 24
+        from WEOS.factory.line_kind import line_location_name
+
+        code = f"W{idx + 1}"
+        loc = line_location_name(line)
+        max_code_w = draw_w - 6
+        hdr_lines = _design_column_header_lines(c, code, loc, max_code_w)
+        hdr_h = sum((size + 3.0) for _txt, size in hdr_lines)
+        need = max(draw_h + hdr_h, text_h) + 24
         if y < bottom_limit + need:
             set_font(c, 7)
             c.setFillColorRGB(0.5, 0.5, 0.5)
@@ -1128,34 +1173,30 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
                 rate = 0
         grand += float(amount or 0)
 
-        from WEOS.factory.line_kind import design_serial_label, line_location_name
-
-        code = f"W{idx + 1}"
-        loc = line_location_name(line)
-        design_label = design_serial_label(idx, line)
-        # Design column — reddish serial; location prints with it (under / beside W8).
-        c.setFillColorRGB(*accent)
-        max_code_w = draw_w - 6
-        if loc:
-            try:
-                face = set_font(c, 9, bold=True) or "Helvetica-Bold"
-                combined_w = c.stringWidth(design_label, face, 9)
-            except Exception:
-                combined_w = len(design_label) * 5.2
-            if combined_w <= max_code_w:
-                set_font(c, 9, bold=True)
-                c.drawString(M + 2, y + 4, design_label)
-            else:
-                set_font(c, 9, bold=True)
-                c.drawString(M + 2, y + 4, code)
-                _draw_fit(c, loc, M + 2, y - 8, max_code_w, 7.5, bold=True, minimum=6.0)
-        else:
-            set_font(c, 9, bold=True)
-            c.drawString(M + 2, y + 4, code)
+        # Elevation first (clipped to DESIGN cell), then serial+location on top
+        # so location never draws behind the drawing or into SPECIFICATIONS.
+        elev_top = y - hdr_h
+        elev_y = elev_top - draw_h
         try:
-            draw_line_elevation(c, line, M, y - draw_h, draw_w, draw_h)
+            c.saveState()
+            clip = c.beginPath()
+            clip.rect(M, elev_y, draw_w, draw_h)
+            c.clipPath(clip, stroke=0, fill=0)
+            draw_line_elevation(c, line, M, elev_y, draw_w, draw_h)
+            c.restoreState()
         except Exception:
+            try:
+                c.restoreState()
+            except Exception:
+                pass
             _log.exception("marqt elevation draw failed for line %d; leaving cell blank", idx)
+
+        c.setFillColorRGB(*accent)
+        hy = y
+        for text, size in hdr_lines:
+            set_font(c, size, bold=True)
+            c.drawString(M + 2, hy, text)
+            hy -= size + 3.0
 
         # Specs — tabular LABEL: / value; never overflow into QTY/RATE/AMOUNT
         c.setFillColorRGB(0, 0, 0)
@@ -1179,7 +1220,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         c.drawRightString(col_amt, y, f"{float(amount):,.2f}")
 
         # row separator
-        row_bottom = min(sy - 2, y - draw_h - 10)
+        row_bottom = min(sy - 2, elev_y - 10)
         c.setStrokeColorRGB(0.85, 0.85, 0.85)
         c.setLineWidth(0.5)
         c.line(M, row_bottom, W - M, row_bottom)
