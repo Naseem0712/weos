@@ -13,7 +13,7 @@ from typing import Any, Mapping
 from xml.sax.saxutils import escape
 
 from WEOS.factory.fmt import mm_n, money_n
-from WEOS.factory.geometry import casement_hinge_svg, hinge_capsule_size_mm, hinge_gap_axis
+from WEOS.factory.geometry import casement_hinge_svg, hinge_capsule_size_mm, hinge_centers_span_mm, hinge_gap_axis
 
 MM_PER_FT = 304.8
 SQMM_PER_SQFT = 92903.04
@@ -25,6 +25,7 @@ DEFAULT_MULLION = "25×40 mm"
 DEFAULT_HANDLE = "D-type"
 DEFAULT_HINGE = "casement"
 DEFAULT_GLASS_LABEL = "5mm Frosted tuff"
+TOP_HUNG_OVERLAP_MM = 10.0
 
 
 def _f(value: Any, default: float = 0.0) -> float:
@@ -397,18 +398,33 @@ def _louvers(parts: list[str], x: float, y: float, w: float, h: float, stroke: s
         y_cur += blade + gap
 
 
-def _handle_bottom(parts: list[str], x: float, y_bot: float, w: float) -> None:
-    hw = max(min(w * 0.28, 18.0), 8.0)
-    hh = max(min(w * 0.08, 6.5), 3.6)
-    hx = x + (w - hw) / 2.0
-    hy = y_bot - hh - 1.2
+def _handle_bottom(parts: list[str], x: float, y_bot: float, w: float, stile_t: float) -> None:
+    """Casement-style lever on the bottom-rail / glass meeting (not a centre dot)."""
+    cx = x + w / 2.0
+    cy = y_bot
+    rx = max(min(stile_t * 0.55, 7.2), 3.4)
+    ry = max(min(stile_t * 0.90, 11.5), 5.2)
+    sw = 0.70
+    stroke = "#222"
     parts.append(
-        f'<rect x="{hx:.1f}" y="{hy:.1f}" width="{hw:.1f}" height="{hh:.1f}" rx="{hh * 0.4:.1f}" '
-        f'fill="none" stroke="#222" stroke-width="0.65" data-handle="1" data-handle-pos="bottom"/>'
+        f'<ellipse cx="{cx:.1f}" cy="{cy:.1f}" rx="{rx:.1f}" ry="{ry:.1f}" '
+        f'fill="#ffffff" fill-opacity="0.35" stroke="{stroke}" stroke-width="{sw:.2f}" '
+        f'data-handle="1" data-handle-pos="bottom" data-handle-kind="casement"/>'
     )
     parts.append(
-        f'<line x1="{hx + 2:.1f}" y1="{hy + hh / 2:.1f}" x2="{hx + hw - 2:.1f}" y2="{hy + hh / 2:.1f}" '
-        f'stroke="#222" stroke-width="0.65"/>'
+        f'<circle cx="{cx:.1f}" cy="{cy + ry * 0.32:.1f}" r="{max(rx * 0.28, 1.4):.1f}" '
+        f'fill="none" stroke="{stroke}" stroke-width="{sw * 0.8:.2f}"/>'
+    )
+    arm = max(min(w * 0.22, 28.0), 12.0)
+    bar_h = max(min(stile_t * 0.28, 4.8), 2.4)
+    ly = cy - ry * 0.35
+    parts.append(
+        f'<rect x="{cx:.1f}" y="{ly - bar_h / 2:.1f}" width="{arm:.1f}" height="{bar_h:.1f}" '
+        f'rx="{bar_h / 2:.1f}" fill="none" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
+    )
+    parts.append(
+        f'<circle cx="{cx:.1f}" cy="{ly:.1f}" r="{bar_h * 0.7:.1f}" '
+        f'fill="#ffffff" fill-opacity="0.35" stroke="{stroke}" stroke-width="{sw:.2f}"/>'
     )
 
 
@@ -428,22 +444,14 @@ def _top_hinges(
 ) -> None:
     """Top-hung hinges: horizontal capsule centred on the outer | sash head gap."""
     count = min(max(int(count), 2), 4)
-    inset = min(max(w * 0.12, 10.0), w * 0.22)
-    if count == 2:
-        xs = [x + inset, x + w - inset]
-    elif count == 3:
-        xs = [x + inset, x + w / 2.0, x + w - inset]
-    else:
-        span = w - 2 * inset
-        xs = [x + inset + span * i / (count - 1) for i in range(count)]
     sc = max(float(scale), 1e-6)
     span_mm = float(leaf_w_mm) if leaf_w_mm and leaf_w_mm > 0 else (w / sc)
     stile_mm = float(stile_t_mm) if stile_t_mm and stile_t_mm > 0 else (t / sc)
     hw_mm, hh_mm = hinge_capsule_size_mm(span_mm, stile_mm, orientation="horizontal")
     hw, hh = max(hw_mm * sc, 2.4), max(hh_mm * sc, 0.9)
-    # Default = sash top outer (stile gap), not mid-stile / frame-inner.
     cy = float(gap_y) if gap_y is not None else float(y)
-    for cx in xs:
+    for x_mm in hinge_centers_span_mm(span_mm, count):
+        cx = x + x_mm * sc
         parts.append(
             casement_hinge_svg(
                 cx,
@@ -570,76 +578,82 @@ def ventilator_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = Non
             f'font-size="9" font-family="sans-serif" fill="#555">FAN Ø{mm_n(fan_d_mm)}</text>'
         )
     else:
-        # Inner glass / louvers / sash first, then outer + mullion on top.
+        # Fix/louvers first, outer + 90° mullion, then top-hung sash on top so
+        # 10 mm overlap hides back members only in the overlap zone.
         lx, rx = x0 + frame_t, x0 + left_w + mull_t / 2.0
         inner_y = y0 + frame_t
         inner_h = elev_h - 2 * frame_t
         left_inner_w = max(left_w - frame_t - mull_t / 2.0, 8.0)
         right_inner_w = max(elev_w - left_w - frame_t - mull_t / 2.0, 8.0)
+        ov_px = TOP_HUNG_OVERLAP_MM * scale
+        hung: list[tuple[str, float, float, str]] = []
 
-        def _bay(role: str, bx: float, bw: float, side: str) -> None:
+        def _fix_bay(role: str, bx: float, bw: float, side: str) -> None:
+            if role == "top_hung":
+                hung.append((role, bx, bw, side))
+                return
+            parts.append(
+                f'<rect x="{bx:.1f}" y="{inner_y:.1f}" width="{bw:.1f}" height="{inner_h:.1f}" '
+                f'fill="{glass_fill}" stroke="none" data-glass="1" data-bay="{side}"/>'
+            )
             if role == "louvers":
-                parts.append(
-                    f'<rect x="{bx:.1f}" y="{inner_y:.1f}" width="{bw:.1f}" height="{inner_h:.1f}" '
-                    f'fill="{glass_fill}" stroke="none" data-glass="1" data-bay="{side}"/>'
-                )
                 _louvers(parts, bx + 1.5, inner_y + 1.5, bw - 3.0, inner_h - 3.0, stroke)
-            elif role == "top_hung":
-                ov = max(min(frame_t * 0.35, 4.0), 2.2)  # 10–20 mm overlap, scaled
-                sx = bx - ov
-                sy = inner_y - ov
-                swd = bw + ov * 2
-                sh = inner_h + ov
-                # keep sash inside outer inner edge slightly
-                sx = max(sx, x0 + 1.0)
-                sy = max(sy, y0 + 1.0)
-                if sx + swd > x0 + elev_w - 1.0:
-                    swd = x0 + elev_w - 1.0 - sx
-                if sy + sh > y0 + elev_h - 1.0:
-                    sh = y0 + elev_h - 1.0 - sy
-                parts.append(
-                    f'<rect x="{sx + sash_t:.1f}" y="{sy + sash_t:.1f}" '
-                    f'width="{max(swd - 2 * sash_t, 4):.1f}" height="{max(sh - 2 * sash_t, 4):.1f}" '
-                    f'fill="{glass_fill}" stroke="none" data-glass="1" data-bay="{side}"/>'
-                )
-                _sash_frame(parts, sx, sy, swd, sh, sash_t, stroke, sw)
-                if handle_on:
-                    _handle_bottom(parts, sx + sash_t, sy + sh - sash_t, max(swd - 2 * sash_t, 8))
-                _top_hinges(
-                    parts, sx, sy, swd, sash_t, hinge_n, stroke,
-                    gap_y=hinge_gap_axis(sy, inner_y, toward_frame=-1.0),
-                    leaf_w_mm=swd / max(scale, 1e-6),
-                    stile_t_mm=50.0 * 0.85,
-                    scale=scale,
-                )
-                # opening hint (down for top-hung)
-                mx = sx + swd / 2.0
-                parts.append(
-                    f'<line x1="{mx:.1f}" y1="{sy + sh * 0.42:.1f}" x2="{mx:.1f}" y2="{sy + sh * 0.78:.1f}" '
-                    f'stroke="#0b3d7a" stroke-width="0.8" data-arrow="1" data-arrow-dir="down"/>'
-                )
-            else:
-                parts.append(
-                    f'<rect x="{bx:.1f}" y="{inner_y:.1f}" width="{bw:.1f}" height="{inner_h:.1f}" '
-                    f'fill="{glass_fill}" stroke="none" data-glass="1" data-bay="{side}"/>'
-                )
 
-        _bay(left_role, lx, left_inner_w, "left")
-        _bay(right_role, rx, right_inner_w, "right")
+        def _top_hung_sash(bx: float, bw: float, side: str) -> tuple[float, float, float, float]:
+            sx = max(bx - ov_px, x0)
+            sy = max(inner_y - ov_px, y0)
+            swd = bw + ov_px * 2.0
+            sh = inner_h + ov_px * 2.0
+            if sx + swd > x0 + elev_w:
+                swd = x0 + elev_w - sx
+            if sy + sh > y0 + elev_h:
+                sh = y0 + elev_h - sy
+            parts.append(
+                f'<rect x="{sx + sash_t:.1f}" y="{sy + sash_t:.1f}" '
+                f'width="{max(swd - 2 * sash_t, 4):.1f}" height="{max(sh - 2 * sash_t, 4):.1f}" '
+                f'fill="{glass_fill}" stroke="none" data-glass="1" data-bay="{side}" '
+                f'data-sash-overlap-mm="{TOP_HUNG_OVERLAP_MM:g}"/>'
+            )
+            _sash_frame(parts, sx, sy, swd, sh, sash_t, stroke, sw)
+            if handle_on:
+                _handle_bottom(parts, sx + sash_t, sy + sh - sash_t, max(swd - 2 * sash_t, 8), sash_t)
+            # SVG y-down: sash top vs outer-frame inner head.
+            _top_hinges(
+                parts, sx, sy, swd, sash_t, hinge_n, stroke,
+                gap_y=hinge_gap_axis(sy, y0 + frame_t, toward_frame=-1.0),
+                leaf_w_mm=swd / max(scale, 1e-6),
+                stile_t_mm=50.0 * 0.85,
+                scale=scale,
+            )
+            mx = sx + swd / 2.0
+            parts.append(
+                f'<line x1="{mx:.1f}" y1="{sy + sh * 0.42:.1f}" x2="{mx:.1f}" y2="{sy + sh * 0.78:.1f}" '
+                f'stroke="#0b3d7a" stroke-width="0.8" data-arrow="1" data-arrow-dir="down"/>'
+            )
+            return sx, sy, swd, sh
 
+        _fix_bay(left_role, lx, left_inner_w, "left")
+        _fix_bay(right_role, rx, right_inner_w, "right")
+
+        fan_on_hung = False
+        fcx = fcy = fan_draw = 0.0
         if exhaust and exhaust_side != "":
             if exhaust_side == "left":
                 fcx = lx + left_inner_w / 2.0
+                fan_on_hung = left_role == "top_hung"
             elif exhaust_side == "right":
                 fcx = rx + right_inner_w / 2.0
+                fan_on_hung = right_role == "top_hung"
             else:
                 fcx = x0 + elev_w / 2.0
+                fan_on_hung = left_role == "top_hung" or right_role == "top_hung"
             fcy = inner_y + min(max(fan_d_px * 0.70, 18.0), inner_h * 0.38)
-            _fan_opening(parts, fcx, fcy, min(fan_d_px, min(left_inner_w, right_inner_w, inner_h) * 0.72), stroke)
+            fan_draw = min(fan_d_px, min(left_inner_w, right_inner_w, inner_h) * 0.72)
+            if not fan_on_hung:
+                _fan_opening(parts, fcx, fcy, fan_draw, stroke)
 
         _outer_frame(parts, x0, y0, elev_w, elev_h, frame_t, stroke, sw)
         _mullion_90(parts, x0 + left_w - mull_t / 2.0, y0 + frame_t, mull_t, elev_h - 2 * frame_t, stroke, sw)
-        # T ticks at mullion/head + sill (90°, not 45°)
         mx0 = x0 + left_w - mull_t / 2.0
         mx1 = mx0 + mull_t
         parts.append(
@@ -650,6 +664,11 @@ def ventilator_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = Non
             f'<line x1="{mx0:.1f}" y1="{y0 + elev_h - frame_t:.1f}" x2="{mx1:.1f}" y2="{y0 + elev_h - frame_t:.1f}" '
             f'stroke="{stroke}" stroke-width="{sw:.2f}" data-mullion-t="1"/>'
         )
+
+        for _role, bx, bw, side in hung:
+            _top_hung_sash(bx, bw, side)
+        if exhaust and fan_on_hung:
+            _fan_opening(parts, fcx, fcy, fan_draw, stroke)
 
         parts.append(
             f'<text x="{lx + left_inner_w / 2:.1f}" y="{y0 + elev_h / 2:.1f}" text-anchor="middle" '

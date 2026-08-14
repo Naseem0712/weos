@@ -366,8 +366,8 @@ def _draw_grid_svg(
     """Clean 2D partition-grid: framed cells, per-cell role + hardware, full dims."""
     grid = meta.get("grid") or {}
     cells = grid.get("cells") or []
-    role_color = {"fix": "#5a3a10", "sliding": "#0b3d7a", "openable": "#0b6a3d"}
-    role_text = {"fix": "FIX", "sliding": "SLIDING", "openable": "OPENABLE"}
+    role_color = {"fix": "#5a3a10", "sliding": "#0b3d7a", "openable": "#0b6a3d", "top_hung": "#0b6a3d"}
+    role_text = {"fix": "FIX", "sliding": "SLIDING", "openable": "OPENABLE", "top_hung": "TOP HUNG"}
 
     # Outer frame
     parts.append(
@@ -1229,8 +1229,11 @@ def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[
                     n = sum(1 for p in panels if str(p.get("id") or "").startswith("L")) + 1
                     role, label, pid = "leaf", "Fold (L)", f"L{n}"
             elif system == "casement":
+                hs_top = str(s.get("hingeSide") or "").lower() == "top" or hs == "bottom" or str(s.get("pack") or "") == "top_hung"
                 if fixed:
                     role, label, pid = "fix", "Fix", f"S{s_idx}"
+                elif hs_top:
+                    role, label, pid = "openable", "Top hung · handle bottom", f"S{s_idx}"
                 else:
                     side_lbl = "L" if hs == "left" else ("R" if hs == "right" else "—")
                     role, label, pid = "openable", f"Openable · handle {side_lbl}", f"S{s_idx}"

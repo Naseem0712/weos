@@ -351,7 +351,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
           </div>
           <div id="casementPanelBox" style="display:none;margin-top:.45rem;padding:.5rem .6rem;border:1px dashed var(--line);border-radius:10px;background:rgba(0,0,0,.02)">
             <strong style="font-size:.82rem">Partitions / panels</strong>
-            <p class="muted" style="font-size:.72rem;margin:.15rem 0 .35rem">Click a panel on the drawing (or edit below): Fix vs Openable · handle L/R</p>
+            <p class="muted" style="font-size:.72rem;margin:.15rem 0 .35rem">Click a panel on the drawing (or edit below): Fix · Openable (side hung) · Top hung · handle L/R</p>
             <div id="casementPanelList"></div>
             <div class="row" style="gap:.5rem;margin-top:.4rem;flex-wrap:wrap;align-items:flex-end">
               <div><label class="l">Sash overlap mm</label>
@@ -2615,6 +2615,20 @@ async function loadCartColourOptions(preferId) {
   else if (cleaned.length) sel.value = cleaned[0].id;
 }
 
+function casementPanelRole(r) {
+  const t = String(r || '').toLowerCase().replace(/[-\s]/g, '_');
+  if (t === 'fix' || t === 'fixed') return 'fix';
+  if (t === 'top_hung' || t === 'tophung' || t === 'top') return 'top_hung';
+  return 'openable';
+}
+
+function casementHandleSide(p) {
+  const role = casementPanelRole(p && p.role);
+  if (role === 'fix') return 'none';
+  if (role === 'top_hung') return 'bottom';
+  return (p && p.handleSide) === 'left' ? 'left' : 'right';
+}
+
 function ensureCasementPanels() {
   const n = Math.max(parseInt(($('lineGlassShutters') && $('lineGlassShutters').value) || '2', 10) || 2, 1);
   let panels = Array.isArray(state.draftCasementPanels) ? state.draftCasementPanels.slice() : [];
@@ -2625,7 +2639,7 @@ function ensureCasementPanels() {
   }
   panels = panels.slice(0, n).map((p, i) => ({
     index: i,
-    role: (p && p.role) === 'fix' ? 'fix' : 'openable',
+    role: casementPanelRole(p && p.role),
     handleSide: (p && p.handleSide) === 'left' ? 'left' : 'right',
   }));
   state.draftCasementPanels = panels;
@@ -2635,7 +2649,7 @@ function ensureCasementPanels() {
   panels.forEach((p, i) => {
     state.draftHandleOverrides[i] = Object.assign({}, state.draftHandleOverrides[i] || {}, {
       role: p.role,
-      side: p.role === 'fix' ? 'none' : p.handleSide,
+      side: casementHandleSide(p),
     });
   });
   renderCasementPanelList();
@@ -2654,14 +2668,16 @@ function renderCasementPanelList() {
     const active = sel === i ? ' style="outline:2px solid var(--accent,#b33)"' : '';
     return `<div class="row" data-cp="${i}"${active} style="gap:.4rem;align-items:center;margin:.2rem 0;flex-wrap:wrap">
       <button type="button" class="btn ghost sm" data-cp-pick="${i}">P${i + 1}</button>
-      <select data-cp-role="${i}" style="width:110px">
+      <select data-cp-role="${i}" style="width:150px">
         <option value="fix"${p.role === 'fix' ? ' selected' : ''}>Fix</option>
-        <option value="openable"${p.role !== 'fix' ? ' selected' : ''}>Openable</option>
+        <option value="openable"${p.role === 'openable' ? ' selected' : ''}>Openable (side hung)</option>
+        <option value="top_hung"${p.role === 'top_hung' ? ' selected' : ''}>Top hung</option>
       </select>
-      <select data-cp-side="${i}" style="width:90px"${p.role === 'fix' ? ' disabled' : ''}>
+      <select data-cp-side="${i}" style="width:90px"${p.role === 'openable' ? '' : ' disabled'}>
         <option value="left"${p.handleSide === 'left' ? ' selected' : ''}>Handle L</option>
         <option value="right"${p.handleSide !== 'left' ? ' selected' : ''}>Handle R</option>
       </select>
+      ${p.role === 'top_hung' ? '<span class="muted" style="font-size:.68rem">Hinges top · handle bottom</span>' : ''}
     </div>`;
   }).join('');
   host.querySelectorAll('[data-cp-pick]').forEach(btn => {
@@ -2776,6 +2792,7 @@ function renderGridCells() {
         + '<option value="fix"' + (role === 'fix' ? ' selected' : '') + '>Fix</option>'
         + '<option value="sliding"' + (role === 'sliding' ? ' selected' : '') + '>Sliding</option>'
         + '<option value="openable"' + (role === 'openable' ? ' selected' : '') + '>Openable</option>'
+        + '<option value="top_hung"' + (role === 'top_hung' ? ' selected' : '') + '>Top hung</option>'
         + '</select>'
         + '<input data-gr="' + r + '" data-gc="' + c + '" class="gridGlass" type="number" min="1" placeholder="panes" value="' + (ex.glass || '') + '" title="sliding panes" style="width:100%;font-size:.65rem;margin-top:2px"/>'
         + '</div>';
@@ -3128,7 +3145,7 @@ function syncDraftFromLine(ln) {
   if (Array.isArray(ln.casementPanels) && ln.casementPanels.length) {
     state.draftCasementPanels = ln.casementPanels.map((p, i) => ({
       index: i,
-      role: (p && p.role) === 'fix' ? 'fix' : 'openable',
+      role: casementPanelRole(p && p.role),
       handleSide: (p && (p.handleSide || p.side) === 'left') ? 'left' : 'right',
     }));
   } else if (ln.system === 'casement' && ln.handleOverrides && typeof ln.handleOverrides === 'object') {
@@ -3139,7 +3156,7 @@ function syncDraftFromLine(ln) {
       const o = ov[i] || ov[String(i)] || {};
       state.draftCasementPanels.push({
         index: i,
-        role: o.role === 'fix' ? 'fix' : 'openable',
+        role: casementPanelRole(o.role),
         handleSide: (o.side === 'left' || o.handleSide === 'left') ? 'left' : 'right',
       });
     }
@@ -3265,7 +3282,7 @@ function currentLineDraft() {
       (state.draftCasementPanels || []).forEach((p, i) => {
         ov[i] = Object.assign({}, ov[i] || {}, {
           role: p.role || 'openable',
-          side: (p.role === 'fix') ? 'none' : (p.handleSide || 'right'),
+          side: casementHandleSide(p),
         });
       });
       return ov;
@@ -3897,7 +3914,7 @@ async function refreshPreview() {
     } else if (prev.system === 'casement' || ln.system === 'casement') {
       extra.push(['System', 'Casement / Openable']);
       if (state.draftCasementPanels && state.draftCasementPanels.length) {
-        extra.push(['Partitions', state.draftCasementPanels.map((p,i) => `P${i+1} ${p.role}${p.role==='fix'?'':' · H '+(p.handleSide==='left'?'L':'R')}`).join('; ')]);
+        extra.push(['Partitions', state.draftCasementPanels.map((p,i) => `P${i+1} ${p.role}${p.role==='fix'?'':(p.role==='top_hung'?' · top hung':(' · H '+(p.handleSide==='left'?'L':'R')))}`).join('; ')]);
       }
     } else if (prev.system === 'shower') {
       extra.push(['System', `Shower · ${(prev.shower && prev.shower.shape) || ''}`]);

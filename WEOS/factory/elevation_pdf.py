@@ -77,8 +77,8 @@ def _draw_grid_pdf(c, *, px, py, scale, meta, W, H, finish, stroke, dim, glass_s
     grid = meta.get("grid") or {}
     cells = grid.get("cells") or []
     fc = _handle_finish_rgb(finish)
-    role_rgb = {"fix": (0.35, 0.22, 0.05), "sliding": (0.05, 0.24, 0.48), "openable": (0.04, 0.42, 0.24)}
-    role_text = {"fix": "FIX", "sliding": "SLIDING", "openable": "OPENABLE"}
+    role_rgb = {"fix": (0.35, 0.22, 0.05), "sliding": (0.05, 0.24, 0.48), "openable": (0.04, 0.42, 0.24), "top_hung": (0.04, 0.42, 0.24)}
+    role_text = {"fix": "FIX", "sliding": "SLIDING", "openable": "OPENABLE", "top_hung": "TOP HUNG"}
 
     def rect_ol(x0, y0, x1, y1, lw, rgb=stroke, dash=None):
         c.setStrokeColorRGB(*rgb)

@@ -23,6 +23,7 @@ from WEOS.factory.geometry import (
     frame_miter_segments,
     hinge_capsule_size_mm,
     hinge_centers_mm,
+    hinge_centers_span_mm,
     hinge_gap_axis,
     horizontal_segment,
     rect_polyline,
@@ -40,6 +41,9 @@ BIFOLD_MAX_WIDTH_MM = 25.0 * MM_PER_FOOT   # 7620 mm
 BIFOLD_MAX_HEIGHT_MM = 12.0 * MM_PER_FOOT  # 3657.6 mm
 DEFAULT_SASH_OVERLAP_MM = 15.0
 DEFAULT_MULLION_GAP_MM = 15.0
+DEFAULT_TOP_HUNG_OVERLAP_MM = 10.0
+_TOP_HUNG_ROLES = frozenset({"top_hung", "tophung", "top-hung", "top hung", "top"})
+_FIX_ROLES = frozenset({"fix", "fixed"})
 
 
 def _clamp_mm(value: Any, lo: float, hi: float, default: float) -> float:
@@ -50,6 +54,15 @@ def _clamp_mm(value: Any, lo: float, hi: float, default: float) -> float:
     if v <= 0:
         v = default
     return min(max(v, lo), hi)
+
+
+def _casement_cell_role(raw: Any, *, is_fixed: bool = False) -> str:
+    t = str(raw or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if is_fixed or t in _FIX_ROLES:
+        return "fix"
+    if t in _TOP_HUNG_ROLES:
+        return "top_hung"
+    return "openable"
 
 
 def _hinge_knuckle_rects(
@@ -66,6 +79,32 @@ def _hinge_knuckle_rects(
         ky = y0 + y_mm
         out.append(Rect(hx - kw / 2.0, ky - kh / 2.0, hx + kw / 2.0, ky + kh / 2.0))
     return out
+
+
+def _top_hinge_knuckle_rects(
+    hy: float,
+    x0: float,
+    leaf_w: float,
+    stile_t: float,
+    count: int = 2,
+) -> list[Rect]:
+    """Horizontal stadium hinges centred on ``hy`` (head gap via ``hinge_gap_axis``)."""
+    kw, kh = hinge_capsule_size_mm(leaf_w, stile_t, orientation="horizontal")
+    out: list[Rect] = []
+    for x_mm in hinge_centers_span_mm(leaf_w, count):
+        cx = x0 + x_mm
+        out.append(Rect(cx - kw / 2.0, hy - kh / 2.0, cx + kw / 2.0, hy + kh / 2.0))
+    return out
+
+
+def _bottom_rail_handle(outer: Rect, glass: Rect, stile_t: float) -> Rect:
+    """Casement-style handle sitting on the bottom-rail / glass meeting line."""
+    fw = max(float(stile_t), 8.0)
+    hw = max(fw * 0.55, 14.0)
+    hh = max(min(fw * 1.35, 70.0), 28.0)
+    xc = (outer.x0 + outer.x1) / 2.0
+    yc = glass.y0
+    return Rect(xc - hw / 2.0, yc - hh / 2.0, xc + hw / 2.0, yc + hh / 2.0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,11 +422,7 @@ def _build_casement_leaves(
     roles: list[str] = []
     for i in range(G):
         ov_cfg = overrides.get(i) or {}
-        role = str(ov_cfg.get("role") or "").strip().lower()
-        if i in fixed_set or role in ("fix", "fixed"):
-            roles.append("fix")
-        else:
-            roles.append("openable")
+        roles.append(_casement_cell_role(ov_cfg.get("role"), is_fixed=i in fixed_set))
 
     mullions: list[Rect] = []
     cell_bounds: list[tuple[float, float]] = []
@@ -405,7 +440,7 @@ def _build_casement_leaves(
     hlen = min(hlen, max(band_h * 0.9, 40.0))
     hw = max(fw * 0.5, 12.0)
     hlevel = min(max(float(handle_level), 0.04), 0.96)
-    n_open = sum(1 for r in roles if r != "fix")
+    n_open = sum(1 for r in roles if r == "openable")
     center_l = max(n_open - 1, 0) // 2
 
     panels: list[ShutterPanel] = []
@@ -414,7 +449,8 @@ def _build_casement_leaves(
     open_seen = 0
 
     for i, (cx0, cx1) in enumerate(cell_bounds):
-        is_fixed = roles[i] == "fix"
+        cell_role = roles[i]
+        is_fixed = cell_role == "fix"
         ov_cfg = overrides.get(i) or {}
         if is_fixed:
             outer = Rect(cx0, y0, cx1, y1)
@@ -423,6 +459,23 @@ def _build_casement_leaves(
             handle_side = None
             handle_rect = None
             hinge_side = None
+            open_dir = 0
+        elif cell_role == "top_hung":
+            ov_th = DEFAULT_TOP_HUNG_OVERLAP_MM
+            xa = max(cx0 - ov_th, 0.4)
+            xb = min(cx1 + ov_th, outer_w - 0.4)
+            ya = max(y0 - ov_th, 0.4)
+            yb = min(y1 + ov_th, outer_h - 0.4)
+            outer = Rect(xa, ya, xb, yb)
+            glass = outer.inset(fw, fw, fw, fw)
+            depth = (G - i)
+            handle_side = "bottom"
+            handle_rect = _bottom_rail_handle(outer, glass, fw)
+            handles.append(handle_rect)
+            hinge_side = "top"
+            # Model y-up: sash head vs opening inner — half capsule on frame, half on sash.
+            hy = hinge_gap_axis(outer.y1, y1, toward_frame=1.0)
+            hinges.extend(_top_hinge_knuckle_rects(hy, outer.x0, outer.width, fw, 2))
             open_dir = 0
         else:
             xa = max(cx0 - ov, 0.4)
@@ -435,7 +488,7 @@ def _build_casement_leaves(
             depth = (G - i)
             default_side = "right" if open_seen <= center_l else "left"
             raw_side = ov_cfg.get("side") if "side" in ov_cfg else default_side
-            handle_side = None if raw_side in (None, "none") else ("left" if str(raw_side).lower() == "left" else "right")
+            handle_side = None if raw_side in (None, "none", "bottom") else ("left" if str(raw_side).lower() == "left" else "right")
             y_frac = hlevel
             try:
                 y_frac = float(ov_cfg["y"]) if "y" in ov_cfg else hlevel
@@ -489,6 +542,7 @@ def _build_casement_leaves(
                 nom_x0=cx0,
                 nom_x1=cx1,
                 hinge_side=hinge_side,
+                pack="top_hung" if cell_role == "top_hung" else "",
             )
         )
 
@@ -1179,16 +1233,18 @@ def _compute_grid_layout(
     cells_render: list[dict[str, Any]] = []
     shutters: list[ShutterPanel] = []
     hinges: list[Rect] = []
-    counters = {"fix": 0, "sliding": 0, "openable": 0}
-    prefix = {"fix": "F", "sliding": "S", "openable": "O"}
+    counters = {"fix": 0, "sliding": 0, "openable": 0, "top_hung": 0}
+    prefix = {"fix": "F", "sliding": "S", "openable": "O", "top_hung": "T"}
     sidx = 0
 
     for r in range(nr):
         for c in range(nc):
-            role = role_by.get((r, c), "fix")
+            role = str(role_by.get((r, c), "fix") or "fix").strip().lower().replace("-", "_").replace(" ", "_")
             if role in ("open", "opening", "casement"):
                 role = "openable"
-            if role not in ("fix", "sliding", "openable"):
+            elif role in _TOP_HUNG_ROLES:
+                role = "top_hung"
+            if role not in ("fix", "sliding", "openable", "top_hung"):
                 role = "fix"
             x0, x1 = colX[c], colX[c + 1]
             y1, y0 = rowTop[r], rowTop[r + 1]
@@ -1240,6 +1296,31 @@ def _compute_grid_layout(
                 if int(extra.get("mesh") or 0) > 0:
                     mw = (x1 - x0) / g  # one sliding-panel width
                     cell["mesh"] = {"x0": round(x0, 1), "y0": round(y0, 1), "x1": round(x0 + mw, 1), "y1": round(y1, 1)}
+            elif role == "top_hung":
+                ov_th = DEFAULT_TOP_HUNG_OVERLAP_MM
+                xa = max(x0 - ov_th, 0.4)
+                xb = min(x1 + ov_th, W - 0.4)
+                ya = max(y0 - ov_th, 0.4)
+                yb = min(y1 + ov_th, H - 0.4)
+                sash = Rect(xa, ya, xb, yb)
+                sg = sash.inset(fw, fw, fw, fw)
+                cell["glass"].append({"x0": round(sg.x0, 1), "y0": round(sg.y0, 1), "x1": round(sg.x1, 1), "y1": round(sg.y1, 1)})
+                handle_rect = _bottom_rail_handle(sash, sg, fw)
+                shutters.append(ShutterPanel(
+                    index=sidx, role="glass", operable=True, outer=sash, glass=sg, depth=1,
+                    track_label="sash", open_dir=0, handle_side="bottom", handle=handle_rect,
+                    hinge_side="top", nom_x0=x0, nom_x1=x1, pack="top_hung",
+                ))
+                sidx += 1
+                cell["handles"] = [{
+                    "x0": round(handle_rect.x0, 1), "y0": round(handle_rect.y0, 1),
+                    "x1": round(handle_rect.x1, 1), "y1": round(handle_rect.y1, 1),
+                    "side": "bottom",
+                }]
+                hy = hinge_gap_axis(sash.y1, y1, toward_frame=1.0)
+                for hr in _top_hinge_knuckle_rects(hy, sash.x0, sash.width, fw, 2):
+                    hinges.append(hr)
+                    cell["hinges"].append({"x0": round(hr.x0, 1), "y0": round(hr.y0, 1), "x1": round(hr.x1, 1), "y1": round(hr.y1, 1)})
             else:  # openable
                 hinge = str(extra.get("hinge") or "left").strip().lower()
                 if hinge not in ("left", "right"):

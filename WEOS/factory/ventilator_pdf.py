@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from WEOS.factory.geometry import HINGE_FILL_RGB, hinge_capsule_geom, hinge_capsule_size_mm
-from WEOS.factory.ventilator_engine import compute_ventilator, ensure_ventilator_dims
+from WEOS.factory.geometry import HINGE_FILL_RGB, hinge_capsule_geom, hinge_capsule_size_mm, hinge_centers_span_mm, hinge_gap_axis
+from WEOS.factory.ventilator_engine import TOP_HUNG_OVERLAP_MM, compute_ventilator, ensure_ventilator_dims
 
 
 def _f(value: Any, default: float = 0.0) -> float:
@@ -158,23 +158,34 @@ def draw_ventilator_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
             _louvers(bx, by, bw, bh)
             return
         if role == "top_hung":
-            ov = min(max(frame_t * 0.20, 8.0), 16.0)
-            sx, sy = bx - ov * 0.35, by
-            swd, sh = bw + ov * 0.70, bh + ov * 0.35
+            ov = TOP_HUNG_OVERLAP_MM
+            sx = max(bx - ov, 0.0)
+            sy = max(by - ov, 0.0)
+            swd = bw + ov * 2.0
+            sh = bh + ov * 2.0
+            if sx + swd > width:
+                swd = width - sx
+            if sy + sh > height:
+                sh = height - sy
             _glass(sx + sash_t, sy + sash_t, max(swd - 2 * sash_t, 4), max(sh - 2 * sash_t, 4))
             _frame_ring(sx, sy, swd, sh, sash_t)
             if handle_on:
                 hx = sx + swd / 2.0
-                hy = sy + sash_t * 0.55
+                hy = sy + sash_t  # inner of bottom rail (y-up)
+                rx = max(sash_t * 0.45, 8.0)
+                ry = max(sash_t * 0.70, 12.0)
                 c.setStrokeColorRGB(*stroke)
                 c.setLineWidth(0.50)
-                c.circle(px(hx), py(hy), max(5.0 * scale, 2.2), fill=0, stroke=1)
-            leaf_w = max(swd - 2 * sash_t, 40.0)
-            xs = [sx + sash_t + leaf_w * (i + 1) / (hinge_n + 1) for i in range(hinge_n)]
-            cy = sy + sh - sash_t * 0.50
-            for cx in xs:
-                _hinge_h(cx, cy, leaf_w, sash_t)
-            # opening hint
+                c.ellipse(px(hx - rx), py(hy - ry), px(hx + rx), py(hy + ry), fill=0, stroke=1)
+                c.circle(px(hx), py(hy + ry * 0.22), max(rx * 0.22, 2.0) * scale, fill=0, stroke=1)
+                arm = max(min(swd * 0.18, 55.0), 22.0)
+                bar = max(sash_t * 0.22, 4.0) * scale
+                ly = hy + ry * 0.28
+                c.roundRect(px(hx), py(ly) - bar / 2.0, arm * scale, bar, bar / 2.0, fill=0, stroke=1)
+            head_inner = height - frame_t
+            cy = hinge_gap_axis(sy + sh, head_inner, toward_frame=1.0)
+            for x_off in hinge_centers_span_mm(swd, hinge_n):
+                _hinge_h(sx + x_off, cy, swd, sash_t)
             c.setStrokeColorRGB(0.04, 0.24, 0.48)
             c.setLineWidth(0.70)
             mx = sx + swd / 2.0
@@ -193,24 +204,41 @@ def draw_ventilator_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
         right_inner = max(width - left_w - frame_t - mull_t / 2.0, 8.0)
         lx = frame_t
         rx = left_w + mull_t / 2.0
-        _bay(left_role, lx, inner_y, left_inner, inner_h)
-        _bay(right_role, rx, inner_y, right_inner, inner_h)
+        hung_args: list[tuple[str, float, float, float, float]] = []
+
+        def _bay_or_defer(role: str, bx: float, by: float, bw: float, bh: float) -> None:
+            if (role or "").lower() == "top_hung":
+                hung_args.append((role, bx, by, bw, bh))
+                return
+            _bay(role, bx, by, bw, bh)
+
+        _bay_or_defer(left_role, lx, inner_y, left_inner, inner_h)
+        _bay_or_defer(right_role, rx, inner_y, right_inner, inner_h)
+        fcx = fcy = fan_d_draw = 0.0
+        fan_on_hung = False
         if exhaust:
             if exhaust_side == "left":
                 fcx = lx + left_inner / 2.0
+                fan_on_hung = left_role == "top_hung"
             elif exhaust_side == "right":
                 fcx = rx + right_inner / 2.0
+                fan_on_hung = right_role == "top_hung"
             else:
                 fcx = width / 2.0
             fcy = inner_y + min(max(fan_d * 0.45, 40.0), inner_h * 0.42)
-            _fan(fcx, fcy, min(fan_d, min(left_inner, right_inner, inner_h) * 0.70))
+            fan_d_draw = min(fan_d, min(left_inner, right_inner, inner_h) * 0.70)
+            if not fan_on_hung:
+                _fan(fcx, fcy, fan_d_draw)
         _frame_ring(0.0, 0.0, width, height, frame_t)
-        # Mullion 90°
         mx0 = left_w - mull_t / 2.0
         c.setFillColorRGB(0.96, 0.96, 0.97)
         c.setStrokeColorRGB(*stroke)
         c.setLineWidth(lw)
         c.rect(px(mx0), py(frame_t), mull_t * scale, (height - 2 * frame_t) * scale, fill=1, stroke=1)
+        for args in hung_args:
+            _bay(*args)
+        if exhaust and fan_on_hung:
+            _fan(fcx, fcy, fan_d_draw)
         c.setFillColorRGB(0.04, 0.24, 0.48)
         c.setFont("Helvetica-Bold", 6.5)
         c.drawCentredString(px(lx + left_inner / 2.0), py(height / 2.0), left_role.replace("_", " ").upper())

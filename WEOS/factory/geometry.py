@@ -131,6 +131,19 @@ def hinge_centers_mm(leaf_h_mm: float, count: int = 3) -> list[float]:
     return [top, top_b, *mids, bot]
 
 
+def hinge_centers_span_mm(leaf_w_mm: float, count: int = 2) -> list[float]:
+    """Top-hung hinge cx from the left of the leaf (mm): 12–22% inset, even extras."""
+    count = min(max(int(count), 2), 4)
+    w = max(float(leaf_w_mm), 80.0)
+    inset = min(max(w * 0.12, 18.0), w * 0.22)
+    if count == 2:
+        return [inset, w - inset]
+    if count == 3:
+        return [inset, w / 2.0, w - inset]
+    span = w - 2.0 * inset
+    return [inset + span * i / (count - 1) for i in range(count)]
+
+
 # Sleek 2D hinge — stadium capsule + horizontal barrel split (not slash / X / pin).
 HINGE_FILL = "#f3f2ee"
 HINGE_FILL_RGB = (0.953, 0.949, 0.933)
