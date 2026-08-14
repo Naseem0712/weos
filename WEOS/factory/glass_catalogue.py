@@ -141,6 +141,14 @@ def build_glass_spec(
         layers_mm = [thickness_mm]
 
     tuff = "Toughened" if toughened else "Non-toughened"
+    if kind in ("laminated", "lami") and g1 and pvb and g2:
+        display_label = f"{g1:g}+{pvb:g}+{g2:g} mm Laminated"
+    elif kind in ("dgu", "double", "insulated") and g1 and gap and g2:
+        display_label = f"{g1:g}+{gap:g}A+{g2:g} mm DGU"
+    else:
+        display_label = f"{float(thickness_mm or 0):g} mm"
+        if toughened:
+            display_label += " Toughened"
     display = name or (
         f"{makeup_label} {colour.title()} {tuff}"
         + (f" · {brand}" if brand else "")
@@ -166,6 +174,7 @@ def build_glass_spec(
         "rateUnit": rate_unit,
         "densityKgPerM3": float(density),
         "makeupLabel": makeup_label,
+        "display_label": display_label,
         "specLine": _spec_line(display, makeup_label, colour, tuff, brand, rate, rate_unit),
         "status": status,
         "updatedAt": _now(),

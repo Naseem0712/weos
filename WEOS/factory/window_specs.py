@@ -17,27 +17,28 @@ _SG_DG_TOKEN = re.compile(r"(?i)(?:^|[\s,;/]+)(?:sg|dg|gd|dgu)\b")
 
 
 def _laminated_config_label(thickness_mm: Any, glass_type: str = "") -> str | None:
-    """Customer-facing laminated makeup e.g. ``5+1.52+6mm``."""
+    """Customer-facing laminated makeup e.g. ``6+1.52+5 mm Laminated``.
+
+    Never nearest-match 8/10/12/15mm singles into a laminated construction.
+    """
+    gt = str(glass_type or "").lower()
+    if "lam" not in gt and "pvb" not in gt:
+        return None
     try:
         thk = float(thickness_mm or 0)
     except (TypeError, ValueError):
         thk = 0.0
-    gt = str(glass_type or "").lower()
-    if thk <= 0 and "lam" not in gt:
-        return None
     try:
         from WEOS.factory.glass_catalogue import LAMINATED_MAKEUPS_MM, default_layers_for
 
-        layers = default_layers_for("laminated", thk) if thk else {}
+        layers = default_layers_for("laminated", thk) if thk in LAMINATED_MAKEUPS_MM else {}
         if not layers and thk:
-            nearest = min(LAMINATED_MAKEUPS_MM.keys(), key=lambda k: abs(k - thk), default=None)
-            if nearest is not None and abs(nearest - thk) < 0.6:
-                layers = dict(LAMINATED_MAKEUPS_MM[nearest])
-        if not layers and "lam" in gt:
-            layers = default_layers_for("laminated", 13.52) or {}
+            # Exact table keys only (11.52, 12.52, …) — do not snap 12mm tuff to 12.52.
+            if thk in LAMINATED_MAKEUPS_MM:
+                layers = dict(LAMINATED_MAKEUPS_MM[thk])
         g1, pvb, g2 = layers.get("glass1Mm"), layers.get("pvbMm"), layers.get("glass2Mm")
         if g1 and pvb and g2:
-            return f"{g1:g}+{pvb:g}+{g2:g}mm"
+            return f"{g1:g}+{pvb:g}+{g2:g} mm Laminated"
     except Exception:
         pass
     return None
@@ -136,6 +137,18 @@ def _area_sqft(w: float, h: float) -> float:
 
 
 def _lookup_glass_spec(line: Mapping[str, Any]) -> dict[str, Any]:
+    from WEOS.factory.quote_item_snapshot import get_glass_snapshot
+
+    snap = get_glass_snapshot(line)
+    if snap:
+        out = dict(snap)
+        if snap.get("display_label"):
+            out["display_label"] = snap["display_label"]
+        if snap.get("glass_id") and not out.get("id"):
+            out["id"] = snap["glass_id"]
+        if snap.get("glass_construction") and not out.get("makeup"):
+            out["makeup"] = snap["glass_construction"]
+        return out
     opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
     gspec = dict(line.get("glassSpec") or {}) if isinstance(line.get("glassSpec"), Mapping) else {}
     glass = line.get("glass")
@@ -179,7 +192,16 @@ def _lookup_glass_spec(line: Mapping[str, Any]) -> dict[str, Any]:
 
 def human_glass_label(line: Mapping[str, Any]) -> str:
     """Thickness (+ laminated/DGU makeup) · colour · brand. Never internal ids."""
+    from WEOS.factory.quote_item_snapshot import get_glass_snapshot, glass_display_label
+
+    snap = get_glass_snapshot(line)
+    if snap:
+        label = glass_display_label(snap)
+        if label:
+            return label
     spec = _lookup_glass_spec(line)
+    if spec.get("display_label"):
+        return str(spec["display_label"])
     thick = spec.get("thicknessMm") or spec.get("thickness_mm") or spec.get("overallMm")
     makeup = str(spec.get("makeup") or spec.get("kind") or "").lower()
     makeup_lbl = str(spec.get("makeupLabel") or "")
@@ -203,12 +225,15 @@ def human_glass_label(line: Mapping[str, Any]) -> str:
             dgu_lbl = makeup_lbl
 
     bits: list[str] = []
-    if thick not in (None, ""):
-        bits.append(f"{thick:g} mm" if isinstance(thick, (int, float)) else f"{thick} mm")
     if lam:
         bits.append(str(lam))
-    elif dgu_lbl and str(dgu_lbl).lower() not in " ".join(bits).lower():
-        bits.append(str(dgu_lbl))
+    elif dgu_lbl:
+        dtxt = str(dgu_lbl)
+        if "dgu" not in dtxt.lower():
+            dtxt = f"{dtxt} mm DGU" if not dtxt.lower().endswith("dgu") else dtxt
+        bits.append(dtxt)
+    elif thick not in (None, ""):
+        bits.append(f"{thick:g} mm" if isinstance(thick, (int, float)) else f"{thick} mm")
     if gcolour and str(gcolour).lower() not in " ".join(str(b).lower() for b in bits):
         bits.append(str(gcolour).replace("_", " "))
     if gbrand and str(gbrand).lower() not in " ".join(str(b).lower() for b in bits):
@@ -312,7 +337,11 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
             v = clean_profile_print_name(v)
         rows.append((str(label or "").strip().upper(), v))
 
-    title = str(line.get("description") or line.get("displayName") or line.get("product") or "Window")
+    snap_title = ""
+    ident = line.get("itemSnapshot") or line.get("item_snapshot")
+    if isinstance(ident, Mapping):
+        snap_title = str(ident.get("product_name_snapshot") or "").strip()
+    title = str(line.get("displayName") or snap_title or line.get("description") or line.get("product") or "Window")
     if mat == "upvc":
         title = re.sub(r"(?i)\balumin(?:ium|um)\b", "UPVC", title)
         title = re.sub(r"(?i)\balloy\b", "UPVC", title)

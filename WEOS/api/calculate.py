@@ -197,71 +197,22 @@ def build_api_response(
 
 
 def _resolve_glass_spec(product_id: str, glass_id: str | None) -> dict[str, Any] | None:
-    """Resolve a printable glass spec (makeup/colour/brand/toughened) from the
-    product's glass options catalogue, so the full glass makeup prints in quotes.
-    Falls back to parsing the glass id (e.g. ``8mm_toughened``)."""
+    """Resolve a printable glass spec from the selected id — exact match only.
+
+    Never collapse laminated/DGU to a round 8/10/12/15mm single pane.
+    """
     if not glass_id:
         return None
-    try:
-        from WEOS.factory.glass_catalogue import build_glass_spec
-        from WEOS.factory.product_loader import load_product
+    from WEOS.factory.quote_item_snapshot import build_glass_snapshot
 
-        p = load_product(product_id, strict=False)
-    except Exception:
-        p = {}
-    options = ((p.get("glass") or {}).get("options")) or []
-    gnorm = str(glass_id).lower().replace(" ", "_")
-    match = next(
-        (o for o in options if str(o.get("id")) == gnorm or str(o.get("label", "")).lower().replace(" ", "_") == gnorm),
-        None,
-    ) or {}
-
-    # Parse thickness + toughened hint from the id when the option lacks fields.
-    import re as _re
-
-    thk_match = _re.search(r"([\d.]+)\s*mm", gnorm) or _re.search(r"(\d+)", gnorm)
-    thickness = match.get("thicknessMm")
-    if thickness is None and thk_match:
-        try:
-            thickness = float(thk_match.group(1))
-        except ValueError:
-            thickness = None
-    toughened = match.get("toughened")
-    if toughened is None:
-        toughened = ("tough" in gnorm) or ("tuff" in gnorm) or ("tempered" in gnorm)
-    colour = match.get("colour") or ("clear" if "clear" in gnorm else "clear")
-    makeup = match.get("makeup") or ("laminated" if "lam" in gnorm else ("dgu" if "dgu" in gnorm else "single"))
-
-    try:
-        from WEOS.factory.glass_catalogue import build_glass_spec as _build
-
-        spec = _build(
-            makeup=makeup,
-            thickness_mm=thickness,
-            overall_mm=match.get("overallMm"),
-            glass1_mm=match.get("glass1Mm"),
-            glass2_mm=match.get("glass2Mm"),
-            air_gap_mm=match.get("airGapMm"),
-            pvb_mm=match.get("pvbMm"),
-            colour=str(colour),
-            brand=str(match.get("brand") or ""),
-            toughened=bool(toughened),
-            rate=match.get("rate"),
-            rate_unit=str(match.get("rateUnit") or "sqft"),
-            name=match.get("label"),
-        )
-        spec["selectedOptionId"] = gnorm
-        return spec
-    except Exception:
-        return {
-            "id": gnorm,
-            "makeup": makeup,
-            "thicknessMm": thickness,
-            "colour": colour,
-            "toughened": bool(toughened),
-            "toughenedLabel": "Toughened" if toughened else "Non-toughened",
-            "specLine": f"{thickness or '?'}mm {str(colour).title()} {'Toughened' if toughened else 'Non-toughened'}",
-        }
+    snap = build_glass_snapshot({"glass": glass_id, "product": product_id})
+    if snap and snap.get("display_label"):
+        out = dict(snap)
+        out["selectedOptionId"] = str(glass_id).lower().replace(" ", "_")
+        out["specLine"] = snap.get("display_label")
+        out["id"] = snap.get("glass_id") or glass_id
+        return out
+    return None
 
 
 def products_catalog() -> list[dict[str, Any]]:

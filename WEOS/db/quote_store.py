@@ -68,6 +68,28 @@ def _ensure_quote_share_schema() -> None:
         pass
 
 
+def _ensure_quote_item_snapshot_schema() -> None:
+    """Add item_snapshot on existing DBs (create_all does not ALTER)."""
+    try:
+        from sqlalchemy import text
+
+        from WEOS.db.engine import get_engine
+
+        eng = get_engine()
+        if eng is None:
+            return
+        with eng.begin() as conn:
+            try:
+                conn.execute(text("ALTER TABLE quote_items ADD COLUMN IF NOT EXISTS item_snapshot JSON"))
+            except Exception:
+                try:
+                    conn.execute(text("ALTER TABLE quote_items ADD COLUMN item_snapshot JSON"))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
 def _ensure_ready() -> None:
     if not db_available():
         raise RuntimeError(
@@ -76,6 +98,7 @@ def _ensure_ready() -> None:
         )
     init_db()
     _ensure_quote_share_schema()
+    _ensure_quote_item_snapshot_schema()
 
 
 # ── quote number generation ──────────────────────────────────────────────────
@@ -378,18 +401,7 @@ def create_quote(payload: dict[str, Any], *, created_by: str | None = None) -> d
                     for it in list(existing.items):
                         s.delete(it)
                     for i, line in enumerate(payload.get("lines") or []):
-                        s.add(
-                            QuoteItem(
-                                quote_id=existing.id,
-                                line_no=i,
-                                product=line.get("product"),
-                                width_mm=_num(line.get("width")),
-                                height_mm=_num(line.get("height")),
-                                quantity=int(line.get("qty") or line.get("quantity") or 1),
-                                payload=line,
-                                line_total=_num((line.get("price") or {}).get("total")),
-                            )
-                        )
+                        s.add(_make_quote_item(existing.id, i, line))
                 if payload.get("calculation") is not None or payload.get("grandTotal") is not None:
                     s.add(
                         QuoteCalculation(
@@ -434,18 +446,7 @@ def create_quote(payload: dict[str, Any], *, created_by: str | None = None) -> d
 
         # Multi-line items mirror
         for i, line in enumerate(payload.get("lines") or []):
-            s.add(
-                QuoteItem(
-                    quote_id=quote.id,
-                    line_no=i,
-                    product=line.get("product"),
-                    width_mm=_num(line.get("width")),
-                    height_mm=_num(line.get("height")),
-                    quantity=int(line.get("qty") or line.get("quantity") or 1),
-                    payload=line,
-                    line_total=_num((line.get("price") or {}).get("total")),
-                )
-            )
+            s.add(_make_quote_item(quote.id, i, line))
         if payload.get("calculation") is not None or payload.get("grandTotal") is not None:
             s.add(
                 QuoteCalculation(
@@ -555,18 +556,7 @@ def update_quote(quote_id: str, payload: dict[str, Any], *, created_by: str | No
             for it in list(quote.items):
                 s.delete(it)
             for i, line in enumerate(payload.get("lines") or []):
-                s.add(
-                    QuoteItem(
-                        quote_id=quote.id,
-                        line_no=i,
-                        product=line.get("product"),
-                        width_mm=_num(line.get("width")),
-                        height_mm=_num(line.get("height")),
-                        quantity=int(line.get("qty") or line.get("quantity") or 1),
-                        payload=line,
-                        line_total=_num((line.get("price") or {}).get("total")),
-                    )
-                )
+                s.add(_make_quote_item(quote.id, i, line))
         if payload.get("calculation") is not None:
             s.add(QuoteCalculation(quote_id=quote.id, result=payload["calculation"], grand_total=quote.grand_total))
         if payload.get("bom") is not None:
@@ -749,3 +739,27 @@ def _num(val: Any) -> float | None:
         return float(val)
     except (TypeError, ValueError):
         return None
+
+
+def _make_quote_item(quote_id: int, line_no: int, line: Any) -> Any:
+    from WEOS.db.models import QuoteItem
+    from WEOS.factory.quote_item_snapshot import attach_snapshot, get_item_snapshot
+
+    payload = dict(line) if isinstance(line, dict) else {}
+    try:
+        payload = attach_snapshot(payload, overwrite_identity=False)
+    except Exception:
+        pass
+    snap = get_item_snapshot(payload)
+    pid = str((snap or {}).get("product_id") or payload.get("product") or payload.get("productId") or "") or None
+    return QuoteItem(
+        quote_id=quote_id,
+        line_no=line_no,
+        product=pid,
+        width_mm=_num(payload.get("width") if payload.get("width") not in (None, "") else (snap or {}).get("width")),
+        height_mm=_num(payload.get("height") if payload.get("height") not in (None, "") else (snap or {}).get("height")),
+        quantity=int(payload.get("qty") or payload.get("quantity") or (snap or {}).get("quantity") or 1),
+        payload=payload,
+        item_snapshot=snap or None,
+        line_total=_num((payload.get("price") or {}).get("total") if isinstance(payload.get("price"), dict) else payload.get("commercialTotal")),
+    )

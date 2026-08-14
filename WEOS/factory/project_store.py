@@ -237,6 +237,13 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
 
     # strip runtime
     out = {k: v for k, v in doc.items() if k != "_path"}
+    try:
+        from WEOS.factory.quote_item_snapshot import freeze_project_lines
+
+        out["lines"] = freeze_project_lines(out.get("lines") or [], overwrite_identity=False)
+        doc["lines"] = out["lines"]
+    except Exception:
+        _log.exception("quote item snapshot freeze failed for %s", pid)
     path.write_text(json.dumps(out, indent=2), encoding="utf-8")
     archived = str(doc.get("status") or "") == "archived"
     _db_put_project(out, archived=archived)

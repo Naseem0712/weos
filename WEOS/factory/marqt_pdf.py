@@ -312,7 +312,12 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
     pixel-normalized) when it exists. Never a dumbed-down ReportLab drawing
     in that case. Windows keep the existing ReportLab model drawer.
     """
-    from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line, is_ventilator_cart_line
+    from WEOS.factory.line_kind import (
+        is_louver_cart_line,
+        is_railing_cart_line,
+        is_shower_cart_line,
+        is_ventilator_cart_line,
+    )
 
     w = float(line.get("width") or 0)
     h = float(line.get("height") or 0)
@@ -336,7 +341,12 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
             except Exception:
                 _log.exception("design photo embed failed; falling back to canvas SVG")
 
-    special = is_railing_cart_line(line) or is_shower_cart_line(line) or is_ventilator_cart_line(line)
+    special = (
+        is_railing_cart_line(line)
+        or is_shower_cart_line(line)
+        or is_ventilator_cart_line(line)
+        or is_louver_cart_line(line)
+    )
     if special:
         svg = _line_canvas_svg(line)
         if svg:
@@ -520,23 +530,35 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
                     hr_bits.append(f"bar {bar_ft} ft")
             add("HANDRAIL", " · ".join(str(x) for x in hr_bits if x))
 
-        thk = q.get("glassThicknessMm") or (rail_cfg or {}).get("glassThicknessMm") or 12
-        gtype = (rail_cfg or {}).get("glassType") or q.get("glassType") or ""
-        gcol = (rail_cfg or {}).get("glassColour") or q.get("glassColour") or ""
-        gbrand = q.get("glassBrand") or (rail_cfg or {}).get("glassBrand") or ""
-        from WEOS.factory.window_specs import _laminated_config_label as laminated_config_label
+        thk = q.get("glassThicknessMm") or (rail_cfg or {}).get("glassThicknessMm")
+        from WEOS.factory.quote_item_snapshot import get_glass_snapshot, glass_display_label
 
-        lam = laminated_config_label(thk, gtype)
-        glass_bits = [f"{thk:g} mm"]
-        if lam:
-            glass_bits.append(lam)
-        if gtype:
-            glass_bits.append(str(gtype))
-        if gcol and str(gcol).lower() not in str(gtype).lower():
-            glass_bits.append(str(gcol))
-        if gbrand:
-            glass_bits.append(str(gbrand))
-        glass_val = " · ".join(str(b) for b in glass_bits if b) or "—"
+        rail_glass = get_glass_snapshot(line)
+        if rail_glass and str(rail_glass.get("source") or "") == "railing":
+            glass_val = glass_display_label(rail_glass)
+        elif rail_glass and (rail_cfg or q):
+            # Railing set only — never a window glass library guess.
+            glass_val = glass_display_label(rail_glass)
+        else:
+            gtype = (rail_cfg or {}).get("glassType") or q.get("glassType") or ""
+            gcol = (rail_cfg or {}).get("glassColour") or q.get("glassColour") or ""
+            gbrand = q.get("glassBrand") or (rail_cfg or {}).get("glassBrand") or ""
+            if thk in (None, ""):
+                thk = 12
+            glass_bits = [f"{float(thk):g} mm"]
+            if "lam" in str(gtype).lower():
+                from WEOS.factory.window_specs import _laminated_config_label as laminated_config_label
+
+                lam = laminated_config_label(thk, gtype)
+                if lam:
+                    glass_bits = [str(lam)]
+            if gtype:
+                glass_bits.append(str(gtype))
+            if gcol and str(gcol).lower() not in str(gtype).lower():
+                glass_bits.append(str(gcol))
+            if gbrand:
+                glass_bits.append(str(gbrand))
+            glass_val = " · ".join(str(b) for b in glass_bits if b) or "—"
         if q.get("panelCount"):
             glass_val += f" · {q.get('panelCount')} glass"
         net_sft = q.get("netGlassAreaSqFt") or q.get("glassAreaSqft") or 0
@@ -741,6 +763,27 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         sale_u = str(q.get("saleUnit") or line.get("saleUnit") or "sqft").upper()
         add("AMOUNT", f"{_money(q.get('sellingPerUnit') or line.get('sellingRate') or 0)} / {sale_u} → "
             f"{_money(q.get('sellingTotal') or line.get('commercialTotal') or 0)}")
+        return rows
+
+    from WEOS.factory.line_kind import is_louver_cart_line
+
+    if is_louver_cart_line(line):
+        from WEOS.factory.quote_item_snapshot import get_item_snapshot, get_glass_snapshot, glass_display_label
+
+        snap = get_item_snapshot(line)
+        title = str(
+            (snap or {}).get("product_name_snapshot")
+            or line.get("displayName")
+            or line.get("description")
+            or "Louvers"
+        )
+        add("", title)
+        add("CATEGORY", str((snap or {}).get("category_snapshot") or line.get("category") or "Louvers"))
+        add("SIZE", f"{_mm(w)} × {_mm(h)} mm")
+        add("QTY", str(line.get("qty") or line.get("quantity") or 1))
+        gs = get_glass_snapshot(line)
+        if gs and glass_display_label(gs):
+            add("GLASS", glass_display_label(gs))
         return rows
 
     from WEOS.factory.window_specs import short_window_spec_rows

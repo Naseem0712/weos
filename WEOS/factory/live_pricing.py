@@ -188,11 +188,19 @@ def line_sell_amount(
 def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
     """Reactive quote preview: factory cost + optional customer selling amount."""
     from WEOS.factory.project_engine import calculate_line
-    from WEOS.factory.product_loader import load_product
+    from WEOS.factory.quote_item_snapshot import product_id_of
 
-    product_id = str(line.get("product") or line.get("productId") or "29mm_sliding")
-    product = load_product(product_id, strict=False)
-    width = float(line.get("width") or 0)
+    product_id = product_id_of(line)
+    product: dict[str, Any] = {}
+    if product_id and product_id not in ("railing",):
+        from WEOS.factory.product_loader import load_product
+
+        try:
+            product = load_product(product_id, strict=False)
+        except FileNotFoundError:
+            product = {"id": product_id, "displayName": (line or {}).get("displayName") or product_id}
+
+    width = float(line.get("width") or 0) if isinstance(line, Mapping) else 0.0
     height = float(line.get("height") or 0)
     qty = int(line.get("qty") or line.get("quantity") or 1)
 
@@ -201,9 +209,12 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
     payload.setdefault("width", width)
     payload.setdefault("height", height)
     payload.setdefault("qty", qty)
-    payload.setdefault("glass", line.get("glass") or "5mm_clear")
-    payload.setdefault("colour", line.get("colour") or "white")
-    payload.setdefault("handle", line.get("handle") or "standard")
+    from WEOS.factory.line_kind import is_louver_cart_line, is_railing_cart_line, line_world
+
+    if not is_railing_cart_line(payload) and not is_louver_cart_line(payload) and line_world(payload) == "window":
+        payload.setdefault("glass", line.get("glass") or "5mm_clear")
+        payload.setdefault("colour", line.get("colour") or "white")
+        payload.setdefault("handle", line.get("handle") or "standard")
     calc = calculate_line(payload, include_preview=False)
 
     from WEOS.factory.line_kind import line_world

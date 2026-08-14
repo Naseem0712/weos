@@ -1102,6 +1102,13 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
         svg = (prev or {}).get("svg")
         return str(svg) if svg else None
 
+    from WEOS.factory.line_kind import is_louver_cart_line
+
+    if is_louver_cart_line(line):
+        prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
+        svg = (prev or {}).get("svg")
+        return str(svg) if svg else None
+
     w = float(line.get("width") or 0)
     h = float(line.get("height") or 0)
     if w <= 0 or h <= 0:
@@ -1113,7 +1120,9 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
         or "white"
     )
     grid = (opts or {}).get("grid") or (opts or {}).get("grille") or line.get("grid")
-    product = str(line.get("product") or line.get("productId") or "29mm_sliding")
+    product = str(line.get("product") or line.get("productId") or "")
+    if not product:
+        return None
     # calculate_line replaces glass with a sized list — prefer option string
     glass = (opts or {}).get("glass")
     if not isinstance(glass, str):

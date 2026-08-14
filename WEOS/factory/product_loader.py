@@ -284,6 +284,13 @@ def _ensure_renderable(doc: dict[str, Any]) -> None:
     catalogue/imported product. Mutates ``doc`` in place. Best-effort/no-raise."""
     if _has_renderable_geometry(doc) and _glass_rules_complete(doc.get("glass") if isinstance(doc.get("glass"), Mapping) else None):
         return
+    # Never borrow sliding-window geometry for non-window products (louver → window).
+    cat = str(doc.get("category") or "").lower()
+    ptype = str(doc.get("productType") or "").lower()
+    pid = str(doc.get("id") or "").lower()
+    blob = f"{cat} {ptype} {pid}"
+    if any(k in blob for k in ("louver", "louvre", "rail", "acp", "hpl", "pergola", "shower", "ventilat", "facade")):
+        return
     base_id = DEFAULT_PRODUCT_ID
     linked = doc.get("linkedProductId")
     if linked and str(linked) != str(doc.get("id") or ""):

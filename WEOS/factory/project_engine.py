@@ -226,7 +226,7 @@ def _stub_line_result(line: Mapping[str, Any], product: Mapping[str, Any]) -> di
         "product": product.get("id"),
         "displayName": product.get("displayName"),
         "description": line.get("description") or product.get("displayName"),
-        "category": product.get("category", "Windows"),
+        "category": product.get("category") or line.get("category") or "",
         "status": "stub",
         "width": float(line.get("width", 0)),
         "height": float(line.get("height", 0)),
@@ -250,6 +250,57 @@ def _stub_line_result(line: Mapping[str, Any], product: Mapping[str, Any]) -> di
         "preview": {"svg": None},
         "note": "Stub product — manual rate until engines are wired",
     }
+
+
+def _louver_line_result(line: Mapping[str, Any], *, include_preview: bool = True) -> dict[str, Any]:
+    """Louver product: own BOM/preview. Never a window frame/shutter/interlock."""
+    from WEOS.factory.live_pricing import apply_selling_to_line_result
+    from WEOS.factory.quote_item_snapshot import attach_snapshot, product_id_of
+
+    frozen = attach_snapshot(dict(line) if isinstance(line, Mapping) else {})
+    pid = product_id_of(frozen) or "louvers_stub"
+    try:
+        product = load_product(pid, strict=False)
+    except Exception:
+        product = {
+            "id": pid,
+            "displayName": frozen.get("displayName") or "Louvers",
+            "category": "Louvers",
+            "quotation": {},
+            "_stub": True,
+        }
+    result = _stub_line_result(frozen, product)
+    result["product"] = pid
+    result["displayName"] = frozen.get("displayName") or product.get("displayName") or "Louvers"
+    result["category"] = frozen.get("category") or product.get("category") or "Louvers"
+    result["productType"] = frozen.get("productType") or "louvers"
+    result["status"] = "louver"
+    result["glass"] = []
+    result["hardware"] = []
+    result["trackRail"] = []
+    opts = dict(result.get("options") or {})
+    opts["productType"] = "louvers"
+    opts.pop("system", None)
+    result["options"] = opts
+    if include_preview:
+        try:
+            from WEOS.factory.panel_fills import compute_louver_layout
+
+            w = float(frozen.get("width") or 0)
+            h = float(frozen.get("height") or 0)
+            fill = (frozen.get("panelFill") if isinstance(frozen.get("panelFill"), Mapping) else None) or {
+                "fillType": "louvers",
+                "louverMode": "uniform",
+                "bladeMm": 80,
+                "gapMm": 20,
+            }
+            layout = compute_louver_layout(x0=0, y0=0, x1=max(w, 1), y1=max(h, 1), fill=fill) if w and h else {}
+            result["layout"] = {"kind": "louver", "widthMm": w, "heightMm": h, **(layout or {})}
+            result["preview"] = frozen.get("preview") if isinstance(frozen.get("preview"), Mapping) else {"svg": None}
+        except Exception:
+            result["preview"] = {"svg": None}
+    result["note"] = "Louver product — not a window system"
+    return apply_selling_to_line_result(result, frozen)
 
 
 def _error_line_result(line: Mapping[str, Any], error: str = "") -> dict[str, Any]:
@@ -280,7 +331,7 @@ def _error_line_result(line: Mapping[str, Any], error: str = "") -> dict[str, An
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
         "product": line.get("product") or line.get("productId"),
         "displayName": line.get("displayName") or line.get("product") or "Item",
-        "category": line.get("category") or "Windows",
+        "category": line.get("category") or "",
         "status": "error",
         "error": str(error or "calculation failed"),
         "width": _num(line.get("width")),
@@ -470,6 +521,8 @@ def _railing_line_result(line: Mapping[str, Any], *, include_preview: bool = Tru
         from WEOS.factory.materials_engine import compute_materials
         from WEOS.factory.product_loader import load_product
 
+        if product_id in ("railing",):
+            product_id = "railings_stub"
         product = load_product(product_id, strict=False)
         mats = product.get("materials") or []
         if mats:
@@ -804,17 +857,31 @@ def _attach_location(src: Mapping[str, Any] | None, result: Mapping[str, Any] | 
 
 def calculate_line(line: Mapping[str, Any], *, include_preview: bool = True) -> dict[str, Any]:
     """Calculate one cart line (product × size × qty × options)."""
-    return _attach_location(line, _calculate_line_raw(line, include_preview=include_preview))
+    from WEOS.factory.quote_item_snapshot import attach_snapshot, apply_snapshot_to_result
+
+    frozen = attach_snapshot(dict(line) if isinstance(line, Mapping) else {})
+    result = _attach_location(frozen, _calculate_line_raw(frozen, include_preview=include_preview))
+    apply_snapshot_to_result(result, frozen)
+    return result
 
 
 def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True) -> dict[str, Any]:
     """Calculate one cart line (product × size × qty × options)."""
     from WEOS.factory.live_pricing import apply_selling_to_line_result
+    from WEOS.factory.quote_item_snapshot import PRODUCT_UNAVAILABLE, product_id_of
 
     from WEOS.factory.layout_options import line_layout_options
 
-    product_id = str(line.get("product") or line.get("productId") or "29mm_sliding")
+    product_id = product_id_of(line)
     world = _line_world(line)
+    if world == "louver":
+        try:
+            return _louver_line_result(line, include_preview=include_preview)
+        except Exception as exc:  # pragma: no cover
+            _log.exception("louver line calc failed: %s", exc)
+            return _error_line_result(line, f"louver calc failed: {exc}")
+    if not product_id:
+        return _error_line_result(line, PRODUCT_UNAVAILABLE)
     if world in ("railing", "staircase_railing"):
         try:
             return _railing_line_result(line, include_preview=include_preview)
@@ -833,9 +900,20 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
         except Exception as exc:  # pragma: no cover
             _log.exception("shower line calc failed: %s", exc)
             return _error_line_result(line, f"shower calc failed: {exc}")
-    product = load_product(product_id, strict=False)
+    try:
+        product = load_product(product_id, strict=False)
+    except FileNotFoundError:
+        from WEOS.factory.quote_item_snapshot import PRODUCT_UNAVAILABLE
+
+        return _error_line_result(line, PRODUCT_UNAVAILABLE)
     # Product Library type lock: even without designer blobs, never run window geometry.
     world = _line_world(line, product=product)
+    if world == "louver":
+        try:
+            return _louver_line_result(line, include_preview=include_preview)
+        except Exception as exc:  # pragma: no cover
+            _log.exception("louver line calc failed: %s", exc)
+            return _error_line_result(line, f"louver calc failed: {exc}")
     if world == "ventilator":
         enriched = dict(line) if isinstance(line, Mapping) else {}
         enriched.setdefault("productType", "bathroom_ventilator")

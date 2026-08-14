@@ -204,6 +204,7 @@ class QuoteItem(Base):
     height_mm: Mapped[float | None] = mapped_column(Float)
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     payload: Mapped[Any] = mapped_column(JSON, nullable=True)
+    item_snapshot: Mapped[Any] = mapped_column(JSON, nullable=True)
     line_total: Mapped[float | None] = mapped_column(Float)
 
     quote: Mapped["Quote"] = relationship(back_populates="items")
@@ -217,6 +218,7 @@ class QuoteItem(Base):
             "height": self.height_mm,
             "quantity": self.quantity,
             "payload": self.payload,
+            "itemSnapshot": self.item_snapshot,
             "lineTotal": self.line_total,
         }
 

@@ -24,6 +24,7 @@ PRODUCT_TYPE_CHOICES: tuple[tuple[str, str], ...] = (
     ("style", "Style / slide door"),
     ("shower_partition", "Shower partition"),
     ("bathroom_ventilator", "Bathroom ventilator"),
+    ("louvers", "Louvers"),
 )
 
 PRODUCT_TYPES = frozenset(k for k, _ in PRODUCT_TYPE_CHOICES)
@@ -42,6 +43,7 @@ CATEGORY_FOR_TYPE: dict[str, str] = {
     "style": "Doors",
     "shower_partition": "Bathrooms",
     "bathroom_ventilator": "Bathrooms",
+    "louvers": "Louvers",
 }
 
 # Series-setup form types (aluminium window systems) — not used for railing worlds.
@@ -73,6 +75,10 @@ _RAILING_TYPE_ALIASES = {
     "ventilator": "bathroom_ventilator",
     "bathroom_vent": "bathroom_ventilator",
     "bath_ventilator": "bathroom_ventilator",
+    "louver": "louvers",
+    "louvre": "louvers",
+    "louvres": "louvers",
+    "louvers_stub": "louvers",
 }
 
 _WINDOW_QTY_TYPES = frozenset({"windows", "sliding", "casements", "telescopic", "synchron", "fold"})
@@ -114,6 +120,8 @@ def normalize_product_type(raw: Any) -> str | None:
         return "bathroom_ventilator"
     if "shower" in t:
         return "shower_partition"
+    if "louver" in t or "louvre" in t:
+        return "louvers"
     if "fold" in t or "bifold" in t:
         return "fold"
     if "sync" in t:
@@ -154,6 +162,8 @@ def line_world(line: Mapping[str, Any] | None = None, *, product: Mapping[str, A
         return "ventilator"
     if is_shower_cart_line(line):
         return "shower"
+    if is_louver_cart_line(line):
+        return "louver"
     if is_railing_cart_line(line):
         return railing_product_type_for_line(line)
     pt = cat = pid = None
@@ -180,10 +190,14 @@ def product_world(product_type: Any = None, *, category: Any = None, product_id:
         return "ventilator"
     if pt == "shower_partition":
         return "shower"
+    if pt == "louvers":
+        return "louver"
     cat = str(category or "").lower()
     pid = str(product_id or "").lower()
     if "ventilat" in cat or "ventilat" in pid:
         return "ventilator"
+    if "louver" in cat or "louvre" in cat or "louver" in pid or "louvre" in pid:
+        return "louver"
     if "stair" in cat and "rail" in cat:
         return "staircase_railing"
     if "rail" in cat:
@@ -225,7 +239,7 @@ def product_has_tracks(product_type: Any = None, *, system: Any = None, category
     if sys in ("sliding", "telescopic", "synchron", "style", "bifold", "fold", "fold_sliding", "fold_and_sliding"):
         return True
     pt = normalize_product_type(product_type)
-    if pt in ("casements", "railing", "staircase_railing", "shower_partition", "bathroom_ventilator", "pergolas"):
+    if pt in ("casements", "railing", "staircase_railing", "shower_partition", "bathroom_ventilator", "pergolas", "louvers"):
         return False
     if pt in ("sliding", "telescopic", "synchron", "style", "fold", "windows", "door"):
         return True
@@ -236,6 +250,32 @@ def product_has_tracks(product_type: Any = None, *, system: Any = None, category
         return False
     if sys:
         return "slid" in sys or "fold" in sys or "tele" in sys or "sync" in sys
+    return False
+
+
+def is_louver_cart_line(line: Mapping[str, Any] | None) -> bool:
+    """True when the *product* is a louver — not a window with louvers fill."""
+    if not isinstance(line, Mapping):
+        return False
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    pt = normalize_product_type(
+        line.get("productType") or (opts.get("productType") if isinstance(opts, Mapping) else None)
+    )
+    if pt == "louvers":
+        return True
+    cat = str(line.get("category") or "").lower()
+    if "louver" in cat or "louvre" in cat:
+        return True
+    pid = str(line.get("product") or line.get("productId") or "").lower()
+    if "louver" in pid or "louvre" in pid:
+        return True
+    snap = line.get("itemSnapshot") or line.get("item_snapshot")
+    if isinstance(snap, Mapping):
+        sc = str(snap.get("category_snapshot") or "").lower()
+        sp = str(snap.get("product_id") or "").lower()
+        world = str((snap.get("profile_snapshot") or {}).get("world") or "").lower()
+        if world == "louver" or "louver" in sc or "louvre" in sc or "louver" in sp:
+            return True
     return False
 
 

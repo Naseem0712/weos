@@ -2597,6 +2597,8 @@ async function loadProducts() {
       if (prev && selectable.some(p => p.id === prev)) sel.value = prev;
     }
     try { applyProductSystem(); } catch (_) {}
+    const selLn = state.lines && state.lines[state.selectedLine];
+    if (selLn) ensureProductOptionFromLine(selLn);
     try { await loadCartGlassOptions(); } catch (_) {}
     try { await loadCartColourOptions(); } catch (_) {}
   }
@@ -2640,13 +2642,48 @@ async function loadCartGlassOptions(preferId) {
     const id = String((o && o.id) || '').trim();
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    cleaned.push({ id, label: (o.label || o.name || id) });
+    cleaned.push({
+      id,
+      label: (o.label || o.name || o.display_label || id),
+      makeup: o.makeup,
+      thicknessMm: o.thicknessMm,
+      overallMm: o.overallMm,
+      glass1Mm: o.glass1Mm,
+      glass2Mm: o.glass2Mm,
+      airGapMm: o.airGapMm,
+      pvbMm: o.pvbMm,
+      colour: o.colour,
+      toughened: o.toughened,
+      brand: o.brand,
+      rate: o.rate,
+      rateUnit: o.rateUnit,
+      finish: o.finish,
+    });
+  }
+  const ln = state.lines[state.selectedLine];
+  const snapG = ln && (ln.glass_snapshot || ln.glassSnapshot || (ln.itemSnapshot && ln.itemSnapshot.glass_snapshot));
+  const keepId = String(preferId || (ln && ln.glass) || (snapG && snapG.glass_id) || prev || '').trim();
+  if (keepId && !seen.has(keepId)) {
+    cleaned.unshift({
+      id: keepId,
+      label: (snapG && snapG.display_label) || keepId,
+      makeup: snapG && snapG.glass_construction,
+      thicknessMm: snapG && snapG.total_thickness_mm,
+      overallMm: snapG && snapG.total_thickness_mm,
+      glass1Mm: snapG && (snapG.glass1Mm || (snapG.layers && snapG.layers.glass1Mm)),
+      glass2Mm: snapG && (snapG.glass2Mm || (snapG.layers && snapG.layers.glass2Mm)),
+      airGapMm: snapG && (snapG.air_gap_mm || snapG.airGapMm),
+      pvbMm: snapG && (snapG.pvbMm || (snapG.layers && snapG.layers.pvbMm)),
+      colour: snapG && snapG.colour,
+      toughened: snapG && snapG.toughened,
+    });
+    seen.add(keepId);
   }
   state.glassOptions = cleaned;
   sel.innerHTML = cleaned.map(o => `<option value="${o.id}">${o.label}</option>`).join('');
-  if (prev && cleaned.some(o => o.id === prev)) sel.value = prev;
-  else if (cleaned.some(o => o.id === '8mm_toughened')) sel.value = '8mm_toughened';
-  else if (cleaned.length) sel.value = cleaned[0].id;
+  if (keepId && cleaned.some(o => o.id === keepId)) sel.value = keepId;
+  else if (prev && cleaned.some(o => o.id === prev)) sel.value = prev;
+  // Never silently substitute 8mm_toughened / first option over a saved line glass.
   if ($('shGlass')) {
     const shPrev = $('shGlass').value;
     const existing = new Set([...$('shGlass').options].map(o => o.value));
@@ -2954,6 +2991,7 @@ function systemForProduct(p) {
   if (t.includes('rail') || cat.includes('rail')) return null; // railing world — no window system
   if (t.includes('ventilat')) return 'ventilator';
   if (t.includes('shower') || cat.includes('shower') || (cat.includes('bathroom') && !t.includes('ventilat'))) return 'shower';
+  if (t.includes('louver') || t.includes('louvre') || cat.includes('louver') || cat.includes('louvre') || cat.includes('facade')) return 'louver';
   if (t.includes('casement') || t.includes('openable') || t.includes('opening')) return 'casement';
   if (t.includes('bifold') || t.includes('fold')) return 'bifold';
   if (t.includes('grid') || (t.includes('partition') && !t.includes('shower'))) return 'grid';
@@ -3032,6 +3070,14 @@ function productWorldOf(p, ln) {
   if (pid.includes('ventilat') || typ.includes('ventilat')) return 'ventilator';
   const cat = String((p && p.category) || (ln && ln.category) || '').toLowerCase();
   if (pid.includes('shower') || typ.includes('shower') || (cat.includes('bathroom') && !pid.includes('ventilat') && !cat.includes('ventilat'))) return 'shower';
+  if (typ.includes('louver') || typ.includes('louvre') || pid.includes('louver') || pid.includes('louvre') || cat.includes('louver') || cat.includes('louvre')) return 'louver';
+  if (ln && (ln.itemSnapshot || ln.item_snapshot)) {
+    const snap = ln.itemSnapshot || ln.item_snapshot;
+    const sw = String((snap.profile_snapshot && snap.profile_snapshot.world) || '').toLowerCase();
+    if (sw && sw !== 'window') return sw;
+    const sc = String(snap.category_snapshot || '').toLowerCase();
+    if (sc.includes('louver') || sc.includes('louvre')) return 'louver';
+  }
   return 'window';
 }
 function productHasTracks(p, ln, sys) {
@@ -3039,7 +3085,7 @@ function productHasTracks(p, ln, sys) {
   if (s === 'casement' || s === 'openable' || s === 'opening' || s === 'shower' || s === 'ventilator' || s === 'railing' || s === 'grid') return false;
   if (s === 'sliding' || s === 'telescopic' || s === 'synchron' || s === 'style' || s === 'bifold' || s.indexOf('fold') >= 0) return true;
   const world = productWorldOf(p, ln);
-  if (world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator') return false;
+  if (world === 'louver' || world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator') return false;
   const typ = String((p && p.productType) || (ln && ln.productType) || '').toLowerCase();
   if (typ.includes('casement') || typ.includes('shower') || typ.includes('ventilat') || typ.includes('rail') || typ.includes('pergola')) return false;
   if (typ.includes('slid') || typ.includes('tele') || typ.includes('sync') || typ.includes('fold') || typ === 'windows' || typ === 'door' || typ === 'style') return true;
@@ -3051,6 +3097,19 @@ function applyProductWorld() {
   const world = productWorldOf(p, ln);
   const win = $('windowCartTools');
   const addBtn = $('btnAddLine');
+  if (world === 'louver') {
+    state.railingMode = false;
+    state.showerMode = false;
+    state.ventMode = false;
+    showRailTools(false);
+    showShowerTools(false);
+    showVentTools(false);
+    if (win) win.classList.remove('hidden');
+    if ($('lineSystem')) $('lineSystem').value = 'louver';
+    if (addBtn) addBtn.textContent = 'Add louver to cart';
+    applySystemUiRules();
+    return;
+  }
   if (world === 'ventilator') {
     state.ventMode = true;
     state.showerMode = false;
@@ -3159,7 +3218,11 @@ function syncDraftFromLine(ln) {
   state.draftHandleOverrides = (ln.handleOverrides && typeof ln.handleOverrides === 'object') ? {...ln.handleOverrides} : {};
   if ($('lineMesh')) $('lineMesh').checked = !!ln.mesh;
   if ($('lineTrack') && ln.trackCount != null) $('lineTrack').value = String(ln.trackCount);
-  if ($('lineSystem')) $('lineSystem').value = ln.system || 'sliding';
+  if ($('lineSystem')) {
+    const world = productWorldOf(selectedProductMeta(), ln);
+    if (world === 'louver') $('lineSystem').value = ln.system || 'louver';
+    else $('lineSystem').value = ln.system || 'sliding';
+  }
   if ($('lineOpening')) {
     const opRaw = String(ln.opening || (ln.options && ln.options.opening) || '').toLowerCase();
     const explicit = !!(ln.openingExplicit || (ln.options && ln.options.openingExplicit));
@@ -3634,7 +3697,9 @@ function weightDisplayForMaterial(m){
 function cartLineProductLabel(ln) {
   const obj = (ln && typeof ln === 'object') ? ln : hydrateCartLine(ln);
   if (!obj) return '—';
-  const pid = String(obj.product || obj.productId || '').trim();
+  const snap = obj.itemSnapshot || obj.item_snapshot || {};
+  if (snap.product_name_snapshot) return snap.product_name_snapshot;
+  const pid = String(obj.product || obj.productId || snap.product_id || '').trim();
   if (obj.displayName) return obj.displayName;
   const p = (state.products || []).find(x => x && (x.id === pid || x.productId === pid));
   if (p && (p.displayName || p.name)) return p.displayName || p.name;
@@ -3697,7 +3762,8 @@ function renderCart() {
     state.selectedLine=+b.dataset.sel;
     const ln = state.lines[state.selectedLine];
     if (ln) {
-      $('lineProduct').value = ln.product;
+      ensureProductOptionFromLine(ln);
+      $('lineProduct').value = ln.productId || ln.product || $('lineProduct').value;
       $('lineW').value = ln.width; $('lineH').value = ln.height; $('lineQty').value = ln.qty;
       if (ln.glass) $('lineGlass').value = ln.glass;
       if (ln.colour) $('lineColour').value = ln.colour;
@@ -4161,14 +4227,167 @@ function rememberCartLine(ln) {
 function rememberCartLines(lines) {
   (lines || []).forEach(rememberCartLine);
 }
+function glassSnapshotFromOption(opt, ln) {
+  const o = opt || {};
+  const gid = String((o && o.id) || (ln && ln.glass) || '').trim();
+  const makeup = String(o.makeup || o.kind || '').toLowerCase();
+  const g1 = o.glass1Mm, g2 = o.glass2Mm, pvb = o.pvbMm, gap = o.airGapMm;
+  const laminated = makeup === 'laminated' || makeup === 'lami' || !!pvb;
+  const dgu = makeup === 'dgu' || makeup === 'igu' || makeup === 'double' || (!!gap && !pvb);
+  const construction = laminated ? 'laminated' : (dgu ? 'dgu' : 'single');
+  let label = '';
+  if (laminated && g1 && pvb && g2) label = `${g1}+${pvb}+${g2} mm Laminated`;
+  else if (dgu && g1 && gap && g2) label = `${g1}+${gap}A+${g2} mm DGU`;
+  else if (o.thicknessMm != null) {
+    label = `${o.thicknessMm} mm`;
+    if (o.toughened) label += ' Toughened';
+  } else if (o.label) label = String(o.label);
+  else label = gid.replace(/_/g, ' ');
+  const layers = laminated ? { glass1Mm: g1, pvbMm: pvb, glass2Mm: g2 }
+    : (dgu ? { glass1Mm: g1, airGapMm: gap, glass2Mm: g2 } : { glass1Mm: o.thicknessMm });
+  return {
+    glass_id: gid,
+    glass_type: makeup || construction,
+    glass_construction: construction,
+    layers,
+    total_thickness_mm: o.overallMm || o.thicknessMm || null,
+    colour: o.colour || 'clear',
+    finish: o.finish || '',
+    toughened: !!o.toughened,
+    laminated,
+    dgu,
+    air_gap_mm: gap || null,
+    rate: o.rate != null ? o.rate : null,
+    weight: o.weight != null ? o.weight : null,
+    display_label: label,
+    glass1Mm: g1, glass2Mm: g2, pvbMm: pvb, airGapMm: gap,
+    source: 'selected',
+  };
+}
+function stampGlassSnapshot(ln, overwrite) {
+  if (!ln || typeof ln !== 'object') return ln;
+  if (!overwrite && (ln.glass_snapshot || ln.glassSnapshot)) {
+    ln.glassSnapshot = ln.glass_snapshot || ln.glassSnapshot;
+    ln.glass_snapshot = ln.glassSnapshot;
+    return ln;
+  }
+  const rail = ln.options && ln.options.railing;
+  const rq = ln.options && ln.options.railingQuote;
+  if (rail || rq) {
+    const thk = (rq && rq.glassThicknessMm) || (rail && rail.glassThicknessMm) || 12;
+    const gtype = (rail && rail.glassType) || (rq && rq.glassType) || '';
+    const gcol = (rail && rail.glassColour) || (rq && rq.glassColour) || '';
+    const tough = /tough|tuff|temper/i.test(String(gtype));
+    const snap = {
+      glass_id: ln.glass || `railing_${thk}mm`,
+      glass_type: gtype || 'single',
+      glass_construction: /lam/i.test(String(gtype)) ? 'laminated' : 'single',
+      layers: { glass1Mm: thk },
+      total_thickness_mm: thk,
+      colour: gcol || 'clear',
+      finish: '',
+      toughened: tough,
+      laminated: /lam/i.test(String(gtype)),
+      dgu: false,
+      air_gap_mm: null,
+      rate: null,
+      weight: (rq && rq.glassKg) || null,
+      display_label: `${thk} mm${tough ? ' Toughened' : ''}${gtype && !tough ? ' ' + gtype : ''}${gcol ? ' · ' + gcol : ''}`.trim(),
+      source: 'railing',
+    };
+    ln.glass_snapshot = snap;
+    ln.glassSnapshot = snap;
+    return ln;
+  }
+  const gid = String(ln.glass || '').trim();
+  const opt = (state.glassOptions || []).find(x => x && String(x.id) === gid) || (gid ? { id: gid, label: gid } : null);
+  const snap = glassSnapshotFromOption(opt, ln);
+  ln.glass_snapshot = snap;
+  ln.glassSnapshot = snap;
+  return ln;
+}
+function stampItemSnapshot(ln, overwriteIdentity) {
+  if (!ln || typeof ln !== 'object') return ln;
+  const existing = ln.itemSnapshot || ln.item_snapshot;
+  const pid = String(ln.productId || ln.product || (existing && existing.product_id) || '').trim();
+  stampGlassSnapshot(ln, !!overwriteIdentity);
+  if (existing && existing.product_id && !overwriteIdentity) {
+    existing.width = ln.width != null ? ln.width : existing.width;
+    existing.height = ln.height != null ? ln.height : existing.height;
+    existing.quantity = ln.qty != null ? ln.qty : existing.quantity;
+    existing.updated_at = new Date().toISOString();
+    if (ln.options && typeof ln.options === 'object') existing.selected_options = { ...ln.options };
+    if (ln.glass_snapshot) existing.glass_snapshot = ln.glass_snapshot;
+    ln.itemSnapshot = existing;
+    ln.item_snapshot = existing;
+    if (!ln.product) ln.product = existing.product_id;
+    if (!ln.productId) ln.productId = existing.product_id;
+    if (!ln.displayName && existing.product_name_snapshot) ln.displayName = existing.product_name_snapshot;
+    if (!ln.category && existing.category_snapshot) ln.category = existing.category_snapshot;
+    return ln;
+  }
+  const p = (state.products || []).find(x => x && (x.id === pid || x.productId === pid));
+  const world = productWorldOf(p, ln);
+  let category = ln.category || (p && p.category) || '';
+  if (world === 'louver' && (!category || /^windows?$/i.test(category))) category = 'Louvers';
+  if ((world === 'railing' || world === 'staircase_railing') && (!category || /^windows?$/i.test(category))) category = 'Railings';
+  const snap = {
+    quote_item_id: ln.lineId || ln.id || '',
+    product_id: pid,
+    product_name_snapshot: ln.displayName || (p && (p.displayName || p.name)) || pid,
+    category_snapshot: category,
+    series_id: ln.sectionSeries || null,
+    series_name_snapshot: ln.sectionSeries || null,
+    width: ln.width,
+    height: ln.height,
+    quantity: ln.qty || ln.quantity || 1,
+    selected_options: (ln.options && typeof ln.options === 'object') ? { ...ln.options } : {},
+    profile_snapshot: { productType: ln.productType || (p && p.productType) || null, system: ln.system || null, world },
+    hardware_snapshot: Array.isArray(ln.hardware) ? ln.hardware.slice() : [],
+    glass_snapshot: ln.glass_snapshot || ln.glassSnapshot || null,
+    calculation_snapshot: null,
+    preview_snapshot: (ln.preview && typeof ln.preview === 'object') ? { ...(ln.preview.svg ? { svg: ln.preview.svg } : {}) } : null,
+    created_at: (existing && existing.created_at) || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    configuration_version: 1,
+  };
+  ln.itemSnapshot = snap;
+  ln.item_snapshot = snap;
+  ln.configuration_version = 1;
+  if (snap.product_name_snapshot && !ln.displayName) ln.displayName = snap.product_name_snapshot;
+  if (snap.category_snapshot && !ln.category) ln.category = snap.category_snapshot;
+  if (pid) { ln.product = ln.product || pid; ln.productId = ln.productId || pid; }
+  return ln;
+}
+function ensureProductOptionFromLine(ln) {
+  const sel = $('lineProduct');
+  if (!sel || !ln) return;
+  const snap = ln.itemSnapshot || ln.item_snapshot || {};
+  const pid = String(ln.productId || ln.product || snap.product_id || '').trim();
+  if (!pid) return;
+  if (![...sel.options].some(o => o.value === pid)) {
+    const opt = document.createElement('option');
+    opt.value = pid;
+    opt.textContent = snap.product_name_snapshot || ln.displayName || pid;
+    sel.appendChild(opt);
+  }
+  sel.value = pid;
+}
+
 function ensureLineId(ln) {
   if (!ln || typeof ln !== 'object') return ln;
+  const keptProduct = ln.productId || ln.product;
   if (!ln.lineId) {
     ln.lineId = (typeof crypto !== 'undefined' && crypto.randomUUID)
       ? crypto.randomUUID().replace(/-/g, '').slice(0, 10)
       : ('L' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
   }
-  if (!ln.product && ln.productId) ln.product = ln.productId;
+  // Never replace a saved productId with a catalogue pick / dummy window.
+  if (keptProduct) {
+    if (!ln.product) ln.product = keptProduct;
+    if (!ln.productId) ln.productId = keptProduct;
+  }
+  stampItemSnapshot(ln, false);
   rememberCartLine(ln);
   return ln;
 }
@@ -4282,9 +4501,23 @@ function adoptServerLines(incoming, { allowShrink = false } = {}) {
       const merged = {
         ...ln,
         ...hit,
+        product: ln.product || ln.productId || hit.product,
+        productId: ln.productId || ln.product || hit.productId,
+        displayName: ln.displayName || hit.displayName,
+        category: ln.category || hit.category,
+        itemSnapshot: ln.itemSnapshot || ln.item_snapshot || hit.itemSnapshot || hit.item_snapshot,
+        item_snapshot: ln.item_snapshot || ln.itemSnapshot || hit.item_snapshot || hit.itemSnapshot,
+        glass_snapshot: ln.glass_snapshot || ln.glassSnapshot || hit.glass_snapshot || hit.glassSnapshot,
+        glassSnapshot: ln.glassSnapshot || ln.glass_snapshot || hit.glassSnapshot || hit.glass_snapshot,
         options: { ...(ln.options || {}), ...(hit.options || {}) },
         preview: ln.preview || hit.preview,
       };
+      if (merged.itemSnapshot && merged.itemSnapshot.product_id) {
+        merged.product = merged.itemSnapshot.product_id;
+        merged.productId = merged.itemSnapshot.product_id;
+        if (merged.itemSnapshot.product_name_snapshot) merged.displayName = merged.itemSnapshot.product_name_snapshot;
+        if (merged.itemSnapshot.category_snapshot) merged.category = merged.itemSnapshot.category_snapshot;
+      }
       return ensureLineId(merged);
     });
     rememberCartLines(state.lines);
@@ -4406,8 +4639,8 @@ async function calculate() {
       const rl = (ln && ln.lineId && byId.get(ln.lineId)) || (result.lines || [])[idx];
       if (!ln || !rl) return;
       if (rl.description) ln.description = rl.description;
-      if (rl.productType) ln.productType = rl.productType;
-      if (rl.displayName) ln.displayName = rl.displayName;
+      if (rl.displayName && !(ln.itemSnapshot || ln.item_snapshot)) ln.displayName = rl.displayName;
+      if (rl.productType && !(ln.itemSnapshot || ln.item_snapshot)) ln.productType = rl.productType;
       if (rl.sellingRate != null) {
         ln.sellingRate = rl.sellingRate;
         if (idx === state.selectedLine && $('lineSellRate')) $('lineSellRate').value = rl.sellingRate;
@@ -4462,7 +4695,19 @@ $('btnAddLine').onclick = () => {
   const p = selectedProductMeta();
   if (p && p.productType) draft.productType = p.productType;
   if (p && p.category) draft.category = p.category;
+  if (p && p.displayName) draft.displayName = p.displayName;
+  const world = productWorldOf(p, draft);
+  if (world === 'louver') {
+    draft.productType = draft.productType || 'louvers';
+    draft.category = (p && p.category && !/^windows?$/i.test(p.category)) ? p.category : 'Louvers';
+    draft.displayName = draft.displayName || (p && p.displayName) || 'Louvers';
+    draft.system = 'louver';
+    delete draft.trackCount;
+    delete draft.glassShutters;
+    delete draft.sectionSeries;
+  }
   stampLineAmount(draft);
+  stampItemSnapshot(draft, true);
   state.lines.push(ensureLineId(draft));
   state.selectedLine = state.lines.length-1;
   renderCart(); scheduleSave(); refreshPreview(); scheduleLivePrice();
@@ -5348,6 +5593,7 @@ async function railingAdd(){
     preview: (res && res.svg) ? { svg: res.svg } : undefined,
   };
   stampLineAmount(railLine);
+  stampItemSnapshot(railLine, true);
   state.lines.push(ensureLineId(railLine));
   // Never inherit window series from the product dropdown onto a railing line.
   delete state.lines[state.lines.length - 1].sectionSeries;
@@ -5538,6 +5784,7 @@ async function showerAdd() {
     preview: (res && res.svg) ? { svg: res.svg } : undefined,
   };
   stampLineAmount(shLine);
+  stampItemSnapshot(shLine, true);
   state.lines.push(ensureLineId(shLine));
   delete state.lines[state.lines.length - 1].sectionSeries;
   delete state.lines[state.lines.length - 1].trackCount;
@@ -5705,7 +5952,7 @@ async function ventAdd() {
   const prod = (($('lineProduct') && $('lineProduct').value) || 'bathroom_ventilator');
   const p = (state.products || []).find(x => x && x.id === prod);
   const qty = (cfg && cfg.qty) || 1;
-  state.lines.push(ensureLineId({
+  const ventLine = {
     product: (p && p.id) || 'bathroom_ventilator',
     productId: (p && p.id) || 'bathroom_ventilator',
     productType: 'bathroom_ventilator',
@@ -5721,7 +5968,9 @@ async function ventAdd() {
     options: { ventilator: cfg, ventilatorQuote: q, productType: 'bathroom_ventilator', locationName: currentLocationName() || null },
     ventilator: cfg,
     preview: (res && res.svg) ? { svg: res.svg } : undefined,
-  }));
+  };
+  stampItemSnapshot(ventLine, true);
+  state.lines.push(ensureLineId(ventLine));
   delete state.lines[state.lines.length - 1].sectionSeries;
   delete state.lines[state.lines.length - 1].trackCount;
   state.selectedLine = state.lines.length - 1;
@@ -6115,6 +6364,23 @@ function stampSelectedDraftAmount() {
     if (id === 'lineProduct') { applyProductSystem(); loadCartGlassOptions(); loadCartColourOptions(); }
     if (id === 'lineFrameMaterial') applyFrameMaterialUi();
     if (['lineW','lineH','lineQty','lineSaleUnit','lineSellRate'].includes(id)) stampSelectedDraftAmount();
+    const ln = state.lines[state.selectedLine];
+    if (ln && id === 'lineGlass') {
+      ln.glass = $('lineGlass').value;
+      stampGlassSnapshot(ln, true);
+      stampItemSnapshot(ln, false);
+    }
+    if (ln && id === 'lineProduct') {
+      ln.product = $('lineProduct').value;
+      ln.productId = ln.product;
+      const p = selectedProductMeta();
+      if (p) {
+        ln.displayName = p.displayName || ln.displayName;
+        ln.category = p.category || ln.category;
+        ln.productType = p.productType || ln.productType;
+      }
+      stampItemSnapshot(ln, true);
+    }
     if (isRailingMode() || isShowerMode() || isVentMode()) {
       if (['lineW','lineH','lineProduct','lineSeries','lineFrameMaterial'].includes(id)) refreshPreview();
       if (id === 'cartCustomer') maybeAskCustomerMemory();
@@ -6435,12 +6701,16 @@ $('libCat').onchange = renderLibrary;
 $('pdAdd').onclick = () => {
   const pid = state.selectedProduct;
   const p = (state.products || []).find(x => x && x.id === pid);
-  state.lines.push(ensureLineId({
+  const libLine = {
     product: pid,
     productId: pid,
     displayName: (p && p.displayName) || pid,
+    category: (p && p.category) || null,
+    productType: (p && p.productType) || null,
     width:1440, height:1800, qty:1, glass:'5mm_clear', colour:'white', handle:'standard'
-  }));
+  };
+  stampItemSnapshot(libLine, true);
+  state.lines.push(ensureLineId(libLine));
   setView('cart'); renderCart(); scheduleSave();
 };
 $('pdBack').onclick = () => setView('library');
@@ -9102,7 +9372,10 @@ async function pingEngine(){
   }
   try { await loadProducts(); } catch (e) { console.warn('Product catalog unavailable', e); }
   try { state.adminMeta = await api('/api/admin/meta', { timeoutMs: 8000 }); } catch(_){}
-  if (!restoredCart) {
+  const hasSavedLines = Array.isArray(state.lines) && state.lines.some(ln => ln && typeof ln === 'object' && (ln.lineId || ln.product || ln.itemSnapshot || ln.item_snapshot));
+  // Dummy 4-window catalogue is ONLY for a truly empty new session.
+  // Never replace a restored cart / saved project with dummy windows.
+  if (!restoredCart && !state.projectId && !hasSavedLines) {
     state.lines = [
       {product:'29mm_sliding', width:2050, height:1970, qty:4, glass:'8mm_toughened', colour:'black_texture', handle:'premium', saleUnit:'sqft', sellingRate:1100},
       {product:'29mm_sliding', width:1500, height:1500, qty:6, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft', sellingRate:950},
