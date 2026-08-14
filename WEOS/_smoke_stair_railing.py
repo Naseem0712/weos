@@ -238,6 +238,27 @@ def main() -> int:
     if svgr == svg2:
         fails.append("left vs right 180° drawing should differ")
 
+    deg45 = compute_railing({
+        "shape": "staircase",
+        "runs": [
+            {
+                "sizeMethod": "steps", "riserMm": 180, "treadMm": 305, "steps": 12,
+                "glassHeightMm": 900, "panels": 3, "turn": "left", "turnDeg": 45,
+            },
+            {
+                "sizeMethod": "steps", "riserMm": 180, "treadMm": 305, "steps": 12,
+                "glassHeightMm": 900, "panels": 2,
+            },
+        ],
+        "glassHeightMm": 900,
+        "rates": {"glassPerSqft": 200, "studPerPc": 80},
+    })
+    if int(deg45.get("bendCount") or 0) < 1:
+        fails.append("45° stair should count as modular band")
+    svg45 = railing_svg({"shape": "staircase", "runs": deg45.get("runs")}, quote=deg45)
+    if "45" not in svg45:
+        fails.append("45° stair svg missing 45 band label")
+
     if fails:
         print("FAIL")
         for f in fails:

@@ -259,8 +259,11 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectCalculateOpts(BaseModel):
+    model_config = {"extra": "allow"}
     optimize: bool = True
     quotationId: str | None = None
+    lines: list[Any] | None = None
+    persist: bool = True
 
 
 class PdfExportBody(BaseModel):
@@ -1831,8 +1834,11 @@ def api_project_calculate(project_id: str, body: ProjectCalculateOpts | None = N
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     optimize = True if body is None else body.optimize
+    persist = True if body is None else bool(getattr(body, "persist", True))
     if body is not None and body.quotationId:
         doc["quotationId"] = body.quotationId
+    if body is not None and body.lines is not None:
+        doc["lines"] = _coerce_cart_lines(body.lines, existing=doc.get("lines"), keep_preview_svg=True)
     # Live canvas uses /api/preview + designer quotes — do not regenerate SVG here.
     result = calculate_project(doc, optimize=optimize, include_preview=False)
     doc["quotationId"] = result["quotationId"]
@@ -1847,41 +1853,44 @@ def api_project_calculate(project_id: str, body: ProjectCalculateOpts | None = N
     for i, ln in enumerate(doc.get("lines") or []):
         if i < len(result["lines"]):
             ln["lineId"] = result["lines"][i].get("lineId", ln.get("lineId"))
-    saved = save_project(doc, action="calculate")
+    saved = doc
+    if persist:
+        saved = save_project(doc, action="calculate")
     # If quote-number versioning folded into another project, surface the live id.
     live_id = saved.get("projectId") or project_id
-    try:
-        from WEOS.learning.commercial_agent import observe_quote
-        from WEOS.learning.engineering_agent import observe_engineering
-        from WEOS.factory.customer_rates import save_quote_line_rates
+    if persist:
+        try:
+            from WEOS.learning.commercial_agent import observe_quote
+            from WEOS.learning.engineering_agent import observe_engineering
+            from WEOS.factory.customer_rates import save_quote_line_rates
 
-        lines = result.get("lines") or []
-        observe_quote(
-            customer=doc.get("customer"),
-            project_id=live_id,
-            quotation_id=result.get("quotationId"),
-            lines=lines,
-            terms=doc.get("terms"),
-            source="calculate",
-            architect=doc.get("architect"),
-            dealer=doc.get("dealer"),
-            vendor=doc.get("vendor"),
-            discount_percent=doc.get("discountPercent"),
-            payment_term=doc.get("paymentTerm"),
-            meta=doc.get("commercialMeta") or {},
-        )
-        observe_engineering(
-            lines=lines,
-            project_id=live_id,
-            quotation_id=result.get("quotationId"),
-            customer=doc.get("customer"),
-            source="calculate",
-            optimization=result.get("optimization"),
-        )
-        if doc.get("customer"):
-            save_quote_line_rates(str(doc["customer"]), doc.get("lines") or [])
-    except Exception:
-        pass
+            lines = result.get("lines") or []
+            observe_quote(
+                customer=doc.get("customer"),
+                project_id=live_id,
+                quotation_id=result.get("quotationId"),
+                lines=lines,
+                terms=doc.get("terms"),
+                source="calculate",
+                architect=doc.get("architect"),
+                dealer=doc.get("dealer"),
+                vendor=doc.get("vendor"),
+                discount_percent=doc.get("discountPercent"),
+                payment_term=doc.get("paymentTerm"),
+                meta=doc.get("commercialMeta") or {},
+            )
+            observe_engineering(
+                lines=lines,
+                project_id=live_id,
+                quotation_id=result.get("quotationId"),
+                customer=doc.get("customer"),
+                source="calculate",
+                optimization=result.get("optimization"),
+            )
+            if doc.get("customer"):
+                save_quote_line_rates(str(doc["customer"]), doc.get("lines") or [])
+        except Exception:
+            pass
     result["project"] = {
         "projectId": saved.get("projectId"),
         "version": saved.get("version"),

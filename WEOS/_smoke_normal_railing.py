@@ -236,6 +236,25 @@ def main() -> int:
     if int(back.get("connector180Count") or 0) < 1:
         fails.append("180° band qty")
 
+    d45 = compute_railing({
+        "runs": [
+            {"lengthMm": 2000, "panels": 2, "turn": "left", "turnDeg": 45, "glassHeightMm": 1000},
+            {"lengthMm": 1500, "panels": 2, "glassHeightMm": 1000},
+        ],
+        "heightMm": 1000,
+        "handrail": True,
+        "bottomKind": "continuous",
+        "rates": {
+            "glassPerSqft": 200, "bottomRailPerUnit": 80, "handrailPerUnit": 120,
+            "modularBendPerPc": 50,
+        },
+    })
+    if int(d45.get("bendCount") or 0) != 1:
+        fails.append(f"45° modular band {d45.get('bendCount')}")
+    svg45 = railing_svg({"runs": d45.get("runs"), "heightMm": 1000}, quote=d45)
+    if "45" not in svg45:
+        fails.append("45° svg missing degree label")
+
     if fails:
         print("FAIL")
         for f in fails:

@@ -1172,13 +1172,14 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
 
     stair_geo: dict[str, Any] | None = None
     stair_panels: list[dict[str, Any]] = []
+    flight_segs: list[dict[str, Any]] = []
     if shape == "staircase":
         if glass_height_mm <= 0:
             glass_height_mm = 900.0
         if height_mm <= 0:
             height_mm = glass_height_mm
         if resolved_runs:
-            stair_geo, stair_panels, _flight_segs = build_stair_flights(
+            stair_geo, stair_panels, flight_segs = build_stair_flights(
                 {
                     **cfg,
                     "glassHeightMm": glass_height_mm,
@@ -1207,6 +1208,8 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
             stair_panels = compute_stair_glass_panels(cfg, stair_geo)
 
     segments = _preset_segments(shape, cfg)
+    if shape == "staircase" and flight_segs:
+        segments = flight_segs
     total_length_mm = sum(_f(s.get("lengthMm")) for s in segments)
     if shape == "arch":
         span = _f(segments[0].get("lengthMm")) if segments else _length_mm(cfg)
@@ -1570,8 +1573,20 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
                     "edgeInsetMm": GLASS_EDGE_INSET_MM,
                 })
         pillar_count = stair_pillars
-        bend_count = 0
-        connector_180 = _handrail_connectors(total_length_mm, handrail_max) if handrail_on else 0
+        # Floor bands: 45/90/custom → modular; 180 → 180° band. Plus handrail bar joins.
+        if resolved_runs and len(resolved_runs) > 1:
+            bend_count = sum(
+                1 for r in resolved_runs[:-1]
+                if 1.0 < abs(_f(r.get("signedTurnDeg") or r.get("turnDeg"))) < 170.0
+            )
+            floor_180 = sum(
+                1 for r in resolved_runs[:-1]
+                if abs(_f(r.get("signedTurnDeg") or r.get("turnDeg"))) >= 170.0
+            )
+        else:
+            bend_count = 0
+            floor_180 = 0
+        connector_180 = floor_180 + (_handrail_connectors(total_length_mm, handrail_max) if handrail_on else 0)
         # Stair bottom type: topiller (SS) or block — maps to pillarType
         sbt = str(cfg.get("stairBottomType") or "").lower()
         if sbt in ("topiller", "ss", "ss_pillar", "pillar"):

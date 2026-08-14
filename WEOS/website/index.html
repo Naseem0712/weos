@@ -59,10 +59,12 @@ a{color:inherit}
 .rail-run .rail-div-chips button.over{border-color:#b45324;color:#8c1f18}
 .rail-run .rail-div-chips button.active{background:var(--green);color:#fff;border-color:var(--green)}
 .rail-run .rail-run-tot{font-size:.7rem;color:var(--muted);margin-top:.2rem}
-.rail-run .rail-band-row{width:100%;align-items:center;padding:.28rem .1rem 0;border-top:1px dashed var(--line);margin-top:.4rem}
-.rail-run .rail-band-btns button{min-width:64px;font-weight:600}
+.rail-run .rail-band-row{width:100%;align-items:center;padding:.28rem .1rem 0;border-top:1px dashed var(--line);margin-top:.4rem;flex-wrap:wrap}
+.rail-run .rail-band-btns button{min-width:56px;font-weight:600}
 .rail-run .rail-band-btns button[data-v="left"].active{background:#0a5a48}
 .rail-run .rail-band-btns button[data-v="right"].active{background:#8c1f18;border-color:#8c1f18;color:#fff}
+.rail-run .rail-deg-row[hidden]{display:none !important}
+.rail-run .rail-deg-custom{width:68px;padding:.2rem .35rem}
 .rail-tools.collapsed .rt-body{display:none}
 .rail-tools .rt-panel{display:none;margin-top:.2rem;padding:.35rem .4rem;border:1px dashed var(--line);border-radius:8px;background:rgba(255,255,255,.55)}
 .rail-tools .rt-panel.active{display:block}
@@ -2361,10 +2363,24 @@ function stampLinePreviewSvg(ln, svg) {
   if (raw.toLowerCase().indexOf('<svg') < 0) return;
   ln.preview = Object.assign({}, ln.preview || {}, { svg: raw });
 }
+function livePreviewBelongsTo(ln) {
+  const id = ln && (ln.lineId || ln.id);
+  return !!(id && state._previewLineId && String(state._previewLineId) === String(id));
+}
+function markLivePreviewLine(ln) {
+  state._previewLineId = (ln && (ln.lineId || ln.id)) || null;
+}
 function stampSelectedPreviewFromDom() {
   const ln = state.lines && state.lines[state.selectedLine];
+  if (!ln || !livePreviewBelongsTo(ln)) return;
   const svg = captureLivePreviewSvg();
-  if (ln && svg) stampLinePreviewSvg(ln, svg);
+  if (svg) stampLinePreviewSvg(ln, svg);
+}
+function invalidatePdfCache() {
+  if (state._custPdfCache && state._custPdfCache.url) {
+    try { URL.revokeObjectURL(state._custPdfCache.url); } catch (_) {}
+  }
+  state._custPdfCache = { key: '', url: '', blob: null };
 }
 function money(n){
   if (n == null || n === '') return '—';
@@ -3842,10 +3858,12 @@ function renderCart() {
     const i = +b.dataset.dup;
     const copy = { ...state.lines[i] };
     delete copy.lineId;
+    if (copy.preview && typeof copy.preview === 'object') copy.preview = { ...copy.preview };
     state.lines.splice(i + 1, 0, ensureLineId(copy));
+    invalidatePdfCache();
     renderCart(); scheduleSave();
   });
-  $('cartBody').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { state.lines.splice(+b.dataset.del,1); renderCart(); scheduleSave(); });
+  $('cartBody').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { state.lines.splice(+b.dataset.del,1); invalidatePdfCache(); renderCart(); scheduleSave(); });
   const items = state.lines.reduce((s,l)=>s+(+l.qty||0),0);
   const groups = quoteQtyBreakdown(state.lines);
   const groupTxt = groups.length ? ' · ' + groups.map(([lab, n]) => `${lab} ${n}`).join(' · ') : '';
@@ -4012,7 +4030,9 @@ async function refreshPreview() {
   }
   showRailTools(false);
   const draft = currentLineDraft();
-  const ln = state.lines[state.selectedLine] ? { ...state.lines[state.selectedLine], ...draft } : draft;
+  const selectedCart = state.lines[state.selectedLine];
+  const previewTargetId = selectedCart && (selectedCart.lineId || selectedCart.id);
+  const ln = selectedCart ? { ...selectedCart, ...draft } : draft;
   const bits = [designSerialLabel(state.selectedLine, ln), `${ln.width}×${ln.height}`];
   if (productHasTracks(selectedProductMeta(), ln, ln.system) && ln.trackCount != null) bits.push(`${ln.trackCount}-track`);
   const gN = parseInt(ln.glassShutters, 10) || 0;
@@ -4083,10 +4103,16 @@ async function refreshPreview() {
       $('previewLabel').textContent = hdr.filter(Boolean).join(' · ');
     }
     if (gen !== _previewGen) return;
+    const target = (state.lines || []).find((x) => x && previewTargetId && (x.lineId === previewTargetId || x.id === previewTargetId)) || null;
+    if (prev.svg && target) stampLinePreviewSvg(target, prev.svg);
     if (prev.svg) {
-      $('livePreview').innerHTML = prev.svg;
-      attachHandleDrag($('livePreview'), (prev.layout && prev.layout.meta) || prev.meta || null, ln.system || prev.system || 'sliding');
-      if (state.lines[state.selectedLine]) stampLinePreviewSvg(state.lines[state.selectedLine], prev.svg);
+      const stillSelected = !!(target && state.lines[state.selectedLine]
+        && (state.lines[state.selectedLine].lineId === previewTargetId || state.lines[state.selectedLine].id === previewTargetId));
+      if (stillSelected) {
+        $('livePreview').innerHTML = prev.svg;
+        attachHandleDrag($('livePreview'), (prev.layout && prev.layout.meta) || prev.meta || null, ln.system || prev.system || 'sliding');
+        markLivePreviewLine(target);
+      }
     }
     else if (prev.heroImage) $('livePreview').innerHTML = `<img src="${prev.heroImage}" alt=""/>`;
     else $('livePreview').innerHTML = '<span class="muted">No preview</span>';
@@ -4527,20 +4553,15 @@ function serializeCartLines(lines) {
   return (lines || []).map((ln) => slimCartLine(ln)).filter((ln) => ln && typeof ln === 'object' && !Array.isArray(ln));
 }
 function serializeCartLinesForPdf(lines) {
-  stampSelectedPreviewFromDom();
-  return (lines || []).map((ln, i) => {
-    const special = isRailCartLine(ln) || isShowerCartLine(ln) || isVentCartLine(ln);
-    const copy = slimCartLine(ln, { keepPreviewSvg: special });
+  return (lines || []).map((ln) => {
+    const copy = slimCartLine(ln, { keepPreviewSvg: true });
     if (!copy) return null;
-    if (special) {
-      const src = hydrateCartLine(ln);
-      if (src && src.preview && src.preview.svg) {
-        copy.preview = Object.assign({}, copy.preview || {}, { svg: src.preview.svg });
-      }
-      if (i === state.selectedLine) {
-        const svg = captureLivePreviewSvg();
-        if (svg) copy.preview = Object.assign({}, copy.preview || {}, { svg });
-      }
+    const src = hydrateCartLine(ln);
+    if (livePreviewBelongsTo(src)) {
+      const svg = captureLivePreviewSvg();
+      if (svg) copy.preview = Object.assign({}, copy.preview || {}, { svg });
+    } else if (src && src.preview && src.preview.svg) {
+      copy.preview = Object.assign({}, copy.preview || {}, { svg: src.preview.svg });
     }
     return copy;
   }).filter((ln) => ln && typeof ln === 'object' && !Array.isArray(ln));
@@ -4551,18 +4572,27 @@ function slimCartLines(lines) {
 function persistCartSession() {
   try {
     state.lines = hydrateCartLines(state.lines);
-    sessionStorage.setItem(WEOS_CART_KEY, JSON.stringify({
+    const pack = {
       projectId: state.projectId || null,
-      lines: serializeCartLines(state.lines),
+      lines: (state.lines || []).map((ln) => slimCartLine(ln, { keepPreviewSvg: true })).filter((ln) => ln && typeof ln === 'object'),
       name: ($('cartName') && $('cartName').value) || '',
       customer: ($('cartCustomer') && $('cartCustomer').value) || '',
       bill: typeof projectBillTo === 'function' ? projectBillTo() : {},
-    }));
+    };
+    const payload = JSON.stringify(pack);
+    sessionStorage.setItem(WEOS_CART_KEY, payload);
+    try { localStorage.setItem(WEOS_CART_KEY, payload); }
+    catch (_) {
+      try {
+        pack.lines = serializeCartLines(state.lines);
+        localStorage.setItem(WEOS_CART_KEY, JSON.stringify(pack));
+      } catch (_) {}
+    }
   } catch (_) {}
 }
 function restoreCartSession() {
   try {
-    const raw = sessionStorage.getItem(WEOS_CART_KEY);
+    const raw = sessionStorage.getItem(WEOS_CART_KEY) || localStorage.getItem(WEOS_CART_KEY);
     if (!raw) return false;
     const d = JSON.parse(raw);
     if (!d) return false;
@@ -4625,7 +4655,7 @@ async function ensureProject() {
   const doc = await api('/api/projects', {method:'POST', body:{
     name: $('cartName').value || 'WEOS Project',
     customer: $('cartCustomer').value || '',
-    lines: serializeCartLines(state.lines),
+    lines: [],
     status: 'draft',
     ...projectBillTo()
   }});
@@ -4668,9 +4698,7 @@ async function saveProject(silent) {
 }
 
 function scheduleSave() {
-  clearTimeout(state.saveTimer);
   persistCartSession();
-  state.saveTimer = setTimeout(() => saveProject(true).catch(e => $('cartErr').textContent=e.message), 450);
 }
 
 async function openProject(id) {
@@ -4712,9 +4740,13 @@ async function calculate() {
       try { await railingCalc(); } catch (_) {}
       syncSelectedRailingLineFromTools();
     }
-    await saveProject(true);
+    await ensureProject();
     const t0 = performance.now();
-    const calcBody = {optimize:true};
+    const calcBody = {
+      optimize: true,
+      persist: false,
+      lines: serializeCartLines(state.lines),
+    };
     const qno = ($('projQuoteNo') && $('projQuoteNo').value.trim()) || '';
     if (qno) calcBody.quotationId = qno;
     const result = await api('/api/projects/'+state.projectId+'/calculate', {method:'POST', body:calcBody});
@@ -4802,6 +4834,7 @@ $('btnAddLine').onclick = () => {
   stampItemSnapshot(draft, true);
   state.lines.push(ensureLineId(draft));
   state.selectedLine = state.lines.length-1;
+  invalidatePdfCache();
   renderCart(); scheduleSave(); refreshPreview(); scheduleLivePrice();
   toast('Line added');
 };
@@ -5480,7 +5513,10 @@ function readRailRunsFromDom() {
     row.landingMm = num('landingMm', 0);
     row.turn = (val('turn') || 'none').toLowerCase();
     if (row.turn === 'end' || row.turn === 'stop') row.turn = 'none';
-    row.turnDeg = num('turnDeg', stairs ? 180 : 90);
+    let deg = Math.round(num('turnDeg', stairs ? 180 : 90));
+    if (deg < 1 || deg > 359) deg = stairs ? 180 : 90;
+    row.turnDeg = deg;
+    row.degCustom = !!(card.querySelector('[data-deg-custom]') && !card.querySelector('[data-deg-custom]').hidden && ![45, 90, 180].includes(deg));
     row.label = stairs ? `Floor ${i + 1}` : `Span ${String.fromCharCode(65 + i)}`;
     return row;
   });
@@ -5499,7 +5535,7 @@ function collectRailRuns() {
       panels: +r.panels || 0,
       gapMm: gap,
       turn: last ? 'none' : (turn === 'end' ? 'none' : turn),
-      turnDeg: last ? 0 : (+r.turnDeg || (stairs ? 180 : 90)),
+      turnDeg: last ? 0 : Math.max(1, Math.min(359, Math.round(+r.turnDeg || (stairs ? 180 : 90)))),
       landingMm: +r.landingMm || 0,
       label: r.label,
       maxGlassMm: RAIL_MAX_GLASS_MM,
@@ -5568,29 +5604,36 @@ function railRunCardHtml(r, i, stairs) {
          <div><label class="l">Steps qty *</label><input data-k="steps" type="number" min="0" value="${r.steps || ''}" style="width:64px"/></div>`)
     : `<div><label class="l">Size mm *</label><input data-k="lengthMm" type="number" value="${r.lengthMm || ''}" style="width:96px"/></div>`;
   const turn = (r.turn || 'none').toLowerCase();
-  const deg = String(r.turnDeg || (stairs ? 180 : 90));
+  const hasSide = turn === 'left' || turn === 'right';
+  let degN = Math.round(+r.turnDeg || 0);
+  if (degN < 1 || degN > 359) degN = stairs ? 180 : 90;
+  const preset = (degN === 45 || degN === 90 || degN === 180) ? String(degN) : 'custom';
+  const showCustom = !!r.degCustom || preset === 'custom';
   const turnBlock = `
-    <input type="hidden" data-k="turn" value="${turn === 'right' ? 'right' : (turn === 'left' ? 'left' : 'none')}"/>
-    <input type="hidden" data-k="turnDeg" value="${deg === '90' ? '90' : '180'}"/>
+    <input type="hidden" data-k="turn" value="${hasSide ? turn : 'none'}"/>
+    <input type="hidden" data-k="turnDeg" value="${degN}"/>
     <div class="rt-row rail-band-row">
       <span class="l" style="margin:0">${stairs ? 'Aage band (next floor)' : 'Aage band'}</span>
       <div class="rt-shapes rail-band-btns">
-        <button type="button" data-band="turn" data-v="none" class="${turn !== 'left' && turn !== 'right' ? 'active' : ''}">End</button>
+        <button type="button" data-band="turn" data-v="none" class="${!hasSide ? 'active' : ''}">End</button>
         <button type="button" data-band="turn" data-v="left" class="${turn === 'left' ? 'active' : ''}">Left</button>
         <button type="button" data-band="turn" data-v="right" class="${turn === 'right' ? 'active' : ''}">Right</button>
       </div>
-      <div class="rt-shapes rail-band-btns" title="Band degree">
-        <button type="button" data-band="turnDeg" data-v="90" class="${deg === '90' ? 'active' : ''}">90°</button>
-        <button type="button" data-band="turnDeg" data-v="180" class="${deg !== '90' ? 'active' : ''}">180°</button>
+      <div class="rt-shapes rail-band-btns rail-deg-row" data-deg-row ${hasSide ? '' : 'hidden'}>
+        <button type="button" data-band="turnDeg" data-v="45" class="${preset === '45' ? 'active' : ''}">45°</button>
+        <button type="button" data-band="turnDeg" data-v="90" class="${preset === '90' ? 'active' : ''}">90°</button>
+        <button type="button" data-band="turnDeg" data-v="180" class="${preset === '180' ? 'active' : ''}">180°</button>
+        <button type="button" data-band="turnDeg" data-v="custom" class="${showCustom && preset === 'custom' ? 'active' : ''}">Custom</button>
+        <input data-deg-custom type="number" min="1" max="359" step="1" value="${degN}" class="rail-deg-custom" ${showCustom ? '' : 'hidden'} title="Custom degree 1–359"/>
       </div>
       ${stairs ? `<div><label class="l">Landing mm</label><input data-k="landingMm" type="number" min="0" value="${r.landingMm || ''}" placeholder="auto" style="width:72px"/></div>` : ''}
     </div>
     <div class="muted" style="font-size:.68rem;margin-top:.15rem">${
-      turn === 'left' || turn === 'right'
+      hasSide
         ? (stairs
-          ? `${deg === '90' ? '90' : '180'}° ${turn} — next floor is taraf ghumegi. + Add floor dabao.`
-          : `${deg === '90' ? '90' : '180'}° ${turn} — next span is taraf band.`)
-        : (stairs ? 'End = yahin khatam. Left / Right = next floor kis taraf.' : 'End = yahin khatam. Left / Right = next span kis taraf.')
+          ? `${degN}° ${turn} — next floor is taraf ghumegi. + Add floor dabao.`
+          : `${degN}° ${turn} — next span is taraf band.`)
+        : (stairs ? 'End = yahin khatam. Left / Right ke baad 45° / 90° / 180° / Custom.' : 'End = yahin khatam. Left / Right ke baad 45° / 90° / 180° / Custom.')
     }</div>`;
   return `<div class="rail-run" data-idx="${i}">
     <div class="rail-run-head">
@@ -5686,6 +5729,21 @@ function bindRailRunEvents() {
     state._railT = setTimeout(() => { if (isRailingMode() || state.railingMode) railingCalc(); }, 280);
   };
   host.addEventListener('input', (e) => {
+    if (e.target && e.target.hasAttribute('data-deg-custom')) {
+      const card = e.target.closest('.rail-run');
+      let n = Math.round(+e.target.value || 0);
+      if (n < 1) n = 1;
+      if (n > 359) n = 359;
+      const hidden = card && card.querySelector('input[data-k="turnDeg"]');
+      if (hidden) hidden.value = String(n);
+      if (card) {
+        const preset = (n === 45 || n === 90 || n === 180);
+        card.querySelectorAll('[data-band="turnDeg"]').forEach((b) => {
+          const v = b.getAttribute('data-v');
+          b.classList.toggle('active', preset ? v === String(n) : v === 'custom');
+        });
+      }
+    }
     if (e.target && e.target.getAttribute('data-k') === 'sizeMethod') return;
     go();
   });
@@ -5704,12 +5762,40 @@ function bindRailRunEvents() {
       const card = band.closest('.rail-run');
       const k = band.getAttribute('data-band');
       const v = band.getAttribute('data-v');
+      const idx = card ? +card.dataset.idx : -1;
+      if (k === 'turnDeg' && v === 'custom') {
+        const hidden = card && card.querySelector('input[data-k="turnDeg"]');
+        const custom = card && card.querySelector('[data-deg-custom]');
+        if (card) {
+          card.querySelectorAll('[data-band="turnDeg"]').forEach((b) => {
+            b.classList.toggle('active', b.getAttribute('data-v') === 'custom');
+          });
+        }
+        if (custom) { custom.hidden = false; custom.focus(); custom.select(); }
+        readRailRunsFromDom();
+        if (state.railRuns[idx]) state.railRuns[idx].degCustom = true;
+        go();
+        return;
+      }
       const hidden = card && card.querySelector(`input[data-k="${k}"]`);
       if (hidden) hidden.value = v;
-      if (card) {
-        card.querySelectorAll(`[data-band="${k}"]`).forEach(b => {
-          b.classList.toggle('active', b.getAttribute('data-v') === v);
-        });
+      if (k === 'turnDeg') {
+        const custom = card && card.querySelector('[data-deg-custom]');
+        if (custom) { custom.hidden = true; custom.value = v; }
+        readRailRunsFromDom();
+        if (state.railRuns[idx]) state.railRuns[idx].degCustom = false;
+        renderRailRunRows(true);
+      }
+      if (k === 'turn') {
+        readRailRunsFromDom();
+        if (state.railRuns[idx]) {
+          if (v === 'left' || v === 'right') {
+            if (!(+state.railRuns[idx].turnDeg > 0)) {
+              state.railRuns[idx].turnDeg = railIsStairs() ? 180 : 90;
+            }
+          }
+        }
+        renderRailRunRows(true);
       }
       go();
       return;
@@ -6035,8 +6121,13 @@ async function railingCalc(){
     }
     $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Railing · ${q.shape || 'straight'} · ${q.lengthMm || 0} mm · ${q.panelCount || 0} panels`;
     $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
-    stampSelectedPreviewFromDom();
-    if (res.svg && state.lines[state.selectedLine]) stampLinePreviewSvg(state.lines[state.selectedLine], res.svg);
+    const selRail = state.lines[state.selectedLine];
+    if (res.svg && selRail && isRailCartLine(selRail)) {
+      stampLinePreviewSvg(selRail, res.svg);
+      markLivePreviewLine(selRail);
+    } else {
+      state._previewLineId = null;
+    }
     renderRailingBom(q);
     renderRailingLineSpecs(q, cfg);
     renderRailingLineSpecs(q, cfg);
@@ -6136,6 +6227,8 @@ async function railingAdd(){
   if ($('lineSeries')) $('lineSeries').value = '';
   state.selectedLine = state.lines.length-1;
   state.railingMode = true;
+  markLivePreviewLine(state.lines[state.selectedLine]);
+  invalidatePdfCache();
   renderCart(); scheduleSave(); toast('Railing added to cart');
 }
 
@@ -6282,8 +6375,13 @@ async function showerCalc() {
     state.shower = { cfg, quote: q };
     $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Shower · ${q.shape || cfg.shape} · ${q.operation || ''} · ${q.widthMm || 0}×${q.heightMm || 0}`;
     if ($('livePreview')) $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
-    stampSelectedPreviewFromDom();
-    if (res.svg && state.lines[state.selectedLine]) stampLinePreviewSvg(state.lines[state.selectedLine], res.svg);
+    const selSh = state.lines[state.selectedLine];
+    if (res.svg && selSh && isShowerCartLine(selSh)) {
+      stampLinePreviewSvg(selSh, res.svg);
+      markLivePreviewLine(selSh);
+    } else {
+      state._previewLineId = null;
+    }
     renderShowerBom(q);
     renderShowerLineSpecs(q, cfg);
     markSpecialPreview();
@@ -6326,6 +6424,8 @@ async function showerAdd() {
   delete state.lines[state.lines.length - 1].trackCount;
   state.selectedLine = state.lines.length - 1;
   state.showerMode = true;
+  markLivePreviewLine(state.lines[state.selectedLine]);
+  invalidatePdfCache();
   renderCart(); scheduleSave(); toast('Shower added to cart');
 }
 function isVentMode() {
@@ -6469,8 +6569,13 @@ async function ventCalc() {
     state.ventilator = { cfg, quote: q };
     $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Ventilator · ${q.mode || cfg.mode} · ${q.widthMm || 0}×${q.heightMm || 0}`;
     if ($('livePreview')) $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
-    stampSelectedPreviewFromDom();
-    if (res.svg && state.lines[state.selectedLine]) stampLinePreviewSvg(state.lines[state.selectedLine], res.svg);
+    const selVent = state.lines[state.selectedLine];
+    if (res.svg && selVent && isVentCartLine(selVent)) {
+      stampLinePreviewSvg(selVent, res.svg);
+      markLivePreviewLine(selVent);
+    } else {
+      state._previewLineId = null;
+    }
     renderVentBom(q);
     renderVentLineSpecs(q, cfg);
     markSpecialPreview();
@@ -6511,6 +6616,8 @@ async function ventAdd() {
   delete state.lines[state.lines.length - 1].trackCount;
   state.selectedLine = state.lines.length - 1;
   state.ventMode = true;
+  markLivePreviewLine(state.lines[state.selectedLine]);
+  invalidatePdfCache();
   renderCart(); scheduleSave(); toast('Ventilator added to cart');
 }
 function applyRailingModeFromProduct() {
@@ -7065,7 +7172,10 @@ $('btnNewFromDash').onclick = $('btnNewProj').onclick = async () => {
   ['projCustAddress','projCustGst','projQuoteNo','projDescription','projTerms'].forEach(id => { if ($(id)) $(id).value=''; });
   $('cartTotal').textContent='₹ —'; renderCart();
   refreshSetupSummary();
-  setView('setup'); await ensureProject(); scheduleLivePrice();
+  state._previewLineId = null;
+  invalidatePdfCache();
+  persistCartSession();
+  setView('setup'); scheduleLivePrice();
 };
 if ($('btnSaveSetup')) $('btnSaveSetup').onclick = async () => {
   try {
@@ -7103,7 +7213,7 @@ async function upsertCustomerFromSetup() {
 if ($('btnSetupToCart')) $('btnSetupToCart').onclick = async () => {
   try {
     syncProjectCustomer();
-    await saveProject(true);
+    persistCartSession();
     setView('cart');
   } catch(e) { toast(e.message); }
 };
@@ -7125,6 +7235,7 @@ function _exportFingerprint(kind) {
         g: l.glass, c: l.colour, sr: l.sellingRate, su: l.saleUnit,
         loc: l.locationName,
         photo: l.designPhoto && l.designPhoto.key,
+        pv: (l.preview && l.preview.svg && l.preview.svg.length) || 0,
         rs: l.options && l.options.railing && [
           l.options.railing.handrailSize, l.options.railing.bottomSize,
           l.options.railing.anchorSpacingFt, l.options.railing.handrailBarLengthFt,
@@ -7159,7 +7270,6 @@ async function openProjectPdf(kind) {
   await ensureProject();
   try { await ensureExportSetupApplied(); } catch (_) {}
   updatePdfLinks();
-  saveProject(true).catch(() => {});
   const brand = ($('pdfBrand') && $('pdfBrand').value) || 'woodenmax';
   const body = _liveExportBody(brand);
   const res = await fetch(`${API_BASE}/api/projects/${state.projectId}/${kind}-pdf?brand=${encodeURIComponent(brand)}`, {
@@ -7182,6 +7292,7 @@ async function openProjectPdf(kind) {
   const url = URL.createObjectURL(blob);
   if (cacheKind === 'customer') state._custPdfCache = { key: cacheKey, url, blob };
   window.open(url, '_blank');
+  saveProject(true).catch(() => {});
 }
 ['linkCust','linkCustPrint','linkFact'].forEach(id => {
   const a = $(id); if (!a) return;
@@ -7206,7 +7317,6 @@ if ($('linkCustXlsx')) $('linkCustXlsx').addEventListener('click', async (e) => 
     await ensureProject();
     try { await ensureExportSetupApplied(); } catch (_) {}
     updatePdfLinks();
-    saveProject(true).catch(() => {});
     const brand = ($('pdfBrand') && $('pdfBrand').value) || 'woodenmax';
     const res = await fetch(`${API_BASE}/api/projects/${state.projectId}/customer.xlsx?brand=${encodeURIComponent(brand)}&drawings=thumb`, {
       method: 'POST',
@@ -7225,6 +7335,7 @@ if ($('linkCustXlsx')) $('linkCustXlsx').addEventListener('click', async (e) => 
     document.body.appendChild(a);
     a.click();
     a.remove();
+    saveProject(true).catch(() => {});
   } catch(err) { toast(err.message || String(err)); }
 });
 if ($('exportSetupSelect')) {
@@ -7249,6 +7360,7 @@ $('pdAdd').onclick = () => {
   };
   stampItemSnapshot(libLine, true);
   state.lines.push(ensureLineId(libLine));
+  invalidatePdfCache();
   setView('cart'); renderCart(); scheduleSave();
 };
 $('pdBack').onclick = () => setView('library');
@@ -9642,9 +9754,8 @@ if ($('btnEngSeed')) $('btnEngSeed').onclick = async () => {
 };
 
 // ── WEOS Agent dock: mobile login + cloud quotes + live suggestions ─────────
-// Cloud-first: quotes/customers live in PostgreSQL via the API. The browser
-// only caches the logged-in mobile for convenience; it is NEVER the source of
-// truth. Server-persistence failures surface as a clear error (no localStorage DB).
+// Quotes are built in the browser (session + local cache). Server save happens
+// on Save, or after a successful PDF / Excel export.
 window.WEOS_AUTH = null;
 window.WEOS_QUOTE_ID = null;
 
@@ -9920,7 +10031,7 @@ async function pingEngine(){
       {product:'casement_stub', width:900, height:1500, qty:2, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft'},
       {product:'fixed_stub', width:1200, height:600, qty:8, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft'},
     ].map(ensureLineId);
-  } else if (state.projectId) {
+  } else if (state.projectId && !hasSavedLines) {
     api('/api/projects/'+state.projectId).then((doc) => {
       if (!doc || state.projectId !== doc.projectId) return;
       adoptServerLines(doc.lines || [], { allowShrink: false });
