@@ -12,6 +12,7 @@ dev. Company name renders in UPPERCASE on documents.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import re
@@ -39,6 +40,46 @@ def company_gst_key(gst: str) -> str:
     if not g:
         raise ValueError("GSTIN required")
     return f"company:gst:{g}"
+
+
+def hash_delete_pin(pin: str, gst: str | None = None) -> str:
+    """SHA-256 of company delete PIN (GST-scoped). Never store the PIN itself."""
+    g = normalise_gstin(gst)
+    raw = f"weos-delete-pin|{g}|{str(pin or '').strip()}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def verify_delete_pin(gst: str, pin: str | None) -> bool:
+    """True when the typed PIN matches the stored company delete PIN."""
+    g = normalise_gstin(gst)
+    typed = str(pin or "").strip()
+    if not g or not typed:
+        return False
+    doc = load_company_by_gst(g) or {}
+    stored = str(doc.get("deletePinHash") or "").strip()
+    if not stored:
+        return False
+    return stored == hash_delete_pin(typed, g)
+
+
+def company_has_delete_pin(gst: str | None = None, doc: Mapping[str, Any] | None = None) -> bool:
+    if isinstance(doc, Mapping) and doc.get("deletePinHash"):
+        return True
+    g = normalise_gstin(gst or (doc or {}).get("gstNo") if isinstance(doc, Mapping) else gst)
+    if not g:
+        return False
+    row = load_company_by_gst(g) or {}
+    return bool(str(row.get("deletePinHash") or "").strip())
+
+
+def public_company_profile(doc: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Company payload safe for API / UI — never includes the PIN hash."""
+    out = dict(doc or {})
+    has = bool(str(out.get("deletePinHash") or "").strip() or out.get("hasDeletePin"))
+    out.pop("deletePinHash", None)
+    out.pop("deletePin", None)
+    out["hasDeletePin"] = has
+    return out
 
 _LOGO_EXT = {
     "image/png": ".png",
@@ -93,6 +134,7 @@ def _empty() -> dict[str, Any]:
         "terms": "",
         "logoPath": None,
         "logoUrl": None,
+        "hasDeletePin": False,
         "updatedAt": None,
         "persisted": False,
     }
@@ -200,8 +242,9 @@ def save_company_by_gst(gst: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         doc["logoPath"] = str(payload["logoPath"]) or None
     if payload.get("logoUrl") is not None:
         doc["logoUrl"] = str(payload["logoUrl"]) or None
+    _apply_delete_pin(doc, payload, gst=g)
     doc["updatedAt"] = datetime.now(timezone.utc).isoformat()
-    clean = {k: v for k, v in doc.items() if k not in ("persisted", "storage")}
+    clean = {k: v for k, v in doc.items() if k not in ("persisted", "storage", "hasDeletePin", "deletePin")}
     ok = _db_put(clean, key=company_gst_key(g))
     # Mirror to active profile + filesystem for branding.
     _write_file(clean)
@@ -214,7 +257,7 @@ def save_company_by_gst(gst: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         pass
     doc["persisted"] = ok
     doc["storage"] = "db" if ok else "file"
-    return doc
+    return public_company_profile(doc)
 
 
 def load_company() -> dict[str, Any]:
@@ -253,7 +296,23 @@ def load_company() -> dict[str, Any]:
     base["storage"] = source or "empty"
     if base.get("gstNo"):
         base["gstNo"] = normalise_gstin(base.get("gstNo"))
+    base["hasDeletePin"] = bool(str(base.get("deletePinHash") or "").strip())
     return base
+
+
+def _apply_delete_pin(doc: dict[str, Any], payload: Mapping[str, Any], *, gst: str) -> None:
+    """Store hashed delete PIN; never persist the typed PIN."""
+    if payload.get("clearDeletePin"):
+        doc.pop("deletePinHash", None)
+        doc["hasDeletePin"] = False
+        return
+    if "deletePin" not in payload or payload.get("deletePin") is None:
+        return
+    pin = str(payload.get("deletePin") or "").strip()
+    if not pin:
+        return
+    doc["deletePinHash"] = hash_delete_pin(pin, gst)
+    doc["hasDeletePin"] = True
 
 
 def save_company(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -272,15 +331,16 @@ def save_company(payload: Mapping[str, Any]) -> dict[str, Any]:
         doc["logoPath"] = str(payload["logoPath"]) or None
     if payload.get("logoUrl") is not None:
         doc["logoUrl"] = str(payload["logoUrl"]) or None
+    _apply_delete_pin(doc, payload, gst="")
     doc["updatedAt"] = datetime.now(timezone.utc).isoformat()
-    clean = {k: v for k, v in doc.items() if k not in ("persisted", "storage")}
+    clean = {k: v for k, v in doc.items() if k not in ("persisted", "storage", "hasDeletePin", "deletePin")}
     _write_file(clean)
     ok = _db_put(clean)
     doc["persisted"] = ok
     doc["storage"] = "db" if ok else "file"
     if not ok:
         _log.warning("Company saved to filesystem only — set DATABASE_URL for durable storage")
-    return doc
+    return public_company_profile(doc)
 
 
 def save_logo(raw: bytes, filename: str | None = None, content_type: str | None = None) -> dict[str, Any]:

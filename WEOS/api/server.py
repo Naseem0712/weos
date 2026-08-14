@@ -376,6 +376,8 @@ class CompanyBody(BaseModel):
     bankDetails: str | None = None
     cin: str | None = None
     terms: str | None = None
+    deletePin: str | None = None
+    clearDeletePin: bool = False
 
 
 class CompanyWorkspaceOpenBody(BaseModel):
@@ -419,10 +421,23 @@ class AdvanceBody(BaseModel):
     quoteVersion: int | None = None
     paidAt: str | None = None
     customerName: str | None = None
+    entryType: str | None = None  # advance | refund
 
 
 class ProjectStatusBody(BaseModel):
     status: str
+
+
+class QuoteRejectBody(BaseModel):
+    confirm: bool = False
+    note: str | None = None
+
+
+class QuoteDeleteBody(BaseModel):
+    gstNo: str | None = None
+    pin: str | None = None
+    confirm: str | None = None
+    hard: bool = True
 
 
 class PackUpdateBody(BaseModel):
@@ -1542,13 +1557,29 @@ def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
 
 
 @app.delete("/api/projects/{project_id}")
-def api_delete_project(project_id: str, hard: bool = Query(False), gst: str | None = None) -> dict[str, Any]:
-    if gst:
-        from WEOS.factory.company_quotes import delete_company_quote
-        from WEOS.factory.company_store import normalise_gstin
+def api_delete_project(
+    project_id: str,
+    hard: bool = Query(False),
+    gst: str | None = None,
+    pin: str | None = None,
+    confirm: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_quotes import delete_company_quote, require_delete_confirm
+    from WEOS.factory.company_store import get_active_gst, load_company, normalise_gstin
 
+    g = normalise_gstin(gst) if gst else (get_active_gst() or "")
+    if not g:
+        g = normalise_gstin((load_company() or {}).get("gstNo") or "")
+    if hard or g:
         try:
-            return delete_company_quote(project_id, company_gst=normalise_gstin(gst), hard=hard)
+            require_delete_confirm(project_id, company_gst=g or None, pin=pin, confirm=confirm)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if g:
+        try:
+            return delete_company_quote(project_id, company_gst=g, hard=hard)
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except FileNotFoundError as exc:
@@ -1559,6 +1590,18 @@ def api_delete_project(project_id: str, hard: bool = Query(False), gst: str | No
         return delete_project(project_id, hard=hard)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/delete")
+def api_delete_project_post(project_id: str, body: QuoteDeleteBody) -> dict[str, Any]:
+    """PIN-confirmed hard delete (Saved Projects)."""
+    return api_delete_project(
+        project_id,
+        hard=body.hard,
+        gst=body.gstNo,
+        pin=body.pin,
+        confirm=body.confirm,
+    )
 
 
 @app.post("/api/projects/{project_id}/duplicate")
@@ -1587,11 +1630,49 @@ def api_restore(project_id: str) -> dict[str, Any]:
 
 @app.post("/api/projects/{project_id}/status")
 def api_project_set_status(project_id: str, body: ProjectStatusBody) -> dict[str, Any]:
-    """Mark a project/quote status (e.g. confirmed / accepted / draft / active)."""
+    """Mark a project/quote status (draft → approved → rejected/cancelled)."""
     from WEOS.factory.project_store import set_project_status
 
     try:
         return set_project_status(project_id, body.status)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/approve")
+def api_project_approve(project_id: str) -> dict[str, Any]:
+    from WEOS.factory.project_store import set_project_status
+
+    try:
+        return set_project_status(project_id, "approved")
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/reject")
+def api_project_reject(project_id: str, body: QuoteRejectBody | None = None) -> dict[str, Any]:
+    """Un-approve: status=rejected, excluded from turnover; history + advances kept."""
+    body = body or QuoteRejectBody()
+    if not body.confirm:
+        raise HTTPException(status_code=400, detail="Confirm reject to un-approve this quote.")
+    from WEOS.factory.project_store import load_project, set_project_status
+
+    try:
+        doc = set_project_status(project_id, "rejected")
+        if body.note:
+            try:
+                live = load_project(project_id)
+                live["rejectNote"] = str(body.note).strip()
+                from WEOS.factory.project_store import save_project
+
+                doc = save_project(live, bump_version=False, action="reject_note")
+            except Exception:
+                pass
+        return doc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2320,9 +2401,9 @@ def api_save_customer_rate(body: CustomerRateBody) -> dict[str, Any]:
 
 @app.get("/api/company")
 def api_get_company() -> dict[str, Any]:
-    from WEOS.factory.company_store import load_company
+    from WEOS.factory.company_store import load_company, public_company_profile
 
-    return load_company()
+    return public_company_profile(load_company())
 
 
 @app.put("/api/company")
@@ -2352,6 +2433,8 @@ def api_company_workspace_open(body: CompanyWorkspaceOpenBody) -> dict[str, Any]
 class CompanyQuotesBulkBody(BaseModel):
     gstNo: str | None = None
     filter: str = "unused"
+    pin: str | None = None
+    confirm: str | None = None
 
 
 @app.get("/api/company/quotes")
@@ -2376,9 +2459,11 @@ def api_company_delete_quote(
     project_id: str,
     gst: str | None = None,
     hard: bool = Query(True),
+    pin: str | None = None,
+    confirm: str | None = None,
 ) -> dict[str, Any]:
-    """Delete a quote/project from Postgres, scoped to the open company GST."""
-    from WEOS.factory.company_quotes import delete_company_quote
+    """Delete a quote/project from Postgres, scoped to the open company GST. PIN required."""
+    from WEOS.factory.company_quotes import delete_company_quote, require_delete_confirm
     from WEOS.factory.company_store import get_active_gst, load_company, normalise_gstin
 
     g = normalise_gstin(gst) if gst else (get_active_gst() or "")
@@ -2387,6 +2472,7 @@ def api_company_delete_quote(
     if not g:
         raise HTTPException(status_code=400, detail="Open a company workspace with GSTIN first.")
     try:
+        require_delete_confirm(project_id, company_gst=g, pin=pin, confirm=confirm)
         return delete_company_quote(project_id, company_gst=g, hard=hard)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -2396,10 +2482,21 @@ def api_company_delete_quote(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.post("/api/company/quotes/{project_id}/delete")
+def api_company_delete_quote_post(project_id: str, body: QuoteDeleteBody) -> dict[str, Any]:
+    return api_company_delete_quote(
+        project_id,
+        gst=body.gstNo,
+        hard=body.hard,
+        pin=body.pin,
+        confirm=body.confirm,
+    )
+
+
 @app.post("/api/company/quotes/bulk-delete")
 def api_company_bulk_delete_quotes(body: CompanyQuotesBulkBody) -> dict[str, Any]:
-    """Bulk-delete unused / old-draft / duplicate extras for this GST only."""
-    from WEOS.factory.company_quotes import bulk_delete_unused
+    """Bulk-delete unused / old-draft / duplicate extras for this GST only. PIN required."""
+    from WEOS.factory.company_quotes import bulk_delete_unused, require_bulk_delete_confirm
     from WEOS.factory.company_store import get_active_gst, load_company, normalise_gstin
 
     g = normalise_gstin(body.gstNo) if body.gstNo else (get_active_gst() or "")
@@ -2411,7 +2508,10 @@ def api_company_bulk_delete_quotes(body: CompanyQuotesBulkBody) -> dict[str, Any
     if fk in ("all", "*", ""):
         raise HTTPException(status_code=400, detail="Bulk delete requires filter=unused, old_draft, or duplicate.")
     try:
+        require_bulk_delete_confirm(company_gst=g, pin=body.pin, confirm=body.confirm)
         return bulk_delete_unused(g, filter_key=fk)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2449,10 +2549,12 @@ def api_company_workspace(gst: str | None = None) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Open a company workspace with GSTIN first.")
     company = load_company_by_gst(g) or load_company()
     summary = build_workspace_summary(g)
+    from WEOS.factory.company_store import public_company_profile
+
     return {
         "ok": True,
         "gstNo": g,
-        "company": company,
+        "company": public_company_profile(company),
         "totalsRule": TOTALS_RULE,
         **summary,
     }
@@ -2609,14 +2711,17 @@ def api_add_customer_advance(customer: str, body: AdvanceBody) -> dict[str, Any]
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     pid = str(created.get("projectId") or payload.get("projectId") or "").strip()
-    if pid:
+    entry_type = str(created.get("entryType") or payload.get("entryType") or "advance").strip().lower()
+    if pid and entry_type not in ("refund", "reversal", "return"):
         try:
             from WEOS.factory.ledger_store import CONFIRMED_STATUSES
             from WEOS.factory.project_store import load_project, set_project_status
 
             doc = load_project(pid)
             st = str(doc.get("status") or "").strip().lower()
-            if st not in CONFIRMED_STATUSES:
+            if st in {"rejected", "cancelled", "canceled"}:
+                created["projectStatus"] = st
+            elif st not in CONFIRMED_STATUSES:
                 set_project_status(pid, "approved")
                 created["projectStatus"] = "approved"
             else:

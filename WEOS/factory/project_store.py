@@ -293,10 +293,25 @@ def _sync_customer_from_project(doc: Mapping[str, Any] | dict[str, Any]) -> None
 
 
 def set_project_status(project_id: str, status: str) -> dict[str, Any]:
-    """Set project status (draft|active|confirmed|accepted|finalized|archived…)."""
+    """Set project status (draft → approved → rejected/cancelled; archive)."""
     st = (status or "").strip().lower() or "draft"
+    allowed = {
+        "draft", "active", "unused", "approved", "confirmed", "accepted", "finalized",
+        "ordered", "order", "won", "rejected", "cancelled", "canceled", "archived",
+    }
+    if st not in allowed:
+        raise ValueError(f"Unknown status {status!r}")
     doc = load_project(project_id)
+    prev = str(doc.get("status") or "draft").strip().lower()
     doc["status"] = st
+    now = datetime.now(timezone.utc).isoformat()
+    if st in {"approved", "confirmed", "accepted", "finalized", "ordered", "order", "won"}:
+        doc["approvedAt"] = now
+        if prev in {"rejected", "cancelled", "canceled"}:
+            doc["reapprovedFrom"] = prev
+    if st in {"rejected", "cancelled", "canceled"}:
+        doc["rejectedAt"] = now
+        doc["rejectedFrom"] = prev
     return save_project(doc, bump_version=False, action=f"status_{st}")
 
 
@@ -803,6 +818,12 @@ def empty_project(*, name: str = "Untitled Project", customer: str = "") -> dict
 
 
 def dashboard_stats() -> dict[str, Any]:
+    from WEOS.factory.ledger_store import (
+        _latest_per_quotation,
+        quote_money_parts,
+        status_counts_toward_turnover,
+    )
+
     projects = list_projects(include_archived=False)
     archived = list_projects(status="archived", include_archived=True)
     active = [p for p in projects if p.get("status") == "active"]
@@ -813,19 +834,16 @@ def dashboard_stats() -> dict[str, Any]:
     todays = [p for p in projects if str(p.get("updatedAt", "")).startswith(today)]
     year_taxable = 0.0
     year_grand = 0.0
-    for p in projects:
+    live = _latest_per_quotation(projects)
+    for p in live:
+        if not status_counts_toward_turnover(p.get("status")):
+            continue
         stamp = str(p.get("updatedAt") or p.get("createdAt") or "")
         if not stamp.startswith(str(year)):
             continue
-        try:
-            year_taxable += float(p.get("totalTaxable") or p.get("grandTotal") or 0)
-            year_grand += float(p.get("totalGrand") or 0)
-        except (TypeError, ValueError):
-            pass
-    if year_grand <= 0 and year_taxable > 0:
-        from WEOS.factory.ledger_store import quote_money_parts
-
-        year_grand = quote_money_parts(year_taxable)["totalGrand"]
+        parts = quote_money_parts(p.get("grandTotal") or p.get("totalTaxable") or 0)
+        year_taxable += parts["totalTaxable"]
+        year_grand += parts["totalGrand"]
     return {
         "activeProjects": len(active),
         "draftQuotations": len(drafts) + len([p for p in with_quote if p.get("status") == "draft"]),
@@ -837,4 +855,5 @@ def dashboard_stats() -> dict[str, Any]:
         "yearGrand": round(year_grand, 2),
         "yearGst": round(year_grand - year_taxable, 2),
         "year": year,
+        "yearBasis": "approved_latest_per_quotation_number",
     }

@@ -25,7 +25,7 @@ def main() -> int:
     from WEOS.factory import company_store, ledger_store
     from WEOS.factory.customer_store import save_customer_profile
     from WEOS.factory.ledger_pdf import ledger_filename, render_ledger_pdf
-    from WEOS.factory.project_store import empty_project, save_project
+    from WEOS.factory.project_store import empty_project, save_project, set_project_status
 
     url, backend = resolve_database_url()
     if "sqlite" not in url and backend != "sqlite":
@@ -72,10 +72,12 @@ def main() -> int:
     doc = empty_project(name="Smoke Quote 1", customer=cust)
     doc["lastCalculation"] = {"price": {"total": 100000.0}}
     save_project(doc, action="smoke")
+    set_project_status(doc["projectId"], "approved")
 
     doc2 = empty_project(name="Smoke Quote 2", customer=cust)
     doc2["lastCalculation"] = {"price": {"total": 50000.0}}
     save_project(doc2, action="smoke")
+    set_project_status(doc2["projectId"], "approved")
 
     a1 = ledger_store.add_advance(cust, {"amount": 40000, "paymentMode": "upi", "reference": "UTR1"})
     a2 = ledger_store.add_advance(cust, {"amount": 25000, "paymentMode": "cheque", "reference": "CHQ99"})

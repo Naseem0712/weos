@@ -58,6 +58,20 @@ def main() -> int:
         },
     )
 
+    # Draft (even with value) must not inflate year turnover.
+    draft = empty_project(name="Test Draft Quote", customer=cust)
+    draft["companyGst"] = gst
+    draft["quotationId"] = "QT-HUB-DRAFT"
+    draft["lastCalculation"] = {"price": {"total": 999999.0}}
+    draft = save_project(draft, action="smoke")
+
+    ws_draft = open_workspace(gst, create=True)
+    dash_draft = ws_draft.get("dashboard") or {}
+    if abs(float(dash_draft.get("yearTaxable") or 0)) > 0.01:
+        fails.append(f"draft quotes must not count toward yearTaxable got {dash_draft.get('yearTaxable')}")
+
+    set_project_status(p["projectId"], "approved")
+
     # Re-open as if page refreshed with saved GSTIN.
     ws2 = open_workspace(gst, create=True)
     if ws2.get("created"):
@@ -87,8 +101,8 @@ def main() -> int:
         fails.append(f"totalTaxable expected 200000 got {dash.get('totalTaxable')}")
     if abs(float(dash.get("totalGrand") or 0) - 236000) > 0.01:
         fails.append(f"totalGrand expected 236000 got {dash.get('totalGrand')}")
-    if int(dash.get("ordersConfirmed") or 0) != 0:
-        fails.append("ordersConfirmed should be 0 before confirm")
+    if int(dash.get("ordersConfirmed") or 0) < 1:
+        fails.append(f"ordersConfirmed expected >=1 after approve got {dash.get('ordersConfirmed')}")
 
     led0 = build_ledger(cust, company_gst=gst)
     t0 = led0.get("totals") or {}

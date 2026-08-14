@@ -234,7 +234,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
       <div class="panel">
         <div class="row">
           <div class="grow"><label class="l">Search</label><input id="projSearch" placeholder="PRJ / name / customer"/></div>
-          <div><label class="l">Status</label><select id="projStatus"><option value="">All</option><option>draft</option><option>active</option><option>archived</option></select></div>
+          <div><label class="l">Status</label><select id="projStatus"><option value="">All</option><option>draft</option><option>approved</option><option>rejected</option><option>active</option><option>archived</option></select></div>
           <div><label class="l">Sort</label><select id="projSort"><option value="updatedAt">Updated</option><option value="name">Name</option><option value="projectId">ID</option></select></div>
           <button class="btn" id="btnRefreshProj" style="margin-top:1rem">Refresh</button>
           <button class="btn sec" id="btnNewProj" style="margin-top:1rem">New</button>
@@ -1358,7 +1358,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
           <div class="err" id="cpErr" style="margin-top:.4rem"></div>
           <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
           <strong style="font-size:.9rem">Account / Ledger</strong>
-          <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">Taxable = latest commercial total per quote number (ex-GST). With GST adds 18% (quote PDF). Balance = taxable − advances. Use Slip PDF / Print / Excel on each advance row.</p>
+          <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">Taxable / billed = latest commercial total per quote number for <strong>Approved</strong> quotes only (drafts and testing quotes do not inflate turnover). With GST adds 18%. Balance = taxable − advances (record a refund if an advance was returned).</p>
           <div id="cpLedgerKpis" class="row" style="gap:.7rem;flex-wrap:wrap;margin-bottom:.6rem">
             <div class="kpi"><label class="l">Taxable (ex-GST)</label><div class="big" style="font-size:1.05rem" id="cpTotTaxable">₹ —</div></div>
             <div class="kpi"><label class="l">With GST</label><div class="big" style="font-size:1.05rem" id="cpTotGrand">₹ —</div></div>
@@ -1385,6 +1385,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
               <input id="cpAdvApprove" type="checkbox" checked style="width:auto"/> Mark quote approved
             </label>
             <button class="btn sm" id="btnCpAdvAdd" type="button">Add advance</button>
+            <button class="btn ghost sm" id="btnCpRefund" type="button">Record refund</button>
           </div>
           <p class="muted" style="margin:0 0 .45rem;font-size:.75rem">After saving an advance, generate the slip from the table: <strong>Slip PDF</strong> · <strong>Print</strong> · <strong>Excel</strong> (stamp/signature if uploaded).</p>
           <div id="cpAdvances" style="margin-bottom:.8rem"></div>
@@ -1450,7 +1451,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
           <table><thead><tr><th>Account</th><th>Billed</th><th>Advances</th><th>Balance</th><th></th></tr></thead><tbody id="hubAccBody"></tbody></table>
         </div>
         <div id="hub-quotes" class="hidden">
-          <p class="muted" style="font-size:.78rem;margin:0 0 .55rem">Delete unused, duplicate extra versions, or old drafts from the server (Postgres). Confirmed / approved quotes with advances are protected.</p>
+          <p class="muted" style="font-size:.78rem;margin:0 0 .55rem">Delete requires a company delete PIN (or typing the project ID / DELETE). Archive is the safer option. Approved quotes count toward year turnover; drafts do not.</p>
           <div class="row" style="gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.55rem">
             <select id="hubQuoteFilter" style="width:160px">
               <option value="all">All quotes</option>
@@ -1496,6 +1497,10 @@ button.pill{border:0;font:inherit;cursor:pointer}
             <div class="grow"><label class="l">PAN</label><input id="coPan"/></div>
             <div class="grow"><label class="l">Bank details (prints on quote)</label><input id="coBank" placeholder="Bank · A/c No · IFSC · Branch"/></div>
           </div>
+          <div class="row" style="margin-top:.5rem">
+            <div class="grow"><label class="l">Delete PIN (required to delete quotes/projects)</label><input id="coDeletePin" type="password" autocomplete="new-password" placeholder="Leave blank to keep current PIN"/></div>
+          </div>
+          <p class="muted" id="coDeletePinHint" style="margin:.35rem 0 0;font-size:.75rem">Not set yet — deleting a quote requires typing the project ID exactly (or DELETE). Set a PIN so deletes cannot happen by accident.</p>
           <div class="row" style="margin-top:.5rem">
             <div class="grow" style="flex-basis:100%"><label class="l">Default Terms &amp; Conditions (prints on every quote unless overridden)</label><textarea id="coTerms" rows="5" placeholder="One term per line…" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem;font:inherit"></textarea></div>
           </div>
@@ -2092,6 +2097,59 @@ function savedCompanyGst() {
     return (state.companyGst || '').trim().toUpperCase();
   }
 }
+function updateDeletePinHint(co) {
+  const hint = $('coDeletePinHint');
+  if (!hint) return;
+  const has = !!(co && co.hasDeletePin);
+  hint.textContent = has
+    ? 'Delete PIN is set. Deleting a quote/project requires this PIN, then a confirm. Archive stays the softer option.'
+    : 'Not set yet — deleting a quote requires typing the project ID exactly (or DELETE). Set a PIN so deletes cannot happen by accident.';
+}
+async function confirmPinDelete(projectId, label) {
+  const hasPin = !!(state.company && state.company.hasDeletePin);
+  const msg = hasPin
+    ? 'Type the company delete PIN to permanently delete:\n' + (label || projectId)
+    : 'Type the project ID exactly (' + projectId + ') or DELETE to permanently delete:\n' + (label || projectId) + '\n\nTip: set a delete PIN in Company Setup.';
+  const typed = prompt(msg);
+  if (typed == null || !String(typed).trim()) return null;
+  if (!confirm('Permanently delete ' + (label || projectId) + ' from the server (Postgres)? This cannot be undone.\n\nArchive is the safer option if you only want it out of the list.')) return null;
+  const gst = state.companyGst || savedCompanyGst() || '';
+  const body = {
+    gstNo: gst || undefined,
+    pin: hasPin ? String(typed).trim() : undefined,
+    confirm: String(typed).trim(),
+    hard: true,
+  };
+  if (gst) return api('/api/company/quotes/'+encodeURIComponent(projectId)+'/delete', {method:'POST', body});
+  return api('/api/projects/'+encodeURIComponent(projectId)+'/delete', {method:'POST', body});
+}
+async function confirmRejectQuote(projectId) {
+  if (!confirm('Reject / un-approve this quote?\n\nIt will drop out of year turnover. History and advances stay listed (marked rejected). Record a refund if the advance was returned.')) return null;
+  return api('/api/projects/'+encodeURIComponent(projectId)+'/reject', {method:'POST', body:{ confirm: true }});
+}
+async function recordQuoteRefund(projectId, customer, quoteId, version) {
+  const raw = prompt('Refund / reversal amount (advance returned). This posts a negative advance so balance and turnover stay correct.');
+  if (raw == null || !String(raw).trim()) return null;
+  const amount = +String(raw).replace(/,/g,'');
+  if (!(amount > 0)) { toast('Enter a refund amount'); return null; }
+  const name = customer || state.selectedCustomer;
+  if (!name) { toast('Open a customer account first'); return null; }
+  return api('/api/customers/'+encodeURIComponent(name)+'/advances', {
+    method:'POST',
+    body: {
+      amount,
+      entryType: 'refund',
+      paymentMode: ($('cpAdvMode') && $('cpAdvMode').value) || 'other',
+      paidAt: ($('cpAdvDate') && $('cpAdvDate').value) || null,
+      reference: 'REFUND',
+      note: 'Refund / reversal (advance returned)',
+      projectId: projectId || null,
+      quoteId: quoteId || null,
+      quoteVersion: version || null,
+      customerName: name,
+    },
+  });
+}
 async function applyWorkspacePayload(ws) {
   if (!ws || !ws.gstNo) return;
   state.workspace = ws;
@@ -2107,6 +2165,7 @@ async function applyWorkspacePayload(ws) {
     if ($('coEmail') && c.email) $('coEmail').value = c.email;
     if ($('coTagline') && c.tagline) $('coTagline').value = c.tagline;
     if ($('coTerms') && c.terms) $('coTerms').value = c.terms;
+    updateDeletePinHint(c);
     if (typeof renderCompanyPreview === 'function') renderCompanyPreview();
   }
   if (typeof renderCompanyHub === 'function') renderCompanyHub(ws);
@@ -2492,6 +2551,7 @@ async function loadProjects() {
         <button class="btn ghost sm" data-o="${p.projectId}">Open</button>
         <button class="btn ghost sm" data-d="${p.projectId}">Dup</button>
         <button class="btn ghost sm" data-a="${p.projectId}">${p.status==='archived'?'Restore':'Archive'}</button>
+        ${p.status==='archived'?'':`<button class="btn ghost sm" data-del="${p.projectId}" data-del-label="${esc((p.quotationId||p.projectId)+' / '+(p.customer||p.name||''))}">Delete</button>`}
       </td>
     </tr>`).join('') || '<tr><td colspan="8" class="muted">None</td></tr>';
   $('projBody').querySelectorAll('[data-o]').forEach(b => b.onclick = async () => { await openProject(b.dataset.o); setView('cart'); });
@@ -2501,6 +2561,15 @@ async function loadProjects() {
     if (p?.status==='archived') await api('/api/projects/'+b.dataset.a+'/restore',{method:'POST'});
     else await api('/api/projects/'+b.dataset.a+'/archive',{method:'POST'});
     toast('Updated'); loadProjects();
+  });
+  $('projBody').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    try {
+      const res = await confirmPinDelete(b.dataset.del, b.dataset.delLabel || b.dataset.del);
+      if (!res) return;
+      toast('Project deleted');
+      loadProjects();
+      if (state.companyGst) refreshCompanyHub(state.companyGst);
+    } catch(e) { toast(e.message); }
   });
 }
 
@@ -7738,6 +7807,7 @@ async function initCompany() {
     $('coPan').value = c.pan || '';
     $('coBank').value = c.bankDetails || '';
     if ($('coTerms')) $('coTerms').value = c.terms || '';
+    updateDeletePinHint(c);
     renderCompanyPreview();
     const img = $('coLogoImg');
     if (img) { img.src = API_BASE+'/api/company/logo?t='+Date.now(); img.onload = () => img.style.display=''; img.onerror = () => img.style.display='none'; }
@@ -7765,8 +7835,13 @@ if ($('btnCoSave')) $('btnCoSave').onclick = async () => {
       bankDetails: $('coBank').value,
       terms: ($('coTerms') && $('coTerms').value) || '',
     };
+    const pin = ($('coDeletePin') && $('coDeletePin').value) || '';
+    if (pin.trim()) body.deletePin = pin.trim();
     const saved = await api('/api/company', {method:'PUT', body});
     if (saved && saved.gstNo) persistCompanyGst(saved.gstNo);
+    state.company = saved || state.company;
+    updateDeletePinHint(saved);
+    if ($('coDeletePin')) $('coDeletePin').value = '';
     toast(saved && saved.persisted === false
       ? 'Company saved locally only — set DATABASE_URL for durable storage'
       : 'Company saved');
@@ -7863,10 +7938,22 @@ function renderCompanyHub(ws) {
         <td>${esc(p.quotationId||'—')}</td>
         <td>v${p.version||1}</td>
         <td>${p.grandTotal!=null?money(p.grandTotal):'—'}<div class="muted" style="font-size:.7rem">${p.totalGrand!=null?('w/GST '+money(p.totalGrand)):''}</div></td>
-        <td><button class="btn ghost sm" data-hub-open="${esc(p.projectId)}" type="button">Open</button></td>
+        <td style="white-space:nowrap">
+          <button class="btn ghost sm" data-hub-open="${esc(p.projectId)}" type="button">Open</button>
+          <button class="btn ghost sm" data-hub-del="${esc(p.projectId)}" data-hub-del-label="${esc((p.quotationId||p.projectId)+' / '+(p.customer||p.name||''))}" type="button">Delete</button>
+        </td>
       </tr>`).join('') || '<tr><td colspan="6" class="muted">No projects yet</td></tr>';
     $('hubProjBody').querySelectorAll('[data-hub-open]').forEach(b => b.onclick = async () => {
       await openProject(b.dataset.hubOpen); setView('cart');
+    });
+    $('hubProjBody').querySelectorAll('[data-hub-del]').forEach(b => b.onclick = async () => {
+      try {
+        const res = await confirmPinDelete(b.dataset.hubDel, b.dataset.hubDelLabel || b.dataset.hubDel);
+        if (!res) return;
+        toast('Project deleted');
+        if (state.companyGst) refreshCompanyHub(state.companyGst);
+        loadProjects();
+      } catch(e) { toast(e.message); }
     });
   }
   if ($('hubAccBody')) {
@@ -7968,6 +8055,9 @@ function renderHubQuotes(data) {
       <td style="white-space:nowrap">
         <button class="btn ghost sm" data-hq-open="${esc(q.projectId)}" type="button">Open</button>
         <button class="btn ghost sm" data-hq-scan="${esc(q.projectId)}" data-hq-token="${esc(q.shareToken||'')}" type="button">Scan link</button>
+        ${isQuoteApprovedStatus(q.status)
+          ? `<button class="btn ghost sm" data-hq-rej="${esc(q.projectId)}" type="button">Reject</button>`
+          : `<button class="btn ghost sm" data-hq-appr="${esc(q.projectId)}" type="button">Approve</button>`}
         <button class="btn ghost sm" data-hq-del="${esc(q.projectId)}" data-hq-label="${esc((q.quoteNumber||q.projectId)+' / '+(q.customer||''))}" type="button">Delete</button>
       </td>
     </tr>`;
@@ -7990,13 +8080,29 @@ function renderHubQuotes(data) {
   });
   $('hubQuoteBody').querySelectorAll('[data-hq-del]').forEach(b => b.onclick = async () => {
     const label = b.dataset.hqLabel || b.dataset.hqDel;
-    if (!confirm('Delete quote '+label+' from the server (Postgres)? This cannot be undone.')) return;
-    const gst = state.companyGst || savedCompanyGst() || '';
     try {
-      await api('/api/company/quotes/'+encodeURIComponent(b.dataset.hqDel)+'?gst='+encodeURIComponent(gst)+'&hard=true', {method:'DELETE'});
+      const res = await confirmPinDelete(b.dataset.hqDel, label);
+      if (!res) return;
       toast('Quote deleted');
       await loadHubQuotes();
-      if (gst) refreshCompanyHub(gst);
+      if (state.companyGst) refreshCompanyHub(state.companyGst);
+    } catch(e) { toast(e.message); }
+  });
+  $('hubQuoteBody').querySelectorAll('[data-hq-appr]').forEach(b => b.onclick = async () => {
+    try {
+      await api('/api/projects/'+b.dataset.hqAppr+'/approve', {method:'POST'});
+      toast('Quote approved — counts toward year turnover');
+      await loadHubQuotes();
+      if (state.companyGst) refreshCompanyHub(state.companyGst);
+    } catch(e) { toast(e.message); }
+  });
+  $('hubQuoteBody').querySelectorAll('[data-hq-rej]').forEach(b => b.onclick = async () => {
+    try {
+      const res = await confirmRejectQuote(b.dataset.hqRej);
+      if (!res) return;
+      toast('Quote rejected — excluded from turnover');
+      await loadHubQuotes();
+      if (state.companyGst) refreshCompanyHub(state.companyGst);
     } catch(e) { toast(e.message); }
   });
 }
@@ -8005,9 +8111,17 @@ if ($('btnHubQuotesRefresh')) $('btnHubQuotesRefresh').onclick = () => loadHubQu
 if ($('btnHubQuotesBulkUnused')) $('btnHubQuotesBulkUnused').onclick = async () => {
   const gst = state.companyGst || savedCompanyGst() || '';
   if (!gst) { toast('Open GST workspace first'); return; }
-  if (!confirm('Bulk-delete UNUSED quotes for this company from the server? Confirmed / approved quotes and any with advances are kept.')) return;
+  if (!confirm('Bulk-delete UNUSED quotes for this company from the server? Confirmed / approved quotes and any with advances are kept.\n\nYou will type PIN or DELETE next.')) return;
   try {
-    const res = await api('/api/company/quotes/bulk-delete', {method:'POST', body:{ gstNo: gst, filter: 'unused' }});
+    const hasPin = !!(state.company && state.company.hasDeletePin);
+    const typed = prompt(hasPin
+      ? 'Type the company delete PIN to bulk-delete unused quotes'
+      : 'Type DELETE to confirm bulk-delete of unused quotes');
+    if (typed == null || !String(typed).trim()) return;
+    const res = await api('/api/company/quotes/bulk-delete', {
+      method:'POST',
+      body:{ gstNo: gst, filter: 'unused', pin: hasPin ? String(typed).trim() : undefined, confirm: String(typed).trim() },
+    });
     toast('Deleted '+(res.deletedCount||0)+' unused quote(s)');
     await loadHubQuotes();
     refreshCompanyHub(gst);
@@ -8257,11 +8371,13 @@ function renderAdvances(rows) {
       const ver = a.quoteVersion != null ? a.quoteVersion : linked.version;
       const qLabel = (qid && qid !== '—') ? (esc(qid) + (ver != null ? (' · v'+ver) : '')) : '—';
       const slipBase = API_BASE + '/api/customers/' + cust + '/advances/' + a.id + '/slip';
+      const isRefund = String(a.entryType||'').toLowerCase()==='refund' || Number(a.amount||0) < 0;
+      const rej = a.quoteRejected || ['rejected','cancelled','canceled'].includes(String(a.quoteStatus||'').toLowerCase());
       return `<tr>
       <td>${esc((a.paidAt||'').slice(0,10)||'—')}</td>
-      <td>${money(a.amount)}</td>
+      <td>${isRefund?'− ':''}${money(Math.abs(a.amount||0))}${isRefund?' <span class="muted">refund</span>':''}</td>
       <td>${esc((a.paymentMode||'').toUpperCase())}</td>
-      <td>${qLabel}</td>
+      <td>${qLabel}${rej?' <span class="muted">· rejected</span>':''}</td>
       <td>${esc([a.reference,a.note].filter(Boolean).join(' · ')||'—')}</td>
       <td style="white-space:nowrap">
         <a class="btn sm" href="${slipBase}.pdf" target="_blank" title="Generate advance slip PDF">Slip PDF</a>
@@ -8322,10 +8438,6 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
         customerName: name,
       },
     });
-    const pid = (sel && sel.value) || (created && created.projectId);
-    if (pid && ($('cpAdvApprove') ? $('cpAdvApprove').checked : true)) {
-      try { await api('/api/projects/'+pid+'/status', {method:'POST', body:{status:'approved'}}); } catch(_) {}
-    }
     if ($('cpAdvAmt')) $('cpAdvAmt').value = '';
     if ($('cpAdvRef')) $('cpAdvRef').value = '';
     const advId = created && (created.id || (created.advance && created.advance.id));
@@ -8339,6 +8451,23 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
     await loadCustomerLedger(name);
     if (state.companyGst) refreshCompanyHub(state.companyGst);
   } catch(e) { $('cpErr').textContent = e.message; toast(e.message); }
+};
+if ($('btnCpRefund')) $('btnCpRefund').onclick = async () => {
+  const name = state.selectedCustomer || ($('cpName') && $('cpName').value.trim()) || '';
+  const sel = $('cpAdvProject');
+  const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+  try {
+    const res = await recordQuoteRefund(
+      (sel && sel.value) || '',
+      name,
+      (opt && opt.dataset && opt.dataset.qid) || '',
+      (opt && opt.dataset && opt.dataset.ver) ? +opt.dataset.ver : null,
+    );
+    if (!res) return;
+    toast('Refund recorded');
+    if (name) await loadCustomerLedger(name);
+    if (state.companyGst) refreshCompanyHub(state.companyGst);
+  } catch(e) { toast(e.message); }
 };
 function isQuoteApprovedStatus(st) {
   return ['confirmed','accepted','approved','finalized','ordered','won','order'].includes(String(st||'').toLowerCase());
@@ -8386,7 +8515,7 @@ async function renderCustomerQuotes(quotes) {
       packs[q.projectId] = await api('/api/projects/'+q.projectId+'/pack'+(gst?('?gst='+encodeURIComponent(gst)):''));
     } catch(_) { packs[q.projectId] = {updates:[], documents:[], photos:[]}; }
   }));
-  $('cpQuotes').innerHTML = `<p class="muted" style="font-size:.78rem;margin:0 0 .5rem">All quote versions listed. Live total value (sum of current rows): <strong>${money(billed)}</strong> — account billed uses latest per quotation number.</p>` + quotes.map(q => {
+  $('cpQuotes').innerHTML = `<p class="muted" style="font-size:.78rem;margin:0 0 .5rem">All quote versions listed. Live row total: <strong>${money(billed)}</strong> — year turnover / billed uses <strong>Approved</strong> quotes only (latest per quotation number).</p>` + quotes.map(q => {
     const versions = (q.versions||[]).map(v =>
       `<span class="chip">v${v.version} ${v.grandTotal!=null?money(v.grandTotal):''} <a href="${API_BASE}/api/projects/${q.projectId}/customer-pdf" target="_blank" title="Print current">🖨</a></span>`
     ).join(' ');
@@ -8400,11 +8529,15 @@ async function renderCustomerQuotes(quotes) {
           <div class="muted" style="font-size:.72rem">Created ${fmtDate(q.createdAt)}${q.updatedAt&&q.updatedAt!==q.createdAt?(' · Updated '+fmtDate(q.updatedAt)):''}</div>
         </div>
         <div class="actions-inline">
-          <button class="btn ghost sm" data-confirm-q="${q.projectId}" type="button">${confLabel}</button>
+          ${isQuoteApprovedStatus(st)
+            ? `<button class="btn ghost sm" data-reject-q="${q.projectId}" type="button">Reject / Un-approve</button>`
+            : `<button class="btn ghost sm" data-confirm-q="${q.projectId}" type="button">${confLabel}</button>`}
+          <button class="btn ghost sm" data-refund-q="${q.projectId}" data-refund-cust="${esc(state.selectedCustomer||'')}" data-refund-qid="${esc(q.quotationId||'')}" data-refund-ver="${q.version||1}" type="button">Record refund</button>
           <a class="btn ghost sm" href="${API_BASE}/api/projects/${q.projectId}/customer-pdf" target="_blank">Print</a>
           <button class="btn ghost sm" data-scan-q="${q.projectId}" type="button">Scan link</button>
           <button class="btn ghost sm" data-open-q="${q.projectId}">Edit</button>
           <button class="btn ghost sm" data-reuse-q="${q.projectId}">Reuse</button>
+          <button class="btn ghost sm" data-del-q="${q.projectId}" data-del-label="${esc((q.quotationId||q.projectId)+' / '+(q.name||''))}" type="button">Delete</button>
         </div>
       </div>
       ${versions?('<div style="margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.3rem">Versions: '+versions+'</div>'):''}
@@ -8419,10 +8552,38 @@ async function renderCustomerQuotes(quotes) {
   });
   $('cpQuotes').querySelectorAll('[data-confirm-q]').forEach(b => b.onclick = async () => {
     try {
-      await api('/api/projects/'+b.dataset.confirmQ+'/status', {method:'POST', body:{status:'approved'}});
-      toast('Quote approved');
+      await api('/api/projects/'+b.dataset.confirmQ+'/approve', {method:'POST'});
+      toast('Quote approved — counts toward year turnover');
       if (state.selectedCustomer) await openCustomer(state.selectedCustomer);
       if (state.companyGst) refreshCompanyHub(state.companyGst);
+    } catch(e) { toast(e.message); }
+  });
+  $('cpQuotes').querySelectorAll('[data-reject-q]').forEach(b => b.onclick = async () => {
+    try {
+      const res = await confirmRejectQuote(b.dataset.rejectQ);
+      if (!res) return;
+      toast('Quote rejected — excluded from turnover');
+      if (state.selectedCustomer) await openCustomer(state.selectedCustomer);
+      if (state.companyGst) refreshCompanyHub(state.companyGst);
+    } catch(e) { toast(e.message); }
+  });
+  $('cpQuotes').querySelectorAll('[data-refund-q]').forEach(b => b.onclick = async () => {
+    try {
+      const res = await recordQuoteRefund(b.dataset.refundQ, b.dataset.refundCust, b.dataset.refundQid, b.dataset.refundVer);
+      if (!res) return;
+      toast('Refund recorded');
+      if (state.selectedCustomer) await openCustomer(state.selectedCustomer);
+      if (state.companyGst) refreshCompanyHub(state.companyGst);
+    } catch(e) { toast(e.message); }
+  });
+  $('cpQuotes').querySelectorAll('[data-del-q]').forEach(b => b.onclick = async () => {
+    try {
+      const res = await confirmPinDelete(b.dataset.delQ, b.dataset.delLabel || b.dataset.delQ);
+      if (!res) return;
+      toast('Quote deleted');
+      if (state.selectedCustomer) await openCustomer(state.selectedCustomer);
+      if (state.companyGst) refreshCompanyHub(state.companyGst);
+      loadProjects();
     } catch(e) { toast(e.message); }
   });
   $('cpQuotes').querySelectorAll('[data-scan-q]').forEach(b => b.onclick = async () => {

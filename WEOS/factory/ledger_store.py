@@ -37,12 +37,23 @@ RUNNING_STATUSES = frozenset(
 TOTALS_BASIS = "latest_per_quotation_number"
 DEFAULT_GST_PERCENT = 18.0
 TOTALS_NOTE = (
-    "Taxable (without GST) = sum of latest quote commercial totals per quotation number "
-    "(versions retained as history; live project value updates when a new version is saved). "
+    "Taxable / billed = sum of latest quote commercial totals per quotation number "
+    "for Approved (or confirmed/won) quotes only — drafts, testing, rejected and cancelled "
+    "quotes are excluded. Versions are retained as history. "
     "With GST = taxable + GST@18% (same split as customer quote PDF). "
     "Billed / balance use taxable so advances match quote line totals; "
-    "balanceWithGst = totalGrand − advances. Year totals use the current calendar year of the live quote."
+    "balanceWithGst = totalGrand − advances (refunds are negative advances). "
+    "Year totals use the current calendar year of the live approved quote."
 )
+REFUND_ENTRY_TYPES = frozenset({"refund", "reversal", "return"})
+
+
+def status_counts_toward_turnover(status: Any) -> bool:
+    """Year turnover / billed: approved + confirmed/won only — never drafts."""
+    st = str(status or "draft").strip().lower() or "draft"
+    if st in {"draft", "unused", "active", "archived", "rejected", "cancelled", "canceled"}:
+        return False
+    return st in CONFIRMED_STATUSES
 
 
 def quote_money_parts(
@@ -93,6 +104,9 @@ def _ensure_advance_schema() -> None:
             conn.execute(
                 text("ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS quote_version INTEGER")
             )
+            conn.execute(
+                text("ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS entry_type VARCHAR(20)")
+            )
     except Exception:
         # SQLite < 3.35 / some drivers lack IF NOT EXISTS on ADD COLUMN — try bare add.
         try:
@@ -107,6 +121,18 @@ def _ensure_advance_schema() -> None:
                 conn.execute(text("ALTER TABLE customer_advances ADD COLUMN quote_version INTEGER"))
         except Exception:
             pass
+    try:
+        from sqlalchemy import text
+
+        from WEOS.db.engine import get_engine
+
+        eng = get_engine()
+        if eng is None:
+            return
+        with eng.begin() as conn:
+            conn.execute(text("ALTER TABLE customer_advances ADD COLUMN entry_type VARCHAR(20)"))
+    except Exception:
+        pass
 
 
 def _slug(name: str) -> str:
@@ -178,8 +204,16 @@ def add_advance(customer: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         amount = float(payload.get("amount"))
     except (TypeError, ValueError) as exc:
         raise ValueError("Advance amount must be a number") from exc
-    if amount <= 0:
-        raise ValueError("Advance amount must be greater than zero")
+    entry_type = str(payload.get("entryType") or payload.get("kind") or payload.get("type") or "").strip().lower()
+    if entry_type in REFUND_ENTRY_TYPES or amount < 0:
+        if amount == 0:
+            raise ValueError("Refund amount must not be zero")
+        amount = -abs(amount)
+        entry_type = "refund"
+    else:
+        if amount <= 0:
+            raise ValueError("Advance amount must be greater than zero")
+        entry_type = "advance"
     mode = str(payload.get("paymentMode") or payload.get("mode") or "cash").strip().lower()
     if mode not in PAYMENT_MODES:
         mode = "other"
@@ -189,6 +223,9 @@ def add_advance(customer: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         qver_i = int(qver) if qver is not None and str(qver).strip() != "" else None
     except (TypeError, ValueError):
         qver_i = None
+    note = str(payload.get("note") or "").strip() or None
+    if entry_type == "refund" and not note:
+        note = "Refund / reversal (advance returned)"
     with session_scope() as s:
         row = CustomerAdvance(
             customer_key=customer_key(name),
@@ -196,10 +233,11 @@ def add_advance(customer: str, payload: Mapping[str, Any]) -> dict[str, Any]:
             amount=round(amount, 2),
             payment_mode=mode,
             reference=(str(payload.get("reference") or "").strip() or None),
-            note=(str(payload.get("note") or "").strip() or None),
+            note=note,
             project_id=(str(payload.get("projectId") or "").strip() or None),
             quote_id=(str(payload.get("quoteId") or "").strip() or None),
             quote_version=qver_i,
+            entry_type=entry_type,
             paid_at=paid_at,
         )
         s.add(row)
@@ -271,6 +309,7 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
     profile = account.get("profile") or load_customer_profile(cust)
     quotes = list(account.get("quotes") or [])
     live = _latest_per_quotation(quotes)
+    billed_live = [q for q in live if status_counts_toward_turnover(q.get("status"))]
 
     projects = []
     total_taxable = 0.0
@@ -281,7 +320,7 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
     year_grand = 0.0
     calendar_year = datetime.now(timezone.utc).year
     by_pid: dict[str, dict[str, Any]] = {}
-    for q in live:
+    for q in billed_live:
         amt = _money(q.get("grandTotal"))
         parts = quote_money_parts(amt)
         total_taxable += parts["totalTaxable"]
@@ -296,6 +335,10 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
             year_taxable += parts["totalTaxable"]
             year_gst += parts["totalGst"]
             year_grand += parts["totalGrand"]
+    for q in live:
+        amt = _money(q.get("grandTotal"))
+        parts = quote_money_parts(amt)
+        counts = status_counts_toward_turnover(q.get("status"))
         row = {
             "projectId": q.get("projectId"),
             "name": q.get("name"),
@@ -311,6 +354,7 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
             "lineCount": q.get("lineCount"),
             "versionCount": q.get("versionCount"),
             "versions": q.get("versions") or [],
+            "countsTowardTurnover": counts,
         }
         projects.append(row)
         if row.get("projectId"):
@@ -370,9 +414,21 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
                 "version": linked.get("version"),
                 "name": linked.get("name"),
                 "grandTotal": linked.get("grandTotal"),
+                "status": linked.get("status"),
             }
+            a["quoteStatus"] = linked.get("status")
+            st = str(linked.get("status") or "").strip().lower()
+            if st in {"rejected", "cancelled", "canceled"}:
+                a["quoteRejected"] = True
+                note = str(a.get("note") or "").strip()
+                tag = "Quote rejected — advance retained on account"
+                if tag.lower() not in note.lower():
+                    a["note"] = (note + (" · " if note else "") + tag)
         else:
             a["linkedQuote"] = None
+        et = str(a.get("entryType") or "").strip().lower()
+        if not et:
+            a["entryType"] = "refund" if _money(a.get("amount")) < 0 else "advance"
 
     total_advances = round(sum(_money(a.get("amount")) for a in advances), 2)
     total_taxable = round(total_taxable, 2)
@@ -403,6 +459,7 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
         "gstPercent": DEFAULT_GST_PERCENT,
         "currency": "INR",
         "basis": TOTALS_BASIS,
+        "turnoverStatuses": sorted(CONFIRMED_STATUSES),
         "note": TOTALS_NOTE,
     }
     return {

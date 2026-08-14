@@ -109,6 +109,8 @@ def classify_flags(
 
     if st in PROTECTED_STATUSES:
         flags.append("confirmed")
+    if st in {"rejected", "cancelled", "canceled"}:
+        flags.append("rejected")
     if st == "draft" or st == "unused":
         flags.append("draft")
     if st == "unused" or (st in UNUSED_STATUSES and not has_adv and grand <= 0 and st not in PROTECTED_STATUSES):
@@ -185,7 +187,8 @@ def list_company_quotes(
                 "totalAdvance": round(sum(_money(a.get("amount")) for a in advs), 2),
                 "shareToken": share,
                 "scanPath": f"/q/{share}" if share else None,
-                "deletable": "confirmed" not in flags and str(r.get("status") or "").lower() != "archived",
+                "deletable": str(r.get("status") or "").lower() != "archived",
+                "countsTowardTurnover": "confirmed" in flags and "rejected" not in flags,
             }
         )
 
@@ -220,6 +223,62 @@ def _assert_company_owns(doc: Mapping[str, Any], gst: str) -> None:
         # Unscoped legacy rows may be claimed by the open workspace, but refuse
         # delete unless the active GST matches the request (caller already scoped list).
         pass
+
+
+def require_delete_confirm(
+    project_id: str,
+    *,
+    company_gst: str | None = None,
+    pin: str | None = None,
+    confirm: str | None = None,
+) -> None:
+    """PIN (if set) or typed project ID / DELETE — never one-click delete."""
+    pid = str(project_id or "").strip()
+    if not pid:
+        raise ValueError("project id required")
+    gst = _norm_gst(company_gst)
+    typed_pin = str(pin or "").strip()
+    typed_confirm = str(confirm or "").strip()
+    if gst:
+        from WEOS.factory.company_store import company_has_delete_pin, verify_delete_pin
+
+        if company_has_delete_pin(gst):
+            if not verify_delete_pin(gst, typed_pin or typed_confirm):
+                raise PermissionError("Company delete PIN is required and did not match.")
+            return
+    phrase = typed_confirm or typed_pin
+    if phrase.upper() == "DELETE" or (pid and phrase.upper() == pid.upper()):
+        return
+    raise PermissionError(
+        "Type the project ID exactly, or DELETE, to confirm. "
+        "Set a company delete PIN in Company Setup to use a PIN instead."
+    )
+
+
+def require_bulk_delete_confirm(
+    *,
+    company_gst: str,
+    pin: str | None = None,
+    confirm: str | None = None,
+) -> None:
+    gst = _norm_gst(company_gst)
+    if not gst:
+        raise ValueError("Company GSTIN required")
+    from WEOS.factory.company_store import company_has_delete_pin, verify_delete_pin
+
+    typed_pin = str(pin or "").strip()
+    typed_confirm = str(confirm or "").strip()
+    if company_has_delete_pin(gst):
+        if not verify_delete_pin(gst, typed_pin or typed_confirm):
+            raise PermissionError("Company delete PIN is required and did not match.")
+        return
+    phrase = typed_confirm or typed_pin
+    if phrase.upper() == "DELETE":
+        return
+    raise PermissionError(
+        "Type DELETE to confirm bulk delete. "
+        "Set a company delete PIN in Company Setup to use a PIN instead."
+    )
 
 
 def delete_company_quote(

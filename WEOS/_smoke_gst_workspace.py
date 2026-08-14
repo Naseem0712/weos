@@ -21,7 +21,7 @@ def main() -> int:
     from WEOS.factory.company_workspace import open_workspace
     from WEOS.factory.customer_store import save_customer_profile
     from WEOS.factory.ledger_store import add_advance, build_ledger
-    from WEOS.factory.project_store import empty_project, list_projects, save_project
+    from WEOS.factory.project_store import empty_project, list_projects, save_project, set_project_status
 
     res = init_db()
     if not res.get("ok"):
@@ -69,6 +69,7 @@ def main() -> int:
         fails.append("quoteNumberVersioned flag missing on reuse")
     if int(p2.get("version") or 0) <= ver1:
         fails.append(f"version did not bump: {ver1} -> {p2.get('version')}")
+    set_project_status(pid_canon, "approved")
 
     # Only one live project for that quote number under this company.
     rows = list_projects(company_gst=gst)

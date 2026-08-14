@@ -24,7 +24,7 @@ def main() -> int:
     from WEOS.factory.customer_store import save_customer_profile
     from WEOS.factory.ledger_store import build_ledger, quote_money_parts
     from WEOS.factory.marqt_pdf import _spec_lines, _spec_rows, render_marqt_pdf
-    from WEOS.factory.project_store import empty_project, save_project
+    from WEOS.factory.project_store import empty_project, save_project, set_project_status
 
     init_db()
     parts = quote_money_parts(100000)
@@ -39,7 +39,8 @@ def main() -> int:
     p["companyGst"] = gst
     p["quotationId"] = "QT-MONEY-1"
     p["lastCalculation"] = {"price": {"total": 100000.0}}
-    save_project(p, action="smoke")
+    p = save_project(p, action="smoke")
+    set_project_status(p["projectId"], "approved")
 
     led = build_ledger(cust, company_gst=gst)
     t = led["totals"]

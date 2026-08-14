@@ -18,6 +18,7 @@ from WEOS.factory.company_store import (
     load_company,
     load_company_by_gst,
     normalise_gstin,
+    public_company_profile,
     save_company_by_gst,
     set_active_gst,
 )
@@ -26,10 +27,12 @@ _log = logging.getLogger("weos.company_workspace")
 
 # Documented ledger / account total rule (also returned in API payloads):
 TOTALS_RULE = (
-    "Account taxable (without GST) = sum of latest quote commercial totals per quotation number "
-    "(each version is retained as history; only the live/latest version per quote number counts). "
+    "Account taxable / billed = sum of latest quote commercial totals per quotation number "
+    "for Approved (or confirmed/won) quotes only. Drafts, testing quotes, rejected and cancelled "
+    "quotes do not count toward turnover. Each version is retained as history. "
     "With GST = taxable + GST@18% (customer quote PDF parity). "
-    "Balance = taxable − advances; balanceWithGst = totalGrand − advances."
+    "Balance = taxable − advances (refunds are negative advances); "
+    "balanceWithGst = totalGrand − advances."
 )
 
 
@@ -75,7 +78,7 @@ def open_workspace(
         "ok": True,
         "created": created,
         "gstNo": gst,
-        "company": company,
+        "company": public_company_profile(company),
         "totalsRule": TOTALS_RULE,
         **summary,
     }
@@ -253,8 +256,9 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
             "Projects running = non-archived projects in the company workspace."
         ),
         "yearValueDefinition": (
-            "Year taxable = sum of live (latest-per-quotation-number) commercial totals whose "
-            "updatedAt falls in the current calendar year. Year with GST adds GST@18% (quote PDF parity)."
+            "Year taxable / year turnover = sum of live (latest-per-quotation-number) commercial "
+            "totals for Approved (or confirmed/won) quotes whose updatedAt falls in the current "
+            "calendar year. Drafts and rejected quotes are excluded. Year with GST adds GST@18%."
         ),
         "balanceDefinition": (
             "Balance outstanding = total taxable − total advances. "
@@ -288,6 +292,7 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
             "projectsRunning": projects_running,
             "currency": "INR",
             "basis": "latest_per_quotation_number",
+            "turnoverStatuses": "approved+confirmed/won",
             "note": TOTALS_RULE,
         },
     }
