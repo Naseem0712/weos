@@ -2681,7 +2681,7 @@ def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
 
 
 def _layout_stair_world(flights: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """Elevation layout: +X up the first flight; 180° reverses heading (switchback)."""
+    """Elevation layout: climb +X; 180° switchback reverses; Left/Right fold the landing."""
     heading = 1.0
     x = 0.0
     y = 0.0
@@ -2700,11 +2700,20 @@ def _layout_stair_world(flights: list[Mapping[str, Any]]) -> list[dict[str, Any]
         if horiz <= 1:
             horiz = 1000.0
         last = i == n - 1
-        turn = str(run.get("turn") or "none").lower()
+        turn = str(run.get("turn") or "none").strip().lower()
+        if turn in ("end", "stop", ""):
+            turn = "none"
         turn_deg = abs(_f(run.get("signedTurnDeg") or run.get("turnDeg")))
+        if last:
+            turn = "none"
+            turn_deg = 0.0
+        elif turn in ("left", "right") and turn_deg < 1:
+            turn_deg = 180.0
         landing = _f(run.get("landingMm"))
-        if (not last) and landing <= 1 and turn not in ("none", "end", "stop", ""):
+        if (not last) and turn in ("left", "right") and landing <= 1:
             landing = max(tread * 2.0, 900.0)
+        if turn == "none":
+            landing = _f(run.get("landingMm"))  # only explicit landing if End
         laid.append({
             "run": run,
             "index": i,
@@ -2726,17 +2735,28 @@ def _layout_stair_world(flights: list[Mapping[str, Any]]) -> list[dict[str, Any]
         y = y + rise
         laid[-1]["x1"] = x
         laid[-1]["y1"] = y
+        is_180 = (not last) and turn in ("left", "right") and turn_deg >= 170
+        is_90 = (not last) and turn in ("left", "right") and 1 < turn_deg < 170
         if not last and landing > 1:
+            # 180° right folds the landing behind the nosing; left continues forward.
+            if is_180 and turn.startswith("r"):
+                land_dir = -heading
+            else:
+                land_dir = heading
             laid[-1]["landX0"] = x
             laid[-1]["landY"] = y
-            x = x + heading * landing
+            laid[-1]["landDir"] = land_dir
+            x = x + land_dir * landing
             laid[-1]["landX1"] = x
         else:
             laid[-1]["landX0"] = x
             laid[-1]["landX1"] = x
             laid[-1]["landY"] = y
-        if not last and turn_deg >= 170:
+            laid[-1]["landDir"] = heading
+        if is_180:
             heading *= -1
+        elif is_90:
+            heading = heading  # dog-leg: same climb direction after landing
     return laid
 
 
@@ -2806,27 +2826,39 @@ def _svg_staircase_multi(
             d_steps.append(f'L{X(sx):.1f},{Y(sy):.1f}')
         p.append(f'<path d="{" ".join(d_steps)}" fill="none" stroke="{stroke}" stroke-width="{sw*1.2:.2f}"/>')
         land = _f(fl.get("landingMm"))
+        gh = _f(fl.get("glassHeightMm"), guard)
         if land > 1:
             lx0, ly = _f(fl.get("landX0")), _f(fl.get("landY"))
             lx1 = _f(fl.get("landX1"))
-            gh = _f(fl.get("glassHeightMm"), guard)
+            # Landing is a platform + band — do not fill a glass rectangle (it overlapped slope glass).
             p.append(
                 f'<line x1="{X(lx0):.1f}" y1="{Y(ly):.1f}" x2="{X(lx1):.1f}" y2="{Y(ly):.1f}" '
                 f'stroke="{stroke}" stroke-width="{sw*1.1:.2f}"/>'
             )
+            x0h, y0h = nosing(fl, _f(fl["horiz"]))
             p.append(
-                f'<rect x="{min(X(lx0), X(lx1)):.1f}" y="{Y(ly + gh):.1f}" width="{abs(lx1-lx0):.1f}" '
-                f'height="{gh:.1f}" fill="{glass}" fill-opacity="0.55" stroke="{glass_stroke}" {_solid_sw(sw*0.8)}/>'
+                f'<path d="M{X(x0h):.1f},{Y(y0h + gh):.1f} L{X(lx0):.1f},{Y(ly + gh):.1f} '
+                f'L{X(lx1):.1f},{Y(ly + gh):.1f}" fill="none" stroke="{rail_c}" {_solid_sw(sw*1.6)} data-handrail="1"/>'
             )
-            side = "L" if (fl.get("turn") or "").startswith("l") else (
-                "R" if (fl.get("turn") or "").startswith("r") else ""
+            side = "LEFT" if (fl.get("turn") or "").startswith("l") else (
+                "RIGHT" if (fl.get("turn") or "").startswith("r") else ""
             )
             deg = _f(fl.get("turnDeg"))
-            bl = f'{int(round(deg))}° {side}'.strip() if deg >= 1 else "landing"
+            bl = f'{int(round(deg))}° {side} BAND'.strip() if deg >= 1 else "LANDING"
+            mx_l = (lx0 + lx1) / 2
             p.append(
-                f'<text x="{X((lx0+lx1)/2):.1f}" y="{Y(ly + gh + fs):.1f}" text-anchor="middle" '
-                f'font-size="{fs*0.8:.1f}" fill="#0a5a48" font-weight="700">{escape(bl)}</text>'
+                f'<text x="{X(mx_l):.1f}" y="{Y(ly + gh + fs * 1.15):.1f}" text-anchor="middle" '
+                f'font-size="{fs*0.85:.1f}" fill="#0a5a48" font-weight="700">{escape(bl)}</text>'
             )
+            # Small direction chevron so Left vs Right is obvious on the landing.
+            if side:
+                tip = lx1
+                tail = lx0 + (0.22 * (lx1 - lx0) if (lx1 - lx0) != 0 else 0)
+                p.append(
+                    f'<polygon points="{X(tip):.1f},{Y(ly + gh * 0.45):.1f} '
+                    f'{X(tail):.1f},{Y(ly + gh * 0.22):.1f} {X(tail):.1f},{Y(ly + gh * 0.68):.1f}" '
+                    f'fill="#0a5a48"/>'
+                )
         p.append(
             f'<text x="{X((_f(fl["x0"])+_f(fl["x1"]))/2):.1f}" y="{Y(_f(fl["y1"]) + _f(fl["glassHeightMm"], guard) + fs*1.6):.1f}" '
             f'text-anchor="middle" font-size="{fs*0.75:.1f}" fill="#555">{escape(str(fl.get("label")))}</text>'

@@ -59,6 +59,10 @@ a{color:inherit}
 .rail-run .rail-div-chips button.over{border-color:#b45324;color:#8c1f18}
 .rail-run .rail-div-chips button.active{background:var(--green);color:#fff;border-color:var(--green)}
 .rail-run .rail-run-tot{font-size:.7rem;color:var(--muted);margin-top:.2rem}
+.rail-run .rail-band-row{width:100%;align-items:center;padding:.28rem .1rem 0;border-top:1px dashed var(--line);margin-top:.4rem}
+.rail-run .rail-band-btns button{min-width:64px;font-weight:600}
+.rail-run .rail-band-btns button[data-v="left"].active{background:#0a5a48}
+.rail-run .rail-band-btns button[data-v="right"].active{background:#8c1f18;border-color:#8c1f18;color:#fff}
 .rail-tools.collapsed .rt-body{display:none}
 .rail-tools .rt-panel{display:none;margin-top:.2rem;padding:.35rem .4rem;border:1px dashed var(--line);border-radius:8px;background:rgba(255,255,255,.55)}
 .rail-tools .rt-panel.active{display:block}
@@ -5454,7 +5458,6 @@ function readRailRunsFromDom() {
   const stairs = railIsStairs();
   const cards = [...host.querySelectorAll('.rail-run')];
   if (!cards.length) return state.railRuns || [];
-  const last = cards.length - 1;
   state.railRuns = cards.map((card, i) => {
     const val = (k) => {
       const el = card.querySelector(`[data-k="${k}"]`);
@@ -5475,8 +5478,9 @@ function readRailRunsFromDom() {
     row.glassHeightMm = num('glassHeightMm', row.glassHeightMm);
     row.panels = num('panels', 0);
     row.landingMm = num('landingMm', 0);
-    row.turn = i === last ? 'none' : (val('turn') || 'none');
-    row.turnDeg = i === last ? 0 : num('turnDeg', stairs ? 180 : 90);
+    row.turn = (val('turn') || 'none').toLowerCase();
+    if (row.turn === 'end' || row.turn === 'stop') row.turn = 'none';
+    row.turnDeg = num('turnDeg', stairs ? 180 : 90);
     row.label = stairs ? `Floor ${i + 1}` : `Span ${String.fromCharCode(65 + i)}`;
     return row;
   });
@@ -5488,12 +5492,13 @@ function collectRailRuns() {
   const gap = ($('rGapLive') && +$('rGapLive').value) || ($('rGap') && +$('rGap').value) || 12;
   return rows.map((r, i) => {
     const last = i === rows.length - 1;
+    const turn = (r.turn || 'none').toLowerCase();
     const out = {
       sizeMethod: r.sizeMethod,
       glassHeightMm: +r.glassHeightMm || (stairs ? 900 : 1000),
       panels: +r.panels || 0,
       gapMm: gap,
-      turn: last ? 'none' : (r.turn || 'none'),
+      turn: last ? 'none' : (turn === 'end' ? 'none' : turn),
       turnDeg: last ? 0 : (+r.turnDeg || (stairs ? 180 : 90)),
       landingMm: +r.landingMm || 0,
       label: r.label,
@@ -5532,7 +5537,6 @@ function railDivideChipsHtml(r, stairs, selected) {
   }).join('');
 }
 function railRunCardHtml(r, i, stairs) {
-  const last = i === (state.railRuns.length - 1);
   const method = r.sizeMethod || (stairs ? 'steps' : 'direct');
   const tot = (() => {
     if (!stairs) return '';
@@ -5563,19 +5567,31 @@ function railRunCardHtml(r, i, stairs) {
          <div><label class="l">Step ht mm *</label><input data-k="riserMm" type="number" value="${r.riserMm || 180}" style="width:72px"/></div>
          <div><label class="l">Steps qty *</label><input data-k="steps" type="number" min="0" value="${r.steps || ''}" style="width:64px"/></div>`)
     : `<div><label class="l">Size mm *</label><input data-k="lengthMm" type="number" value="${r.lengthMm || ''}" style="width:96px"/></div>`;
-  const turnBlock = last ? '<span class="muted" style="font-size:.7rem">End</span>' : `
-    <div><label class="l">Band</label>
-      <select data-k="turn" style="width:88px">
-        <option value="left"${(r.turn || 'left') === 'left' ? ' selected' : ''}>Left</option>
-        <option value="right"${r.turn === 'right' ? ' selected' : ''}>Right</option>
-      </select>
+  const turn = (r.turn || 'none').toLowerCase();
+  const deg = String(r.turnDeg || (stairs ? 180 : 90));
+  const turnBlock = `
+    <input type="hidden" data-k="turn" value="${turn === 'right' ? 'right' : (turn === 'left' ? 'left' : 'none')}"/>
+    <input type="hidden" data-k="turnDeg" value="${deg === '90' ? '90' : '180'}"/>
+    <div class="rt-row rail-band-row">
+      <span class="l" style="margin:0">${stairs ? 'Aage band (next floor)' : 'Aage band'}</span>
+      <div class="rt-shapes rail-band-btns">
+        <button type="button" data-band="turn" data-v="none" class="${turn !== 'left' && turn !== 'right' ? 'active' : ''}">End</button>
+        <button type="button" data-band="turn" data-v="left" class="${turn === 'left' ? 'active' : ''}">Left</button>
+        <button type="button" data-band="turn" data-v="right" class="${turn === 'right' ? 'active' : ''}">Right</button>
+      </div>
+      <div class="rt-shapes rail-band-btns" title="Band degree">
+        <button type="button" data-band="turnDeg" data-v="90" class="${deg === '90' ? 'active' : ''}">90°</button>
+        <button type="button" data-band="turnDeg" data-v="180" class="${deg !== '90' ? 'active' : ''}">180°</button>
+      </div>
+      ${stairs ? `<div><label class="l">Landing mm</label><input data-k="landingMm" type="number" min="0" value="${r.landingMm || ''}" placeholder="auto" style="width:72px"/></div>` : ''}
     </div>
-    <div><label class="l">Degree</label>
-      <select data-k="turnDeg" style="width:72px">
-        <option value="90"${String(r.turnDeg) === '90' ? ' selected' : ''}>90°</option>
-        <option value="180"${String(r.turnDeg) !== '90' ? ' selected' : ''}>180°</option>
-      </select>
-    </div>`;
+    <div class="muted" style="font-size:.68rem;margin-top:.15rem">${
+      turn === 'left' || turn === 'right'
+        ? (stairs
+          ? `${deg === '90' ? '90' : '180'}° ${turn} — next floor is taraf ghumegi. + Add floor dabao.`
+          : `${deg === '90' ? '90' : '180'}° ${turn} — next span is taraf band.`)
+        : (stairs ? 'End = yahin khatam. Left / Right = next floor kis taraf.' : 'End = yahin khatam. Left / Right = next span kis taraf.')
+    }</div>`;
   return `<div class="rail-run" data-idx="${i}">
     <div class="rail-run-head">
       <strong style="font-size:.78rem">${stairs ? 'Floor' : 'Span'} ${stairs ? (i + 1) : String.fromCharCode(65 + i)}</strong>
@@ -5586,8 +5602,8 @@ function railRunCardHtml(r, i, stairs) {
       ${sizeFields}
       <div><label class="l">Glass ht mm *</label><input data-k="glassHeightMm" type="number" value="${r.glassHeightMm || (stairs ? 900 : 1000)}" style="width:72px"/></div>
       <div><label class="l">Divide</label><input data-k="panels" type="number" min="0" value="${r.panels || ''}" placeholder="auto" style="width:56px"/></div>
-      ${turnBlock}
     </div>
+    ${turnBlock}
     ${tot ? `<div class="rail-run-tot">${tot}</div>` : ''}
     <div class="rail-div-chips">${railDivideChipsHtml(r, stairs, r.panels)}</div>
   </div>`;
@@ -5598,7 +5614,7 @@ function renderRailRunRows(force) {
   seedRailRuns();
   const stairs = railIsStairs();
   if ($('rRunRowsTitle')) $('rRunRowsTitle').textContent = stairs
-    ? 'Floors · slope tape or steps, then divide glass'
+    ? 'Floors · size, divide, then aage band Left / Right'
     : 'Spans · size, divide, then band left/right';
   if ($('btnRailAddRun')) $('btnRailAddRun').textContent = stairs ? '+ Add floor' : '+ Add span';
   const mode = stairs ? 'stair' : 'normal';
@@ -5636,7 +5652,7 @@ function addRailRun() {
   const stairs = railIsStairs();
   if (!state.railRuns.length) seedRailRuns();
   const prev = state.railRuns[state.railRuns.length - 1];
-  if (prev && (prev.turn === 'none' || !prev.turn)) {
+  if (prev && (prev.turn === 'none' || !prev.turn || prev.turn === 'end')) {
     prev.turn = 'left';
     prev.turnDeg = stairs ? 180 : 90;
   }
@@ -5675,13 +5691,29 @@ function bindRailRunEvents() {
   });
   host.addEventListener('change', (e) => {
     const k = e.target && e.target.getAttribute('data-k');
-    if (k === 'sizeMethod' || k === 'turn' || k === 'turnDeg') {
+    if (k === 'sizeMethod') {
       readRailRunsFromDom();
       renderRailRunRows(true);
     }
     go();
   });
   host.addEventListener('click', (e) => {
+    const band = e.target.closest('[data-band]');
+    if (band) {
+      e.preventDefault();
+      const card = band.closest('.rail-run');
+      const k = band.getAttribute('data-band');
+      const v = band.getAttribute('data-v');
+      const hidden = card && card.querySelector(`input[data-k="${k}"]`);
+      if (hidden) hidden.value = v;
+      if (card) {
+        card.querySelectorAll(`[data-band="${k}"]`).forEach(b => {
+          b.classList.toggle('active', b.getAttribute('data-v') === v);
+        });
+      }
+      go();
+      return;
+    }
     const chip = e.target.closest('[data-div-n]');
     if (chip) {
       const card = chip.closest('.rail-run');

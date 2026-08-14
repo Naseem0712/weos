@@ -214,6 +214,29 @@ def main() -> int:
         fails.append("multi-floor svg")
     if "180" not in svg2:
         fails.append("multi-floor svg missing 180 band label")
+    if "LEFT" not in svg2.upper():
+        fails.append("multi-floor svg missing LEFT band")
+
+    right = compute_railing({
+        "shape": "staircase",
+        "runs": [
+            {
+                "sizeMethod": "steps", "riserMm": 180, "treadMm": 305, "steps": 12,
+                "glassHeightMm": 900, "panels": 3, "turn": "right", "turnDeg": 180,
+            },
+            {
+                "sizeMethod": "steps", "riserMm": 180, "treadMm": 305, "steps": 12,
+                "glassHeightMm": 900, "panels": 2,
+            },
+        ],
+        "glassHeightMm": 900,
+        "rates": {"glassPerSqft": 200, "studPerPc": 80},
+    })
+    svgr = railing_svg({"shape": "staircase"}, quote=right)
+    if "RIGHT" not in svgr.upper():
+        fails.append("right-band svg missing RIGHT")
+    if svgr == svg2:
+        fails.append("left vs right 180° drawing should differ")
 
     if fails:
         print("FAIL")
