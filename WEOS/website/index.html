@@ -2069,6 +2069,7 @@ const state = {
   shFrameKind: 'profile',
   draftCasementPanels: [],
   selectedCasementPanel: null,
+  _lineById: {},
 };
 const $ = (id) => document.getElementById(id);
 const toast = (m) => { const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); };
@@ -3029,6 +3030,7 @@ function currentLineDraft() {
   }
   return {
     product: $('lineProduct').value,
+    productId: $('lineProduct').value,
     sectionSeries,
     productType: (p && p.productType) || null,
     category: (p && p.category) || null,
@@ -3349,14 +3351,24 @@ function weightDisplayForMaterial(m){
   };
 }
 
+function cartLineProductLabel(ln) {
+  const obj = (ln && typeof ln === 'object') ? ln : hydrateCartLine(ln);
+  if (!obj) return '—';
+  const pid = String(obj.product || obj.productId || '').trim();
+  if (obj.displayName) return obj.displayName;
+  const p = (state.products || []).find(x => x && (x.id === pid || x.productId === pid));
+  if (p && (p.displayName || p.name)) return p.displayName || p.name;
+  return pid || '—';
+}
 function renderCart() {
+  state.lines = hydrateCartLines(state.lines);
   (state.lines || []).forEach(stampLineAmount);
   $('cartBody').innerHTML = state.lines.map((ln,i) => `
     <tr style="${i===state.selectedLine?'background:#f3faf6':''}">
       <td>${i+1}</td>
-      <td>${ln.product}${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${ln.locationName||ln.positionName}</div>`:''}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}</td>
-      <td><input data-f="width" data-i="${i}" type="number" value="${ln.width}" style="width:70px"/>×<input data-f="height" data-i="${i}" type="number" value="${ln.height}" style="width:70px"/></td>
-      <td><input data-f="qty" data-i="${i}" type="number" min="1" value="${ln.qty}" style="width:56px"/></td>
+      <td>${cartLineProductLabel(ln)}${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${ln.locationName||ln.positionName}</div>`:''}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}</td>
+      <td><input data-f="width" data-i="${i}" type="number" value="${ln.width != null ? ln.width : ''}" style="width:70px"/>×<input data-f="height" data-i="${i}" type="number" value="${ln.height != null ? ln.height : ''}" style="width:70px"/></td>
+      <td><input data-f="qty" data-i="${i}" type="number" min="1" value="${ln.qty != null ? ln.qty : ''}" style="width:56px"/></td>
       <td style="font-size:.8rem">${ln.glass||''}<br>${ln.colour||''}</td>
       <td style="white-space:nowrap;font-weight:600">${money(lineLiveAmount(ln))}</td>
       <td class="actions-inline">
@@ -3423,7 +3435,13 @@ function renderCart() {
     }
     renderCart(); refreshPreview(); scheduleLivePrice();
   });
-  $('cartBody').querySelectorAll('[data-dup]').forEach(b => b.onclick = () => { const i=+b.dataset.dup; state.lines.splice(i+1,0,{...state.lines[i]}); renderCart(); scheduleSave(); });
+  $('cartBody').querySelectorAll('[data-dup]').forEach(b => b.onclick = () => {
+    const i = +b.dataset.dup;
+    const copy = { ...state.lines[i] };
+    delete copy.lineId;
+    state.lines.splice(i + 1, 0, ensureLineId(copy));
+    renderCart(); scheduleSave();
+  });
   $('cartBody').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { state.lines.splice(+b.dataset.del,1); renderCart(); scheduleSave(); });
   const items = state.lines.reduce((s,l)=>s+(+l.qty||0),0);
   const groups = quoteQtyBreakdown(state.lines);
@@ -3804,7 +3822,7 @@ async function applySetupFromProject(setupId){
     await api('/api/projects/'+state.projectId, {method:'PUT', body:{
       name: ($('cartName') && $('cartName').value) || undefined,
       customer: ($('cartCustomer') && $('cartCustomer').value) || '',
-      lines: slimCartLines(state.lines),
+      lines: serializeCartLines(state.lines),
       ...projectBillTo()
     }});
   }
@@ -3837,6 +3855,16 @@ function projectBillTo() {
 }
 
 const WEOS_CART_KEY = 'weos.cart.v1';
+function rememberCartLine(ln) {
+  if (!ln || typeof ln !== 'object') return;
+  const id = ln.lineId || ln.id;
+  if (!id) return;
+  state._lineById = state._lineById || {};
+  state._lineById[String(id)] = ln;
+}
+function rememberCartLines(lines) {
+  (lines || []).forEach(rememberCartLine);
+}
 function ensureLineId(ln) {
   if (!ln || typeof ln !== 'object') return ln;
   if (!ln.lineId) {
@@ -3844,11 +3872,39 @@ function ensureLineId(ln) {
       ? crypto.randomUUID().replace(/-/g, '').slice(0, 10)
       : ('L' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
   }
+  if (!ln.product && ln.productId) ln.product = ln.productId;
+  rememberCartLine(ln);
   return ln;
 }
+function lineIdOf(ln) {
+  if (!ln) return '';
+  if (typeof ln === 'string') return ln;
+  const obj = ensureLineId(ln);
+  return (obj && obj.lineId) || '';
+}
+function hydrateCartLine(ln) {
+  if (ln && typeof ln === 'object' && !Array.isArray(ln)) return ensureLineId(ln);
+  if (typeof ln === 'string' && ln) {
+    const hit = (state._lineById && state._lineById[ln])
+      || (state.lines || []).find(x => x && typeof x === 'object' && (x.lineId === ln || x.id === ln));
+    if (hit && typeof hit === 'object') return ensureLineId({ ...hit, lineId: hit.lineId || ln });
+  }
+  return null;
+}
+function hydrateCartLines(lines) {
+  const out = [];
+  (lines || []).forEach((ln) => {
+    const h = hydrateCartLine(ln);
+    if (h && typeof h === 'object') out.push(h);
+  });
+  rememberCartLines(out);
+  return out;
+}
 function slimCartLine(ln) {
-  if (!ln || typeof ln !== 'object') return ln;
-  const copy = { ...ln };
+  const obj = hydrateCartLine(ln);
+  if (!obj || typeof obj !== 'object') return null;
+  const copy = { ...obj };
+  if (!copy.product && copy.productId) copy.product = copy.productId;
   if (copy.preview && typeof copy.preview === 'object') {
     const p = { ...copy.preview };
     delete p.svg;
@@ -3857,15 +3913,19 @@ function slimCartLine(ln) {
   }
   return copy;
 }
+/** Always dictionaries — never line-id strings — for Save / Calculate / Quote PDF / Excel. */
+function serializeCartLines(lines) {
+  return (lines || []).map(slimCartLine).filter((ln) => ln && typeof ln === 'object' && !Array.isArray(ln));
+}
 function slimCartLines(lines) {
-  return (lines || []).map((ln) => slimCartLine(ensureLineId(ln)));
+  return serializeCartLines(lines);
 }
 function persistCartSession() {
   try {
-    (state.lines || []).forEach(ensureLineId);
+    state.lines = hydrateCartLines(state.lines);
     sessionStorage.setItem(WEOS_CART_KEY, JSON.stringify({
       projectId: state.projectId || null,
-      lines: slimCartLines(state.lines),
+      lines: serializeCartLines(state.lines),
       name: ($('cartName') && $('cartName').value) || '',
       customer: ($('cartCustomer') && $('cartCustomer').value) || '',
       bill: typeof projectBillTo === 'function' ? projectBillTo() : {},
@@ -3879,7 +3939,7 @@ function restoreCartSession() {
     const d = JSON.parse(raw);
     if (!d || !Array.isArray(d.lines) || !d.lines.length) return false;
     state.projectId = d.projectId || null;
-    state.lines = d.lines.map(ensureLineId);
+    state.lines = hydrateCartLines(d.lines);
     if ($('cartName') && d.name) $('cartName').value = d.name;
     if ($('cartCustomer') && d.customer) $('cartCustomer').value = d.customer;
     const bill = d.bill || {};
@@ -3894,23 +3954,26 @@ function restoreCartSession() {
   } catch (_) { return false; }
 }
 function adoptServerLines(incoming, { allowShrink = false } = {}) {
-  const next = Array.isArray(incoming) ? incoming.map(ensureLineId) : [];
-  const local = (state.lines || []).map(ensureLineId);
+  const next = hydrateCartLines(incoming);
+  const local = hydrateCartLines(state.lines);
   if (!allowShrink && local.length > next.length) {
     const byId = new Map(next.filter((l) => l && l.lineId).map((l) => [l.lineId, l]));
     state.lines = local.map((ln, i) => {
       const hit = (ln.lineId && byId.get(ln.lineId)) || next[i];
-      if (!hit) return ln;
-      return {
+      if (!hit || typeof hit !== 'object') return ln;
+      const merged = {
         ...ln,
         ...hit,
         options: { ...(ln.options || {}), ...(hit.options || {}) },
         preview: ln.preview || hit.preview,
       };
+      return ensureLineId(merged);
     });
+    rememberCartLines(state.lines);
     return state.lines;
   }
-  state.lines = next;
+  state.lines = next.length ? next : local;
+  rememberCartLines(state.lines);
   return state.lines;
 }
 
@@ -3919,7 +3982,7 @@ async function ensureProject() {
   const doc = await api('/api/projects', {method:'POST', body:{
     name: $('cartName').value || 'WEOS Project',
     customer: $('cartCustomer').value || '',
-    lines: slimCartLines(state.lines),
+    lines: serializeCartLines(state.lines),
     status: 'draft',
     ...projectBillTo()
   }});
@@ -3946,7 +4009,7 @@ async function saveProject(silent) {
         await ensureProject();
         doc = await api('/api/projects/'+state.projectId, {method:'PUT', body:{
           name: $('cartName').value, customer: $('cartCustomer').value,
-          lines: slimCartLines(state.lines),
+          lines: serializeCartLines(state.lines),
           ...projectBillTo()
         }});
         if (!silent) toast('Saved v'+doc.version);
@@ -3973,7 +4036,7 @@ async function openProject(id) {
   const doc = await api('/api/projects/'+id);
   state.projectId = doc.projectId;
   if (same) adoptServerLines(doc.lines || [], { allowShrink: false });
-  else state.lines = (doc.lines || []).map(ensureLineId);
+  else state.lines = hydrateCartLines(doc.lines || []);
   persistCartSession();
   $('cartName').value = doc.name || '';
   if ($('cartCustomer')) $('cartCustomer').value = doc.customer || '';
@@ -4082,7 +4145,7 @@ $('btnAddLine').onclick = () => {
   if (p && p.productType) draft.productType = p.productType;
   if (p && p.category) draft.category = p.category;
   stampLineAmount(draft);
-  state.lines.push(draft);
+  state.lines.push(ensureLineId(draft));
   state.selectedLine = state.lines.length-1;
   renderCart(); scheduleSave(); refreshPreview(); scheduleLivePrice();
   toast('Line added');
@@ -4169,11 +4232,6 @@ function refreshDesignPhotoUi() {
   const clearBtn = $('btnClearDesignPhoto');
   if (nameEl) nameEl.textContent = photo ? (photo.filename || photo.key || 'Design photo attached') : '';
   if (clearBtn) clearBtn.style.display = photo ? '' : 'none';
-}
-function ensureLineId(ln) {
-  if (!ln) return '';
-  if (!ln.lineId) ln.lineId = Math.random().toString(16).slice(2, 10);
-  return ln.lineId;
 }
 function railInstallFlags() {
   if (railIsStairs()) {
@@ -4955,6 +5013,7 @@ async function railingAdd(){
     : (String((p && p.productType) || '').toLowerCase().includes('stair') ? 'staircase_railing' : 'railing');
   const railLine = {
     product: productLooksLikeRailing(p) ? railProd : 'railing',
+    productId: productLooksLikeRailing(p) ? railProd : 'railing',
     productType: ptype,
     category: 'Railings',
     displayName: ptype === 'staircase_railing' ? 'Staircase railing' : (p && p.displayName) || 'Railing',
@@ -4967,7 +5026,7 @@ async function railingAdd(){
     options: { railing: cfg, railingQuote: q, productType: ptype, commercialOnly: q.commercial || { sellingRatePerUnit: q.sellingPerUnit, saleUnit: q.saleUnit }, locationName: currentLocationName() || null },
   };
   stampLineAmount(railLine);
-  state.lines.push(railLine);
+  state.lines.push(ensureLineId(railLine));
   // Never inherit window series from the product dropdown onto a railing line.
   delete state.lines[state.lines.length - 1].sectionSeries;
   if ($('lineSeries')) $('lineSeries').value = '';
@@ -5138,6 +5197,7 @@ async function showerAdd() {
   const qty = (cfg && cfg.qty) || 1;
   const shLine = {
     product: (p && p.id) || 'shower_partition',
+    productId: (p && p.id) || 'shower_partition',
     productType: 'shower_partition',
     category: 'Bathrooms',
     displayName: (p && p.displayName) || 'Shower Partition',
@@ -5153,7 +5213,7 @@ async function showerAdd() {
     shower: cfg,
   };
   stampLineAmount(shLine);
-  state.lines.push(shLine);
+  state.lines.push(ensureLineId(shLine));
   delete state.lines[state.lines.length - 1].sectionSeries;
   delete state.lines[state.lines.length - 1].trackCount;
   state.selectedLine = state.lines.length - 1;
@@ -5318,8 +5378,9 @@ async function ventAdd() {
   const prod = (($('lineProduct') && $('lineProduct').value) || 'bathroom_ventilator');
   const p = (state.products || []).find(x => x && x.id === prod);
   const qty = (cfg && cfg.qty) || 1;
-  state.lines.push({
+  state.lines.push(ensureLineId({
     product: (p && p.id) || 'bathroom_ventilator',
+    productId: (p && p.id) || 'bathroom_ventilator',
     productType: 'bathroom_ventilator',
     category: 'Bathrooms',
     displayName: (p && p.displayName) || 'Bathroom ventilator',
@@ -5587,8 +5648,8 @@ if ($('btnRailHwLoad')) $('btnRailHwLoad').onclick = () => {
 loadRailingMaterialsIntoTools();
 loadRailGlassLibrary();
 refreshRailHwPresetSelect();
-$('btnUndo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/undo',{method:'POST'}); state.lines=(d.lines||[]).map(ensureLineId); persistCartSession(); renderCart(); toast('Undo'); };
-$('btnRedo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/redo',{method:'POST'}); state.lines=(d.lines||[]).map(ensureLineId); persistCartSession(); renderCart(); toast('Redo'); };
+$('btnUndo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/undo',{method:'POST'}); state.lines=hydrateCartLines(d.lines||[]); persistCartSession(); renderCart(); toast('Undo'); };
+$('btnRedo').onclick = async () => { if(!state.projectId) return; const d=await api('/api/projects/'+state.projectId+'/redo',{method:'POST'}); state.lines=hydrateCartLines(d.lines||[]); persistCartSession(); renderCart(); toast('Redo'); };
 if ($('lineDesignPhoto')) $('lineDesignPhoto').onchange = async (ev) => {
   const f = ev.target.files && ev.target.files[0];
   if (!f) return;
@@ -5600,7 +5661,7 @@ if ($('lineDesignPhoto')) $('lineDesignPhoto').onchange = async (ev) => {
       ev.target.value = '';
       return;
     }
-    const lid = ensureLineId(ln);
+    const lid = lineIdOf(ln);
     await saveProject(true);
     const fd = new FormData();
     fd.append('file', f);
@@ -5937,7 +5998,7 @@ function _exportFingerprint(kind) {
 }
 function _liveExportBody(brand) {
   return {
-    lines: slimCartLines(state.lines),
+    lines: serializeCartLines(state.lines),
     customer: ($('cartCustomer') && $('cartCustomer').value) || ($('projCustName') && $('projCustName').value) || '',
     name: ($('cartName') && $('cartName').value) || undefined,
     ...projectBillTo(),
@@ -6039,7 +6100,14 @@ $('projSearch').oninput = () => { clearTimeout(state._ps); state._ps=setTimeout(
 $('projStatus').onchange = $('projSort').onchange = loadProjects;
 $('libCat').onchange = renderLibrary;
 $('pdAdd').onclick = () => {
-  state.lines.push({product: state.selectedProduct, width:1440, height:1800, qty:1, glass:'5mm_clear', colour:'white', handle:'standard'});
+  const pid = state.selectedProduct;
+  const p = (state.products || []).find(x => x && x.id === pid);
+  state.lines.push(ensureLineId({
+    product: pid,
+    productId: pid,
+    displayName: (p && p.displayName) || pid,
+    width:1440, height:1800, qty:1, glass:'5mm_clear', colour:'white', handle:'standard'
+  }));
   setView('cart'); renderCart(); scheduleSave();
 };
 $('pdBack').onclick = () => setView('library');

@@ -230,7 +230,8 @@ class ProjectCreate(BaseModel):
     customer: str = ""
     status: str = "draft"
     # dicts — CartLine validation was dropping railing/shower/vent (missing width etc).
-    lines: list[dict[str, Any]] = Field(default_factory=list)
+    # list[Any] so leftover line-id strings do not 422; _coerce_cart_lines resolves them.
+    lines: list[Any] = Field(default_factory=list)
     # Bill-to (from Project Setup — mobile/name identify the customer) + quote text.
     customerMobile: str | None = None
     customerAddress: str | None = None
@@ -247,7 +248,7 @@ class ProjectUpdate(BaseModel):
     name: str | None = None
     customer: str | None = None
     status: str | None = None
-    lines: list[dict[str, Any]] | None = None
+    lines: list[Any] | None = None
     customerMobile: str | None = None
     customerAddress: str | None = None
     customerGst: str | None = None
@@ -267,7 +268,7 @@ class PdfExportBody(BaseModel):
 
     model_config = {"extra": "allow"}
 
-    lines: list[dict[str, Any]] | None = None
+    lines: list[Any] | None = None
     customer: str | None = None
     name: str | None = None
     customerMobile: str | None = None
@@ -745,19 +746,41 @@ def _public_base_url(request: Request | None) -> str:
     return ""
 
 
-def _coerce_cart_lines(raw: Any) -> list[dict[str, Any]]:
-    """Keep every cart row; strip giant preview.svg so saves/PDF do not drop lines."""
+def _coerce_cart_lines(raw: Any, existing: Any = None) -> list[dict[str, Any]]:
+    """Keep every cart row; strip giant preview.svg so saves/PDF do not drop lines.
+
+    Frontend must send full line dicts. If a slot is accidentally a line-id string,
+    resolve it from existing project lines instead of dropping the row or 422-ing.
+    """
+    by_id: dict[str, dict[str, Any]] = {}
+    for prev_ln in existing or []:
+        if not isinstance(prev_ln, Mapping):
+            continue
+        d0 = dict(prev_ln)
+        for key in ("lineId", "id"):
+            lid = str(d0.get(key) or "").strip()
+            if lid:
+                by_id[lid] = d0
     out: list[dict[str, Any]] = []
     for ln in raw or []:
-        if not isinstance(ln, Mapping):
+        if isinstance(ln, str):
+            hit = by_id.get(ln.strip())
+            if not hit:
+                _log.warning("Dropped cart line id with no matching object: %s", ln)
+                continue
+            d = dict(hit)
+        elif isinstance(ln, Mapping):
+            d = dict(ln)
+        else:
             continue
-        d = dict(ln)
         prev = d.get("preview")
         if isinstance(prev, Mapping):
             p = dict(prev)
             p.pop("svg", None)
             p.pop("pdfSvg", None)
             d["preview"] = p
+        if not d.get("product") and d.get("productId"):
+            d["product"] = d.get("productId")
         out.append(d)
     return out
 
@@ -777,7 +800,7 @@ def _pdf_response(
     if overlay:
         # PDF must print the live cart payload, not a stale autosave snapshot.
         if overlay.get("lines") is not None:
-            overlay_lines = _coerce_cart_lines(overlay["lines"])
+            overlay_lines = _coerce_cart_lines(overlay["lines"], existing=doc.get("lines"))
             # Empty overlay must not wipe a saved cart. Non-empty overlay is the live cart (incl. deletes).
             if overlay_lines:
                 doc["lines"] = overlay_lines
@@ -1489,7 +1512,7 @@ def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
     if body.status is not None:
         doc["status"] = body.status
     if body.lines is not None:
-        incoming = _coerce_cart_lines(body.lines)
+        incoming = _coerce_cart_lines(body.lines, existing=doc.get("lines"))
         # Never persist an accidental empty wipe over a non-empty cart.
         if incoming or not (doc.get("lines") or []):
             doc["lines"] = incoming
@@ -2799,7 +2822,9 @@ def _customer_xlsx_response(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if overlay:
         if overlay.get("lines") is not None:
-            doc["lines"] = _coerce_cart_lines(overlay["lines"]) or list(overlay["lines"] or [])
+            overlay_lines = _coerce_cart_lines(overlay["lines"], existing=doc.get("lines"))
+            if overlay_lines:
+                doc["lines"] = overlay_lines
         for _fld in (
             "customer",
             "name",
