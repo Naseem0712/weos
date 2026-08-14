@@ -4,16 +4,17 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>WEOS — Manufacturing OS</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;700&display=swap" rel="stylesheet"/>
 <style>
 :root{
   --bg:#e8e3d8; --ink:#141410; --muted:#5c584f; --panel:rgba(255,252,247,.94);
   --line:rgba(20,20,16,.12); --green:#0a5a48; --green2:#147a62; --copper:#b45324;
   --card:#fffdf9; --shadow:0 10px 40px rgba(20,20,16,.06); --radius:14px;
   --nav:72px; --logo-w:310px; --side:calc(var(--logo-w) + 24px);
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --serif: Georgia, "Palatino Linotype", Palatino, "Times New Roman", Times, serif;
 }
 *{box-sizing:border-box}
-html,body{margin:0;min-height:100%;font-family:"DM Sans",system-ui,sans-serif;color:var(--ink);
+html,body{margin:0;min-height:100%;font-family:var(--sans);color:var(--ink);
   background:radial-gradient(ellipse 80% 50% at 0% -10%,#c9e5db,transparent 55%),
              radial-gradient(ellipse 60% 40% at 100% 0%,#efd6c2,transparent 50%),var(--bg)}
 button,input,select{font:inherit}
@@ -62,7 +63,7 @@ a{color:inherit}
 .main{min-width:0;padding:1rem 1.1rem 2.5rem}
 .top{display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap}
 .burger{display:none;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:.45rem .65rem;cursor:pointer}
-h1{font-family:Fraunces,serif;font-size:clamp(1.5rem,2.5vw,2rem);margin:0;letter-spacing:-.02em}
+h1{font-family:var(--serif);font-size:clamp(1.5rem,2.5vw,2rem);margin:0;letter-spacing:-.02em}
 .sub{color:var(--muted);margin:.15rem 0 0;font-size:.92rem}
 .grid{display:grid;gap:1rem}
 .cards{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
@@ -70,7 +71,7 @@ h1{font-family:Fraunces,serif;font-size:clamp(1.5rem,2.5vw,2rem);margin:0;letter
   animation:rise .35s ease both}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .card .k{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
-.card .v{font-family:Fraunces,serif;font-size:1.7rem;margin-top:.35rem}
+.card .v{font-family:var(--serif);font-size:1.7rem;margin-top:.35rem}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:1rem;box-shadow:var(--shadow)}
 .row{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
 .grow{flex:1;min-width:140px}
@@ -86,6 +87,7 @@ th,td{text-align:left;padding:.55rem .4rem;border-bottom:1px solid var(--line);v
 th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 .muted{color:var(--muted)}
 .pill{display:inline-block;padding:.15rem .45rem;border-radius:999px;background:#e7f3ee;color:var(--green);font-size:.72rem;font-weight:600}
+button.pill{border:0;font:inherit;cursor:pointer}
 .pill.stub{background:#f3ebe2;color:var(--copper)}
 .preview{background:#d8dee6;border:1px solid var(--line);border-radius:12px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:auto;padding:.5rem}
 .preview svg,.preview img{max-width:100%;max-height:420px;width:auto;height:auto;display:block}
@@ -101,7 +103,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 .toast{position:fixed;right:1rem;bottom:1rem;background:#12140f;color:#fff;padding:.7rem 1rem;border-radius:10px;z-index:50;opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none}
 .toast.show{opacity:1;transform:none}
 .hidden{display:none!important}
-.total{font-family:Fraunces,serif;font-size:clamp(1.6rem,3vw,2.2rem)}
+.total{font-family:var(--serif);font-size:clamp(1.6rem,3vw,2.2rem)}
 .actions-inline{display:flex;gap:.3rem;flex-wrap:wrap}
 .specs{display:grid;grid-template-columns:1fr 1fr;gap:.45rem .75rem;font-size:.88rem}
 @media(max-width:600px){.specs{grid-template-columns:1fr}th:nth-child(n+5),td:nth-child(n+5){display:none}}
@@ -118,12 +120,12 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 @media(max-width:1000px){.admin-split{grid-template-columns:1fr}}
 .chip{display:inline-block;background:#e7f3ee;color:var(--green);border-radius:6px;padding:.1rem .4rem;font-size:.7rem;margin:.1rem;cursor:pointer}
 .livebox{background:linear-gradient(135deg,#f3faf6,#fff8f3);border:1px solid var(--line);border-radius:12px;padding:.75rem .9rem;margin-top:.65rem}
-.livebox .big{font-family:Fraunces,serif;font-size:1.45rem;margin:.15rem 0}
+.livebox .big{font-family:var(--serif);font-size:1.45rem;margin:.15rem 0}
 .livebox .row2{display:flex;gap:1rem;flex-wrap:wrap;margin-top:.45rem}
 .livebox .kpi{min-width:110px}
 .livebox .kpi .l{margin:0}
 .agent{background:#0f2a22;color:#e8f2ed;border-radius:14px;padding:1rem 1.1rem}
-.agent h3{font-family:Fraunces,serif;margin:0 0 .35rem;font-size:1.15rem;font-weight:500}
+.agent h3{font-family:var(--serif);margin:0 0 .35rem;font-size:1.15rem;font-weight:500}
 .agent .muted{color:#9bb0a4}
 .agent ul{margin:.4rem 0 0;padding-left:1.1rem;font-size:.88rem}
 .agent .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#3dba8a;margin-right:.35rem}
@@ -155,7 +157,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 .safe-banner strong{color:#fff}
 .memory-banner{display:none;background:linear-gradient(120deg,#1a3d32,#0f2a22);color:#e8f2ed;border-radius:12px;padding:.85rem 1rem;margin-bottom:.75rem;border:1px solid #2a6b55}
 .memory-banner.show{display:block}
-.memory-banner .mb-title{font-family:Fraunces,serif;font-size:1.05rem;margin:0 0 .25rem}
+.memory-banner .mb-title{font-family:var(--serif);font-size:1.05rem;margin:0 0 .25rem}
 .memory-banner .mb-body{font-size:.88rem;color:#9bb0a4;margin:0 0 .55rem}
 .memory-banner .mb-actions{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
 .stream-item{border-bottom:1px solid var(--line);padding:.45rem 0;font-size:.84rem}
@@ -200,7 +202,7 @@ th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
         <h1 id="title">Dashboard</h1>
         <p class="sub" id="subtitle">Manufacturing Operating System</p>
       </div>
-      <span class="pill" id="enginePill" title="Backend engine status" style="margin-right:.5rem;background:#6b7280;color:#fff">● Engine…</span>
+      <button type="button" class="pill" id="enginePill" title="Click to retry backend health" style="margin-right:.5rem;background:#6b7280;color:#fff">● Engine…</button>
       <span class="pill" id="projPill">No project</span>
     </div>
 
@@ -2113,6 +2115,8 @@ async function applyWorkspacePayload(ws) {
   try { await loadCustomerList(); } catch (_) {}
   try { if (typeof loadProjects === 'function') await loadProjects(); } catch (_) {}
   try { if (typeof loadSetupList === 'function') await loadSetupList(); } catch (_) {}
+  try { if (typeof loadDashboard === 'function') await loadDashboard(); } catch (_) {}
+  if (typeof updatePdfLinks === 'function') updatePdfLinks();
 }
 async function restoreCompanyWorkspace() {
   const gst = savedCompanyGst();
@@ -2139,19 +2143,45 @@ const API_BASE = (() => {
   return '';
 })();
 
+function withGstQuery(qs) {
+  const params = qs instanceof URLSearchParams ? qs : new URLSearchParams(qs || '');
+  const g = (typeof savedCompanyGst === 'function' && savedCompanyGst()) || state.companyGst || '';
+  if (g && !params.get('gst')) params.set('gst', g);
+  return params;
+}
+
 async function api(path, opts={}) {
   const url = path.startsWith('http') ? path : (API_BASE + path);
-  console.log("API Request:", url);
-  const res = await fetch(url, {
-    headers: opts.body && !(opts.body instanceof FormData) ? {'Content-Type':'application/json'} : undefined,
-    ...opts,
-    body: opts.body && !(opts.body instanceof FormData) ? JSON.stringify(opts.body) : opts.body,
-  });
-  console.log("Response Status:", res.status);
-  const ct = res.headers.get('content-type')||'';
-  const data = ct.includes('application/json') ? await res.json() : await res.blob();
-  if (!res.ok) throw new Error((data && data.detail) ? (typeof data.detail==='string'?data.detail:JSON.stringify(data.detail)) : res.statusText);
-  return data;
+  const timeoutMs = Number(opts.timeoutMs);
+  const wait = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 20000;
+  const { timeoutMs: _ignored, headers: extraHeaders, body, signal, ...rest } = opts;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), wait);
+  if (signal) {
+    if (signal.aborted) ctrl.abort();
+    else signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+  }
+  try {
+    const res = await fetch(url, {
+      ...rest,
+      headers: body && !(body instanceof FormData)
+        ? Object.assign({'Content-Type':'application/json'}, extraHeaders || {})
+        : extraHeaders,
+      signal: ctrl.signal,
+      body: body && !(body instanceof FormData) ? JSON.stringify(body) : body,
+    });
+    const ct = res.headers.get('content-type')||'';
+    const data = ct.includes('application/json') ? await res.json() : await res.blob();
+    if (!res.ok) throw new Error((data && data.detail) ? (typeof data.detail==='string'?data.detail:JSON.stringify(data.detail)) : res.statusText);
+    return data;
+  } catch (e) {
+    if (e && (e.name === 'AbortError' || e.name === 'TimeoutError')) {
+      throw new Error('Backend offline (timeout)');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function setView(v) {
@@ -2275,24 +2305,73 @@ function mm(n){
   return String(Math.round(v));
 }
 
-async function loadDashboard() {
-  const d = await api('/api/dashboard');
-  $('dashCards').innerHTML = [
-    ['Active Projects', d.activeProjects],
-    ['Draft Quotations', d.draftQuotations],
-    ["Today's Orders", d.todaysOrders],
-    ['Material Required', (d.materialRequiredKg||0)+' kg'],
-    ['Production Queued', d.productionStatus?.queued||0],
-    ['Archived', d.productionStatus?.archived||0],
-  ].map(([k,v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
-  $('recentBody').innerHTML = (d.recentProjects||[]).map(p => `
+function renderRecentProjectRows(projects) {
+  const body = $('recentBody');
+  if (!body) return;
+  const rows = projects || [];
+  body.innerHTML = rows.slice(0, 8).map(p => `
     <tr>
       <td><a href="#" data-open="${p.projectId}">${p.projectId}</a></td>
       <td>${p.name||''}</td><td>${p.customer||''}</td><td>${p.lineCount||0}</td>
       <td>${money(p.grandTotal)}</td><td><span class="pill">${p.status||''}</span></td>
     </tr>`).join('') || '<tr><td colspan="6" class="muted">No projects yet</td></tr>';
-  $('recentBody').querySelectorAll('[data-open]').forEach(a => a.onclick = async (e) => { e.preventDefault(); await openProject(a.dataset.open); setView('cart'); });
-  await refreshAgent();
+  body.querySelectorAll('[data-open]').forEach(a => a.onclick = async (e) => {
+    e.preventDefault();
+    await openProject(a.dataset.open);
+    setView('cart');
+  });
+}
+
+async function loadDashboard() {
+  const body = $('recentBody');
+  if (body && !body.dataset.loaded) {
+    body.innerHTML = '<tr><td colspan="6" class="muted">Loading projects…</td></tr>';
+  }
+  let projects = [];
+  let loadErr = null;
+  try {
+    const qs = withGstQuery({ sort: 'updatedAt', order: 'desc' });
+    const data = await api('/api/projects?' + qs.toString(), { timeoutMs: 12000 });
+    projects = data.projects || [];
+  } catch (e) {
+    loadErr = e;
+    const wsRows = (state.workspace && (state.workspace.projects || [])) || [];
+    if (wsRows.length) projects = wsRows;
+  }
+  if (!projects.length && loadErr) {
+    if (body) {
+      body.innerHTML = `<tr><td colspan="6" class="muted">Could not load projects (${esc(loadErr.message || loadErr)}). <button type="button" class="btn ghost sm" id="dashRetry">Retry</button></td></tr>`;
+      const r = $('dashRetry'); if (r) r.onclick = () => loadDashboard();
+    }
+  } else {
+    if (body) body.dataset.loaded = '1';
+    renderRecentProjectRows(projects);
+  }
+  const active = projects.filter(p => (p.status || 'active') === 'active').length;
+  const drafts = projects.filter(p => p.status === 'draft').length;
+  if ($('dashCards')) {
+    $('dashCards').innerHTML = [
+      ['Active Projects', active],
+      ['Draft Quotations', drafts],
+      ["Today's Orders", '—'],
+      ['Material Required', '—'],
+      ['Production Queued', projects.filter(p => p.quotationId).length],
+      ['Archived', '—'],
+    ].map(([k,v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+  }
+  api('/api/dashboard', { timeoutMs: 8000 }).then(d => {
+    if (!d || !$('dashCards')) return;
+    $('dashCards').innerHTML = [
+      ['Active Projects', d.activeProjects],
+      ['Draft Quotations', d.draftQuotations],
+      ["Today's Orders", d.todaysOrders],
+      ['Material Required', (d.materialRequiredKg||0)+' kg'],
+      ['Production Queued', d.productionStatus?.queued||0],
+      ['Archived', d.productionStatus?.archived||0],
+    ].map(([k,v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+    if ((!projects.length) && (d.recentProjects || []).length) renderRecentProjectRows(d.recentProjects);
+  }).catch(() => {});
+  refreshAgent().catch(() => {});
 }
 
 async function refreshAgent() {
@@ -2315,13 +2394,22 @@ async function refreshAgent() {
 }
 
 async function loadProjects() {
-  const q = $('projSearch').value.trim();
-  const status = $('projStatus').value;
-  const sort = $('projSort').value;
-  const qs = new URLSearchParams({sort, order:'desc'});
+  const q = ($('projSearch') && $('projSearch').value.trim()) || '';
+  const status = ($('projStatus') && $('projStatus').value) || '';
+  const sort = ($('projSort') && $('projSort').value) || 'updatedAt';
+  const qs = withGstQuery({sort, order:'desc'});
   if (q) qs.set('q', q);
   if (status) qs.set('status', status);
-  const data = await api('/api/projects?'+qs.toString());
+  let data;
+  try {
+    data = await api('/api/projects?'+qs.toString());
+  } catch (e) {
+    if ($('projBody')) {
+      $('projBody').innerHTML = `<tr><td colspan="7" class="muted">${esc(e.message||e)} <button type="button" class="btn ghost sm" id="projRetry">Retry</button></td></tr>`;
+      const r = $('projRetry'); if (r) r.onclick = () => loadProjects();
+    }
+    return;
+  }
   $('projBody').innerHTML = (data.projects||[]).map(p => `
     <tr>
       <td>${p.projectId}</td><td>${p.name||''}</td><td>${p.customer||''}</td>
@@ -3737,7 +3825,19 @@ async function refreshPreview() {
 
 function updatePdfLinks(){
   const id = state.projectId;
-  $('projPill').textContent = id || 'No project';
+  const pill = $('projPill');
+  if (id) {
+    if (pill) pill.textContent = id;
+  } else if (state.workspace && state.workspace.gstNo) {
+    const name = (state.workspace.company && (state.workspace.company.companyName || state.workspace.company.name))
+      || ('GST ' + state.workspace.gstNo);
+    if (pill) {
+      pill.textContent = name;
+      pill.title = 'GST workspace open — pick a project from Dashboard';
+    }
+  } else if (pill) {
+    pill.textContent = 'No project';
+  }
   if (!id) return;
   const brand = ($('pdfBrand') && $('pdfBrand').value) || 'woodenmax';
   const q = '?brand='+encodeURIComponent(brand);
@@ -3764,7 +3864,7 @@ function refreshSetupSummary(){
 async function loadSetupList(){
   const body = $('setupListBody'); if (!body) return;
   try {
-    const data = await api('/api/projects?sort=updatedAt&order=desc');
+    const data = await api('/api/projects?'+withGstQuery({sort:'updatedAt', order:'desc'}).toString());
     body.innerHTML = (data.projects||[]).map(p => `
       <tr>
         <td>${p.projectId}</td><td>${p.name||''}</td><td>${p.customer||''}</td>
@@ -3782,7 +3882,7 @@ async function refreshExportSetupSelect(){
   const sel = $('exportSetupSelect'); if (!sel) return;
   const prev = sel.value;
   try {
-    const data = await api('/api/projects?sort=updatedAt&order=desc');
+    const data = await api('/api/projects?'+withGstQuery({sort:'updatedAt', order:'desc'}).toString());
     const projects = data.projects || [];
     if (!projects.length) {
       sel.innerHTML = '<option value="">No saved setups</option>';
@@ -3937,20 +4037,21 @@ function restoreCartSession() {
     const raw = sessionStorage.getItem(WEOS_CART_KEY);
     if (!raw) return false;
     const d = JSON.parse(raw);
-    if (!d || !Array.isArray(d.lines) || !d.lines.length) return false;
-    state.projectId = d.projectId || null;
-    state.lines = hydrateCartLines(d.lines);
+    if (!d) return false;
+    const hasLines = Array.isArray(d.lines) && d.lines.length;
+    if (d.projectId) state.projectId = d.projectId;
+    if (hasLines) state.lines = hydrateCartLines(d.lines);
     if ($('cartName') && d.name) $('cartName').value = d.name;
     if ($('cartCustomer') && d.customer) $('cartCustomer').value = d.customer;
     const bill = d.bill || {};
-    if ($('projCustName') && (d.customer || bill.customer)) $('projCustName').value = d.customer || '';
+    if ($('projCustName') && (d.customer || bill.customer)) $('projCustName').value = d.customer || bill.customer || $('projCustName').value;
     if ($('projMobile') && bill.customerMobile != null) $('projMobile').value = bill.customerMobile;
     if ($('projCustAddress') && bill.customerAddress != null) $('projCustAddress').value = bill.customerAddress;
     if ($('projCustGst') && bill.customerGst != null) $('projCustGst').value = bill.customerGst;
     if ($('projQuoteNo') && bill.quotationId) $('projQuoteNo').value = bill.quotationId;
     if ($('projDescription') && bill.description != null) $('projDescription').value = bill.description;
     if ($('projTerms') && bill.terms != null) $('projTerms').value = bill.terms;
-    return true;
+    return !!(state.projectId || hasLines);
   } catch (_) { return false; }
 }
 function adoptServerLines(incoming, { allowShrink = false } = {}) {
@@ -5393,7 +5494,7 @@ async function ventAdd() {
     description: `Bathroom ventilator · ${q.widthMm}×${q.heightMm} mm · ${q.glassLabel || ''} · ₹${q.sellingPerUnit}/${String(q.saleUnit || 'sqft').toUpperCase()}`,
     options: { ventilator: cfg, ventilatorQuote: q, productType: 'bathroom_ventilator', locationName: currentLocationName() || null },
     ventilator: cfg,
-  });
+  }));
   delete state.lines[state.lines.length - 1].sectionSeries;
   delete state.lines[state.lines.length - 1].trackCount;
   state.selectedLine = state.lines.length - 1;
@@ -8629,8 +8730,14 @@ function weosMountAgentDock(){
 async function pingEngine(){
   const pill = $('enginePill');
   if (!pill) return;
+  const current = (pill.textContent || '').trim();
+  if (!current || current.includes('Engine…') || /offline|Retry|Checking/i.test(current)) {
+    pill.textContent = '● Checking…';
+    pill.style.background = '#6b7280';
+    pill.style.color = '#fff';
+  }
   try {
-    const h = await api('/api/admin/health');
+    const h = await api('/api/admin/health', { timeoutMs: 8000 });
     const checks = h.checks || {};
     const db = checks.database || {};
     const dbOk = ['READY','CONNECTED','ok'].includes(db.status);
@@ -8638,27 +8745,39 @@ async function pingEngine(){
     if (h.status === 'ok' || dbOk) {
       pill.textContent = '● Engine connected' + (backend ? ` (${backend})` : '');
       pill.style.background = '#166534';
-      pill.title = 'Backend healthy' + (backend ? ` · ${backend}` : '') + (h.status !== 'ok' ? ' · some subsystems degraded' : '');
+      pill.style.color = '#fff';
+      pill.title = 'Backend healthy' + (backend ? ` · ${backend}` : '') + (h.status !== 'ok' ? ' · some subsystems degraded' : '') + ' — click to recheck';
     } else {
-      pill.textContent = '● Engine disconnected';
+      pill.textContent = '● Backend offline · Retry';
       pill.style.background = '#b91c1c';
-      pill.title = 'Database not reachable: ' + (db.error || h.status || 'unknown');
+      pill.style.color = '#fff';
+      pill.title = 'Database not reachable: ' + (db.error || h.status || 'unknown') + ' — click to retry';
     }
   } catch(e){
-    pill.textContent = '● Engine disconnected';
+    pill.textContent = '● Backend offline · Retry';
     pill.style.background = '#b91c1c';
-    pill.title = 'Cannot reach backend: ' + (e && e.message ? e.message : 'network error');
+    pill.style.color = '#fff';
+    pill.title = 'Cannot reach backend: ' + (e && e.message ? e.message : 'network error') + ' — click to retry';
   }
 }
 
 (async function init(){
+  const pill = $('enginePill');
+  if (pill) pill.onclick = () => { pingEngine(); };
   pingEngine();
   setInterval(pingEngine, 30000);
+  const restoredCart = restoreCartSession();
+  updatePdfLinks();
   // Auto-restore GST company workspace on boot (refresh / minimize safe).
   try { await restoreCompanyWorkspace(); } catch (e) { console.warn(e); }
-  await loadProducts();
-  try { state.adminMeta = await api('/api/admin/meta'); } catch(_){}
-  const restoredCart = restoreCartSession();
+  updatePdfLinks();
+  // Dashboard + projects must not wait for Engine / product catalog.
+  setView(state.workspaceRestored ? 'company' : 'dashboard');
+  if (state.workspaceRestored) {
+    try { await loadDashboard(); } catch (_) {}
+  }
+  try { await loadProducts(); } catch (e) { console.warn('Product catalog unavailable', e); }
+  try { state.adminMeta = await api('/api/admin/meta', { timeoutMs: 8000 }); } catch(_){}
   if (!restoredCart) {
     state.lines = [
       {product:'29mm_sliding', width:2050, height:1970, qty:4, glass:'8mm_toughened', colour:'black_texture', handle:'premium', saleUnit:'sqft', sellingRate:1100},
@@ -8675,7 +8794,6 @@ async function pingEngine(){
     }).catch(() => {});
   }
   persistCartSession();
-  setView(state.workspaceRestored ? 'company' : 'dashboard');
   scheduleLivePrice();
   try { weosMountAgentDock(); } catch(e){ console.warn('WEOS Agent dock failed to mount', e); }
 })();

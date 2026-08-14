@@ -746,18 +746,11 @@ def dashboard_stats() -> dict[str, Any]:
     with_quote = [p for p in projects if p.get("quotationId")]
     today = datetime.now(timezone.utc).date().isoformat()
     todays = [p for p in projects if str(p.get("updatedAt", "")).startswith(today)]
-    material = 0.0
-    for p in projects[:50]:
-        try:
-            doc = load_project(p["projectId"])
-            material += float((((doc.get("lastCalculation") or {}).get("combined") or {}).get("weight") or {}).get("aluminiumKg") or 0)
-        except Exception:
-            pass
     return {
         "activeProjects": len(active),
         "draftQuotations": len(drafts) + len([p for p in with_quote if p.get("status") == "draft"]),
         "todaysOrders": len(todays),
-        "materialRequiredKg": round(material, 2),
+        "materialRequiredKg": 0.0,
         "productionStatus": {"queued": len(with_quote), "archived": len(archived)},
         "recentProjects": projects[:8],
     }

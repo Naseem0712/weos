@@ -1475,8 +1475,19 @@ def api_list_projects(
     status: str | None = None,
     sort: str = "updatedAt",
     order: str = "desc",
+    gst: str | None = None,
 ) -> dict[str, Any]:
-    return {"projects": list_projects(q=q, status=status, sort=sort, order=order, include_archived=status == "archived")}
+    return {
+        "projects": list_projects(
+            q=q,
+            status=status,
+            sort=sort,
+            order=order,
+            include_archived=status == "archived",
+            company_gst=gst,
+            include_unscoped=True,
+        )
+    }
 
 
 @app.post("/api/projects")
