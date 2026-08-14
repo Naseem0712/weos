@@ -8,16 +8,18 @@ import re
 from pathlib import Path
 
 
-def sanitize_svg_for_pdf(svg: str) -> str:
+def sanitize_svg_for_pdf(svg: str, *, keep_dashes: bool = False) -> str:
     """Make canvas SVG safe for Cairo / svglib / print.
 
     ``stroke-dasharray="none"`` crashes svglib (float('none')). Filters /
-    foreignObject / huge dash patterns hang RIP. Structural print = solid.
+    foreignObject / huge dash patterns hang RIP. Cairo can keep dashes so
+    Quote PDF matches the live canvas (tracks, hidden edges).
     """
     s = str(svg or "")
     if not s:
         return s
-    s = re.sub(r"\sstroke-dasharray\s*=\s*['\"][^'\"]*['\"]", "", s, flags=re.I)
+    if not keep_dashes:
+        s = re.sub(r"\sstroke-dasharray\s*=\s*['\"][^'\"]*['\"]", "", s, flags=re.I)
     s = re.sub(r"<filter[\s\S]*?</filter>", "", s, flags=re.I)
     s = re.sub(r"<foreignObject[\s\S]*?</foreignObject>", "", s, flags=re.I)
     s = re.sub(r"<style[\s\S]*?</style>", "", s, flags=re.I)
@@ -159,22 +161,24 @@ def svg_to_png_bytes(
     ``max_px`` caps the long edge so model-mm viewBoxes (2000–4000) do not
     explode into multi-megapixel rasters that hang Quote PDF.
     """
-    svg = sanitize_svg_for_pdf(svg)
-    svg = normalize_svg_viewbox(svg, max_px=max_px)
-    if not svg.strip():
+    cairo_svg = sanitize_svg_for_pdf(svg, keep_dashes=True)
+    cairo_svg = normalize_svg_viewbox(cairo_svg, max_px=max_px)
+    if not cairo_svg.strip():
         return None
     # Width/height already pixel-capped — keep scale modest so RIP stays fast.
     use_scale = min(max(float(scale or 1.0), 0.5), 1.6)
     try:
         import cairosvg
 
-        return cairosvg.svg2png(bytestring=svg.encode("utf-8"), scale=use_scale)
+        return cairosvg.svg2png(bytestring=cairo_svg.encode("utf-8"), scale=use_scale)
     except Exception:
         pass
 
     if not allow_slow:
         return None
 
+    svg = sanitize_svg_for_pdf(svg, keep_dashes=False)
+    svg = normalize_svg_viewbox(svg, max_px=max_px)
     try:
         from reportlab.graphics import renderPM
         from svglib.svglib import svg2rlg

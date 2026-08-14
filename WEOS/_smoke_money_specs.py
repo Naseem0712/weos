@@ -5,6 +5,7 @@ import os
 import re
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _tmp = Path(tempfile.mkdtemp(prefix="weos_money_specs_"))
@@ -165,6 +166,34 @@ def main() -> int:
     out = _tmp / "specs.pdf"
     out.write_bytes(pdf)
     print("PDF", out, "bytes", len(pdf))
+
+    from WEOS.factory.project_store import dashboard_stats, format_tenure, list_projects, live_quote_money
+
+    ago = datetime.now(timezone.utc) - timedelta(days=12, hours=3)
+    ten = format_tenure(ago.isoformat())
+    if ten != "12d":
+        fails.append(f"tenure 12d got {ten}")
+    money_live = live_quote_money(p)
+    if abs(float(money_live["totalTaxable"]) - 100000) > 0.01:
+        fails.append(f"live_quote_money taxable {money_live}")
+    if abs(float(money_live["totalGrand"]) - 118000) > 0.01:
+        fails.append(f"live_quote_money grand {money_live}")
+    listed = list_projects()
+    hit = next((r for r in listed if r.get("projectId") == p.get("projectId")), None)
+    if not hit:
+        fails.append("listed project missing")
+    else:
+        if abs(float(hit.get("grandTotal") or 0) - 100000) > 0.01:
+            fails.append(f"list grandTotal {hit.get('grandTotal')}")
+        if abs(float(hit.get("totalGrand") or 0) - 118000) > 0.01:
+            fails.append(f"list totalGrand {hit.get('totalGrand')}")
+        if not hit.get("tenure"):
+            fails.append("list tenure missing")
+    ds = dashboard_stats()
+    if "yearTaxable" not in ds or "yearGrand" not in ds:
+        fails.append(f"dashboard missing year turnover {list(ds)}")
+    if ds.get("yearTaxable", 0) < 100000:
+        fails.append(f"dashboard yearTaxable {ds.get('yearTaxable')}")
 
     if fails:
         print("FAIL")

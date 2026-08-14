@@ -25,6 +25,8 @@ def main() -> int:
         fails.append("index.html still generates 8-char hex line ids in duplicate ensureLineId")
     if "function serializeCartLines" not in src:
         fails.append("serializeCartLines helper missing")
+    if "function serializeCartLinesForPdf" not in src:
+        fails.append("serializeCartLinesForPdf helper missing")
     if src.count("function ensureLineId") != 1:
         fails.append(f"expected 1 ensureLineId, found {src.count('function ensureLineId')}")
     if "cartLineProductLabel" not in src:

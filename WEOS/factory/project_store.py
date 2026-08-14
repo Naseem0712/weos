@@ -473,6 +473,65 @@ def load_project(project_id: str) -> dict[str, Any]:
     return doc
 
 
+def format_tenure(iso: Any, *, now: datetime | None = None) -> str:
+    """Short age since created/updated, e.g. ``12d`` / ``3h`` / ``40m``."""
+    raw = str(iso or "").strip()
+    if not raw:
+        return ""
+    try:
+        stamp = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return ""
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    now_dt = now or datetime.now(timezone.utc)
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
+    sec = max(0.0, (now_dt - stamp.astimezone(timezone.utc)).total_seconds())
+    if sec < 3600:
+        return f"{max(1, int(round(sec / 60.0)))}m"
+    if sec < 86400:
+        return f"{max(1, int(round(sec / 3600.0)))}h"
+    days = sec / 86400.0
+    if days < 60:
+        return f"{max(1, int(round(days)))}d"
+    if days < 365:
+        return f"{max(1, int(round(days / 30.0)))}mo"
+    return f"{max(1, int(round(days / 365.0)))}y"
+
+
+def live_quote_money(doc: Mapping[str, Any] | None) -> dict[str, float]:
+    """Taxable + GST-inclusive grand matching Quote PDF (recalc from lines if stale)."""
+    from WEOS.factory.customer_line_view import customer_line_amount
+    from WEOS.factory.ledger_store import quote_money_parts
+
+    doc = doc if isinstance(doc, Mapping) else {}
+    line_sum = 0.0
+    any_amt = False
+    for ln in doc.get("lines") or []:
+        if not isinstance(ln, Mapping):
+            continue
+        amt = customer_line_amount(ln)
+        if amt is not None and amt > 0:
+            line_sum += float(amt)
+            any_amt = True
+    calc = doc.get("lastCalculation") if isinstance(doc.get("lastCalculation"), Mapping) else {}
+    price = calc.get("price") if isinstance(calc.get("price"), Mapping) else {}
+    combined = calc.get("combined") if isinstance(calc.get("combined"), Mapping) else {}
+    stored = (
+        combined.get("commercialGrandTotal")
+        or price.get("commercialTotal")
+        or price.get("total")
+        or doc.get("grandTotal")
+    )
+    try:
+        stored_n = float(stored) if stored is not None and str(stored).strip() != "" else 0.0
+    except (TypeError, ValueError):
+        stored_n = 0.0
+    taxable = line_sum if any_amt and line_sum > 0 else stored_n
+    return quote_money_parts(taxable)
+
+
 def list_projects(
     *,
     q: str | None = None,
@@ -529,6 +588,7 @@ def list_projects(
                 continue
             if gst and not _belongs_to_company(d, gst, include_unscoped=include_unscoped):
                 continue
+            money = live_quote_money(d)
             row = {
                 "projectId": d.get("projectId", p.stem),
                 "name": d.get("name"),
@@ -540,7 +600,11 @@ def list_projects(
                 "version": d.get("version"),
                 "lineCount": len(d.get("lines") or []),
                 "quotationId": d.get("quotationId"),
-                "grandTotal": (d.get("lastCalculation") or {}).get("price", {}).get("total"),
+                "grandTotal": money["totalTaxable"],
+                "totalTaxable": money["totalTaxable"],
+                "totalGst": money["totalGst"],
+                "totalGrand": money["totalGrand"],
+                "tenure": format_tenure(d.get("updatedAt") or d.get("createdAt")),
                 "companyGst": d.get("companyGst") or "",
                 "shareToken": d.get("shareToken") or d.get("quoteShareToken") or "",
             }
@@ -745,7 +809,23 @@ def dashboard_stats() -> dict[str, Any]:
     drafts = [p for p in projects if p.get("status") == "draft"]
     with_quote = [p for p in projects if p.get("quotationId")]
     today = datetime.now(timezone.utc).date().isoformat()
+    year = datetime.now(timezone.utc).year
     todays = [p for p in projects if str(p.get("updatedAt", "")).startswith(today)]
+    year_taxable = 0.0
+    year_grand = 0.0
+    for p in projects:
+        stamp = str(p.get("updatedAt") or p.get("createdAt") or "")
+        if not stamp.startswith(str(year)):
+            continue
+        try:
+            year_taxable += float(p.get("totalTaxable") or p.get("grandTotal") or 0)
+            year_grand += float(p.get("totalGrand") or 0)
+        except (TypeError, ValueError):
+            pass
+    if year_grand <= 0 and year_taxable > 0:
+        from WEOS.factory.ledger_store import quote_money_parts
+
+        year_grand = quote_money_parts(year_taxable)["totalGrand"]
     return {
         "activeProjects": len(active),
         "draftQuotations": len(drafts) + len([p for p in with_quote if p.get("status") == "draft"]),
@@ -753,4 +833,8 @@ def dashboard_stats() -> dict[str, Any]:
         "materialRequiredKg": 0.0,
         "productionStatus": {"queued": len(with_quote), "archived": len(archived)},
         "recentProjects": projects[:8],
+        "yearTaxable": round(year_taxable, 2),
+        "yearGrand": round(year_grand, 2),
+        "yearGst": round(year_grand - year_taxable, 2),
+        "year": year,
     }

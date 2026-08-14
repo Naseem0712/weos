@@ -180,7 +180,8 @@ def line_elevation_png_bytes(line: Mapping[str, Any], *, scale: float = 0.55, ma
 
 
 # A4 DESIGN cell ~200×210 pt. Cap rasters so 40–100 page quotes do not RIP-hang.
-_PDF_ELEV_MAX_PX = 480
+# 720 keeps shower/railing canvas readable without Cairo exploding mm viewBoxes.
+_PDF_ELEV_MAX_PX = 720
 
 
 def _line_canvas_svg(line: Mapping[str, Any]) -> str:
@@ -213,7 +214,7 @@ def _usable_png(png: bytes | None) -> bytes | None:
 
 
 def _draw_special_reportlab(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
-    """2fc312f-style railing / shower / ventilator elevations — never a grey box."""
+    """Last-resort schematic only when no canvas SVG exists."""
     from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line, is_ventilator_cart_line
 
     try:
@@ -234,6 +235,63 @@ def _draw_special_reportlab(c, line: Mapping[str, Any], x: float, y: float, box_
     return False
 
 
+def _embed_rl_drawing(c, drawing, x: float, y: float, box_w: float, box_h: float) -> bool:
+    """Place a svglib Drawing into the DESIGN cell, letterboxed."""
+    try:
+        from reportlab.graphics import renderPDF
+    except Exception:
+        return False
+    dw = float(getattr(drawing, "width", 0) or 0)
+    dh = float(getattr(drawing, "height", 0) or 0)
+    if dw <= 1 or dh <= 1:
+        return False
+    scale = min(box_w / dw, box_h / dh)
+    c.saveState()
+    try:
+        c.translate(x + (box_w - dw * scale) / 2.0, y + (box_h - dh * scale) / 2.0)
+        c.scale(scale, scale)
+        renderPDF.draw(drawing, c, 0, 0)
+    finally:
+        c.restoreState()
+    return True
+
+
+def _draw_canvas_svg(c, svg: str, x: float, y: float, box_w: float, box_h: float) -> bool:
+    """Print the live-canvas SVG: sanitized + pixel-normalized PNG, else svglib vectors."""
+    raw = str(svg or "").strip()
+    if not raw or "<svg" not in raw.lower():
+        return False
+    png = None
+    try:
+        from WEOS.factory.image_engine import svg_to_png_bytes
+
+        png = _usable_png(
+            svg_to_png_bytes(raw, scale=1.15, allow_slow=False, max_px=float(_PDF_ELEV_MAX_PX))
+        )
+        if not png:
+            png = _usable_png(
+                svg_to_png_bytes(raw, scale=1.0, allow_slow=True, max_px=min(float(_PDF_ELEV_MAX_PX), 720.0))
+            )
+    except Exception:
+        _log.debug("canvas svg rasterize skipped", exc_info=True)
+        png = None
+    if png:
+        try:
+            if _embed_png(c, png, x, y, box_w, box_h):
+                return True
+        except Exception:
+            _log.exception("canvas png embed failed")
+    try:
+        from WEOS.factory.image_engine import svg_to_rl_drawing
+
+        drawing = svg_to_rl_drawing(raw)
+        if drawing is not None and _embed_rl_drawing(c, drawing, x, y, box_w, box_h):
+            return True
+    except Exception:
+        _log.debug("canvas svg vector embed skipped", exc_info=True)
+    return False
+
+
 def _embed_png(c, png: bytes, x: float, y: float, box_w: float, box_h: float) -> bool:
     from reportlab.lib.utils import ImageReader
 
@@ -248,9 +306,11 @@ def _embed_png(c, png: bytes, x: float, y: float, box_w: float, box_h: float) ->
 
 
 def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
-    """DESIGN column: photo, else canvas SVG (capped PNG), else ReportLab that matches canvas.
+    """DESIGN column: uploaded photo, else #livePreview SVG, else schematic.
 
-    Windows skip PNG RIP (100-page quotes). Special types always draw — never blank.
+    Railing / shower / ventilator MUST print the canvas SVG (sanitized +
+    pixel-normalized) when it exists. Never a dumbed-down ReportLab drawing
+    in that case. Windows keep the existing ReportLab model drawer.
     """
     from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line, is_ventilator_cart_line
 
@@ -278,30 +338,12 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
 
     special = is_railing_cart_line(line) or is_shower_cart_line(line) or is_ventilator_cart_line(line)
     if special:
-        png = None
-        try:
-            from WEOS.factory.elevation_cache import png_for_line
-
-            png = _usable_png(png_for_line(line, scale=1.0, max_px=_PDF_ELEV_MAX_PX))
-        except Exception:
-            _log.debug("elevation_cache png skipped", exc_info=True)
-        if not png:
-            svg = _line_canvas_svg(line)
-            if svg:
-                try:
-                    from WEOS.factory.image_engine import svg_to_png_bytes
-
-                    png = _usable_png(
-                        svg_to_png_bytes(str(svg), scale=1.0, allow_slow=False, max_px=_PDF_ELEV_MAX_PX)
-                    )
-                except Exception:
-                    _log.debug("canvas svg rasterize skipped", exc_info=True)
-        if png:
-            try:
-                if _embed_png(c, png, x, y, box_w, box_h):
-                    return True
-            except Exception:
-                _log.exception("canvas png embed failed")
+        svg = _line_canvas_svg(line)
+        if svg:
+            if _draw_canvas_svg(c, svg, x, y, box_w, box_h):
+                return True
+            _log.warning("canvas SVG present but PDF embed failed; not using schematic")
+            return False
         if _draw_special_reportlab(c, line, x, y, box_w, box_h):
             return True
         return False
@@ -1027,7 +1069,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     bottom_limit = M + 30  # keep clear of footer + bottom margin
 
     # Per-line elevations only (no prefetch of all rasters). Windows = ReportLab
-    # vectors; railing/shower/vent = capped PNG or ReportLab fallback.
+    # vectors; railing/shower/vent = canvas SVG (photo else sanitized PNG).
 
     for idx, line in enumerate(lines):
         # Specs first so we know how tall the text block is (wrap may exceed draw_h).

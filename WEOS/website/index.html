@@ -215,7 +215,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
             <strong>Recent Projects</strong>
             <button class="btn sm" id="btnNewFromDash">New Project</button>
           </div>
-          <div style="overflow:auto"><table><thead><tr><th>ID</th><th>Name</th><th>Customer</th><th>Lines</th><th>Total</th><th>Status</th></tr></thead><tbody id="recentBody"></tbody></table></div>
+          <div style="overflow:auto"><table><thead><tr><th>ID</th><th>Name</th><th>Customer</th><th>Lines</th><th>Total</th><th>Tenure</th><th>Status</th></tr></thead><tbody id="recentBody"></tbody></table></div>
         </div>
         <div class="agent" id="agentPanel">
           <h3><span class="dot" id="agentDot"></span>Quote Learning Agent</h3>
@@ -239,7 +239,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
           <button class="btn" id="btnRefreshProj" style="margin-top:1rem">Refresh</button>
           <button class="btn sec" id="btnNewProj" style="margin-top:1rem">New</button>
         </div>
-        <div style="overflow:auto;margin-top:.8rem"><table><thead><tr><th>ID</th><th>Name</th><th>Customer</th><th>Lines</th><th>Version</th><th>Total</th><th>Actions</th></tr></thead><tbody id="projBody"></tbody></table></div>
+        <div style="overflow:auto;margin-top:.8rem"><table><thead><tr><th>ID</th><th>Name</th><th>Customer</th><th>Lines</th><th>Version</th><th>Total</th><th>Tenure</th><th>Actions</th></tr></thead><tbody id="projBody"></tbody></table></div>
       </div>
     </section>
 
@@ -2227,6 +2227,64 @@ function setView(v) {
 document.querySelectorAll('.navbtn').forEach(b => b.onclick = () => setView(b.dataset.view));
 $('burger').onclick = () => $('side').classList.toggle('open');
 
+function formatTenure(iso) {
+  if (!iso) return '—';
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return '—';
+  const sec = Math.max(0, (Date.now() - t) / 1000);
+  if (sec < 3600) return Math.max(1, Math.round(sec / 60)) + 'm';
+  if (sec < 86400) return Math.max(1, Math.round(sec / 3600)) + 'h';
+  const d = sec / 86400;
+  if (d < 60) return Math.max(1, Math.round(d)) + 'd';
+  if (d < 365) return Math.max(1, Math.round(d / 30)) + 'mo';
+  return Math.max(1, Math.round(d / 365)) + 'y';
+}
+function projectTotalDisplay(p) {
+  if (!p) return '—';
+  const grand = p.totalGrand != null ? p.totalGrand : p.grandTotal;
+  const tax = p.totalTaxable != null ? p.totalTaxable : p.grandTotal;
+  const main = money(grand);
+  if (tax != null && grand != null && Number(grand) !== Number(tax) && Number(tax) > 0) {
+    return `${main}<div class="muted" style="font-size:.7rem">ex-GST ${money(tax)}</div>`;
+  }
+  return main;
+}
+function lastKnownSellingRate(draft) {
+  const d = draft || {};
+  const fromDraft = Number(d.sellingRate);
+  if (Number.isFinite(fromDraft) && fromDraft > 0) return fromDraft;
+  const inp = $('lineSellRate');
+  if (inp && String(inp.value || '').trim() !== '') {
+    const n = Number(inp.value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  const cur = state.lines && state.lines[state.selectedLine];
+  if (cur && Number(cur.sellingRate) > 0) return Number(cur.sellingRate);
+  for (let i = (state.lines || []).length - 1; i >= 0; i--) {
+    const r = Number((state.lines[i] || {}).sellingRate);
+    if (Number.isFinite(r) && r > 0) return r;
+  }
+  const live = state.livePrice;
+  if (live && live.selling && Number(live.selling.sellingRate) > 0) return Number(live.selling.sellingRate);
+  return null;
+}
+function captureLivePreviewSvg() {
+  const box = $('livePreview');
+  if (!box) return '';
+  const svg = box.querySelector('svg');
+  return svg ? svg.outerHTML : '';
+}
+function stampLinePreviewSvg(ln, svg) {
+  if (!ln || typeof ln !== 'object') return;
+  const raw = String(svg || '');
+  if (raw.toLowerCase().indexOf('<svg') < 0) return;
+  ln.preview = Object.assign({}, ln.preview || {}, { svg: raw });
+}
+function stampSelectedPreviewFromDom() {
+  const ln = state.lines && state.lines[state.selectedLine];
+  const svg = captureLivePreviewSvg();
+  if (ln && svg) stampLinePreviewSvg(ln, svg);
+}
 function money(n){
   if (n == null || n === '') return '—';
   const v = Number(n);
@@ -2247,7 +2305,7 @@ function lineLiveAmount(ln) {
   if (!ln) return null;
   const qty = Math.max(1, Number(ln.qty || ln.quantity || 1) || 1);
   const stored = Number(
-    (ln.selling && ln.selling.sellingAmount) || ln.commercialTotal || ln.sellingAmount || (ln.price && ln.price.total) || 0
+    (ln.selling && ln.selling.sellingAmount) || ln.commercialTotal || ln.sellingAmount || (ln.price && ln.price.total) || ln.costTotal || 0
   );
   if (stored > 0) return stored;
   const rq = ln.options && ln.options.railingQuote;
@@ -2313,8 +2371,10 @@ function renderRecentProjectRows(projects) {
     <tr>
       <td><a href="#" data-open="${p.projectId}">${p.projectId}</a></td>
       <td>${p.name||''}</td><td>${p.customer||''}</td><td>${p.lineCount||0}</td>
-      <td>${money(p.grandTotal)}</td><td><span class="pill">${p.status||''}</span></td>
-    </tr>`).join('') || '<tr><td colspan="6" class="muted">No projects yet</td></tr>';
+      <td>${projectTotalDisplay(p)}</td>
+      <td>${esc(p.tenure || formatTenure(p.updatedAt || p.createdAt))}</td>
+      <td><span class="pill">${p.status||''}</span></td>
+    </tr>`).join('') || '<tr><td colspan="7" class="muted">No projects yet</td></tr>';
   body.querySelectorAll('[data-open]').forEach(a => a.onclick = async (e) => {
     e.preventDefault();
     await openProject(a.dataset.open);
@@ -2325,7 +2385,7 @@ function renderRecentProjectRows(projects) {
 async function loadDashboard() {
   const body = $('recentBody');
   if (body && !body.dataset.loaded) {
-    body.innerHTML = '<tr><td colspan="6" class="muted">Loading projects…</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="muted">Loading projects…</td></tr>';
   }
   let projects = [];
   let loadErr = null;
@@ -2340,7 +2400,7 @@ async function loadDashboard() {
   }
   if (!projects.length && loadErr) {
     if (body) {
-      body.innerHTML = `<tr><td colspan="6" class="muted">Could not load projects (${esc(loadErr.message || loadErr)}). <button type="button" class="btn ghost sm" id="dashRetry">Retry</button></td></tr>`;
+      body.innerHTML = `<tr><td colspan="7" class="muted">Could not load projects (${esc(loadErr.message || loadErr)}). <button type="button" class="btn ghost sm" id="dashRetry">Retry</button></td></tr>`;
       const r = $('dashRetry'); if (r) r.onclick = () => loadDashboard();
     }
   } else {
@@ -2350,6 +2410,8 @@ async function loadDashboard() {
   const active = projects.filter(p => (p.status || 'active') === 'active').length;
   const drafts = projects.filter(p => p.status === 'draft').length;
   if ($('dashCards')) {
+    const wsDash0 = (state.workspace && state.workspace.dashboard) || {};
+    const wsTot0 = (state.workspace && state.workspace.totals) || {};
     $('dashCards').innerHTML = [
       ['Active Projects', active],
       ['Draft Quotations', drafts],
@@ -2357,10 +2419,17 @@ async function loadDashboard() {
       ['Material Required', '—'],
       ['Production Queued', projects.filter(p => p.quotationId).length],
       ['Archived', '—'],
+      ['Year turnover (ex-GST)', money(wsDash0.yearTaxable ?? wsTot0.yearTaxable)],
+      ['Year turnover (w/ GST)', money(wsDash0.yearGrand ?? wsTot0.yearGrand)],
     ].map(([k,v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
   }
   api('/api/dashboard', { timeoutMs: 8000 }).then(d => {
     if (!d || !$('dashCards')) return;
+  const wsDash = (state.workspace && state.workspace.dashboard) || {};
+  const wsTot = (state.workspace && state.workspace.totals) || {};
+  const yearTax = wsDash.yearTaxable ?? wsTot.yearTaxable ?? wsDash.yearValueGenerated ?? d.yearTaxable;
+  const yearGrand = wsDash.yearGrand ?? wsTot.yearGrand ?? d.yearGrand;
+  if ($('dashCards')) {
     $('dashCards').innerHTML = [
       ['Active Projects', d.activeProjects],
       ['Draft Quotations', d.draftQuotations],
@@ -2368,7 +2437,10 @@ async function loadDashboard() {
       ['Material Required', (d.materialRequiredKg||0)+' kg'],
       ['Production Queued', d.productionStatus?.queued||0],
       ['Archived', d.productionStatus?.archived||0],
+      ['Year turnover (ex-GST)', money(yearTax)],
+      ['Year turnover (w/ GST)', money(yearGrand)],
     ].map(([k,v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+  }
     if ((!projects.length) && (d.recentProjects || []).length) renderRecentProjectRows(d.recentProjects);
   }).catch(() => {});
   refreshAgent().catch(() => {});
@@ -2405,7 +2477,7 @@ async function loadProjects() {
     data = await api('/api/projects?'+qs.toString());
   } catch (e) {
     if ($('projBody')) {
-      $('projBody').innerHTML = `<tr><td colspan="7" class="muted">${esc(e.message||e)} <button type="button" class="btn ghost sm" id="projRetry">Retry</button></td></tr>`;
+      $('projBody').innerHTML = `<tr><td colspan="8" class="muted">${esc(e.message||e)} <button type="button" class="btn ghost sm" id="projRetry">Retry</button></td></tr>`;
       const r = $('projRetry'); if (r) r.onclick = () => loadProjects();
     }
     return;
@@ -2413,13 +2485,15 @@ async function loadProjects() {
   $('projBody').innerHTML = (data.projects||[]).map(p => `
     <tr>
       <td>${p.projectId}</td><td>${p.name||''}</td><td>${p.customer||''}</td>
-      <td>${p.lineCount||0}</td><td>v${p.version||0}</td><td>${money(p.grandTotal)}</td>
+      <td>${p.lineCount||0}</td><td>v${p.version||0}</td>
+      <td>${projectTotalDisplay(p)}</td>
+      <td>${esc(p.tenure || formatTenure(p.updatedAt || p.createdAt))}</td>
       <td class="actions-inline">
         <button class="btn ghost sm" data-o="${p.projectId}">Open</button>
         <button class="btn ghost sm" data-d="${p.projectId}">Dup</button>
         <button class="btn ghost sm" data-a="${p.projectId}">${p.status==='archived'?'Restore':'Archive'}</button>
       </td>
-    </tr>`).join('') || '<tr><td colspan="7" class="muted">None</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="8" class="muted">None</td></tr>';
   $('projBody').querySelectorAll('[data-o]').forEach(b => b.onclick = async () => { await openProject(b.dataset.o); setView('cart'); });
   $('projBody').querySelectorAll('[data-d]').forEach(b => b.onclick = async () => { await api('/api/projects/'+b.dataset.d+'/duplicate',{method:'POST'}); toast('Duplicated'); loadProjects(); });
   $('projBody').querySelectorAll('[data-a]').forEach(b => b.onclick = async () => {
@@ -3295,9 +3369,12 @@ function applySpecialLivePrice(kind) {
     q = (state.ventilator && state.ventilator.quote) || {};
     label = `Ventilator · ${q.mode||''} · ${q.widthMm||0}×${q.heightMm||0}`;
   }
-  if ($('liveCost')) $('liveCost').textContent = money(q.costTotal || q.materialCost || 0);
+  const costN = Number(q.costTotal || q.materialCost || 0) || 0;
+  const sellN = Number(q.sellingTotal || 0) || 0;
+  const liveShown = sellN > 0 ? sellN : costN;
+  if ($('liveCost')) $('liveCost').textContent = liveShown > 0 ? money(liveShown) : money(costN);
   if ($('liveMeta')) $('liveMeta').textContent = label;
-  if ($('liveSell')) $('liveSell').textContent = money(q.sellingTotal || 0);
+  if ($('liveSell')) $('liveSell').textContent = sellN > 0 ? money(sellN) : '₹ —';
   if ($('liveMargin')) {
     $('liveMargin').textContent = q.sellingPerUnit != null
       ? `Rate ₹${q.sellingPerUnit}/${String(q.saleUnit||'sqft').toUpperCase()}`
@@ -3350,11 +3427,26 @@ async function refreshLivePrice() {
   }
   const draft = currentLineDraft();
   if (!draft.width || !draft.height) return;
+  const fallbackRate = lastKnownSellingRate(draft);
+  if ((draft.sellingRate == null || draft.sellingRate === '') && fallbackRate != null) {
+    draft.sellingRate = fallbackRate;
+    if ($('lineSellRate') && $('lineSellRate').value === '') $('lineSellRate').value = fallbackRate;
+  }
+  const localSell = lineLiveAmount(Object.assign({}, state.lines[state.selectedLine] || {}, draft));
+  if (localSell > 0 && $('liveSell')) $('liveSell').textContent = money(localSell);
   try {
     const body = { ...draft, customer: $('cartCustomer').value || null, lookupSavedRate: true };
     const live = await api('/api/quote/live', { method:'POST', body });
     state.livePrice = live;
-    $('liveCost').textContent = money(live.cost?.total);
+    const costN = Number(
+      (live.cost && live.cost.total) ||
+      live.displayAmount ||
+      (live.lineCalc && live.lineCalc.price && live.lineCalc.price.total) ||
+      0
+    ) || 0;
+    const sellN = Number((live.selling && live.selling.sellingAmount) || localSell || 0) || 0;
+    const shown = sellN > 0 ? sellN : costN;
+    $('liveCost').textContent = shown > 0 ? money(shown) : money(costN);
     const m = live.metrics || {};
     $('liveMeta').textContent = `${m.areaSqft||'—'} sft · ${draft.width}×${draft.height} mm · qty ${draft.qty}` +
       (live.rateSource === 'customer_saved' ? ' · rate from customer history' : '');
@@ -3363,24 +3455,38 @@ async function refreshLivePrice() {
       if ($('lineSellRate').value === '' && live.selling.sellingRate != null) {
         $('lineSellRate').value = live.selling.sellingRate;
       }
-      const wln = state.lines[state.selectedLine];
-      if (wln && live.selling.sellingAmount > 0) {
-        if (live.selling.sellingRate != null && wln.sellingRate == null) wln.sellingRate = live.selling.sellingRate;
-        wln.commercialTotal = live.selling.sellingAmount;
-        stampLineAmount(wln);
-        updateLiveCartTotal();
-      }
     } else {
-      const draftAmt = lineLiveAmount(draft);
-      $('liveSell').textContent = draftAmt > 0 ? money(draftAmt) : '₹ —';
+      $('liveSell').textContent = sellN > 0 ? money(sellN) : '₹ —';
+    }
+    const wln = state.lines[state.selectedLine];
+    if (wln) {
+      if (costN > 0) {
+        wln.costTotal = costN;
+        wln.price = Object.assign({}, wln.price || {}, { total: costN, currency: 'INR' });
+      }
+      if (sellN > 0 || (live.selling && live.selling.sellingAmount > 0)) {
+        if (live.selling && live.selling.sellingRate != null && wln.sellingRate == null) wln.sellingRate = live.selling.sellingRate;
+        else if (draft.sellingRate != null && wln.sellingRate == null) wln.sellingRate = draft.sellingRate;
+        wln.commercialTotal = sellN > 0 ? sellN : wln.commercialTotal;
+        stampLineAmount(wln);
+      } else if (costN > 0) {
+        stampLineAmount(wln);
+      }
+      updateLiveCartTotal();
     }
     if (live.margin) {
       $('liveMargin').textContent = `Margin ${money(live.margin.marginAmount)} (${live.margin.marginPercent}%)`;
     } else {
-      $('liveMargin').textContent = 'Enter selling rate to see sell amount & margin';
+      $('liveMargin').textContent = sellN > 0
+        ? ''
+        : 'Enter selling rate to see sell amount & margin';
     }
   } catch(e) {
     $('liveMeta').textContent = e.message;
+    if (localSell > 0) {
+      $('liveCost').textContent = money(localSell);
+      $('liveSell').textContent = money(localSell);
+    }
   }
 }
 
@@ -3768,7 +3874,11 @@ async function refreshPreview() {
       $('previewLabel').textContent = hdr.filter(Boolean).join(' · ');
     }
     if (gen !== _previewGen) return;
-    if (prev.svg) { $('livePreview').innerHTML = prev.svg; attachHandleDrag($('livePreview'), (prev.layout && prev.layout.meta) || prev.meta || null, ln.system || prev.system || 'sliding'); }
+    if (prev.svg) {
+      $('livePreview').innerHTML = prev.svg;
+      attachHandleDrag($('livePreview'), (prev.layout && prev.layout.meta) || prev.meta || null, ln.system || prev.system || 'sliding');
+      if (state.lines[state.selectedLine]) stampLinePreviewSvg(state.lines[state.selectedLine], prev.svg);
+    }
     else if (prev.heroImage) $('livePreview').innerHTML = `<img src="${prev.heroImage}" alt=""/>`;
     else $('livePreview').innerHTML = '<span class="muted">No preview</span>';
     refreshDesignPhotoUi();
@@ -4000,22 +4110,43 @@ function hydrateCartLines(lines) {
   rememberCartLines(out);
   return out;
 }
-function slimCartLine(ln) {
+function slimCartLine(ln, { keepPreviewSvg = false } = {}) {
   const obj = hydrateCartLine(ln);
   if (!obj || typeof obj !== 'object') return null;
   const copy = { ...obj };
   if (!copy.product && copy.productId) copy.product = copy.productId;
   if (copy.preview && typeof copy.preview === 'object') {
     const p = { ...copy.preview };
-    delete p.svg;
-    delete p.pdfSvg;
+    if (!keepPreviewSvg) {
+      delete p.svg;
+      delete p.pdfSvg;
+    }
     copy.preview = p;
   }
   return copy;
 }
 /** Always dictionaries — never line-id strings — for Save / Calculate / Quote PDF / Excel. */
 function serializeCartLines(lines) {
-  return (lines || []).map(slimCartLine).filter((ln) => ln && typeof ln === 'object' && !Array.isArray(ln));
+  return (lines || []).map((ln) => slimCartLine(ln)).filter((ln) => ln && typeof ln === 'object' && !Array.isArray(ln));
+}
+function serializeCartLinesForPdf(lines) {
+  stampSelectedPreviewFromDom();
+  return (lines || []).map((ln, i) => {
+    const special = isRailCartLine(ln) || isShowerCartLine(ln) || isVentCartLine(ln);
+    const copy = slimCartLine(ln, { keepPreviewSvg: special });
+    if (!copy) return null;
+    if (special) {
+      const src = hydrateCartLine(ln);
+      if (src && src.preview && src.preview.svg) {
+        copy.preview = Object.assign({}, copy.preview || {}, { svg: src.preview.svg });
+      }
+      if (i === state.selectedLine) {
+        const svg = captureLivePreviewSvg();
+        if (svg) copy.preview = Object.assign({}, copy.preview || {}, { svg });
+      }
+    }
+    return copy;
+  }).filter((ln) => ln && typeof ln === 'object' && !Array.isArray(ln));
 }
 function slimCartLines(lines) {
   return serializeCartLines(lines);
@@ -5039,7 +5170,10 @@ async function railingCalc(){
     }
     $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Railing · ${q.shape || 'straight'} · ${q.lengthMm || 0} mm · ${q.panelCount || 0} panels`;
     $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
+    stampSelectedPreviewFromDom();
+    if (res.svg && state.lines[state.selectedLine]) stampLinePreviewSvg(state.lines[state.selectedLine], res.svg);
     renderRailingBom(q);
+    renderRailingLineSpecs(q, cfg);
     renderRailingLineSpecs(q, cfg);
     markSpecialPreview();
     applySpecialLivePrice('railing');
@@ -5125,6 +5259,7 @@ async function railingAdd(){
     positionName: currentLocationName() || null,
     description: `Railing · ${q.shape||'straight'} · ${q.lengthMm} mm · ${q.panelCount||0} panels · ${q.glassThicknessMm||12}mm ${q.glassType||''} · ${q.sellingPerUnit}/${String(q.saleUnit||'rft').toUpperCase()}`,
     options: { railing: cfg, railingQuote: q, productType: ptype, commercialOnly: q.commercial || { sellingRatePerUnit: q.sellingPerUnit, saleUnit: q.saleUnit }, locationName: currentLocationName() || null },
+    preview: (res && res.svg) ? { svg: res.svg } : undefined,
   };
   stampLineAmount(railLine);
   state.lines.push(ensureLineId(railLine));
@@ -5279,6 +5414,8 @@ async function showerCalc() {
     state.shower = { cfg, quote: q };
     $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Shower · ${q.shape || cfg.shape} · ${q.operation || ''} · ${q.widthMm || 0}×${q.heightMm || 0}`;
     if ($('livePreview')) $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
+    stampSelectedPreviewFromDom();
+    if (res.svg && state.lines[state.selectedLine]) stampLinePreviewSvg(state.lines[state.selectedLine], res.svg);
     renderShowerBom(q);
     renderShowerLineSpecs(q, cfg);
     markSpecialPreview();
@@ -5312,6 +5449,7 @@ async function showerAdd() {
     description: `Shower · ${q.shape || 'straight'} · ${q.operation || ''} · ${q.widthMm}×${q.heightMm} mm · ${q.glassLabel || ''} · ₹${q.sellingPerUnit}/${String(q.saleUnit || 'sqft').toUpperCase()}`,
     options: { shower: cfg, showerQuote: q, productType: 'shower_partition', locationName: currentLocationName() || null },
     shower: cfg,
+    preview: (res && res.svg) ? { svg: res.svg } : undefined,
   };
   stampLineAmount(shLine);
   state.lines.push(ensureLineId(shLine));
@@ -5462,6 +5600,8 @@ async function ventCalc() {
     state.ventilator = { cfg, quote: q };
     $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Ventilator · ${q.mode || cfg.mode} · ${q.widthMm || 0}×${q.heightMm || 0}`;
     if ($('livePreview')) $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
+    stampSelectedPreviewFromDom();
+    if (res.svg && state.lines[state.selectedLine]) stampLinePreviewSvg(state.lines[state.selectedLine], res.svg);
     renderVentBom(q);
     renderVentLineSpecs(q, cfg);
     markSpecialPreview();
@@ -5494,6 +5634,7 @@ async function ventAdd() {
     description: `Bathroom ventilator · ${q.widthMm}×${q.heightMm} mm · ${q.glassLabel || ''} · ₹${q.sellingPerUnit}/${String(q.saleUnit || 'sqft').toUpperCase()}`,
     options: { ventilator: cfg, ventilatorQuote: q, productType: 'bathroom_ventilator', locationName: currentLocationName() || null },
     ventilator: cfg,
+    preview: (res && res.svg) ? { svg: res.svg } : undefined,
   }));
   delete state.lines[state.lines.length - 1].sectionSeries;
   delete state.lines[state.lines.length - 1].trackCount;
@@ -5861,9 +6002,14 @@ function stampSelectedDraftAmount() {
     if (ln.selling) delete ln.selling.sellingAmount;
     stampLineAmount(ln);
   }
-  if (draft && $('liveSell') && !isRailingMode()) {
-    const amt = lineLiveAmount(Object.assign({}, ln || {}, draft));
+  const merged = Object.assign({}, ln || {}, draft || {});
+  if (draft && $('liveSell')) {
+    const amt = lineLiveAmount(merged);
     if (amt > 0) $('liveSell').textContent = money(amt);
+    if (amt > 0 && $('liveCost') && !isRailingMode() && !isShowerMode() && !isVentMode()) {
+      const raw = (($('liveCost').textContent) || '').replace(/[₹,\s]/g, '');
+      if (!raw || raw === '—' || raw === '-' || Number(raw) === 0) $('liveCost').textContent = money(amt);
+    }
   }
   updateLiveCartTotal();
 }
@@ -6099,7 +6245,7 @@ function _exportFingerprint(kind) {
 }
 function _liveExportBody(brand) {
   return {
-    lines: serializeCartLines(state.lines),
+    lines: serializeCartLinesForPdf(state.lines),
     customer: ($('cartCustomer') && $('cartCustomer').value) || ($('projCustName') && $('projCustName').value) || '',
     name: ($('cartName') && $('cartName').value) || undefined,
     ...projectBillTo(),

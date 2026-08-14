@@ -207,6 +207,8 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
                 "totalGrand": parts["totalGrand"],
                 "lineCount": p.get("lineCount"),
                 "updatedAt": p.get("updatedAt"),
+                "createdAt": p.get("createdAt"),
+                "tenure": p.get("tenure") or "",
                 "companyGst": p.get("companyGst") or gst,
             }
         )

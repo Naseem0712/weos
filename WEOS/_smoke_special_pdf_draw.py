@@ -150,6 +150,8 @@ def main() -> int:
     _ok(ok_draw, "railing draw_line_elevation returned True", fails)
     _ok(b"Railing design" not in pdf_cell, "no grey placeholder text in railing cell", fails)
     _ok(_has_drawing(pdf_cell), "railing cell has PNG or ReportLab drawing", fails)
+    if b"/Image" not in pdf_cell and b"IDAT" not in pdf_cell:
+        print("NOTE: railing cell used vectors (no PNG) — canvas SVG RIP may have fallen back to svglib")
     prev_svg = (calc_rail.get("preview") or {}).get("svg") or ""
     _ok("<svg" in str(prev_svg).lower(), "include_preview=False still emits railing SVG", fails)
     _ok(pdf_cell.startswith(b"%PDF") or b"PDF" in pdf_cell[:20] or len(pdf_cell) > 200, f"cell pdf bytes {len(pdf_cell)}", fails)

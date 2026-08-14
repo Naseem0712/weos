@@ -213,6 +213,19 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
     ) in ("railing", "staircase_railing", "shower", "ventilator")
 
     cost_total = float((calc.get("price") or {}).get("total") or 0)
+    if cost_total <= 0:
+        qdet = calc.get("quotationDetail") if isinstance(calc.get("quotationDetail"), Mapping) else {}
+        try:
+            cost_total = float((qdet or {}).get("total") or 0)
+        except (TypeError, ValueError):
+            cost_total = 0.0
+        if cost_total <= 0:
+            for src in (qdet.get("lines") or (calc.get("price") or {}).get("lines") or []):
+                if isinstance(src, Mapping):
+                    try:
+                        cost_total += float(src.get("amount") or 0)
+                    except (TypeError, ValueError):
+                        pass
     cost_unit = float((calc.get("price") or {}).get("unitTotal") or (cost_total / max(qty, 1)))
     sale_unit = str(line.get("saleUnit") or calc.get("saleUnit") or default_sale_unit(product))
     selling_rate = line.get("sellingRate")
@@ -274,6 +287,10 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
             "total": round(cost_total, 2),
             "status": calc.get("status"),
         },
+        "displayAmount": round(
+            float((sell or {}).get("sellingAmount") or 0) or cost_total,
+            2,
+        ),
         "selling": sell,
         "margin": margin,
         "sectionSeries": section_series,

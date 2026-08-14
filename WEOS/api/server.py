@@ -746,8 +746,10 @@ def _public_base_url(request: Request | None) -> str:
     return ""
 
 
-def _coerce_cart_lines(raw: Any, existing: Any = None) -> list[dict[str, Any]]:
-    """Keep every cart row; strip giant preview.svg so saves/PDF do not drop lines.
+def _coerce_cart_lines(
+    raw: Any, existing: Any = None, *, keep_preview_svg: bool = False
+) -> list[dict[str, Any]]:
+    """Keep every cart row. Saves strip giant preview.svg; Quote PDF keeps it.
 
     Frontend must send full line dicts. If a slot is accidentally a line-id string,
     resolve it from existing project lines instead of dropping the row or 422-ing.
@@ -776,8 +778,9 @@ def _coerce_cart_lines(raw: Any, existing: Any = None) -> list[dict[str, Any]]:
         prev = d.get("preview")
         if isinstance(prev, Mapping):
             p = dict(prev)
-            p.pop("svg", None)
-            p.pop("pdfSvg", None)
+            if not keep_preview_svg:
+                p.pop("svg", None)
+                p.pop("pdfSvg", None)
             d["preview"] = p
         if not d.get("product") and d.get("productId"):
             d["product"] = d.get("productId")
@@ -800,7 +803,9 @@ def _pdf_response(
     if overlay:
         # PDF must print the live cart payload, not a stale autosave snapshot.
         if overlay.get("lines") is not None:
-            overlay_lines = _coerce_cart_lines(overlay["lines"], existing=doc.get("lines"))
+            overlay_lines = _coerce_cart_lines(
+                overlay["lines"], existing=doc.get("lines"), keep_preview_svg=True
+            )
             # Empty overlay must not wipe a saved cart. Non-empty overlay is the live cart (incl. deletes).
             if overlay_lines:
                 doc["lines"] = overlay_lines
@@ -2833,7 +2838,9 @@ def _customer_xlsx_response(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if overlay:
         if overlay.get("lines") is not None:
-            overlay_lines = _coerce_cart_lines(overlay["lines"], existing=doc.get("lines"))
+            overlay_lines = _coerce_cart_lines(
+                overlay["lines"], existing=doc.get("lines"), keep_preview_svg=True
+            )
             if overlay_lines:
                 doc["lines"] = overlay_lines
         for _fld in (
