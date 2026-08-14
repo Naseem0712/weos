@@ -113,8 +113,9 @@ def glass_display_label(spec: Mapping[str, Any] | None) -> str:
     if not isinstance(spec, Mapping) or not spec:
         return ""
     existing = str(spec.get("display_label") or spec.get("displayLabel") or "").strip()
-    if existing and "+" in existing:
-        return existing
+    # Dual strings like "12 mm · 5+1.52+5mm" must never win over layers.
+    if existing and re.search(r"(?i)\d+\s*mm\s*[·•,]\s*\d+\s*\+", existing):
+        existing = ""
     kind = str(
         spec.get("glass_construction")
         or spec.get("glass_type")
@@ -137,13 +138,17 @@ def glass_display_label(spec: Mapping[str, Any] | None) -> str:
     colour = str(spec.get("colour") or spec.get("color") or "").strip()
     finish = str(spec.get("finish") or "").strip()
 
-    if laminated and g1 and pvb and g2:
+    if (laminated or (g1 and pvb and g2)) and g1 and pvb and g2:
         label = f"{_fmt_mm(g1)}+{_fmt_mm(pvb)}+{_fmt_mm(g2)} mm Laminated"
-    elif dgu and g1 and gap and g2:
+    elif (dgu or (g1 and gap and g2)) and g1 and gap and g2:
         label = f"{_fmt_mm(g1)}+{_fmt_mm(gap)}A+{_fmt_mm(g2)} mm DGU"
+    elif existing and "+" in existing:
+        label = existing
     else:
         thk = spec.get("total_thickness_mm") or spec.get("thicknessMm") or spec.get("overallMm")
-        if thk in (None, ""):
+        if existing:
+            label = existing
+        elif thk in (None, ""):
             label = str(spec.get("makeupLabel") or spec.get("name") or spec.get("label") or "").strip()
         else:
             bits = [f"{_fmt_mm(thk)} mm"]
@@ -247,24 +252,48 @@ def build_glass_snapshot(
 ) -> dict[str, Any]:
     """Serialize the selected glass configuration (full structured identity)."""
     existing = get_glass_snapshot(line) if line else {}
-    if existing.get("display_label") and existing.get("glass_id"):
-        return existing
-
     src = dict(option or {})
     opts = _as_map(line.get("options") if isinstance(line, Mapping) else None)
     rail_cfg = _as_map(opts.get("railing"))
     rail_q = _as_map(opts.get("railingQuote"))
+    gid_hint = str(
+        src.get("id")
+        or src.get("glass_id")
+        or (line.get("glass") if isinstance(line, Mapping) and isinstance(line.get("glass"), str) else "")
+        or rail_cfg.get("glassPreset")
+        or rail_cfg.get("glass")
+        or rail_q.get("glassPreset")
+        or existing.get("glass_id")
+        or ""
+    ).strip()
+    parsed_hint = _parse_layers_from_id(gid_hint) if gid_hint else {}
+    layers_ex = existing.get("layers") if isinstance(existing.get("layers"), Mapping) else {}
+    stale_layers = parsed_hint.get("makeup") in ("laminated", "dgu") and not (
+        layers_ex.get("pvbMm") or layers_ex.get("airGapMm")
+    )
+    if existing.get("display_label") and existing.get("glass_id") and not stale_layers:
+        healed = dict(existing)
+        healed["display_label"] = glass_display_label(healed)
+        return healed
+
     if railing or rail_cfg or rail_q:
+        looked = _lookup_glass_option(gid_hint) if gid_hint else {}
+        if looked:
+            src = {**looked, **src}
         thk = (
-            src.get("thicknessMm")
+            src.get("overallMm")
+            or src.get("thicknessMm")
+            or parsed_hint.get("overallMm")
             or rail_q.get("glassThicknessMm")
             or rail_cfg.get("glassThicknessMm")
             or (line or {}).get("glassThicknessMm")
         )
         gtype = str(
-            src.get("glassType")
+            src.get("makeup")
+            or src.get("glassType")
             or rail_cfg.get("glassType")
             or rail_q.get("glassType")
+            or parsed_hint.get("makeup")
             or ""
         ).strip()
         gcol = str(
@@ -276,10 +305,20 @@ def build_glass_snapshot(
         tough = bool(src.get("toughened")) or any(
             k in gtype.lower() for k in ("tough", "tuff", "temper")
         )
-        laminated = "lam" in gtype.lower()
-        dgu = "dgu" in gtype.lower() or "igu" in gtype.lower()
-        gid = str(src.get("id") or (line or {}).get("glass") or "").strip()
-        parsed = _parse_layers_from_id(gid) if gid else {}
+        laminated = "lam" in gtype.lower() or parsed_hint.get("makeup") == "laminated" or str(looked.get("makeup") or "") == "laminated"
+        dgu = "dgu" in gtype.lower() or "igu" in gtype.lower() or parsed_hint.get("makeup") == "dgu"
+        gid = gid_hint
+        parsed = parsed_hint or (_parse_layers_from_id(gid) if gid else {})
+        if not parsed and looked:
+            parsed = {
+                "makeup": looked.get("makeup"),
+                "glass1Mm": looked.get("glass1Mm"),
+                "pvbMm": looked.get("pvbMm"),
+                "glass2Mm": looked.get("glass2Mm"),
+                "airGapMm": looked.get("airGapMm"),
+                "overallMm": looked.get("overallMm") or looked.get("thicknessMm"),
+                "colour": looked.get("colour"),
+            }
         if laminated and not parsed:
             parsed = _parse_layers_from_id(gtype)
         layers = {}
@@ -423,6 +462,83 @@ def _load_named_product(product_id: str) -> dict[str, Any] | None:
         return None
 
 
+def _print_has_profile_dims(text: Any) -> bool:
+    blob = str(text or "")
+    return bool(re.search(r"\d+\s*[×x]\s*\d+", blob)) and "wall" in blob.lower()
+
+
+def _build_profile_snapshot(
+    src: Mapping[str, Any],
+    *,
+    world: str,
+    series_id: str,
+    product: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Freeze TRACK/SASH/FRAME print strings + wall thickness at save time."""
+    opts = _as_map(src.get("options"))
+    layout = _as_map(src.get("layout"))
+    profile: dict[str, Any] = {
+        "productType": src.get("productType") or opts.get("productType") or (product or {}).get("productType"),
+        "system": src.get("system") or opts.get("system") or layout.get("system"),
+        "sectionSeries": series_id or None,
+        "world": world,
+    }
+    try:
+        from WEOS.factory.section_catalogue import (
+            format_active_track_print,
+            parse_track_count,
+            specs_summary_for_series,
+        )
+        from WEOS.factory.window_specs import glass_family_from_line
+
+        family = glass_family_from_line(src)
+        tc = layout.get("trackCount")
+        if tc is None:
+            tc = opts.get("trackCount") or src.get("trackCount")
+        fresh = specs_summary_for_series(
+            series_id or None,
+            glass_family=family,
+            track_count=tc,
+            clean_names=True,
+        ) or {}
+        wall = fresh.get("wallThicknessMm") or fresh.get("trackWallMm") or fresh.get("sashWallMm")
+        profile["wallThicknessMm"] = wall
+        profile["trackWallMm"] = fresh.get("trackWallMm") or wall
+        profile["sashWallMm"] = fresh.get("sashWallMm") or wall
+        profile["frameWallMm"] = fresh.get("frameWallMm") or wall
+        profile["sashPrint"] = fresh.get("sashPrint") or fresh.get("sash")
+        profile["framePrint"] = fresh.get("framePrint") or fresh.get("frame")
+        profile["interlockPrint"] = fresh.get("interlockPrint") or fresh.get("interlock")
+        profile["seriesTitle"] = fresh.get("seriesTitle") or fresh.get("displayName")
+        if isinstance(fresh.get("sections"), list):
+            profile["sections"] = list(fresh.get("sections") or [])
+        track_sec = None
+        if tc is not None:
+            try:
+                want = float(tc)
+                for sec in fresh.get("sections") or []:
+                    if not isinstance(sec, Mapping):
+                        continue
+                    stc = sec.get("trackCount")
+                    if stc is None:
+                        stc = parse_track_count(sec.get("name"))
+                    if stc is None:
+                        continue
+                    if abs(float(stc) - want) <= 0.05:
+                        track_sec = sec
+                        break
+            except (TypeError, ValueError):
+                track_sec = None
+        printed = format_active_track_print(tc, track_sec, wall_mm=profile.get("trackWallMm") or wall)
+        if printed:
+            profile["trackPrint"] = printed
+        elif fresh.get("trackPrint") or fresh.get("track"):
+            profile["trackPrint"] = fresh.get("trackPrint") or fresh.get("track")
+    except Exception:
+        pass
+    return profile
+
+
 def freeze_item_snapshot(
     line: Mapping[str, Any] | None,
     *,
@@ -455,6 +571,31 @@ def freeze_item_snapshot(
             from WEOS.factory.line_kind import is_railing_cart_line
 
             snap["glass_snapshot"] = build_glass_snapshot(src, railing=is_railing_cart_line(src))
+        else:
+            from WEOS.factory.line_kind import is_railing_cart_line
+
+            snap["glass_snapshot"] = build_glass_snapshot(
+                {**src, "glass_snapshot": snap.get("glass_snapshot"), "glassSnapshot": snap.get("glass_snapshot")},
+                railing=is_railing_cart_line(src),
+            )
+        prof = snap.get("profile_snapshot") if isinstance(snap.get("profile_snapshot"), Mapping) else {}
+        if not _print_has_profile_dims(prof.get("trackPrint")):
+            built = _build_profile_snapshot(
+                src,
+                world=str(prof.get("world") or ""),
+                series_id=str(snap.get("series_id") or src.get("sectionSeries") or ""),
+                product=None,
+            )
+            merged_prof = dict(prof)
+            for k, v in built.items():
+                if v in (None, "", [], {}):
+                    continue
+                if k in ("trackPrint", "sashPrint", "framePrint") and _print_has_profile_dims(merged_prof.get(k)):
+                    continue
+                if k in ("wallThicknessMm", "trackWallMm", "sashWallMm", "frameWallMm") and merged_prof.get(k) not in (None, ""):
+                    continue
+                merged_prof[k] = v
+            snap["profile_snapshot"] = merged_prof
         return snap
 
     from WEOS.factory.line_kind import is_railing_cart_line, line_world
@@ -485,12 +626,7 @@ def freeze_item_snapshot(
     hw = src.get("hardware")
     if not isinstance(hw, list):
         hw = opts.get("hardware") if isinstance(opts.get("hardware"), list) else []
-    profile = {
-        "productType": src.get("productType") or opts.get("productType") or (product or {}).get("productType"),
-        "system": src.get("system") or opts.get("system"),
-        "sectionSeries": series_id or None,
-        "world": world,
-    }
+    profile = _build_profile_snapshot(src, world=world, series_id=series_id, product=product)
     snap = {
         "quote_item_id": _line_id(src),
         "product_id": pid,

@@ -69,6 +69,10 @@ def main() -> None:
     blob = " | ".join(f"{a}: {b}" for a, b in rows)
     for need in ("SIZE", "AREA", "SHUTTER", "TRACK", "SASH", "GLASS", "HANDLE", "COLOUR", "MESH"):
         _ok(need in labels, f"customer has {need} in {labels}")
+    track = next((v for a, v in rows if a == "TRACK"), "")
+    _ok("2-track" in track.lower().replace(" ", "") or "2 track" in track.lower(), f"TRACK has count {track}")
+    _ok("×" in track or "x" in track.lower(), f"TRACK has profile mm {track}")
+    _ok("wall" in track.lower(), f"TRACK has wall {track}")
     for ban in ("SERIES", "ALUMINIUM", "JOINT", "INTERLOCK", "SECTION"):
         _ok(ban not in labels, f"customer must not dump {ban}: {labels}")
     _ok("shutter_0_glass" not in blob.lower(), f"no internal glass id: {blob}")

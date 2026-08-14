@@ -270,8 +270,26 @@ def _frame_material(line: Mapping[str, Any]) -> str:
 
 
 def _section_summary(line: Mapping[str, Any]) -> dict[str, Any]:
-    section = line.get("sectionSpecs") if isinstance(line.get("sectionSpecs"), Mapping) else {}
-    series = line.get("sectionSeries") or (line.get("options") or {}).get("sectionSeries") if isinstance(line.get("options"), Mapping) else line.get("sectionSeries")
+    from WEOS.factory.quote_item_snapshot import get_item_snapshot
+
+    snap = get_item_snapshot(line)
+    frozen = {}
+    prof = snap.get("profile_snapshot") if isinstance(snap.get("profile_snapshot"), Mapping) else {}
+    if prof:
+        frozen = {k: v for k, v in prof.items() if v not in (None, "", [], {})}
+    live = line.get("sectionSpecs") if isinstance(line.get("sectionSpecs"), Mapping) else {}
+    section = dict(live or {})
+    for k, v in frozen.items():
+        if k in ("trackPrint", "sashPrint", "framePrint", "wallThicknessMm", "trackWallMm", "sashWallMm", "frameWallMm") and v:
+            section[k] = v
+        elif k not in section or section[k] in (None, "", [], {}):
+            section[k] = v
+    series = (
+        frozen.get("sectionSeries")
+        or snap.get("series_id")
+        or line.get("sectionSeries")
+        or ((line.get("options") or {}).get("sectionSeries") if isinstance(line.get("options"), Mapping) else None)
+    )
     family = glass_family_from_line(line)
     layout = line.get("layout") if isinstance(line.get("layout"), Mapping) else {}
     opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
@@ -289,7 +307,17 @@ def _section_summary(line: Mapping[str, Any]) -> dict[str, Any]:
         )
         if fresh:
             merged = dict(section or {})
-            merged.update({k: v for k, v in fresh.items() if v not in (None, "", [], {})})
+            for k, v in fresh.items():
+                if v in (None, "", [], {}):
+                    continue
+                existing = merged.get(k)
+                if k in ("trackPrint", "sashPrint", "framePrint") and existing:
+                    blob = str(existing)
+                    if re.search(r"\d+\s*[×x]\s*\d+", blob) and "wall" in blob.lower():
+                        continue
+                if k in ("wallThicknessMm", "trackWallMm", "sashWallMm", "frameWallMm") and existing not in (None, ""):
+                    continue
+                merged[k] = v
             return merged
     except Exception:
         pass
@@ -341,7 +369,7 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
     ident = line.get("itemSnapshot") or line.get("item_snapshot")
     if isinstance(ident, Mapping):
         snap_title = str(ident.get("product_name_snapshot") or "").strip()
-    title = str(line.get("displayName") or snap_title or line.get("description") or line.get("product") or "Window")
+    title = str(snap_title or line.get("displayName") or line.get("product") or "Window")
     if mat == "upvc":
         title = re.sub(r"(?i)\balumin(?:ium|um)\b", "UPVC", title)
         title = re.sub(r"(?i)\balloy\b", "UPVC", title)
@@ -357,6 +385,15 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
     add("", title)
     add("SIZE", f"{_mm_txt(w)} × {_mm_txt(h)} mm")
     add("AREA", f"{_area_sqft(w, h)} Sq.Ft.")
+
+    fill_type = "glass"
+    try:
+        from WEOS.factory.panel_fills import panel_fill_from_line
+
+        fill_type = str((panel_fill_from_line(line) or {}).get("fillType") or "glass")
+    except Exception:
+        fill_type = "glass"
+    is_louver_fill = fill_type in ("louvers", "aluminium_sheet", "compact_sheet")
 
     glass_n = (
         (layout or {}).get("glassCount")
@@ -378,7 +415,7 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
         )
         if glass_n_i <= 0 and panels_tmp:
             glass_n_i = len(panels_tmp)
-    if glass_n_i > 0:
+    if glass_n_i > 0 and not is_louver_fill:
         opening_raw = (
             (layout or {}).get("opening")
             or (opts or {}).get("opening")
@@ -415,13 +452,22 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
             )
 
             blob = str(track_lbl or "")
+            has_dims = bool(re.search(r"\d+\s*[×x]\s*\d+", blob))
+            has_wall_txt = "wall" in blob.lower()
             has_active = False
             try:
                 if tc is not None:
                     has_active = f"{float(tc):g}-track" in blob.lower().replace(" ", "")
             except (TypeError, ValueError):
                 has_active = False
-            if (not blob) or has_track_option_dump(blob) or (tc is not None and not has_active):
+            needs_lookup = (
+                (not blob)
+                or has_track_option_dump(blob)
+                or (tc is not None and not has_active)
+                or (not has_dims)
+                or (track_wall not in (None, "") and not has_wall_txt)
+            )
+            if needs_lookup:
                 track_sec = None
                 if isinstance(section.get("sections"), list) and tc is not None:
                     try:
@@ -457,7 +503,7 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
     add("SASH", _dim_wall(sash_lbl, section.get("sashWallMm") or wall))
 
     gtxt = human_glass_label(line)
-    if gtxt:
+    if gtxt and not is_louver_fill:
         add("GLASS", gtxt)
 
     handle = opts.get("handle") or line.get("handle")
@@ -486,7 +532,7 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
         hbits.append(str(hw_type).strip())
     if handle_finish:
         hbits.append(f"colour {handle_finish}")
-    add("HANDLE", " · ".join(x for x in hbits if x))
+    add("HANDLE", " · ".join(x for x in hbits if x) if not is_louver_fill else "")
 
     colour = opts.get("powderCoatName") or line.get("powderCoatName") or opts.get("colour") or line.get("colour")
     if mat == "upvc" and not colour:
@@ -623,7 +669,10 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
             add("SECTION", " · ".join(bits))
 
     notes = (layout or {}).get("notes") or []
+    desc = str(line.get("description") or opts.get("description") or "").strip()
+    if desc and desc.lower() != str(title).lower():
+        add("NOTE", desc)
     for note in notes[:3]:
-        if note:
+        if note and str(note).strip() and str(note).strip() != desc:
             add("NOTE", note)
     return rows

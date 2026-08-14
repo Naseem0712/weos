@@ -1120,13 +1120,20 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
     if grid and "grid" not in options:
         options["grid"] = grid
 
+    from WEOS.factory.quote_item_snapshot import get_item_snapshot, product_id_of
+
+    snap_pid = product_id_of(line)
+    snap_obj = get_item_snapshot(line)
+    snap_name = str((snap_obj or {}).get("product_name_snapshot") or "").strip()
+    snap_cat = str((snap_obj or {}).get("category_snapshot") or "").strip()
+
     result_base = {
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
         **({"designPhoto": dict(line["designPhoto"])} if isinstance(line.get("designPhoto"), Mapping) else {}),
-        "product": job.profile_id,
-        "displayName": job.display_name,
-        "description": line.get("description") or job.display_name,
-        "category": product.get("category", "Windows"),
+        "product": snap_pid or line.get("product") or line.get("productId") or job.profile_id,
+        "displayName": snap_name or line.get("displayName") or job.display_name,
+        "description": line.get("description") or snap_name or job.display_name,
+        "category": snap_cat or line.get("category") or product.get("category", "Windows"),
         "status": "active",
         "width": width,
         "height": height,

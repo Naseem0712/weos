@@ -34,10 +34,13 @@ def main() -> int:
     src = html.read_text(encoding="utf-8")
     _ok("function stampItemSnapshot" in src, "index.html stamps item snapshot on add", fails)
     _ok("Never replace a saved project" in src or "Never replace a restored cart" in src, "dummy init guarded against saved cart", fails)
-    _ok("!restoredCart && !state.projectId && !hasSavedLines" in src, "dummy 4 windows only for empty session", fails)
+    _ok("!restoredCart && !state.projectId && !hasSavedLines && !state.workspaceRestored" in src, "dummy 4 windows only for empty session", fails)
     _ok("Never silently substitute 8mm_toughened" in src, "glass dropdown does not fall back to 8mm", fails)
     _ok("world === 'louver'" in src, "JS product world includes louver", fails)
     _ok("keptProduct" in src, "ensureLineId keeps productId", fails)
+    _ok("wrapLineGlass" in src and "wrapLineHandle" in src, "louver can hide glass/handle wraps", fails)
+    _ok("Keep nearest option" not in src, "railing glass preset does not nearest-match laminated to 12mm", fails)
+    _ok("ensureProductOptionFromLine(ln, { select:" in src, "loadProducts keeps every cart line product_id", fails)
 
     from WEOS.factory.quote_item_snapshot import (
         PRODUCT_UNAVAILABLE,
@@ -117,6 +120,9 @@ def main() -> int:
     blob_lou = " | ".join(f"{a}: {b}" for a, b in spec_lou).lower()
     _ok("louver" in blob_lou or "louvers" in blob_lou, f"PDF specs stay louver: {blob_lou[:200]}", fails)
     _ok("track" not in [a.lower() for a, _ in spec_lou], f"louver PDF must not print TRACK: {spec_lou}", fails)
+    _ok("GLASS" not in [a for a, _ in spec_lou], f"louver PDF must not force GLASS: {spec_lou}", fails)
+    _ok("HANDLE" not in [a for a, _ in spec_lou], f"louver PDF must not force HANDLE: {spec_lou}", fails)
+    _ok("SHUTTER" not in [a for a, _ in spec_lou], f"louver PDF must not force SHUTTER: {spec_lou}", fails)
 
     # Missing product → error, item unchanged
     missing = attach_snapshot(
@@ -171,6 +177,70 @@ def main() -> int:
     _ok("GLASS" in [a for a, _ in rail_rows], f"railing has GLASS row {rail_rows[:8]}", fails)
     _ok("lam_6" not in rail_blob.lower() and "29mm" not in rail_blob.lower(), f"railing PDF not window glass {rail_blob[:240]}", fails)
 
+    # Railing laminated: glass_id layers, never nearest 12 mm dual string
+    rail_lam = {
+        "lineId": "LrailLam",
+        "product": "railing",
+        "productId": "railing",
+        "displayName": "Staircase railing",
+        "category": "Railings",
+        "productType": "staircase_railing",
+        "width": 4000,
+        "height": 1050,
+        "qty": 1,
+        "glass": "lam_5_152_5",
+        "sellingRate": 900,
+        "saleUnit": "rft",
+        "options": {
+            "railing": {
+                "shape": "staircase",
+                "glassPreset": "lam_5_152_5",
+                "glassType": "laminated",
+                "glassThicknessMm": 12,
+                "glassColour": "clear",
+            }
+        },
+    }
+    frozen_rlam = attach_snapshot(dict(rail_lam), overwrite_identity=True)
+    rlam_lab = glass_display_label((get_item_snapshot(frozen_rlam) or {}).get("glass_snapshot") or {})
+    _ok("5+1.52+5" in rlam_lab.replace(" ", ""), f"railing laminated makeup {rlam_lab!r}", fails)
+    _ok("12 mm ·" not in rlam_lab and not rlam_lab.strip().startswith("12 mm"), f"no dual 12mm+lam {rlam_lab!r}", fails)
+    rlam_rows = _spec_rows(frozen_rlam, audience="customer")
+    rlam_glass = next((v for a, v in rlam_rows if a == "GLASS"), "")
+    _ok("5+1.52+5" in rlam_glass.replace(" ", ""), f"PDF railing GLASS laminated {rlam_glass!r}", fails)
+    _ok("12 mm ·" not in rlam_glass, f"PDF railing GLASS not dual {rlam_glass!r}", fails)
+
+    # W1-like TRACK must include profile mm + wall; NOTE from description
+    w1 = attach_snapshot(
+        {
+            "lineId": "Lw1",
+            "product": "29mm_sliding",
+            "productId": "29mm_sliding",
+            "displayName": "29mm Sliding",
+            "category": "Windows",
+            "width": 2760,
+            "height": 2380,
+            "qty": 1,
+            "glass": "8mm_toughened",
+            "trackCount": 3,
+            "sectionSeries": "25mm_eco_gulf",
+            "description": "50MM Premium Series Fluted Laminated",
+            "sellingRate": 1100,
+            "saleUnit": "sqft",
+        },
+        overwrite_identity=True,
+    )
+    from WEOS.factory.window_specs import short_window_spec_rows
+
+    w1_rows = short_window_spec_rows(w1)
+    w1_track = next((v for a, v in w1_rows if a == "TRACK"), "")
+    _ok("3-track" in w1_track.lower().replace(" ", ""), f"W1 TRACK count {w1_track!r}", fails)
+    _ok(("×" in w1_track or "x" in w1_track.lower()), f"W1 TRACK has profile mm {w1_track!r}", fails)
+    _ok("wall" in w1_track.lower(), f"W1 TRACK has wall {w1_track!r}", fails)
+    _ok(any(a == "NOTE" and "50MM" in v for a, v in w1_rows), f"NOTE from description {w1_rows}", fails)
+    w1_title = next((v for a, v in w1_rows if a == ""), "")
+    _ok("29mm" in w1_title or "Sliding" in w1_title, f"title from snapshot not description {w1_title!r}", fails)
+
     # ── Persist snapshots on project JSON + identical PDFs ──
     doc = empty_project(name="Snapshot integrity", customer="Smoke")
     doc["lines"] = [frozen_lam, frozen_lou, frozen_rail]
@@ -219,6 +289,23 @@ def main() -> int:
     cfg = resolved_config(frozen_lam)
     _ok(cfg.get("product_id") == "29mm_sliding", "resolved config uses snapshot product", fails)
     _ok("6+1.52+5" in str(cfg.get("glass_display_label") or "").replace(" ", ""), "resolved config laminated label", fails)
+
+    long_desc = ("Cover description overflow sentence. " * 80).strip()
+    long_terms = "\n".join("Payment, delivery, warranty and site measurement terms. " * 6 for _ in range(40))
+    pdf_long = render_marqt_pdf(
+        tmpl,
+        {
+            **payload,
+            "description": long_desc,
+            "terms": long_terms,
+            "lines": result["lines"],
+            "price": {"total": 1},
+        },
+    )
+    page_objs = pdf_long.count(b"/Type /Page") - pdf_long.count(b"/Type /Pages")
+    _ok(page_objs >= 3, f"long cover/terms paginate to extra pages got {page_objs}", fails)
+    cover_txt = pdf_long.decode("latin-1", errors="ignore")
+    _ok("Description" in cover_txt or "Descrip" in cover_txt, "cover Description heading present", fails)
 
     if fails:
         print("FAIL quote item snapshot smoke")

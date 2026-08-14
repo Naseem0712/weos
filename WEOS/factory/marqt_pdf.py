@@ -103,6 +103,56 @@ def _wrap_text(c, text: str, max_width: float, font_size: float = 7.0, *, bold: 
     return out
 
 
+def _flow_paragraphs(
+    c,
+    text: str,
+    *,
+    x: float,
+    y: float,
+    max_width: float,
+    font_size: float,
+    line_h: float,
+    bottom: float,
+    set_font,
+    on_new_page,
+    para_gap: float = 4.0,
+    bold: bool = False,
+) -> float:
+    """Draw wrapping paragraphs; call on_new_page() when y hits bottom. Returns y."""
+    for para in str(text or "").split("\n"):
+        words = para.split()
+        if not words:
+            y -= para_gap
+            if y < bottom:
+                y = on_new_page()
+            continue
+        line = ""
+        set_font(c, font_size, bold=bold)
+        for word in words:
+            trial = (line + " " + word).strip()
+            try:
+                too_wide = c.stringWidth(trial, c._fontname, font_size) > max_width
+            except Exception:
+                too_wide = len(trial) * (font_size * 0.5) > max_width
+            if too_wide and line:
+                if y < bottom:
+                    y = on_new_page()
+                    set_font(c, font_size, bold=bold)
+                c.drawString(x, y, line)
+                y -= line_h
+                line = word
+            else:
+                line = trial
+        if line:
+            if y < bottom:
+                y = on_new_page()
+                set_font(c, font_size, bold=bold)
+            c.drawString(x, y, line)
+            y -= line_h
+        y -= para_gap
+    return y
+
+
 def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: float, *, track_count: int = 2):
     """Fallback schematic only — prefer draw_line_elevation (canvas geometry SVG)."""
     # Outer frame — outline drafting style
@@ -534,31 +584,24 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         from WEOS.factory.quote_item_snapshot import get_glass_snapshot, glass_display_label
 
         rail_glass = get_glass_snapshot(line)
-        if rail_glass and str(rail_glass.get("source") or "") == "railing":
-            glass_val = glass_display_label(rail_glass)
-        elif rail_glass and (rail_cfg or q):
-            # Railing set only — never a window glass library guess.
-            glass_val = glass_display_label(rail_glass)
-        else:
+        glass_val = glass_display_label(rail_glass) if rail_glass else ""
+        if not glass_val:
             gtype = (rail_cfg or {}).get("glassType") or q.get("glassType") or ""
             gcol = (rail_cfg or {}).get("glassColour") or q.get("glassColour") or ""
-            gbrand = q.get("glassBrand") or (rail_cfg or {}).get("glassBrand") or ""
-            if thk in (None, ""):
-                thk = 12
-            glass_bits = [f"{float(thk):g} mm"]
-            if "lam" in str(gtype).lower():
-                from WEOS.factory.window_specs import _laminated_config_label as laminated_config_label
+            from WEOS.factory.quote_item_snapshot import build_glass_snapshot
 
-                lam = laminated_config_label(thk, gtype)
-                if lam:
-                    glass_bits = [str(lam)]
-            if gtype:
-                glass_bits.append(str(gtype))
-            if gcol and str(gcol).lower() not in str(gtype).lower():
-                glass_bits.append(str(gcol))
-            if gbrand:
-                glass_bits.append(str(gbrand))
-            glass_val = " · ".join(str(b) for b in glass_bits if b) or "—"
+            rebuilt = build_glass_snapshot(line, railing=True)
+            glass_val = glass_display_label(rebuilt)
+            if not glass_val:
+                if thk in (None, ""):
+                    thk = 12
+                glass_bits = [f"{float(thk):g} mm"]
+                if gtype and "lam" not in str(gtype).lower():
+                    glass_bits.append(str(gtype))
+                if gcol and str(gcol).lower() not in str(gtype).lower():
+                    glass_bits.append(str(gcol))
+                glass_val = " · ".join(str(b) for b in glass_bits if b) or "—"
+        # Never prepend a rounded mm ("12 mm · 5+1.52+5") onto a laminated label.
         if q.get("panelCount"):
             glass_val += f" · {q.get('panelCount')} glass"
         net_sft = q.get("netGlassAreaSqFt") or q.get("glassAreaSqft") or 0
@@ -781,9 +824,31 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         add("CATEGORY", str((snap or {}).get("category_snapshot") or line.get("category") or "Louvers"))
         add("SIZE", f"{_mm(w)} × {_mm(h)} mm")
         add("QTY", str(line.get("qty") or line.get("quantity") or 1))
-        gs = get_glass_snapshot(line)
-        if gs and glass_display_label(gs):
-            add("GLASS", glass_display_label(gs))
+        opts_l = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+        fill_type = "louvers"
+        try:
+            from WEOS.factory.panel_fills import fill_spec_rows, panel_fill_from_line
+
+            fill = panel_fill_from_line(line) or {}
+            fill_type = str(fill.get("fillType") or "louvers")
+            if fill_type in ("", "glass"):
+                fill = {**fill, "fillType": "louvers"}
+                fill_type = "louvers"
+            for lab, val in fill_spec_rows(fill):
+                add(lab, val)
+        except Exception:
+            pass
+        opted_glass = bool(line.get("glass") or (opts_l or {}).get("glass")) and fill_type == "glass"
+        if opted_glass:
+            gs = get_glass_snapshot(line)
+            if gs and glass_display_label(gs):
+                add("GLASS", glass_display_label(gs))
+        handle = line.get("handle") or (opts_l or {}).get("handle")
+        if handle:
+            add("HANDLE", str(handle).replace("_", " "))
+        gs_n = line.get("glassShutters") or (opts_l or {}).get("glassShutters")
+        if gs_n not in (None, "", 0, "0"):
+            add("SHUTTER", f"{gs_n} Nos")
         return rows
 
     from WEOS.factory.window_specs import short_window_spec_rows
@@ -813,33 +878,42 @@ def _draw_spec_rows(
     font_size: float = 7.0,
     label_col: float = 72.0,
     line_h: float = 10.0,
+    bottom_limit: float | None = None,
+    new_page=None,
 ) -> float:
     """Draw aligned LABEL: / value columns; returns y after last line."""
     value_x = x + label_col
     value_w = max(36.0, max_width - label_col)
     sy = y
-    for label, value in rows[:22]:
+    for label, value in rows:
         lab = f"{label}:" if label else ""
         if lab:
+            wrapped = _wrap_text(c, value, value_w, font_size) or [""]
+            needed = len(wrapped) * line_h
+            if bottom_limit is not None and new_page is not None and sy - needed < bottom_limit:
+                sy = new_page()
             set_font(c, font_size, bold=True)
             c.drawString(x, sy, lab)
             set_font(c, font_size)
-            wrapped = _wrap_text(c, value, value_w, font_size) or [""]
             c.drawString(value_x, sy, wrapped[0])
             sy -= line_h
             for cont in wrapped[1:]:
+                if bottom_limit is not None and new_page is not None and sy < bottom_limit:
+                    sy = new_page()
                 set_font(c, font_size)
                 c.drawString(value_x, sy, cont)
                 sy -= line_h
         else:
-            set_font(c, font_size, bold=True)
             wrapped = _wrap_text(c, value, max_width, font_size, bold=True) or [""]
-            for i, wl in enumerate(wrapped):
+            needed = len(wrapped) * line_h + 3.5
+            if bottom_limit is not None and new_page is not None and sy - needed < bottom_limit:
+                sy = new_page()
+            for wl in wrapped:
+                if bottom_limit is not None and new_page is not None and sy < bottom_limit:
+                    sy = new_page()
                 set_font(c, font_size, bold=True)
                 c.drawString(x, sy, wl)
                 sy -= line_h
-                if i >= 2:
-                    break
             sy -= 3.5  # small heading-to-heading gap (not a wall of text)
     return sy
 
@@ -857,13 +931,13 @@ def _measure_spec_rows(
     value_w = max(36.0, max_width - label_col)
     lines = 0
     extra = 0.0
-    for label, value in rows[:22]:
+    for label, value in rows:
         if label:
             wrapped = _wrap_text(c, value, value_w, font_size) or [""]
             lines += len(wrapped)
         else:
             wrapped = _wrap_text(c, value, max_width, font_size, bold=True) or [""]
-            lines += min(len(wrapped), 3)
+            lines += len(wrapped)
             extra += 3.5
     return max(lines * line_h + extra, 24.0)
 
@@ -999,6 +1073,24 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         set_font(c, 10)
         y -= 16
     y -= 12
+    cover_page = 1
+    cover_bottom = M + 40
+
+    def _cover_footer():
+        set_font(c, 7)
+        c.setFillColorRGB(0.5, 0.5, 0.5)
+        c.drawString(M, M / 2 + 8, f"powered by WEOS — page {cover_page}")
+        c.setFillColorRGB(0, 0, 0)
+
+    def _cover_new_page():
+        nonlocal cover_page, y
+        _cover_footer()
+        c.showPage()
+        cover_page += 1
+        y = H - M - 20
+        c.setFillColorRGB(0, 0, 0)
+        return y
+
     cover = ""
     for b in template.get("blocks") or []:
         if b.get("type") == "cover_letter":
@@ -1011,50 +1103,31 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         )
     text_w = W - 2 * M
     set_font(c, 10)
-    for para in cover.split("\n"):
-        # wrap
-        words = para.split()
-        line = ""
-        for word in words:
-            trial = (line + " " + word).strip()
-            if c.stringWidth(trial, c._fontname, 10) > text_w:
-                c.drawString(M, y, line)
-                y -= 14
-                line = word
-            else:
-                line = trial
-        if line:
-            c.drawString(M, y, line)
-            y -= 14
-        y -= 6
+    y = _flow_paragraphs(
+        c, cover, x=M, y=y, max_width=text_w, font_size=10, line_h=14,
+        bottom=cover_bottom, set_font=set_font, on_new_page=_cover_new_page, para_gap=6.0,
+    )
 
     # —— Per-quote Description (optional) ——
     description = str(payload.get("description") or "").strip()
     if description:
         y -= 6
+        if y < cover_bottom + 20:
+            y = _cover_new_page()
         c.setFillColorRGB(*primary)
         set_font(c, 10, bold=True)
         c.drawString(M, y, "Description")
         y -= 15
         c.setFillColorRGB(0, 0, 0)
         set_font(c, 9)
-        for para in description.split("\n"):
-            words = para.split()
-            line = ""
-            for word in words:
-                trial = (line + " " + word).strip()
-                if c.stringWidth(trial, c._fontname, 9) > text_w:
-                    c.drawString(M, y, line)
-                    y -= 13
-                    line = word
-                else:
-                    line = trial
-            if line:
-                c.drawString(M, y, line)
-                y -= 13
-            y -= 4
+        y = _flow_paragraphs(
+            c, description, x=M, y=y, max_width=text_w, font_size=9, line_h=13,
+            bottom=cover_bottom, set_font=set_font, on_new_page=_cover_new_page, para_gap=4.0,
+        )
 
     y -= 16
+    if y < cover_bottom + 40:
+        y = _cover_new_page()
     set_font(c, 9)
     c.drawString(M, y, "Enclosures:")
     y -= 14
@@ -1062,9 +1135,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     y -= 12
     c.drawString(M + 10, y, "b) Terms & Conditions")
     # Company address lives in the letterhead only — do not repeat at cover bottom.
-    set_font(c, 7)
-    c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawString(M, M / 2 + 8, "powered by WEOS — page 1")
+    _cover_footer()
     c.showPage()
 
     # —— Line items pages ——
@@ -1101,8 +1172,8 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         c.line(M, yy - 6, W - M, yy - 6)
         return yy - 18
 
-    y = header(2)
-    page_no = 2
+    y = header(cover_page + 1)
+    page_no = cover_page + 1
     total_area = 0.0
     total_qty = 0
     grand = 0.0
@@ -1123,7 +1194,16 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             spec_rows = [("", str(line.get("displayName") or line.get("product") or "Window"))]
         text_h = _measure_spec_rows(c, spec_rows, max_width=spec_max_w, font_size=7.0, label_col=72.0)
         need = max(draw_h, text_h) + 24
-        if y < bottom_limit + need:
+        page_usable = (H - M - 50) - bottom_limit
+        min_block = min(draw_h, 80) + 40
+        if y < bottom_limit + min_block:
+            set_font(c, 7)
+            c.setFillColorRGB(0.5, 0.5, 0.5)
+            c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
+            c.showPage()
+            page_no += 1
+            y = header(page_no)
+        elif need <= page_usable and y < bottom_limit + need:
             set_font(c, 7)
             c.setFillColorRGB(0.5, 0.5, 0.5)
             c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
@@ -1202,6 +1282,23 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
 
         # Specs — tabular LABEL: / value; never overflow into QTY/RATE/AMOUNT
         c.setFillColorRGB(0, 0, 0)
+        specs_paged = [False]
+
+        def _spec_new_page():
+            nonlocal page_no
+            specs_paged[0] = True
+            set_font(c, 7)
+            c.setFillColorRGB(0.5, 0.5, 0.5)
+            c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
+            c.showPage()
+            page_no += 1
+            ny = header(page_no)
+            c.setFillColorRGB(*accent)
+            set_font(c, 8, bold=True)
+            c.drawString(M + 2, ny + 4, f"{code} (continued)")
+            c.setFillColorRGB(0, 0, 0)
+            return ny - 12
+
         sy = _draw_spec_rows(
             c,
             spec_rows,
@@ -1211,6 +1308,8 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             set_font=set_font,
             font_size=7.0,
             label_col=72.0,
+            bottom_limit=bottom_limit,
+            new_page=_spec_new_page,
         )
 
         # Qty / Rate / Amount — currency symbol via Unicode font
@@ -1222,7 +1321,10 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         c.drawRightString(col_amt, y, f"{float(amount):,.2f}")
 
         # row separator
-        row_bottom = min(sy - 2, y - draw_h - 10)
+        if specs_paged[0]:
+            row_bottom = sy - 2
+        else:
+            row_bottom = min(sy - 2, y - draw_h - 10)
         c.setStrokeColorRGB(0.85, 0.85, 0.85)
         c.setLineWidth(0.5)
         c.line(M, row_bottom, W - M, row_bottom)
@@ -1311,35 +1413,40 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             "6. Warranty: profile manufacturing defects as per policy."
         )
     y = H - (M + 40)
+    terms_bottom = M + 48
+
+    def _terms_footer():
+        set_font(c, 7)
+        c.setFillColorRGB(0.5, 0.5, 0.5)
+        c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
+        c.setFillColorRGB(0, 0, 0)
+
+    def _terms_new_page():
+        nonlocal page_no, y
+        _terms_footer()
+        c.showPage()
+        page_no += 1
+        y = H - (M + 14)
+        c.setFillColorRGB(*primary)
+        set_font(c, 11, bold=True)
+        c.drawString(M, y, "Terms & Conditions (continued)")
+        y -= 18
+        c.setFillColorRGB(0, 0, 0)
+        set_font(c, 9)
+        return y
+
     c.setFillColorRGB(0, 0, 0)
     set_font(c, 9)
-    for para in terms_text.split("\n"):
-        words = para.split()
-        line = ""
-        for word in words:
-            trial = (line + " " + word).strip()
-            if c.stringWidth(trial, c._fontname, 9) > text_w:
-                c.drawString(M, y, line)
-                y -= 13
-                line = word
-            else:
-                line = trial
-        if line:
-            c.drawString(M, y, line)
-            y -= 13
-        y -= 4
-        if y < M + 40:
-            c.showPage()
-            page_no += 1
-            y = H - (M + 10)
+    y = _flow_paragraphs(
+        c, terms_text, x=M, y=y, max_width=text_w, font_size=9, line_h=13,
+        bottom=terms_bottom, set_font=set_font, on_new_page=_terms_new_page, para_gap=4.0,
+    )
 
     # —— Bank details (from Company Setup) ——
     bank = str(branding.get("bankDetails") or "").strip()
     if bank:
-        if y < M + 80:
-            c.showPage()
-            page_no += 1
-            y = H - (M + 10)
+        if y < terms_bottom + 50:
+            y = _terms_new_page()
         y -= 18
         c.setFillColorRGB(*primary)
         set_font(c, 11, bold=True)
@@ -1347,33 +1454,32 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         y -= 15
         c.setFillColorRGB(0, 0, 0)
         set_font(c, 9)
-        for para in bank.split("\n"):
-            words = para.split()
-            line = ""
-            for word in words:
-                trial = (line + " " + word).strip()
-                if c.stringWidth(trial, c._fontname, 9) > text_w:
-                    c.drawString(M, y, line)
-                    y -= 13
-                    line = word
-                else:
-                    line = trial
-            if line:
-                c.drawString(M, y, line)
-                y -= 13
+        y = _flow_paragraphs(
+            c, bank, x=M, y=y, max_width=text_w, font_size=9, line_h=13,
+            bottom=terms_bottom, set_font=set_font, on_new_page=_terms_new_page, para_gap=4.0,
+        )
 
+    if y < M + 130:
+        y = _terms_new_page()
     y -= 30
     set_font(c, 9)
+    c.setFillColorRGB(0, 0, 0)
     c.drawString(M, y, "For " + company)
     y -= 50
+    if y < M + 80:
+        y = _terms_new_page()
     c.drawString(M, y, "Authorized Signatory")
     c.drawRightString(W - M, y, "Customer Acceptance")
 
     # QR → absolute public URL that fetches this quote from the database when scanned.
+    qr_y = M + 8
+    if y - 70 < qr_y + 64:
+        y = _terms_new_page()
+        qr_y = M + 8
     try:
         from WEOS.factory.pdf_qr import draw_quote_qr
 
-        draw_quote_qr(c, payload, x=M, y=M + 8, size=64, label="Scan to view quote")
+        draw_quote_qr(c, payload, x=M, y=qr_y, size=64, label="Scan to view quote")
     except Exception:
         pass
 

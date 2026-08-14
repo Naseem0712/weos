@@ -1274,6 +1274,26 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             "layout": {},
             "sectionSpecs": {},
         }
+    if (
+        world == "louver"
+        or "louver" in prod
+        or "louvre" in prod
+        or "facade" in str(getattr(body, "category", "") or "").lower()
+        or "facade" in prod
+    ):
+        w = float(getattr(body, "width", 0) or 0)
+        h = float(getattr(body, "height", 0) or 0)
+        return {
+            "svg": None,
+            "system": "louver",
+            "productType": getattr(body, "productType", None) or "louvers",
+            "specifications": {
+                "type": "Louvers",
+                "size": f"{w:g}×{h:g} mm" if w and h else "",
+            },
+            "layout": {"system": "louver", "widthMm": w, "heightMm": h, "trackCount": None},
+            "sectionSpecs": {},
+        }
     try:
         from WEOS.factory.layout_options import resolve_mesh_track
         from WEOS.factory.product_loader import load_product, resolve_engine_product_id
@@ -1308,7 +1328,16 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
         if linked and linked not in engine_ids:
             engine_ids.append(linked)
         if "29mm_sliding" not in engine_ids and is_stub:
-            engine_ids.append("29mm_sliding")
+            cat = str(getattr(body, "category", "") or meta.get("category") or "").lower()
+            ptype = str(getattr(body, "productType", None) or meta.get("productType") or "").lower()
+            skip_window_engine = (
+                world in ("louver", "railing", "staircase_railing", "shower", "ventilator")
+                or "louver" in prod or "louvre" in prod or "facade" in prod or "facade" in cat
+                or "rail" in prod or "shower" in prod or "ventilat" in prod
+                or "louver" in ptype or "louvre" in ptype
+            )
+            if not skip_window_engine:
+                engine_ids.append("29mm_sliding")
 
         last_exc: Exception | None = None
         job = None

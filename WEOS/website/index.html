@@ -314,7 +314,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
             <div><label class="l">W (mm)</label><input id="lineW" type="number" value="2050" style="width:90px"/></div>
             <div><label class="l">H (mm)</label><input id="lineH" type="number" value="1970" style="width:90px"/></div>
             <div><label class="l">Qty</label><input id="lineQty" type="number" value="1" min="1" style="width:70px"/></div>
-            <div class="grow"><label class="l">Glass</label>
+            <div class="grow" id="wrapLineGlass"><label class="l">Glass</label>
               <div style="display:flex;gap:.35rem;align-items:flex-end;flex-wrap:wrap">
                 <select id="lineGlass" title="Full catalogue — Engines → Glass Library to add more" style="min-width:160px;flex:1"><option value="5mm_clear">5mm Clear</option><option value="8mm_toughened" selected>8mm Toughened</option><option value="10mm_toughened">10mm Toughened</option></select>
                 <button class="btn ghost sm" type="button" id="btnAddGlass" title="Save a custom glass to the library">+ glass</button>
@@ -466,7 +466,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
                 <button class="btn ghost sm" type="button" id="btnAddColour" title="Add a colour name">+ colour</button>
               </div>
             </div>
-            <div><label class="l">Handle (type · finish · name)</label>
+            <div id="wrapLineHandle"><label class="l">Handle (type · finish · name)</label>
               <div style="display:flex;gap:.35rem;flex-wrap:wrap">
                 <select id="lineHandle" style="width:95px"><option value="standard">Standard</option><option value="premium" selected>Premium</option></select>
                 <select id="lineHandleFinish" style="width:90px"><option value="auto" selected>Auto</option><option value="silver">Silver</option><option value="black">Black</option></select>
@@ -2598,7 +2598,10 @@ async function loadProducts() {
     }
     try { applyProductSystem(); } catch (_) {}
     const selLn = state.lines && state.lines[state.selectedLine];
-    if (selLn) ensureProductOptionFromLine(selLn);
+    (state.lines || []).forEach((ln, i) => {
+      if (ln && typeof ln === 'object') ensureProductOptionFromLine(ln, { select: i === state.selectedLine });
+    });
+    if (selLn) ensureProductOptionFromLine(selLn, { select: true });
     try { await loadCartGlassOptions(); } catch (_) {}
     try { await loadCartColourOptions(); } catch (_) {}
   }
@@ -2684,17 +2687,28 @@ async function loadCartGlassOptions(preferId) {
   if (keepId && cleaned.some(o => o.id === keepId)) sel.value = keepId;
   else if (prev && cleaned.some(o => o.id === prev)) sel.value = prev;
   // Never silently substitute 8mm_toughened / first option over a saved line glass.
-  if ($('shGlass')) {
-    const shPrev = $('shGlass').value;
-    const existing = new Set([...$('shGlass').options].map(o => o.value));
-    for (const o of cleaned) {
-      if (existing.has(o.id)) continue;
-      const opt = document.createElement('option'); opt.value = o.id; opt.textContent = o.label;
-      $('shGlass').appendChild(opt);
+  const fillSelect = (el, prefer, extraKeep) => {
+    if (!el) return;
+    const prevV = el.value;
+    const keep = String(prefer || extraKeep || prevV || '').trim();
+    const merged = cleaned.slice();
+    const seenIds = new Set(merged.map(o => o.id));
+    [...el.options].forEach(o => {
+      if (o.value && !seenIds.has(o.value)) {
+        merged.push({ id: o.value, label: o.textContent || o.value });
+        seenIds.add(o.value);
+      }
+    });
+    if (keep && !seenIds.has(keep)) {
+      merged.unshift({ id: keep, label: keep });
     }
-    if (preferId && [...$('shGlass').options].some(o => o.value === preferId)) $('shGlass').value = preferId;
-    else if (shPrev) $('shGlass').value = shPrev;
-  }
+    el.innerHTML = merged.map(o => `<option value="${o.id}">${o.label}</option>`).join('');
+    if (keep && [...el.options].some(o => o.value === keep)) el.value = keep;
+    else if (prevV) el.value = prevV;
+  };
+  const railLn = ln && ln.options && ln.options.railing;
+  fillSelect($('rGlassPreset'), preferId, (railLn && (railLn.glassPreset || railLn.glass)) || (ln && ln.glass));
+  fillSelect($('shGlass'), preferId, ln && ln.glass);
 }
 
 async function loadCartColourOptions(preferId) {
@@ -2945,16 +2959,19 @@ function applySystemUiRules(opts) {
   const grid = sys === 'grid';
   const shower = sys === 'shower';
   const ventilator = sys === 'ventilator';
+  const louver = sys === 'louver';
   const hasTracks = productHasTracks(selectedProductMeta(), state.lines[state.selectedLine], sys);
   const show = (id, on) => { const el = $(id); if (el) el.style.display = on ? '' : 'none'; };
   show('bifoldRow', bifold);
   show('gridRow', grid);
-  show('wrapGlassShutters', !bifold && !grid && !shower && !ventilator);
-  show('wrapOpening', !bifold && !grid && !shower && !ventilator && !casement);
-  show('wrapMeshShutters', hasTracks && !bifold && !casement && !grid && !shower && !ventilator);
-  show('wrapFixShutters', !bifold && !grid && !casement && !shower && !ventilator);
-  show('wrapTrack', hasTracks && !casement && !shower && !ventilator);
-  show('wrapMeshChk', hasTracks && !casement && !shower && !ventilator);
+  show('wrapGlassShutters', !bifold && !grid && !shower && !ventilator && !louver);
+  show('wrapOpening', !bifold && !grid && !shower && !ventilator && !casement && !louver);
+  show('wrapMeshShutters', hasTracks && !bifold && !casement && !grid && !shower && !ventilator && !louver);
+  show('wrapFixShutters', !bifold && !grid && !casement && !shower && !ventilator && !louver);
+  show('wrapTrack', hasTracks && !casement && !shower && !ventilator && !louver);
+  show('wrapMeshChk', hasTracks && !casement && !shower && !ventilator && !louver);
+  show('wrapLineGlass', !louver);
+  show('wrapLineHandle', !louver);
   show('casementPanelBox', casement);
   if (casement) ensureCasementPanels();
   if (grid) ensureGridUI();
@@ -3350,17 +3367,32 @@ function currentLineDraft() {
     qty: +$('lineQty').value || 1,
     locationName: ($('lineLocation') && $('lineLocation').value.trim()) || null,
     positionName: ($('lineLocation') && $('lineLocation').value.trim()) || null,
-    glass: $('lineGlass').value,
+    glass: (function(){
+      if (sys === 'louver') {
+        const wrap = $('wrapLineGlass');
+        if (wrap && wrap.style.display === 'none') return null;
+        const ft = ($('lineFillType') && $('lineFillType').value) || 'glass';
+        if (ft && ft !== 'glass') return null;
+      }
+      return $('lineGlass') ? $('lineGlass').value : null;
+    })(),
     colour: $('lineColour').value,
-    handle: $('lineHandle').value,
+    handle: (function(){
+      if (sys === 'louver') {
+        const wrap = $('wrapLineHandle');
+        if (wrap && wrap.style.display === 'none') return null;
+      }
+      return $('lineHandle') ? $('lineHandle').value : null;
+    })(),
     handleFinish: finish === 'auto' ? null : finish,
     saleUnit: ($('lineSaleUnit') && $('lineSaleUnit').value) || 'sqft',
     sellingRate: rateRaw === '' ? null : +rateRaw,
     description: ($('lineDesc') && $('lineDesc').value.trim()) || null,
     partitions: (state.draftPartitions || []).slice(),
-    mesh: !!( $('lineMesh') && $('lineMesh').checked ),
+    mesh: sys === 'louver' ? false : !!( $('lineMesh') && $('lineMesh').checked ),
     trackCount: (function(){
       const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
+      if (sys === 'louver') return null;
       if (!productHasTracks(selectedProductMeta(), null, sys)) return null;
       return $('lineTrack') ? parseFloat($('lineTrack').value) || 2 : 2;
     })(),
@@ -3378,7 +3410,10 @@ function currentLineDraft() {
       const v = String(el.value || 'auto').toLowerCase();
       return v === 'center' || v === 'side';
     })(),
-    glassShutters: $('lineGlassShutters') ? (parseInt($('lineGlassShutters').value) || 2) : 2,
+    glassShutters: (function(){
+      if (sys === 'louver') return null;
+      return $('lineGlassShutters') ? (parseInt($('lineGlassShutters').value) || 2) : 2;
+    })(),
     meshShutters: $('lineMeshShutters') ? (parseInt($('lineMeshShutters').value) || 0) : 0,
     fixShutters: ($('lineFixShutters') && $('lineFixShutters').value.trim()) || null,
     foldLeft: $('lineFoldLeft') ? (parseInt($('lineFoldLeft').value) || 0) : 0,
@@ -4274,12 +4309,47 @@ function stampGlassSnapshot(ln, overwrite) {
   const rail = ln.options && ln.options.railing;
   const rq = ln.options && ln.options.railingQuote;
   if (rail || rq) {
+    const preset = String((rail && (rail.glassPreset || rail.glass)) || (rq && rq.glassPreset) || ln.glass || '').trim();
+    const opt = (state.glassOptions || []).find(x => x && String(x.id) === preset);
+    if (opt) {
+      const snap = glassSnapshotFromOption(opt, ln);
+      snap.source = 'railing';
+      ln.glass = preset || ln.glass;
+      ln.glass_snapshot = snap;
+      ln.glassSnapshot = snap;
+      return ln;
+    }
+    const m = String(preset).match(/^lam_(\d+)_(\d+)_(\d+)$/i);
+    if (m) {
+      const g1 = +m[1]; const pvbRaw = m[2]; const g2 = +m[3];
+      const pvb = pvbRaw.length >= 3 ? (+pvbRaw) / 100 : +pvbRaw;
+      const snap = {
+        glass_id: preset,
+        glass_type: 'laminated',
+        glass_construction: 'laminated',
+        layers: { glass1Mm: g1, pvbMm: pvb, glass2Mm: g2 },
+        total_thickness_mm: g1 + pvb + g2,
+        colour: (rail && rail.glassColour) || (rq && rq.glassColour) || 'clear',
+        finish: '',
+        toughened: false,
+        laminated: true,
+        dgu: false,
+        air_gap_mm: null,
+        glass1Mm: g1, pvbMm: pvb, glass2Mm: g2,
+        display_label: `${g1}+${String(pvb)}+${g2} mm Laminated`,
+        source: 'railing',
+      };
+      ln.glass = preset;
+      ln.glass_snapshot = snap;
+      ln.glassSnapshot = snap;
+      return ln;
+    }
     const thk = (rq && rq.glassThicknessMm) || (rail && rail.glassThicknessMm) || 12;
     const gtype = (rail && rail.glassType) || (rq && rq.glassType) || '';
     const gcol = (rail && rail.glassColour) || (rq && rq.glassColour) || '';
     const tough = /tough|tuff|temper/i.test(String(gtype));
     const snap = {
-      glass_id: ln.glass || `railing_${thk}mm`,
+      glass_id: preset || ln.glass || `railing_${thk}mm`,
       glass_type: gtype || 'single',
       glass_construction: /lam/i.test(String(gtype)) ? 'laminated' : 'single',
       layers: { glass1Mm: thk },
@@ -4359,7 +4429,7 @@ function stampItemSnapshot(ln, overwriteIdentity) {
   if (pid) { ln.product = ln.product || pid; ln.productId = ln.productId || pid; }
   return ln;
 }
-function ensureProductOptionFromLine(ln) {
+function ensureProductOptionFromLine(ln, { select = true } = {}) {
   const sel = $('lineProduct');
   if (!sel || !ln) return;
   const snap = ln.itemSnapshot || ln.item_snapshot || {};
@@ -4371,7 +4441,7 @@ function ensureProductOptionFromLine(ln) {
     opt.textContent = snap.product_name_snapshot || ln.displayName || pid;
     sel.appendChild(opt);
   }
-  sel.value = pid;
+  if (select) sel.value = pid;
 }
 
 function ensureLineId(ln) {
@@ -4832,8 +4902,30 @@ function railStepTitle(id) {
     rates: '5 · Rates & sell',
   })[id] || id;
 }
+function ensureSelectOption(sel, value, label) {
+  if (!sel || value == null || value === '') return;
+  const v = String(value);
+  if (![...sel.options].some(o => o.value === v)) {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = label || v;
+    sel.appendChild(o);
+  }
+  sel.value = v;
+}
 function applyGlassPreset() {
-  const p = ($('rGlassPreset') && $('rGlassPreset').value) || '12_clear';
+  const p = ($('rGlassPreset') && $('rGlassPreset').value) || '';
+  const opt = (state.glassOptions || []).find(x => x && String(x.id) === String(p));
+  if (opt) {
+    const thk = opt.overallMm || opt.thicknessMm;
+    if ($('rGlassThk') && thk != null) ensureSelectOption($('rGlassThk'), thk, String(thk));
+    if ($('rGlassType')) {
+      const t = (opt.makeup === 'laminated') ? 'laminated' : (opt.makeup === 'dgu' ? 'dgu' : (opt.colour || 'clear'));
+      if ([...$('rGlassType').options].some(o => o.value === t)) $('rGlassType').value = t;
+      else if (opt.makeup === 'laminated') $('rGlassType').value = 'laminated';
+    }
+    return opt;
+  }
   const map = {
     '12_clear': { thk: 12, type: 'clear', label: '12mm clear toughened' },
     '12_black': { thk: 12, type: 'black', label: '12mm black toughened' },
@@ -4843,18 +4935,15 @@ function applyGlassPreset() {
     'lam_6_152_6': { thk: 13.52, type: 'laminated', label: '6+1.52+6 laminated' },
     'lam_5_152_5': { thk: 11.52, type: 'laminated', label: '5+1.52+5 laminated' },
   };
-  const m = map[p] || map['12_clear'];
-  if ($('rGlassThk')) {
-    // Keep nearest option; laminated uses 12 as nominal UI thickness when not listed
-    const opts = [...($('rGlassThk').options || [])].map(o => +o.value);
-    const nearest = opts.reduce((a, b) => Math.abs(b - m.thk) < Math.abs(a - m.thk) ? b : a, opts[0] || 12);
-    $('rGlassThk').value = String(m.thk % 1 === 0 && opts.includes(m.thk) ? m.thk : nearest);
+  const m = map[p];
+  if (m) {
+    if ($('rGlassThk')) ensureSelectOption($('rGlassThk'), m.thk, String(m.thk));
+    if ($('rGlassType')) {
+      if ([...$('rGlassType').options].some(o => o.value === m.type)) $('rGlassType').value = m.type;
+    }
+    return m;
   }
-  if ($('rGlassType')) {
-    if ([...$('rGlassType').options].some(o => o.value === m.type)) $('rGlassType').value = m.type;
-    else $('rGlassType').value = 'clear';
-  }
-  return m;
+  return { thk: ($('rGlassThk') && $('rGlassThk').value) ? +$('rGlassThk').value : 12, type: ($('rGlassType') && $('rGlassType').value) || 'clear' };
 }
 function syncRailBottomUi() {
   const stairs = railIsStairs();
@@ -5324,8 +5413,25 @@ function railingConfig(){
     installation: num('rInstall',0),
     transport: num('rTransport',0),
     stairGlass: flags.glass,
-    glassThicknessMm: num('rGlassThk', 12),
-    glassType: ($('rGlassType')&&$('rGlassType').value) || 'clear',
+    glass: ($('rGlassPreset')&&$('rGlassPreset').value) || '',
+    glassThicknessMm: (function(){
+      const pid = ($('rGlassPreset') && $('rGlassPreset').value) || '';
+      const opt = (state.glassOptions || []).find(x => x && x.id === pid);
+      if (opt && (opt.overallMm || opt.thicknessMm)) return Number(opt.overallMm || opt.thicknessMm);
+      const m = String(pid).match(/^lam_(\d+)_(\d+)_(\d+)$/i);
+      if (m) {
+        const pvb = m[2].length >= 3 ? (+m[2]) / 100 : +m[2];
+        return +m[1] + pvb + +m[3];
+      }
+      return num('rGlassThk', 12);
+    })(),
+    glassType: (function(){
+      const pid = ($('rGlassPreset') && $('rGlassPreset').value) || '';
+      const opt = (state.glassOptions || []).find(x => x && x.id === pid);
+      if (opt && opt.makeup === 'laminated') return 'laminated';
+      if (opt && opt.makeup === 'dgu') return 'dgu';
+      return ($('rGlassType') && $('rGlassType').value) || 'clear';
+    })(),
     glassColour: ($('rGlassType')&&$('rGlassType').value) || 'clear',
     glassPreset: ($('rGlassPreset')&&$('rGlassPreset').value) || '12_clear',
     colorMode: ($('rColorMode')&&$('rColorMode').value) || 'global',
@@ -5588,6 +5694,7 @@ async function railingAdd(){
     commercialTotal: Math.round(Number(q.sellingTotal || 0) * qty * 100) / 100,
     locationName: currentLocationName() || null,
     positionName: currentLocationName() || null,
+    glass: cfg.glassPreset || cfg.glass || '',
     description: `Railing · ${q.shape||'straight'} · ${q.lengthMm} mm · ${q.panelCount||0} panels · ${q.glassThicknessMm||12}mm ${q.glassType||''} · ${q.sellingPerUnit}/${String(q.saleUnit||'rft').toUpperCase()}`,
     options: { railing: cfg, railingQuote: q, productType: ptype, commercialOnly: q.commercial || { sellingRatePerUnit: q.sellingPerUnit, saleUnit: q.saleUnit }, locationName: currentLocationName() || null },
     preview: (res && res.svg) ? { svg: res.svg } : undefined,
@@ -9375,7 +9482,7 @@ async function pingEngine(){
   const hasSavedLines = Array.isArray(state.lines) && state.lines.some(ln => ln && typeof ln === 'object' && (ln.lineId || ln.product || ln.itemSnapshot || ln.item_snapshot));
   // Dummy 4-window catalogue is ONLY for a truly empty new session.
   // Never replace a restored cart / saved project with dummy windows.
-  if (!restoredCart && !state.projectId && !hasSavedLines) {
+  if (!restoredCart && !state.projectId && !hasSavedLines && !state.workspaceRestored) {
     state.lines = [
       {product:'29mm_sliding', width:2050, height:1970, qty:4, glass:'8mm_toughened', colour:'black_texture', handle:'premium', saleUnit:'sqft', sellingRate:1100},
       {product:'29mm_sliding', width:1500, height:1500, qty:6, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft', sellingRate:950},
