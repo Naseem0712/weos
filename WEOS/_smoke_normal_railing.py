@@ -92,7 +92,7 @@ def main() -> int:
             fails.append(f"span C start {segs[2].get('panelStartIndex')}")
 
     keys = {it["key"] for it in q.get("items") or []}
-    for need in ("glass", "blocks", "anchors", "bottomRail", "handrail", "modularBend", "wallConnector"):
+    for need in ("glass", "blocks", "anchors", "handrail", "modularBend", "wallConnector"):
         if need not in keys:
             fails.append(f"BOM missing {need}")
 
@@ -193,6 +193,48 @@ def main() -> int:
         fails.append("stairs must keep wastage path")
     if stair.get("glassNesting", {}).get("method") not in ("sheet_nesting", "estimated_pct"):
         fails.append(f"stair nest method {stair.get('glassNesting', {}).get('method')}")
+
+    jog = compute_railing({
+        "runs": [
+            {"lengthMm": 2000, "panels": 2, "turn": "left", "turnDeg": 90, "glassHeightMm": 1000},
+            {"lengthMm": 1500, "panels": 2, "turn": "right", "turnDeg": 90, "glassHeightMm": 1000},
+            {"lengthMm": 1800, "panels": 2, "glassHeightMm": 1000},
+        ],
+        "heightMm": 1000,
+        "handrail": True,
+        "bottomKind": "continuous",
+        "rates": {
+            "glassPerSqft": 200, "bottomRailPerUnit": 80, "handrailPerUnit": 120,
+            "modularBendPerPc": 50,
+        },
+    })
+    if jog.get("shape") not in ("polyline", "straight"):
+        fails.append(f"jog shape {jog.get('shape')}")
+    if int(jog.get("bendCount") or 0) != 2:
+        fails.append(f"jog 90° bands {jog.get('bendCount')}")
+    if int(jog.get("panelCount") or 0) != 6:
+        fails.append(f"jog panels {jog.get('panelCount')}")
+    keys = {it["key"] for it in (jog.get("items") or [])}
+    if "modularBend" not in keys:
+        fails.append("jog missing Modular band")
+    jsvg = railing_svg({"runs": jog.get("runs"), "heightMm": 1000}, quote=jog)
+    if "90° L" not in jsvg and "90°" not in jsvg:
+        fails.append("jog svg missing 90° L/R labels")
+
+    back = compute_railing({
+        "runs": [
+            {"lengthMm": 3000, "panels": 2, "turn": "left", "turnDeg": 180, "glassHeightMm": 1000},
+            {"lengthMm": 3000, "panels": 2, "glassHeightMm": 1000},
+        ],
+        "heightMm": 1000,
+        "handrail": True,
+        "bottomKind": "continuous",
+        "rates": {"glassPerSqft": 200, "bottomRailPerUnit": 80, "handrailPerUnit": 120},
+    })
+    if int(back.get("bendCount") or 0) != 0:
+        fails.append(f"180° should not count as modular band {back.get('bendCount')}")
+    if int(back.get("connector180Count") or 0) < 1:
+        fails.append("180° band qty")
 
     if fails:
         print("FAIL")

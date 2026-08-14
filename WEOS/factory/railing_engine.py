@@ -538,6 +538,16 @@ def _preset_segments(shape: str, cfg: Mapping[str, Any]) -> list[dict[str, Any]]
     """Build segment list (lengthMm + turnDeg after segment) from shape + cfg."""
     raw = cfg.get("segments")
     # Explicit segment lists are for polyline (and named presets); L/U use leg fields.
+    from WEOS.factory.railing_runs import normalize_railing_runs, segments_from_runs
+
+    # Multi-span design rows (cfg.runs) win over L/U presets. Do not treat
+    # L/U `spans` panel-overrides as polyline runs.
+    if shape != "staircase" and (cfg.get("runs") or cfg.get("flights")):
+        runs = normalize_railing_runs(cfg, stairs=False)
+        segs = segments_from_runs(runs)
+        if segs:
+            return segs
+
     if shape == "polyline" and isinstance(raw, (list, tuple)) and raw:
         segs: list[dict[str, Any]] = []
         for i, s in enumerate(raw):
@@ -597,6 +607,13 @@ def _preset_segments(shape: str, cfg: Mapping[str, Any]) -> list[dict[str, Any]]
         span = _f(cfg.get("archSpanMm"), L or 4000.0)
         return [{"lengthMm": span, "turnDeg": 0, "kind": "arch"}]
     if shape == "staircase":
+        from WEOS.factory.railing_runs import build_stair_flights, normalize_railing_runs
+
+        runs = normalize_railing_runs(cfg, stairs=True)
+        if len(runs) > 1 or (runs and cfg.get("runs")):
+            _, _, segs = build_stair_flights(cfg, runs)
+            if segs:
+                return segs
         sg = compute_stair_geometry(cfg)
         return [{
             "lengthMm": _f(sg["totalSlopeLengthMm"]),
@@ -874,10 +891,20 @@ def compute_stair_glass_panels(
     glass_h = _f(cfg.get("glassHeightMm") or cfg.get("heightMm"), 0.0)
     if glass_h <= 0:
         glass_h = _height_mm(cfg) or 900.0
-    n = max(_i(cfg.get("panels") or cfg.get("glassPanels"), 1), 1)
     gap = _f(cfg.get("gapMm"), DEFAULT_GLASS_GAP_MM)
     edge = _f(cfg.get("glassEdgeInsetMm"), GLASS_EDGE_INSET_MM)
     edge = min(edge, total_run / 2.0) if total_run > 0 else edge
+    n = _i(cfg.get("panels") or cfg.get("glassPanels"), 0)
+    if n <= 0:
+        from WEOS.factory.railing_runs import auto_panel_count, DEFAULT_MAX_GLASS_MM
+
+        n = auto_panel_count(
+            total_run,
+            max_mm=_f(cfg.get("maxGlassMm"), DEFAULT_MAX_GLASS_MM) or DEFAULT_MAX_GLASS_MM,
+            gap=gap,
+            edge=edge,
+        )
+    n = max(n, 1)
     usable = max(total_run - 2.0 * edge, 0.0)
     gaps_total = gap * max(n - 1, 0)
     glass_total = max(usable - gaps_total, 0.0)
@@ -1107,23 +1134,77 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     if glass_height_mm <= 0:
         glass_height_mm = height_mm
 
+    from WEOS.factory.railing_runs import (
+        build_stair_flights,
+        normalize_railing_runs,
+        segments_from_runs,
+    )
+
+    resolved_runs: list[dict[str, Any]] = []
+    if isinstance(cfg.get("runs") or cfg.get("flights"), (list, tuple)):
+        resolved_runs = normalize_railing_runs(cfg, stairs=(shape == "staircase"))
+        cfg["_resolvedRuns"] = resolved_runs
+        if resolved_runs and shape != "staircase" and len(resolved_runs) >= 1:
+            if len(resolved_runs) > 1:
+                shape = "polyline"
+                cfg = {
+                    **cfg,
+                    "shape": "polyline",
+                    "segments": segments_from_runs(resolved_runs),
+                    "spans": [
+                        {
+                            "panels": r.get("panels"),
+                            "lengthMm": r.get("lengthMm"),
+                            "label": r.get("label"),
+                        }
+                        for r in resolved_runs
+                    ],
+                }
+            else:
+                one = resolved_runs[0]
+                if _f(one.get("lengthMm")) > 0 and _f(cfg.get("lengthMm")) <= 0:
+                    cfg = {**cfg, "lengthMm": one.get("lengthMm")}
+                if _i(one.get("panels")) > 0:
+                    cfg = {**cfg, "panels": one.get("panels")}
+                if _f(one.get("glassHeightMm")) > 0 and height_mm <= 0:
+                    height_mm = _f(one.get("glassHeightMm"))
+                    glass_height_mm = height_mm
+
     stair_geo: dict[str, Any] | None = None
     stair_panels: list[dict[str, Any]] = []
     if shape == "staircase":
-        stair_geo = compute_stair_geometry(cfg)
         if glass_height_mm <= 0:
             glass_height_mm = 900.0
         if height_mm <= 0:
             height_mm = glass_height_mm
-        cfg = {
-            **cfg,
-            "stairSteps": stair_geo["steps"],
-            "stairRiseMm": stair_geo["riserMm"],
-            "stairRunMm": stair_geo["treadMm"],
-            "glassHeightMm": glass_height_mm,
-            "heightMm": height_mm if height_mm > 0 else glass_height_mm,
-        }
-        stair_panels = compute_stair_glass_panels(cfg, stair_geo)
+        if resolved_runs:
+            stair_geo, stair_panels, _flight_segs = build_stair_flights(
+                {
+                    **cfg,
+                    "glassHeightMm": glass_height_mm,
+                    "heightMm": height_mm if height_mm > 0 else glass_height_mm,
+                },
+                resolved_runs,
+            )
+            cfg = {
+                **cfg,
+                "stairSteps": stair_geo["steps"],
+                "stairRiseMm": stair_geo["riserMm"],
+                "stairRunMm": stair_geo["treadMm"],
+                "glassHeightMm": glass_height_mm,
+                "heightMm": height_mm if height_mm > 0 else glass_height_mm,
+            }
+        else:
+            stair_geo = compute_stair_geometry(cfg)
+            cfg = {
+                **cfg,
+                "stairSteps": stair_geo["steps"],
+                "stairRiseMm": stair_geo["riserMm"],
+                "stairRunMm": stair_geo["treadMm"],
+                "glassHeightMm": glass_height_mm,
+                "heightMm": height_mm if height_mm > 0 else glass_height_mm,
+            }
+            stair_panels = compute_stair_glass_panels(cfg, stair_geo)
 
     segments = _preset_segments(shape, cfg)
     total_length_mm = sum(_f(s.get("lengthMm")) for s in segments)
@@ -1277,21 +1358,47 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     global_panel_index = 0
 
     if shape == "staircase" and stair_panels:
-        all_panel_widths = [_f(p.get("panelWidthHorizontal")) for p in stair_panels]
-        L = total_length_mm
-        run_details.append({
-            "index": 0,
-            "lengthMm": int(round(L)),
-            "turnDeg": 0.0,
-            "kind": "staircase",
-            "panelWidthsMm": [int(round(w)) for w in all_panel_widths],
-            "pillarPositionsMm": [],
-            "wallStart": wall_start,
-            "wallEnd": wall_end,
-            "continuousRail": False,
-            "glassPanels": stair_panels,
-            "panelStartIndex": 1,
-        })
+        if resolved_runs and len(resolved_runs) > 1:
+            for i, run in enumerate(resolved_runs):
+                fps = [p for p in stair_panels if _i(p.get("flight"), 1) == i + 1]
+                widths = [_f(p.get("panelWidthHorizontal")) for p in fps]
+                all_panel_widths.extend(widths)
+                run_details.append({
+                    "index": i,
+                    "lengthMm": int(round(_f(run.get("slopeLengthMm") or run.get("lengthMm")))),
+                    "turnDeg": _f(run.get("signedTurnDeg")),
+                    "kind": "staircase",
+                    "label": run.get("label") or f"Floor {i + 1}",
+                    "panelWidthsMm": [int(round(w)) for w in widths],
+                    "pillarPositionsMm": [],
+                    "wallStart": wall_start if i == 0 else False,
+                    "wallEnd": wall_end if i == len(resolved_runs) - 1 else False,
+                    "continuousRail": False,
+                    "glassPanels": fps,
+                    "panelStartIndex": (_i(fps[0].get("index"), 1) if fps else 1),
+                    "horizontalMm": _f(run.get("horizontalMm")),
+                    "floorHeightMm": _f(run.get("floorHeightMm")),
+                    "steps": _i(run.get("steps")),
+                    "riserMm": _f(run.get("riserMm")),
+                    "treadMm": _f(run.get("treadMm")),
+                    "glassHeightMm": _f(run.get("glassHeightMm"), glass_height_mm),
+                })
+        else:
+            all_panel_widths = [_f(p.get("panelWidthHorizontal")) for p in stair_panels]
+            L = total_length_mm
+            run_details.append({
+                "index": 0,
+                "lengthMm": int(round(L)),
+                "turnDeg": 0.0,
+                "kind": "staircase",
+                "panelWidthsMm": [int(round(w)) for w in all_panel_widths],
+                "pillarPositionsMm": [],
+                "wallStart": wall_start,
+                "wallEnd": wall_end,
+                "continuousRail": False,
+                "glassPanels": stair_panels,
+                "panelStartIndex": 1,
+            })
     else:
         n_seg = len(segments)
         for si, seg in enumerate(segments):
@@ -1382,11 +1489,14 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     glass_area_sqm = glass_area_sqmm / SQMM_PER_SQM
 
     # ── corner / join hardware ──────────────────────────────────────────────
-    bend_count = sum(1 for s in segments[:-1] if abs(_f(s.get("turnDeg"))) > 1e-6)
+    # 90° (and other acute/right) corners → modular bend; 180° U-turn → 180° band.
+    bend_count = sum(1 for s in segments[:-1] if 1.0 < abs(_f(s.get("turnDeg"))) < 170.0)
+    turn_180 = sum(1 for s in segments[:-1] if abs(_f(s.get("turnDeg"))) >= 170.0)
     if shape == "arch":
         bend_count = 0
+        turn_180 = 0
 
-    connector_180 = 0
+    connector_180 = turn_180
     if handrail_on:
         for s in segments:
             connector_180 += _handrail_connectors(_f(s.get("lengthMm")), handrail_max)
@@ -1662,10 +1772,14 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
 
     # BOM glass line uses purchased area when nesting/estimate available
     include_stair_glass = want_glass and (shape != "staircase" or bool(cfg.get("stairGlass", True)))
-    if net_sqft > 0 and include_stair_glass:
-        glass_label = (
-            f"Glass {glass_thickness:g} mm {glass_type}" + (" · no wastage" if not apply_wastage else " · purchased / cutting")
-        )
+    if include_stair_glass:
+        glass_label = "Glass"
+        if glass_thickness:
+            glass_label += f" {glass_thickness:g} mm {glass_type}".rstrip()
+        if not apply_wastage:
+            glass_label += " · no wastage"
+        else:
+            glass_label += " · purchased / cutting"
         add("glass", glass_label, round(purchased_sqft or net_sqft, 3), "sqft", r_glass, color_role="glass")
 
     pillar_type = str(cfg.get("pillarType") or ("ss" if want_ss else "block")).lower()
@@ -1697,9 +1811,11 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
     # Bill anchors whenever counted (continuous rail uses 1/2 ft spacing + 100 mm insets).
     if anchor_count:
         add("anchors", "Anchor bolts", anchor_count, "pc", r_anchor or 0.0, material=_mat_for("anchor"), color_role="anchor")
-    if want_bottom and r_brail and total_length_mm:
+    if want_bottom and total_length_mm:
         brail_mat = _mat_for("bottom_rail", "u_channel")
-        br_label = f"Bottom / continuous rail · {mount_hint}"
+        br_label = "Bottom"
+        if mount_hint:
+            br_label += f" · {mount_hint}"
         if cfg.get("bottomSize"):
             br_label += f" · {cfg.get('bottomSize')}"
         add("bottomRail", br_label, rail_unit_len, rail_bill_unit, r_brail,
@@ -1708,7 +1824,7 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
             items[-1]["sizeMm"] = str(cfg.get("bottomSize") or items[-1].get("sizeMm") or "")
             items[-1]["lengthMm"] = run_len_mm
             items[-1]["lengthRft"] = run_len_rft
-    if handrail_on and r_hrail and total_length_mm:
+    if handrail_on and total_length_mm:
         hr_label = "Handrail"
         if cfg.get("handrailSize"):
             hr_label += f" · {cfg.get('handrailSize')}"
@@ -1743,13 +1859,13 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
             material=_mat_for("epdm_bottom", "epdm"),
             color_role="epdm",
         )
-    if bend_count and (r_bend or True):
-        add("modularBend", "Modular bend (corners)", bend_count, "pc", r_bend, material=_mat_for("bend"), color_role="bend")
-    if connector_180 and (r_conn180 or True):
-        add("connector180", "180° handrail connector", connector_180, "pc", r_conn180,
+    if bend_count:
+        add("modularBend", "Modular band", bend_count, "pc", r_bend, material=_mat_for("bend"), color_role="bend")
+    if connector_180:
+        add("connector180", "180° band", connector_180, "pc", r_conn180,
             material=_mat_for("connector_180"), color_role="connector_180")
-    if end_caps and (r_endcap or True):
-        add("endCap", "Handrail end cap", end_caps, "pc", r_endcap, material=_mat_for("end_cap"), color_role="end_cap")
+    if end_caps:
+        add("endCap", "End cap", end_caps, "pc", r_endcap, material=_mat_for("end_cap"), color_role="end_cap")
     if wall_connectors and (r_wall or True):
         add("wallConnector", "Wall connector", wall_connectors, "pc", r_wall,
             material=_mat_for("wall_connector"), color_role="wall_connector")
@@ -2004,6 +2120,16 @@ def compute_railing(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "handrailSize": str(cfg.get("handrailSize") or "") or None,
         "studStations": stud_stations,
         "stairGeometry": stair_geo,
+        "runs": list(resolved_runs or []),
+        "divideSuggestions": [
+            {
+                "label": r.get("label"),
+                "lengthMm": r.get("horizontalMm") or r.get("lengthMm"),
+                "suggestions": r.get("divideSuggestions") or [],
+                "panels": r.get("panels"),
+            }
+            for r in (resolved_runs or [])
+        ],
         "segments": run_details,
         "continuousRailSegments": sum(1 for r in run_details if r.get("continuousRail")),
         "mountType": mount_hint,
@@ -2064,6 +2190,7 @@ def _railing_geometry(
         "glassPanels": list(stair_panels or []),
         "studStations": list(stud_stations or []),
         "studSizeMm": _i(cfg.get("studSizeMm"), 38),
+        "flights": list(cfg.get("_resolvedRuns") or (stair_geo or {}).get("flights") or []),
         "archSpanMm": _f(segments[0].get("spanMm") if segments else 0, 0),
         "archRiseMm": _f(segments[0].get("riseMm") if segments else 0, 0),
         "archRadiusMm": _f(segments[0].get("radiusMm") if segments else 0, 0),
@@ -2467,8 +2594,12 @@ def _svg_plan_polyline(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
                      f'fill="#fff" stroke="{stroke}" {_solid_sw(sw*0.7)}/>')
         # Bend marker at corner (end of segment except last)
         if i < len(pts) - 2:
+            turn = _f(segs[i].get("turnDeg")) if i < len(segs) else 90.0
+            side = "L" if turn > 0.5 else ("R" if turn < -0.5 else "")
+            deg = abs(turn)
+            blabel = f"{int(round(deg))}° {side}".strip() if deg >= 1 else "bend"
             p.append(f'<circle cx="{X(x1):.1f}" cy="{Y(y1):.1f}" r="{sw*4:.1f}" fill="#e7f3ee" stroke="{bend_c}" stroke-width="{sw*0.8:.2f}"/>')
-            p.append(f'<text x="{X(x1)+fs*0.6:.1f}" y="{Y(y1)-fs*0.3:.1f}" font-size="{fs*0.75:.1f}" fill="{bend_c}">bend</text>')
+            p.append(f'<text x="{X(x1)+fs*0.6:.1f}" y="{Y(y1)-fs*0.3:.1f}" font-size="{fs*0.75:.1f}" fill="{bend_c}">{escape(blabel)}</text>')
 
     # Wall / end-cap markers
     def _end_marker(pt: tuple[float, float], is_wall: bool, label: str) -> None:
@@ -2542,6 +2673,221 @@ def _svg_arch_plan(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
 
 
 def _svg_staircase(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
+    """Side-view stair railing: one flight or stacked multi-floor switchback."""
+    flights = list(g.get("flights") or q.get("runs") or [])
+    if len(flights) > 1:
+        return _svg_staircase_multi(q, g, flights)
+    return _svg_staircase_single(q, g)
+
+
+def _layout_stair_world(flights: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Elevation layout: +X up the first flight; 180° reverses heading (switchback)."""
+    heading = 1.0
+    x = 0.0
+    y = 0.0
+    laid: list[dict[str, Any]] = []
+    n = len(flights)
+    for i, run in enumerate(flights):
+        steps = max(_i(run.get("steps"), 1), 1)
+        riser = _f(run.get("riserMm"), 180.0)
+        tread = _f(run.get("treadMm"), 305.0)
+        horiz = _f(run.get("horizontalMm"))
+        rise = _f(run.get("floorHeightMm"))
+        if horiz <= 1:
+            horiz = steps * tread
+        if rise <= 1:
+            rise = steps * riser
+        if horiz <= 1:
+            horiz = 1000.0
+        last = i == n - 1
+        turn = str(run.get("turn") or "none").lower()
+        turn_deg = abs(_f(run.get("signedTurnDeg") or run.get("turnDeg")))
+        landing = _f(run.get("landingMm"))
+        if (not last) and landing <= 1 and turn not in ("none", "end", "stop", ""):
+            landing = max(tread * 2.0, 900.0)
+        laid.append({
+            "run": run,
+            "index": i,
+            "x0": x,
+            "y0": y,
+            "heading": heading,
+            "horiz": horiz,
+            "rise": rise,
+            "steps": steps,
+            "riser": riser,
+            "tread": tread,
+            "glassHeightMm": _f(run.get("glassHeightMm"), 900.0),
+            "landingMm": 0.0 if last else landing,
+            "turn": turn,
+            "turnDeg": 0.0 if last else turn_deg,
+            "label": run.get("label") or f"Floor {i + 1}",
+        })
+        x = x + heading * horiz
+        y = y + rise
+        laid[-1]["x1"] = x
+        laid[-1]["y1"] = y
+        if not last and landing > 1:
+            laid[-1]["landX0"] = x
+            laid[-1]["landY"] = y
+            x = x + heading * landing
+            laid[-1]["landX1"] = x
+        else:
+            laid[-1]["landX0"] = x
+            laid[-1]["landX1"] = x
+            laid[-1]["landY"] = y
+        if not last and turn_deg >= 170:
+            heading *= -1
+    return laid
+
+
+def _svg_staircase_multi(
+    q: Mapping[str, Any], g: Mapping[str, Any], flights: list[Mapping[str, Any]],
+) -> str:
+    """Multi-floor stair: switchback elevation + per-flight glass."""
+    laid = _layout_stair_world(flights)
+    glass_h_default = _f(g.get("glassHeightMm") or q.get("glassHeightMm") or q.get("heightMm"), 900.0)
+    guard = min(max(glass_h_default, 600.0), 1400.0) if glass_h_default > 50 else 900.0
+    panels = list(g.get("glassPanels") or g.get("panels") or q.get("glassPanels") or [])
+    stair_sm = str(q.get("stairMountType") or "").lower()
+    side_studs = "side" in stair_sm or str(q.get("mountType") or "").lower() == "side_mount"
+    overlap = _f(q.get("beamOverlapMm")) if side_studs else 0.0
+
+    xs: list[float] = []
+    ys: list[float] = []
+    for fl in laid:
+        xs.extend([fl["x0"], fl["x1"], fl.get("landX0", fl["x1"]), fl.get("landX1", fl["x1"])])
+        ys.extend([fl["y0"], fl["y1"] + (_f(fl.get("glassHeightMm")) or guard)])
+        if overlap:
+            ys.append(fl["y0"] - overlap)
+    min_x, max_x = (min(xs), max(xs)) if xs else (0.0, 1.0)
+    min_y, max_y = (min(ys), max(ys)) if ys else (0.0, 1.0)
+    span_x = max(max_x - min_x, 1.0)
+    span_y = max(max_y - min_y, 1.0)
+    pad = max(span_x, span_y) * 0.12 + 160.0
+    vb_w = span_x + pad * 2
+    vb_h = span_y + pad * 2.2
+    ox = pad - min_x
+    oy = pad + max_y
+
+    def X(mx: float) -> float:
+        return ox + mx
+
+    def Y(my: float) -> float:
+        return oy - my
+
+    def nosing(fl: Mapping[str, Any], local: float) -> tuple[float, float]:
+        hdg = _f(fl.get("heading"), 1.0)
+        horiz = max(_f(fl.get("horiz")), 1.0)
+        t = max(0.0, min(local / horiz, 1.0))
+        return (
+            _f(fl.get("x0")) + hdg * local,
+            _f(fl.get("y0")) + _f(fl.get("rise")) * t,
+        )
+
+    sw = max(1.35, min(max(span_x, span_y) / 1400.0, 2.40))
+    stroke, dim, rail_c = "#14181c", "#8c1f18", "#14181c"
+    glass, glass_stroke = "#dceaf6", "#14181c"
+    fs = max(vb_w, vb_h) * 0.013
+    p: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb_w:.1f} {vb_h:.1f}" font-family="Segoe UI, Arial, sans-serif">',
+        f'<rect x="0" y="0" width="{vb_w:.1f}" height="{vb_h:.1f}" fill="#ffffff"/>',
+        '<defs><pattern id="beamHatchStair" patternUnits="userSpaceOnUse" width="8" height="8">'
+        '<path d="M0,8 L8,0" stroke="#b8c0c8" stroke-width="0.8"/></pattern></defs>',
+    ]
+
+    for fl in laid:
+        hdg = _f(fl.get("heading"), 1.0)
+        sx, sy = _f(fl["x0"]), _f(fl["y0"])
+        d_steps = [f'M{X(sx):.1f},{Y(sy):.1f}']
+        for _step in range(max(_i(fl.get("steps"), 1), 1)):
+            sx += hdg * _f(fl.get("tread"))
+            d_steps.append(f'L{X(sx):.1f},{Y(sy):.1f}')
+            sy += _f(fl.get("riser"))
+            d_steps.append(f'L{X(sx):.1f},{Y(sy):.1f}')
+        p.append(f'<path d="{" ".join(d_steps)}" fill="none" stroke="{stroke}" stroke-width="{sw*1.2:.2f}"/>')
+        land = _f(fl.get("landingMm"))
+        if land > 1:
+            lx0, ly = _f(fl.get("landX0")), _f(fl.get("landY"))
+            lx1 = _f(fl.get("landX1"))
+            gh = _f(fl.get("glassHeightMm"), guard)
+            p.append(
+                f'<line x1="{X(lx0):.1f}" y1="{Y(ly):.1f}" x2="{X(lx1):.1f}" y2="{Y(ly):.1f}" '
+                f'stroke="{stroke}" stroke-width="{sw*1.1:.2f}"/>'
+            )
+            p.append(
+                f'<rect x="{min(X(lx0), X(lx1)):.1f}" y="{Y(ly + gh):.1f}" width="{abs(lx1-lx0):.1f}" '
+                f'height="{gh:.1f}" fill="{glass}" fill-opacity="0.55" stroke="{glass_stroke}" {_solid_sw(sw*0.8)}/>'
+            )
+            side = "L" if (fl.get("turn") or "").startswith("l") else (
+                "R" if (fl.get("turn") or "").startswith("r") else ""
+            )
+            deg = _f(fl.get("turnDeg"))
+            bl = f'{int(round(deg))}° {side}'.strip() if deg >= 1 else "landing"
+            p.append(
+                f'<text x="{X((lx0+lx1)/2):.1f}" y="{Y(ly + gh + fs):.1f}" text-anchor="middle" '
+                f'font-size="{fs*0.8:.1f}" fill="#0a5a48" font-weight="700">{escape(bl)}</text>'
+            )
+        p.append(
+            f'<text x="{X((_f(fl["x0"])+_f(fl["x1"]))/2):.1f}" y="{Y(_f(fl["y1"]) + _f(fl["glassHeightMm"], guard) + fs*1.6):.1f}" '
+            f'text-anchor="middle" font-size="{fs*0.75:.1f}" fill="#555">{escape(str(fl.get("label")))}</text>'
+        )
+        # Slope handrail
+        x0, y0 = nosing(fl, 0)
+        x1, y1 = nosing(fl, _f(fl["horiz"]))
+        gh = _f(fl.get("glassHeightMm"), guard)
+        p.append(
+            f'<line x1="{X(x0):.1f}" y1="{Y(y0 + gh):.1f}" x2="{X(x1):.1f}" y2="{Y(y1 + gh):.1f}" '
+            f'stroke="{rail_c}" {_solid_sw(sw*1.6)} data-handrail="1"/>'
+        )
+
+    for panel in panels:
+        if str(panel.get("kind") or "slope") == "landing":
+            continue
+        fi = max(_i(panel.get("flight"), 1) - 1, 0)
+        if fi >= len(laid):
+            continue
+        fl = laid[fi]
+        local0 = panel.get("localStartMm")
+        if local0 is None:
+            local0 = _f(panel.get("panelStartHorizontalPosition"))
+        local1 = _f(local0) + _f(panel.get("panelWidthHorizontal") or (
+            _f(panel.get("panelEndHorizontalPosition")) - _f(panel.get("panelStartHorizontalPosition"))
+        ))
+        if _f(local1) <= _f(local0):
+            continue
+        hl = _f(panel.get("leftGlassHeight"), _f(fl.get("glassHeightMm"), guard))
+        hr = _f(panel.get("rightGlassHeight"), hl)
+        wx0, wy0 = nosing(fl, _f(local0))
+        wx1, wy1 = nosing(fl, _f(local1))
+        y0b = wy0 - overlap if overlap > 0 else wy0
+        y1b = wy1 - overlap if overlap > 0 else wy1
+        pts = [
+            (X(wx0), Y(y0b)),
+            (X(wx1), Y(y1b)),
+            (X(wx1), Y(wy1 + hr)),
+            (X(wx0), Y(wy0 + hl)),
+        ]
+        poly = " ".join(f"{a:.1f},{b:.1f}" for a, b in pts)
+        p.append(f'<polygon points="{poly}" fill="{glass}" fill-opacity="0.85" stroke="{glass_stroke}" {_solid_sw(sw)} data-glass="1"/>')
+        mx = (wx0 + wx1) / 2
+        my = (wy0 + wy1) / 2 + (hl + hr) / 4
+        pno = panel.get("index") or ""
+        wmm = abs(_f(local1) - _f(local0))
+        label = f'G{pno} {wmm:.0f}×{max(hl, hr):.0f}'
+        p.append(f'<text x="{X(mx):.1f}" y="{Y(my):.1f}" text-anchor="middle" font-weight="700" font-size="{fs*0.85:.1f}" fill="#173a63">{escape(label)}</text>')
+
+    mount_lbl = q.get("mountLabel") or railing_mount_label(q.get("mountType"))
+    n_pan = len([p0 for p0 in panels if str(p0.get("kind") or "slope") != "landing"])
+    summ = (
+        f'Staircase railing · {mount_lbl} · {len(laid)} floors · {n_pan} panels · '
+        f'pillars {q.get("stairPillars", 0)} · studs {q.get("stairStuds", 0)}'
+    )
+    p.append(f'<text x="{pad*0.35:.1f}" y="{fs*1.3:.1f}" font-size="{fs:.1f}" fill="#111">{escape(summ)}</text>')
+    p.append('</svg>')
+    return "".join(p)
+
+
+def _svg_staircase_single(q: Mapping[str, Any], g: Mapping[str, Any]) -> str:
     """Side-view stair railing: trapezoid glass panels + dual studs every 3 steps."""
     steps = max(_i(g.get("stairSteps"), 12), 1)
     rise = _f(g.get("stairRiseMm"), 150.0)

@@ -51,6 +51,14 @@ a{color:inherit}
 .rail-tools .rt-internal table{width:100%;border-collapse:collapse}
 .rail-tools .rt-internal td{padding:.12rem .2rem;border-bottom:1px solid #eee}
 .rail-tools .rt-warn{color:#8c1f18;font-size:.72rem;margin-top:.2rem}
+.rail-run{border:1px solid var(--line);border-radius:8px;padding:.4rem .45rem;margin-top:.35rem;background:#fff}
+.rail-run .rail-run-head{display:flex;align-items:center;justify-content:space-between;gap:.35rem;margin-bottom:.2rem}
+.rail-run .rail-div-chips{display:flex;flex-wrap:wrap;gap:.25rem;margin-top:.3rem}
+.rail-run .rail-div-chips button{border:1px solid var(--line);background:#f7faf8;border-radius:999px;padding:.12rem .5rem;font-size:.68rem;cursor:pointer;line-height:1.25}
+.rail-run .rail-div-chips button.rec{border-color:var(--green);color:var(--green);font-weight:600}
+.rail-run .rail-div-chips button.over{border-color:#b45324;color:#8c1f18}
+.rail-run .rail-div-chips button.active{background:var(--green);color:#fff;border-color:var(--green)}
+.rail-run .rail-run-tot{font-size:.7rem;color:var(--muted);margin-top:.2rem}
 .rail-tools.collapsed .rt-body{display:none}
 .rail-tools .rt-panel{display:none;margin-top:.2rem;padding:.35rem .4rem;border:1px dashed var(--line);border-radius:8px;background:rgba(255,255,255,.55)}
 .rail-tools .rt-panel.active{display:block}
@@ -646,7 +654,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
                       <button class="btn ghost sm" type="button" id="btnRailPresetStep">Preset stepped</button>
                     </div>
                   </div>
-                  <div class="rt-row" style="margin-top:.35rem">
+                  <div class="rt-row" id="wrapRailLegacySize" style="display:none">
                     <div><label class="l">Len mm *</label><input id="rLenMm" type="number" step="1" placeholder="required" style="width:80px"/></div>
                     <div><label class="l">Ht mm *</label><input id="rHtMm" type="number" step="1" value="1000" style="width:72px"/></div>
                     <div><label class="l">Len ft</label><input id="rLenFt" type="number" step="0.01" style="width:56px"/></div>
@@ -661,8 +669,8 @@ button.pill{border:0;font:inherit;cursor:pointer}
                   </div>
                 </div>
                 <div id="wrapRailDesignStair" style="display:none">
-                  <span class="l" style="width:100%;margin:0 0 .15rem">Stair geometry · steps auto from floor ÷ riser</span>
-                  <div class="rt-row" id="wrapRailStair">
+                  <span class="l" style="width:100%;margin:0 0 .15rem">Stair geometry · slope tape or step sizes, then glass divide</span>
+                  <div class="rt-row" id="wrapRailStair" style="display:none">
                     <div><label class="l">Floor ht mm *</label><input id="rFloorH" type="number" value="2500" style="width:72px"/></div>
                     <div><label class="l">Riser mm</label><input id="rRise" type="number" value="180" style="width:56px"/></div>
                     <div><label class="l">Tread mm</label><input id="rRun" type="number" value="305" style="width:56px"/></div>
@@ -672,6 +680,15 @@ button.pill{border:0;font:inherit;cursor:pointer}
                     <div><label class="l">Qty</label><input id="rQtyStair" type="number" min="1" value="1" style="width:44px"/></div>
                   </div>
                   <div id="rRiseWarn" class="rt-warn" style="display:none"></div>
+                </div>
+                <div id="wrapRailRuns" style="width:100%;margin-top:.35rem">
+                  <div class="rt-row" style="align-items:center;margin-top:0">
+                    <span class="l" style="margin:0" id="rRunRowsTitle">Spans</span>
+                    <button class="btn ghost sm" type="button" id="btnRailAddRun">+ Add span</button>
+                    <div><label class="l">Gap mm</label><input id="rGapLive" type="number" value="12" style="width:52px"/></div>
+                    <div><label class="l">Qty</label><input id="rQtyLive" type="number" min="1" value="1" style="width:48px"/></div>
+                  </div>
+                  <div id="rRunRows"></div>
                 </div>
                 <div id="rPanelPreview" class="rt-panel-preview">Panel sizes update live</div>
               </div>
@@ -2066,6 +2083,7 @@ const state = {
   railBottomKind: 'continuous', // continuous | block | ss_pillar | studs
   railStairBottom: 'block', // block | topiller
   railStairMount: 'side', // step | side — default side (table); step is explicit exception
+  railRuns: [],
   railingMode: false,
   ventMode: false,
   vtMode: 'split',
@@ -5020,6 +5038,8 @@ function syncRailWizardUi() {
   });
   syncRailBottomUi();
   syncRailShapeUi();
+  bindRailRunEvents();
+  renderRailRunRows(false);
 }
 function syncRailShapeUi() {
   const shape = state.railShape || 'straight';
@@ -5123,6 +5143,12 @@ function populateRailTools(cfg) {
   set('rAnchorSpacingFt', cfg.anchorSpacingFt || 2);
   if (cfg.bottomSize && $('rBottomSizePick')) $('rBottomSizePick').value = cfg.bottomSize;
   if (cfg.handrailSize && $('rHandSizePick')) $('rHandSizePick').value = cfg.handrailSize;
+  if (Array.isArray(cfg.runs) && cfg.runs.length) {
+    state.railRuns = cfg.runs.map((r) => ({ ...r }));
+  } else {
+    state.railRuns = [];
+  }
+  if ($('rGapLive') && cfg.gapMm) $('rGapLive').value = cfg.gapMm;
   syncRailWizardUi();
   showRailTools(true);
   loadRailingMaterialsIntoTools();
@@ -5337,6 +5363,345 @@ function applyRailHwPreset(p) {
     if (id && $(eid)) $(eid).value = id;
   });
 }
+const RAIL_MAX_GLASS_MM = 2440;
+function railSuggestDivides(lengthMm, gap, edge) {
+  const L = Math.max(+lengthMm || 0, 0);
+  const g = Math.max(+gap || 12, 0);
+  const e = Math.max(+edge || 0, 0);
+  const usable = Math.max(L - 2 * e, 0);
+  if (usable <= 1) return [];
+  const cap = RAIL_MAX_GLASS_MM;
+  const nFit = Math.max(1, Math.ceil((usable + g) / (cap + g)));
+  const nMax = Math.max(nFit + 4, 4);
+  const out = [];
+  for (let n = 1; n <= nMax; n++) {
+    const each = (usable - g * Math.max(n - 1, 0)) / n;
+    if (each <= 1) continue;
+    out.push({
+      panels: n,
+      eachMm: Math.round(each),
+      overMax: each > cap + 0.5,
+      recommended: n === nFit,
+    });
+  }
+  return out;
+}
+function defaultRailRun(stairs) {
+  if (stairs) {
+    return {
+      sizeMethod: 'steps',
+      floorHeightMm: 2500,
+      slopeLengthMm: '',
+      riserMm: 180,
+      treadMm: 305,
+      steps: 0,
+      glassHeightMm: 900,
+      panels: 0,
+      turn: 'none',
+      turnDeg: 180,
+      landingMm: 0,
+    };
+  }
+  return {
+    sizeMethod: 'direct',
+    lengthMm: '',
+    glassHeightMm: 1000,
+    panels: 0,
+    turn: 'none',
+    turnDeg: 90,
+  };
+}
+function railRunDivideLength(r, stairs) {
+  if (!stairs) return Math.max(+r.lengthMm || 0, 0);
+  const method = r.sizeMethod || 'steps';
+  const riser = +r.riserMm || 180;
+  const tread = +r.treadMm || 305;
+  let steps = +r.steps || 0;
+  const fh = +r.floorHeightMm || 0;
+  const slope = +r.slopeLengthMm || 0;
+  if (method === 'steps') {
+    if (steps <= 0 && fh && riser) steps = Math.max(Math.round(fh / riser), 1);
+    if (steps <= 0) steps = 12;
+    return steps * tread;
+  }
+  if (slope > 1 && fh > 1 && slope > fh) {
+    return Math.sqrt(Math.max(slope * slope - fh * fh, 0));
+  }
+  if (fh > 1 && (+r.lengthMm || +r.horizontalMm)) return +r.lengthMm || +r.horizontalMm;
+  return 0;
+}
+function seedRailRuns() {
+  if (Array.isArray(state.railRuns) && state.railRuns.length) return;
+  const stairs = railIsStairs();
+  const r = defaultRailRun(stairs);
+  if (stairs) {
+    if ($('rFloorH') && $('rFloorH').value) r.floorHeightMm = +$('rFloorH').value;
+    if ($('rRise') && $('rRise').value) r.riserMm = +$('rRise').value;
+    if ($('rRun') && $('rRun').value) r.treadMm = +$('rRun').value;
+    if ($('rSteps') && $('rSteps').value) r.steps = +$('rSteps').value;
+    if ($('rGlassH') && $('rGlassH').value) r.glassHeightMm = +$('rGlassH').value;
+    if ($('rPanelsStair') && $('rPanelsStair').value) r.panels = +$('rPanelsStair').value;
+  } else {
+    if ($('rLenMm') && $('rLenMm').value) r.lengthMm = +$('rLenMm').value;
+    if ($('rHtMm') && $('rHtMm').value) r.glassHeightMm = +$('rHtMm').value;
+    if ($('rPanels') && $('rPanels').value) r.panels = +$('rPanels').value;
+  }
+  state.railRuns = [r];
+}
+function readRailRunsFromDom() {
+  const host = $('rRunRows');
+  if (!host) return state.railRuns || [];
+  const stairs = railIsStairs();
+  const cards = [...host.querySelectorAll('.rail-run')];
+  if (!cards.length) return state.railRuns || [];
+  const last = cards.length - 1;
+  state.railRuns = cards.map((card, i) => {
+    const val = (k) => {
+      const el = card.querySelector(`[data-k="${k}"]`);
+      return el ? el.value : '';
+    };
+    const num = (k, d) => {
+      const v = val(k);
+      return v === '' ? d : +v;
+    };
+    const row = defaultRailRun(stairs);
+    row.sizeMethod = val('sizeMethod') || row.sizeMethod;
+    row.floorHeightMm = num('floorHeightMm', row.floorHeightMm);
+    row.slopeLengthMm = num('slopeLengthMm', 0) || '';
+    row.riserMm = num('riserMm', row.riserMm);
+    row.treadMm = num('treadMm', row.treadMm);
+    row.steps = num('steps', 0);
+    row.lengthMm = num('lengthMm', 0) || '';
+    row.glassHeightMm = num('glassHeightMm', row.glassHeightMm);
+    row.panels = num('panels', 0);
+    row.landingMm = num('landingMm', 0);
+    row.turn = i === last ? 'none' : (val('turn') || 'none');
+    row.turnDeg = i === last ? 0 : num('turnDeg', stairs ? 180 : 90);
+    row.label = stairs ? `Floor ${i + 1}` : `Span ${String.fromCharCode(65 + i)}`;
+    return row;
+  });
+  return state.railRuns;
+}
+function collectRailRuns() {
+  const rows = readRailRunsFromDom();
+  const stairs = railIsStairs();
+  const gap = ($('rGapLive') && +$('rGapLive').value) || ($('rGap') && +$('rGap').value) || 12;
+  return rows.map((r, i) => {
+    const last = i === rows.length - 1;
+    const out = {
+      sizeMethod: r.sizeMethod,
+      glassHeightMm: +r.glassHeightMm || (stairs ? 900 : 1000),
+      panels: +r.panels || 0,
+      gapMm: gap,
+      turn: last ? 'none' : (r.turn || 'none'),
+      turnDeg: last ? 0 : (+r.turnDeg || (stairs ? 180 : 90)),
+      landingMm: +r.landingMm || 0,
+      label: r.label,
+      maxGlassMm: RAIL_MAX_GLASS_MM,
+    };
+    if (stairs) {
+      out.floorHeightMm = +r.floorHeightMm || 0;
+      out.slopeLengthMm = +r.slopeLengthMm || 0;
+      out.riserMm = +r.riserMm || 180;
+      out.treadMm = +r.treadMm || 305;
+      out.steps = +r.steps || 0;
+      out.lengthMm = +r.lengthMm || 0;
+    } else {
+      out.lengthMm = +r.lengthMm || 0;
+    }
+    return out;
+  }).filter(r => stairs
+    ? ((+r.floorHeightMm > 0 || +r.slopeLengthMm > 0 || (+r.steps > 0 && +r.treadMm > 0)) || +r.lengthMm > 0)
+    : +r.lengthMm > 0);
+}
+function railDivideChipsHtml(r, stairs, selected) {
+  const edge = stairs ? 100 : (($('rGapLive') && +$('rGapLive').value) || 12);
+  const gap = ($('rGapLive') && +$('rGapLive').value) || 12;
+  const L = railRunDivideLength(r, stairs);
+  const sug = railSuggestDivides(L, gap, edge);
+  if (!sug.length) return '<span class="muted">Enter size to see glass splits</span>';
+  const pick = +selected || 0;
+  return sug.map(s => {
+    const cls = [
+      s.recommended ? 'rec' : '',
+      s.overMax ? 'over' : '',
+      pick === s.panels ? 'active' : '',
+    ].filter(Boolean).join(' ');
+    const note = s.overMax ? ' · over 2440' : (s.recommended ? ' · max 2440' : '');
+    return `<button type="button" class="${cls}" data-div-n="${s.panels}">${s.panels} glass · ${s.eachMm} mm${note}</button>`;
+  }).join('');
+}
+function railRunCardHtml(r, i, stairs) {
+  const last = i === (state.railRuns.length - 1);
+  const method = r.sizeMethod || (stairs ? 'steps' : 'direct');
+  const tot = (() => {
+    if (!stairs) return '';
+    const L = railRunDivideLength(r, stairs);
+    const fh = method === 'steps'
+      ? ((+r.steps || Math.max(Math.round((+r.floorHeightMm || 0) / (+r.riserMm || 180)), 1) || 12) * (+r.riserMm || 180))
+      : (+r.floorHeightMm || 0);
+    const slope = method === 'steps'
+      ? ((+r.steps || 12) * Math.hypot(+r.riserMm || 180, +r.treadMm || 305))
+      : (+r.slopeLengthMm || (L && fh ? Math.hypot(L, fh) : 0));
+    return `Floor ${Math.round(fh) || '—'} mm · length ${Math.round(L) || '—'} mm · slope ${Math.round(slope) || '—'} mm`;
+  })();
+  const methodSel = stairs
+    ? `<select data-k="sizeMethod" style="width:132px">
+         <option value="steps"${method === 'steps' ? ' selected' : ''}>Steps (depth×ht×qty)</option>
+         <option value="slope"${method === 'slope' ? ' selected' : ''}>Slope tape + floor ht</option>
+         <option value="direct"${method === 'direct' ? ' selected' : ''}>Floor ht + length</option>
+       </select>`
+    : '';
+  const sizeFields = stairs
+    ? (method === 'slope'
+      ? `<div><label class="l">Slope tape mm *</label><input data-k="slopeLengthMm" type="number" value="${r.slopeLengthMm || ''}" style="width:88px"/></div>
+         <div><label class="l">Floor ht mm *</label><input data-k="floorHeightMm" type="number" value="${r.floorHeightMm || ''}" style="width:80px"/></div>`
+      : method === 'direct'
+      ? `<div><label class="l">Floor ht mm *</label><input data-k="floorHeightMm" type="number" value="${r.floorHeightMm || ''}" style="width:80px"/></div>
+         <div><label class="l">Length mm *</label><input data-k="lengthMm" type="number" value="${r.lengthMm || ''}" style="width:80px"/></div>`
+      : `<div><label class="l">Step depth mm *</label><input data-k="treadMm" type="number" value="${r.treadMm || 305}" style="width:80px"/></div>
+         <div><label class="l">Step ht mm *</label><input data-k="riserMm" type="number" value="${r.riserMm || 180}" style="width:72px"/></div>
+         <div><label class="l">Steps qty *</label><input data-k="steps" type="number" min="0" value="${r.steps || ''}" style="width:64px"/></div>`)
+    : `<div><label class="l">Size mm *</label><input data-k="lengthMm" type="number" value="${r.lengthMm || ''}" style="width:96px"/></div>`;
+  const turnBlock = last ? '<span class="muted" style="font-size:.7rem">End</span>' : `
+    <div><label class="l">Band</label>
+      <select data-k="turn" style="width:88px">
+        <option value="left"${(r.turn || 'left') === 'left' ? ' selected' : ''}>Left</option>
+        <option value="right"${r.turn === 'right' ? ' selected' : ''}>Right</option>
+      </select>
+    </div>
+    <div><label class="l">Degree</label>
+      <select data-k="turnDeg" style="width:72px">
+        <option value="90"${String(r.turnDeg) === '90' ? ' selected' : ''}>90°</option>
+        <option value="180"${String(r.turnDeg) !== '90' ? ' selected' : ''}>180°</option>
+      </select>
+    </div>`;
+  return `<div class="rail-run" data-idx="${i}">
+    <div class="rail-run-head">
+      <strong style="font-size:.78rem">${stairs ? 'Floor' : 'Span'} ${stairs ? (i + 1) : String.fromCharCode(65 + i)}</strong>
+      ${i ? `<button class="btn ghost sm" type="button" data-del-run="${i}">Remove</button>` : ''}
+    </div>
+    <div class="rt-row" style="margin-top:0">
+      ${methodSel}
+      ${sizeFields}
+      <div><label class="l">Glass ht mm *</label><input data-k="glassHeightMm" type="number" value="${r.glassHeightMm || (stairs ? 900 : 1000)}" style="width:72px"/></div>
+      <div><label class="l">Divide</label><input data-k="panels" type="number" min="0" value="${r.panels || ''}" placeholder="auto" style="width:56px"/></div>
+      ${turnBlock}
+    </div>
+    ${tot ? `<div class="rail-run-tot">${tot}</div>` : ''}
+    <div class="rail-div-chips">${railDivideChipsHtml(r, stairs, r.panels)}</div>
+  </div>`;
+}
+function renderRailRunRows(force) {
+  const host = $('rRunRows');
+  if (!host) return;
+  seedRailRuns();
+  const stairs = railIsStairs();
+  if ($('rRunRowsTitle')) $('rRunRowsTitle').textContent = stairs
+    ? 'Floors · slope tape or steps, then divide glass'
+    : 'Spans · size, divide, then band left/right';
+  if ($('btnRailAddRun')) $('btnRailAddRun').textContent = stairs ? '+ Add floor' : '+ Add span';
+  const mode = stairs ? 'stair' : 'normal';
+  if (!force && host.dataset.mode === mode && host.querySelectorAll('.rail-run').length === state.railRuns.length) {
+    refreshAllRailDivideChips();
+    return;
+  }
+  host.dataset.mode = mode;
+  host.innerHTML = state.railRuns.map((r, i) => railRunCardHtml(r, i, stairs)).join('');
+}
+function refreshAllRailDivideChips() {
+  const stairs = railIsStairs();
+  readRailRunsFromDom();
+  document.querySelectorAll('#rRunRows .rail-run').forEach((card, i) => {
+    const chips = card.querySelector('.rail-div-chips');
+    const tot = card.querySelector('.rail-run-tot');
+    const r = state.railRuns[i];
+    if (!r) return;
+    if (chips) chips.innerHTML = railDivideChipsHtml(r, stairs, r.panels);
+    if (tot && stairs) {
+      const L = railRunDivideLength(r, stairs);
+      const method = r.sizeMethod || 'steps';
+      const fh = method === 'steps'
+        ? ((+r.steps || Math.max(Math.round((+r.floorHeightMm || 0) / (+r.riserMm || 180)), 1) || 12) * (+r.riserMm || 180))
+        : (+r.floorHeightMm || 0);
+      const slope = method === 'steps'
+        ? ((+r.steps || 12) * Math.hypot(+r.riserMm || 180, +r.treadMm || 305))
+        : (+r.slopeLengthMm || (L && fh ? Math.hypot(L, fh) : 0));
+      tot.textContent = `Floor ${Math.round(fh) || '—'} mm · length ${Math.round(L) || '—'} mm · slope ${Math.round(slope) || '—'} mm`;
+    }
+  });
+}
+function addRailRun() {
+  readRailRunsFromDom();
+  const stairs = railIsStairs();
+  if (!state.railRuns.length) seedRailRuns();
+  const prev = state.railRuns[state.railRuns.length - 1];
+  if (prev && (prev.turn === 'none' || !prev.turn)) {
+    prev.turn = 'left';
+    prev.turnDeg = stairs ? 180 : 90;
+  }
+  state.railRuns.push(defaultRailRun(stairs));
+  renderRailRunRows(true);
+  railingCalc();
+}
+function bindRailRunEvents() {
+  const host = $('rRunRows');
+  if (!host || host.dataset.bound) return;
+  host.dataset.bound = '1';
+  const go = () => {
+    readRailRunsFromDom();
+    const stairs = railIsStairs();
+    const first = state.railRuns[0] || {};
+    if (stairs) {
+      if ($('rFloorH') && first.floorHeightMm) $('rFloorH').value = first.floorHeightMm;
+      if ($('rRise') && first.riserMm) $('rRise').value = first.riserMm;
+      if ($('rRun') && first.treadMm) $('rRun').value = first.treadMm;
+      if ($('rSteps')) $('rSteps').value = first.steps || 0;
+      if ($('rGlassH') && first.glassHeightMm) $('rGlassH').value = first.glassHeightMm;
+      if ($('rPanelsStair') && first.panels) $('rPanelsStair').value = first.panels;
+    } else {
+      if ($('rLenMm') && first.lengthMm) $('rLenMm').value = first.lengthMm;
+      if ($('rHtMm') && first.glassHeightMm) $('rHtMm').value = first.glassHeightMm;
+      if ($('rPanels') && first.panels) $('rPanels').value = first.panels;
+    }
+    if ($('rGap') && $('rGapLive')) $('rGap').value = $('rGapLive').value || $('rGap').value;
+    refreshAllRailDivideChips();
+    clearTimeout(state._railT);
+    state._railT = setTimeout(() => { if (isRailingMode() || state.railingMode) railingCalc(); }, 280);
+  };
+  host.addEventListener('input', (e) => {
+    if (e.target && e.target.getAttribute('data-k') === 'sizeMethod') return;
+    go();
+  });
+  host.addEventListener('change', (e) => {
+    const k = e.target && e.target.getAttribute('data-k');
+    if (k === 'sizeMethod' || k === 'turn' || k === 'turnDeg') {
+      readRailRunsFromDom();
+      renderRailRunRows(true);
+    }
+    go();
+  });
+  host.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-div-n]');
+    if (chip) {
+      const card = chip.closest('.rail-run');
+      const inp = card && card.querySelector('[data-k="panels"]');
+      if (inp) inp.value = chip.getAttribute('data-div-n');
+      go();
+      return;
+    }
+    const del = e.target.closest('[data-del-run]');
+    if (del) {
+      const idx = +del.getAttribute('data-del-run');
+      readRailRunsFromDom();
+      if (idx > 0) state.railRuns.splice(idx, 1);
+      if (state.railRuns.length) state.railRuns[state.railRuns.length - 1].turn = 'none';
+      renderRailRunRows(true);
+      railingCalc();
+    }
+  });
+}
+
 function railingConfig(){
   const num = (id,d)=>{ const el=$(id); const v=el?el.value:''; return v===''?d:+v; };
   const stairs = railIsStairs();
@@ -5365,7 +5730,7 @@ function railingConfig(){
     lengthFt: lenMm ? undefined : num('rLenFt',0),
     heightFt: htMm ? undefined : num('rHtFt',0),
     panels,
-    gapMm: num('rGap',12), wallGapMm: num('rGap',12),
+    gapMm: num('rGapLive', num('rGap',12)), wallGapMm: num('rGapLive', num('rGap',12)),
     wallLeft: $('rWallL') ? $('rWallL').checked : true,
     wallRight: $('rWallR') ? $('rWallR').checked : true,
     wallStart: $('rWallL') ? $('rWallL').checked : true,
@@ -5481,6 +5846,32 @@ function railingConfig(){
   if (shape === 'staircase' && cfg.glassHeightMm) {
     cfg.heightMm = cfg.glassHeightMm;
   }
+  const runRows = collectRailRuns();
+  if (runRows.length) {
+    cfg.runs = runRows;
+    const first = runRows[0];
+    if (stairs) {
+      if (first.floorHeightMm) cfg.floorHeightMm = first.floorHeightMm;
+      if (first.riserMm) cfg.stairRiseMm = first.riserMm;
+      if (first.treadMm) cfg.stairRunMm = first.treadMm;
+      if (first.steps) cfg.stairSteps = first.steps;
+      if (first.glassHeightMm) {
+        cfg.glassHeightMm = first.glassHeightMm;
+        cfg.heightMm = first.glassHeightMm;
+      }
+      const psum = runRows.reduce((a, r) => a + (+r.panels || 0), 0);
+      if (psum) cfg.panels = psum;
+    } else {
+      const total = runRows.reduce((a, r) => a + (+r.lengthMm || 0), 0);
+      if (total) cfg.lengthMm = total;
+      if (first.glassHeightMm) cfg.heightMm = first.glassHeightMm;
+      const psum = runRows.reduce((a, r) => a + (+r.panels || 0), 0);
+      if (psum) cfg.panels = psum;
+      if (runRows.length > 1) {
+        cfg.shape = 'polyline';
+      }
+    }
+  }
   return cfg;
 }
 function renderRailingBom(q){
@@ -5587,6 +5978,11 @@ async function railingCalc(){
     if (!(cfg.lengthMm > 0) && !(cfg.lengthFt > 0) && $('lineW') && +$('lineW').value > 0) {
       cfg.lengthMm = +$('lineW').value;
       if ($('rLenMm') && !$('rLenMm').value) $('rLenMm').value = cfg.lengthMm;
+      if (state.railRuns && state.railRuns[0] && !state.railRuns[0].lengthMm) {
+        state.railRuns[0].lengthMm = cfg.lengthMm;
+        const inp = document.querySelector('#rRunRows .rail-run [data-k="lengthMm"]');
+        if (inp && !inp.value) inp.value = cfg.lengthMm;
+      }
     }
     if (!(cfg.heightMm > 0) && !(cfg.heightFt > 0) && $('lineH') && +$('lineH').value > 0) {
       cfg.heightMm = +$('lineH').value;
@@ -5675,9 +6071,10 @@ async function railingAdd(){
     toast('Railing length required');
     return;
   }
-  const qty = railIsStairs()
-    ? (($('rQtyStair') && +$('rQtyStair').value) || ($('rQty') && +$('rQty').value) || 1)
-    : (($('rQty') && +$('rQty').value) || 1);
+  const qty = ($('rQtyLive') && +$('rQtyLive').value)
+    || (railIsStairs()
+      ? (($('rQtyStair') && +$('rQtyStair').value) || ($('rQty') && +$('rQty').value) || 1)
+      : (($('rQty') && +$('rQty').value) || 1));
   const railProd = (($('lineProduct') && $('lineProduct').value) || 'railing');
   const p = (state.products||[]).find(x=>x&&x.id===railProd);
   const ptype = (q.shape === 'staircase' || state.railMode === 'staircase')
@@ -6223,12 +6620,14 @@ if ($('btnSaveGlass')) $('btnSaveGlass').onclick = async () => {
 };
 if ($('btnRailNext')) $('btnRailNext').onclick = railWizardNext;
 if ($('btnRailPrev')) $('btnRailPrev').onclick = railWizardPrev;
+if ($('btnRailAddRun')) $('btnRailAddRun').onclick = () => addRailRun();
 document.querySelectorAll('#railModeBtns [data-mode]').forEach(btn => {
   btn.onclick = () => {
     state.railMode = btn.dataset.mode;
     state.railShape = state.railMode === 'staircase' ? 'staircase' : 'straight';
     state.railStep = 'design';
     state.railingMode = true;
+    state.railRuns = [];
     state._railBasisTouched = false;
     if (state.railMode === 'staircase' && $('rHandrail')) $('rHandrail').checked = true;
     const ln = state.lines[state.selectedLine];
@@ -6315,7 +6714,7 @@ if ($('btnRailHwLoad')) $('btnRailHwLoad').onclick = () => {
  'rMount','rBeamOverlap','rBeamOverlapStair','rSpanPanels','rManual','rGlassThk','rGlassType','rGlassPreset','rColorMode','rSysColor',
  'rBottomSize','rBottomSizePick','rPillarSize','rHandSize','rHandSizePick','rStairPillarSize','rStudsPerGlassStep','rStudsPerGlassSide',
  'rHandBarFt','rAnchorSpacingFt','rWHrail','rWBrail','rWHrailUnit','rWBrailUnit','rREpdm',
- 'rRStudStep','rRStudSide','rRBlockStair','rQty','rQtyStair',
+ 'rRStudStep','rRStudSide','rRBlockStair','rQty','rQtyStair','rQtyLive','rGapLive',
  'rRGlass','rRBlock','rRAnchor','rRBend','rR180','rREnd','rRStud','rRBrail','rRHrail','rRWall'].forEach(id => {
   const el = $(id); if (!el) return;
   const go = () => {

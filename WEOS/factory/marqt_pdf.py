@@ -617,7 +617,24 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         hw_bits = []
         if hw_brand:
             hw_bits.append(str(hw_brand))
-        hw_bits.append(f"anchors {q.get('anchorCount') or 0}")
+        br = _bom("bottomRail") or {}
+        hr = _bom("handrail") or {}
+        gl = _bom("glass") or {}
+        mb = _bom("modularBend") or {}
+        b180 = _bom("connector180") or {}
+        cap = _bom("endCap") or {}
+        def _qty(row, fallback=0):
+            if row.get("qty") not in (None, ""):
+                return row.get("qty")
+            return fallback
+        hw_bits.append(f"Bottom {_qty(br, q.get('lengthRft') or 0)} {br.get('unit') or 'rft'}")
+        hw_bits.append(f"Handrails {_qty(hr, q.get('lengthRft') or 0)} {hr.get('unit') or 'rft'}")
+        hw_bits.append(f"Glass {q.get('panelCount') or 0}")
+        hw_bits.append(f"Modular band {_qty(mb, q.get('bendCount') or q.get('connector90Count') or 0)}")
+        hw_bits.append(f"180° band {_qty(b180, q.get('connector180Count') or 0)}")
+        hw_bits.append(f"End cap {_qty(cap, q.get('endCapCount') or 0)}")
+        if q.get("anchorCount"):
+            hw_bits.append(f"anchors {q.get('anchorCount') or 0}")
         asp = q.get("anchorSpacingFt") or (rail_cfg or {}).get("anchorSpacingFt")
         if asp and (bottom_kind in ("continuous", "rail") or q.get("continuousRail")):
             try:
@@ -632,18 +649,8 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
             hw_bits.append(f"EPDM handrail {epdm_hr_q} rft")
         if epdm_br_q:
             hw_bits.append(f"EPDM bottom {epdm_br_q} rft")
-        if q.get("endCapCount") or (rail_cfg or {}).get("endCaps"):
-            hw_bits.append(f"end caps {q.get('endCapCount') or 0}")
         if q.get("wallConnectors"):
             hw_bits.append(f"wall connectors {q.get('wallConnectors')}")
-        n90 = q.get("connector90Count") or q.get("bendCount") or 0
-        n180 = q.get("connector180Count") or 0
-        if n90 or n180:
-            grade = ""
-            c90 = _bom("modularBend") or _bom("connector180") or {}
-            if c90.get("grade"):
-                grade = f" · {c90.get('grade')}"
-            hw_bits.append(f"90° {n90} / 180° {n180}{grade}")
         add("HARDWARE", " · ".join(hw_bits) or "—")
         ov = q.get("beamOverlapMm") or (rail_cfg or {}).get("beamOverlapMm")
         if ov:
@@ -668,10 +675,41 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
                 f"{sg.get('steps') or (rail_cfg or {}).get('stairSteps') or '—'} steps"
                 f" · riser {sg.get('riserMm') or (rail_cfg or {}).get('stairRiseMm') or '—'} mm"
                 f" · tread {sg.get('treadMm') or (rail_cfg or {}).get('stairRunMm') or '—'} mm"
-                f" · floor {sg.get('floorHeightMm') or (rail_cfg or {}).get('floorHeightMm') or '—'} mm",
+                f" · floor {sg.get('floorHeightMm') or (rail_cfg or {}).get('floorHeightMm') or '—'} mm"
+                f" · {sg.get('flightCount') or len(q.get('runs') or []) or 1} floor(s)",
             )
+            for run in (q.get("runs") or sg.get("flights") or []):
+                if not isinstance(run, Mapping):
+                    continue
+                method = str(run.get("sizeMethod") or "")
+                turn = str(run.get("turn") or "none")
+                bits = [
+                    str(run.get("label") or f"Floor {(run.get('index') or 0) + 1}"),
+                    method,
+                    f"H {run.get('floorHeightMm') or '—'} mm",
+                    f"run {run.get('horizontalMm') or '—'} mm",
+                    f"slope {run.get('slopeLengthMm') or run.get('lengthMm') or '—'} mm",
+                    f"{run.get('panels') or 0} glass",
+                ]
+                if turn not in ("none", "", "end"):
+                    bits.append(f"{int(round(float(run.get('turnDeg') or 180)))}° {turn}")
+                add("FLOOR", " · ".join(str(b) for b in bits if b))
             if sg.get("riseMismatch"):
                 add("NOTE", str(sg.get("riseMismatchMessage") or "Rise mismatch vs floor height"))
+        runs_n = q.get("runs") if isinstance(q.get("runs"), list) else []
+        if shape != "staircase" and len(runs_n) > 1:
+            for run in runs_n:
+                if not isinstance(run, Mapping):
+                    continue
+                turn = str(run.get("turn") or "none")
+                bits = [
+                    str(run.get("label") or "Span"),
+                    f"{run.get('lengthMm') or 0} mm",
+                    f"{run.get('panels') or 0} glass",
+                ]
+                if turn not in ("none", "", "end"):
+                    bits.append(f"{int(round(float(run.get('turnDeg') or 90)))}° {turn}")
+                add("SPAN", " · ".join(str(b) for b in bits))
         if factory:
             for it in bom[:12]:
                 if not isinstance(it, Mapping):

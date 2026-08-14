@@ -99,7 +99,7 @@ def main() -> int:
     q = compute_railing(cfg)
     if q["shape"] != "staircase":
         fails.append("shape")
-    if q["stairStuds"] != (14 // 3) * 2:
+    if q["stairStuds"] != (q.get("panelCount") or 3) * 4:
         fails.append(f"studs {q['stairStuds']}")
     if q["stairPillars"] != 14 // 3:
         fails.append(f"pillars {q['stairPillars']}")
@@ -160,6 +160,60 @@ def main() -> int:
     # sqft conversion constant
     if not approx(SQMM_PER_SQFT, 92903.04, 1e-6):
         fails.append("SQMM_PER_SQFT")
+
+    from WEOS.factory.railing_runs import resolve_railing_run, suggest_glass_divides
+
+    steps_run = resolve_railing_run(
+        {"sizeMethod": "steps", "riserMm": 180, "treadMm": 305, "steps": 10, "floorHeightMm": 1800},
+        stairs=True,
+    )
+    if not approx(steps_run["floorHeightMm"], 1800, 0.5):
+        fails.append(f"steps floor kept {steps_run['floorHeightMm']}")
+    if not approx(steps_run["horizontalMm"], 3050, 0.5):
+        fails.append(f"steps horiz {steps_run['horizontalMm']}")
+    slope_run = resolve_railing_run(
+        {
+            "sizeMethod": "slope",
+            "slopeLengthMm": steps_run["slopeLengthMm"],
+            "floorHeightMm": 1800,
+        },
+        stairs=True,
+    )
+    if not approx(slope_run["horizontalMm"], steps_run["horizontalMm"], 1.0):
+        fails.append(f"slope horiz {slope_run['horizontalMm']} != {steps_run['horizontalMm']}")
+
+    sug = suggest_glass_divides(5000)
+    rec = next((s for s in sug if s.get("recommended")), None)
+    one = next((s for s in sug if s.get("panels") == 1), None)
+    if not rec or rec["eachMm"] > 2440:
+        fails.append(f"recommended split {rec}")
+    if not one or not one.get("overMax"):
+        fails.append("1 glass of 5000 mm should flag over 2440")
+
+    two = compute_railing({
+        "shape": "staircase",
+        "runs": [
+            {
+                "sizeMethod": "steps", "riserMm": 180, "treadMm": 305, "steps": 12,
+                "glassHeightMm": 900, "panels": 3, "turn": "left", "turnDeg": 180,
+            },
+            {
+                "sizeMethod": "slope", "slopeLengthMm": 4200, "floorHeightMm": 2500,
+                "glassHeightMm": 900, "panels": 2,
+            },
+        ],
+        "glassHeightMm": 900,
+        "rates": {"glassPerSqft": 200, "studPerPc": 80, "blockPerPc": 100},
+    })
+    if len(two.get("runs") or []) != 2:
+        fails.append(f"two-floor runs {len(two.get('runs') or [])}")
+    if int(two.get("panelCount") or 0) != 5:
+        fails.append(f"two-floor panels {two.get('panelCount')}")
+    svg2 = railing_svg({"shape": "staircase", "runs": two.get("runs")}, quote=two)
+    if "<svg" not in svg2 or len(svg2) < 800:
+        fails.append("multi-floor svg")
+    if "180" not in svg2:
+        fails.append("multi-floor svg missing 180 band label")
 
     if fails:
         print("FAIL")
