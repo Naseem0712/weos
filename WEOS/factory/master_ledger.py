@@ -1,8 +1,10 @@
-"""Master Ledger — one customer's quotes, advances, GST, balance.
+"""Master Ledger — one client, many projects.
 
-Same mobile (or same name if no mobile) rolls every WEOS and outside quote
-into one grand total. Advances may name a quote or Any; Any reduces this
-customer's total remaining balance. Different customers stay isolated.
+Same mobile (or same name if no mobile) is one client. Each project keeps
+its own quote number, value, advances and running balance. Client total is
+the sum of those projects. Search by mobile opens the client; open a
+project id to work inside that job only. Advances reduce both the selected
+project and the client total. Different customers stay isolated.
 """
 
 from __future__ import annotations
@@ -211,27 +213,33 @@ def _advances_for_job(
     return rows
 
 
-def _load_job_docs(seed: Mapping[str, Any], *, company_gst: str | None) -> list[dict[str, Any]]:
-    """All jobs for this customer (same mobile / name) — every quote on the ledger."""
+def _load_job_docs(
+    seed: Mapping[str, Any],
+    *,
+    company_gst: str | None,
+    include_siblings: bool = True,
+) -> list[dict[str, Any]]:
+    """Load this project, or every job for the same mobile (one client)."""
     from WEOS.factory.project_store import list_projects, load_project
 
     seed_id = str(seed.get("projectId") or "").strip()
     key = customer_group_key(seed)
     ids = {seed_id} if seed_id else set()
-    try:
-        rows = list_projects(
-            include_archived=True,
-            company_gst=company_gst,
-            include_unscoped=bool(company_gst),
-        )
-    except Exception:
-        rows = []
-    for row in rows:
-        rid = str(row.get("projectId") or "").strip()
-        if key and customer_group_key(row) == key:
-            ids.add(rid)
-        elif same_customer(seed, row):
-            ids.add(rid)
+    if include_siblings:
+        try:
+            rows = list_projects(
+                include_archived=True,
+                company_gst=company_gst,
+                include_unscoped=bool(company_gst),
+            )
+        except Exception:
+            rows = []
+        for row in rows:
+            rid = str(row.get("projectId") or "").strip()
+            if key and customer_group_key(row) == key:
+                ids.add(rid)
+            elif same_customer(seed, row):
+                ids.add(rid)
     docs: list[dict[str, Any]] = []
     seen: set[str] = set()
     for pid in ids:
@@ -247,7 +255,7 @@ def _load_job_docs(seed: Mapping[str, Any], *, company_gst: str | None) -> list[
                 continue
         if not _company_ok(doc, company_gst):
             continue
-        if key and customer_group_key(doc) not in {key, ""} and not same_customer(seed, doc):
+        if include_siblings and key and customer_group_key(doc) not in {key, ""} and not same_customer(seed, doc):
             if pid != seed_id:
                 continue
         docs.append(doc)
@@ -270,17 +278,49 @@ def _running_advances(advances: list[dict[str, Any]], project_value: float) -> l
     return out
 
 
+def _project_summary(doc: Mapping[str, Any], *, company_gst: str | None = None) -> dict[str, Any]:
+    one = ledger_from_docs([doc], company_gst=company_gst)
+    t = one.get("totals") or {}
+    disc = doc.get("quoteDiscount") if isinstance(doc.get("quoteDiscount"), Mapping) else {}
+    return {
+        "projectId": doc.get("projectId"),
+        "quotationId": doc.get("quotationId") or doc.get("projectId"),
+        "name": doc.get("name"),
+        "status": doc.get("status"),
+        "quoteCount": one.get("quoteCount"),
+        "projectValue": t.get("projectValue"),
+        "totalAdvances": t.get("totalAdvances"),
+        "runningBalance": t.get("runningBalance"),
+        "closingBalance": t.get("closingBalance"),
+        "balance": t.get("balance"),
+        "discountMode": (disc or {}).get("mode") or "off",
+        "discountAmount": t.get("discountAmount"),
+    }
+
+
 def ledger_from_docs(docs: list[Mapping[str, Any]], *, company_gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.project_store import live_quote_money
+
     quotes = job_quote_rows(list(docs))
     pids = [str(d.get("projectId") or "") for d in docs if d.get("projectId")]
     names = [str(d.get("customer") or "").strip() for d in docs if str(d.get("customer") or "").strip()]
+    taxable = 0.0
+    gst_amt = 0.0
+    value = 0.0
+    disc_cut = 0.0
+    for d in docs:
+        parts = live_quote_money(d)
+        taxable += _money(parts.get("totalTaxable"))
+        gst_amt += _money(parts.get("totalGst") if parts.get("totalGst") is not None else parts.get("gstAmount"))
+        value += _money(parts.get("totalGrand") if parts.get("totalGrand") is not None else parts.get("projectValue"))
+        disc_cut += _money(parts.get("discountAmount"))
+    taxable = round(taxable, 2)
+    gst_amt = round(gst_amt, 2)
+    value = round(value, 2)
     advances = _running_advances(
         _advances_for_job(pids, quotes, customer_names=names),
-        round(sum(_money(q.get("projectValue")) for q in quotes), 2),
+        value,
     )
-    taxable = round(sum(_money(q.get("totalTaxable")) for q in quotes), 2)
-    gst_amt = round(sum(_money(q.get("gstAmount")) for q in quotes), 2)
-    value = round(sum(_money(q.get("projectValue")) for q in quotes), 2)
     adv_total = round(sum(_money(a.get("amount")) for a in advances), 2)
     closing = round(value - adv_total, 2)
     running = closing
@@ -292,6 +332,7 @@ def ledger_from_docs(docs: list[Mapping[str, Any]], *, company_gst: str | None =
         "masterJobId": str(seed.get("masterJobId") or seed.get("projectId") or ""),
         "customerGroupKey": customer_group_key(seed),
         "projectId": seed.get("projectId"),
+        "quotationId": seed.get("quotationId") or seed.get("projectId"),
         "projectIds": pids,
         "name": seed.get("name"),
         "customer": seed.get("customer"),
@@ -303,6 +344,7 @@ def ledger_from_docs(docs: list[Mapping[str, Any]], *, company_gst: str | None =
         "quoteCount": len(quotes),
         "advances": advances,
         "advanceCount": len(advances),
+        "quoteDiscount": seed.get("quoteDiscount") if isinstance(seed.get("quoteDiscount"), Mapping) else {"mode": "off"},
         "totals": {
             "totalTaxable": taxable,
             "totalGst": gst_amt,
@@ -313,10 +355,17 @@ def ledger_from_docs(docs: list[Mapping[str, Any]], *, company_gst: str | None =
             "runningBalance": running,
             "closingBalance": closing,
             "balance": closing,
+            "discountAmount": round(disc_cut, 2),
             "currency": "INR",
         },
         "asOf": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def _stamp_scope(led: dict[str, Any], docs: list[Mapping[str, Any]], *, scope: str, company_gst: str | None) -> dict[str, Any]:
+    led["scope"] = scope
+    led["projects"] = [_project_summary(d, company_gst=company_gst) for d in docs]
+    return led
 
 
 def build_master_ledger(
@@ -325,7 +374,7 @@ def build_master_ledger(
     project_id: str | None = None,
     company_gst: str | None = None,
 ) -> dict[str, Any]:
-    """Search by mobile / name / quote number, or open one job by project id."""
+    """Search by mobile = one client (all projects). Open a project id = that job only."""
     from WEOS.factory.project_store import list_projects, load_project
 
     gst = (company_gst or "").strip() or None
@@ -333,9 +382,14 @@ def build_master_ledger(
         doc = load_project(str(project_id).strip())
         if not _company_ok(doc, gst):
             raise PermissionError("Project is not in this company workspace")
-        docs = _load_job_docs(doc, company_gst=gst)
-        led = ledger_from_docs(docs, company_gst=gst)
-        return {"matches": [_match_row(docs[0] if docs else doc, led)], "ledger": led}
+        project_docs = _load_job_docs(doc, company_gst=gst, include_siblings=False)
+        client_docs = _load_job_docs(doc, company_gst=gst, include_siblings=True)
+        led = ledger_from_docs(project_docs, company_gst=gst)
+        _stamp_scope(led, client_docs, scope="project", company_gst=gst)
+        client_led = ledger_from_docs(client_docs, company_gst=gst)
+        led["clientTotals"] = client_led.get("totals")
+        led["clientQuoteCount"] = client_led.get("quoteCount")
+        return {"matches": [_match_row(doc, client_led)], "ledger": led}
 
     query = str(q or "").strip()
     if not query:
@@ -365,6 +419,7 @@ def build_master_ledger(
 
     for docs in grouped.values():
         led = ledger_from_docs(docs, company_gst=gst)
+        _stamp_scope(led, docs, scope="client", company_gst=gst)
         hits.append(_match_row(docs[0], led))
 
     hits.sort(key=lambda r: str(r.get("updatedAt") or ""), reverse=True)
@@ -374,10 +429,13 @@ def build_master_ledger(
         docs = grouped.get(key) or grouped.get(hits[0].get("projectId") or "")
         if docs:
             ledger = ledger_from_docs(docs, company_gst=gst)
+            _stamp_scope(ledger, docs, scope="client", company_gst=gst)
         else:
             try:
                 one = load_project(hits[0]["projectId"])
-                ledger = ledger_from_docs(_load_job_docs(one, company_gst=gst), company_gst=gst)
+                docs = _load_job_docs(one, company_gst=gst, include_siblings=True)
+                ledger = ledger_from_docs(docs, company_gst=gst)
+                _stamp_scope(ledger, docs, scope="client", company_gst=gst)
             except FileNotFoundError:
                 ledger = None
     return {"matches": hits, "ledger": ledger, "query": query}

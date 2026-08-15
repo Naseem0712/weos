@@ -11,15 +11,89 @@ row ``quote_share:{token}`` so lookup survives redeploys.
 from __future__ import annotations
 
 import html
+import json
 import logging
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping
 
 _log = logging.getLogger("weos.quote_share")
 
 TOKEN_KEY_PREFIX = "quote_share:"
 OLD_DRAFT_DAYS = 30
+SCANNER_REJECT_DAYS = 7
+SCANNER_APPROVE_DAYS = 15
+
+
+def _parse_iso(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def scanner_decision_windows(doc: Mapping[str, Any] | None, *, now: datetime | None = None) -> dict[str, Any]:
+    """Public QR scanner: reject ≤ 7 days, approve ≤ 15 days from generate date.
+
+    Company panel approve/reject is unlimited and must not use this helper.
+    """
+    src = doc if isinstance(doc, Mapping) else {}
+    generated = _parse_iso(src.get("createdAt") or src.get("generatedAt") or src.get("updatedAt"))
+    stamp = now or datetime.now(timezone.utc)
+    if generated is not None and generated.tzinfo is None:
+        generated = generated.replace(tzinfo=timezone.utc)
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    status = str(src.get("status") or "draft").strip().lower() or "draft"
+    from WEOS.factory.ledger_store import CONFIRMED_STATUSES
+
+    already_approved = status in CONFIRMED_STATUSES
+    already_rejected = status in {"rejected", "cancelled", "canceled"}
+    age_days = None
+    if generated is not None:
+        age_days = max(0.0, (stamp - generated).total_seconds() / 86400.0)
+    can_reject = (not already_rejected) and age_days is not None and age_days <= SCANNER_REJECT_DAYS
+    can_approve = (not already_approved) and age_days is not None and age_days <= SCANNER_APPROVE_DAYS
+    reject_until = (generated + timedelta(days=SCANNER_REJECT_DAYS)).isoformat() if generated else None
+    approve_until = (generated + timedelta(days=SCANNER_APPROVE_DAYS)).isoformat() if generated else None
+    return {
+        "generatedAt": generated.isoformat() if generated else None,
+        "ageDays": round(age_days, 2) if age_days is not None else None,
+        "canApprove": bool(can_approve),
+        "canReject": bool(can_reject),
+        "approveUntil": approve_until,
+        "rejectUntil": reject_until,
+        "approveDays": SCANNER_APPROVE_DAYS,
+        "rejectDays": SCANNER_REJECT_DAYS,
+        "alreadyApproved": already_approved,
+        "alreadyRejected": already_rejected,
+    }
+
+
+def apply_scanner_status(ref: str, status: str, *, confirm_reject: bool = False) -> dict[str, Any]:
+    """Approve/reject from the public QR page only — time-windowed."""
+    doc = resolve_public_ref(ref)
+    if not isinstance(doc, Mapping) or not doc.get("projectId"):
+        raise FileNotFoundError("Quote not found")
+    win = scanner_decision_windows(doc)
+    want = str(status or "").strip().lower()
+    pid = str(doc.get("projectId"))
+    from WEOS.factory.project_store import set_project_status
+
+    if want == "approved":
+        if not win.get("canApprove"):
+            raise PermissionError("Approve from this scan page is only available for 15 days from the generate date.")
+        return set_project_status(pid, "approved")
+    if want in {"rejected", "reject"}:
+        if not confirm_reject:
+            raise ValueError("Confirm reject to un-approve this quote.")
+        if not win.get("canReject"):
+            raise PermissionError("Reject from this scan page is only available for 7 days from the generate date.")
+        return set_project_status(pid, "rejected")
+    raise ValueError("Choose approve or reject")
 
 
 def _now_iso() -> str:
@@ -329,7 +403,8 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
 
     approved = status in CONFIRMED_STATUSES or bool(advances)
     type_totals = totals_by_type(list(doc.get("lines") or []))
-    pack = public_pack_payload(doc, share_token=token, approved=approved)
+    pack = public_pack_payload(doc, share_token=token, approved=True)
+    scan_win = scanner_decision_windows(doc)
     ledger_html = f"/q/{token}/ledger" if token else None
     all_pdf = f"/api/public/quote/{token}/all.pdf" if token else None
 
@@ -354,6 +429,8 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
         "status": status,
         "approvalStatus": status,
         "approved": approved,
+        "scanner": scan_win,
+        "generatedAt": scan_win.get("generatedAt") or doc.get("createdAt"),
         "customer": {
             "name": customer_name or customer_profile.get("name") or "—",
             "phone": doc.get("customerMobile") or customer_profile.get("phone") or "",
@@ -481,49 +558,48 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
 
     pack = record.get("pack") or {}
     pack_html = ""
-    if approved:
-        upd_html = ""
-        for u in pack.get("updates") or []:
-            upd_html += (
-                f"<div class='item'><div class='muted'>{fmt_dt(u.get('date') or u.get('createdAt'))}</div>"
-                f"<div>{esc(u.get('text') or u.get('note') or '')}</div></div>"
-            )
-        if not upd_html:
-            upd_html = '<p class="muted">No process updates yet</p>'
-        doc_html = ""
-        labels = {"bill": "Bill", "warranty": "Warranty card", "challan": "Delivery challan"}
-        for d in pack.get("documents") or []:
-            href = esc(d.get("url") or "#")
-            if base_url and href.startswith("/"):
-                href = base_url.rstrip("/") + href
-            kind = labels.get(str(d.get("kind") or ""), str(d.get("kind") or "File").title())
-            note = esc(d.get("note") or d.get("filename") or kind)
-            ct = str(d.get("contentType") or "")
-            thumb = ""
-            if ct.startswith("image/"):
-                thumb = f'<a href="{href}" target="_blank" rel="noopener"><img src="{href}" alt="" style="max-height:72px;max-width:110px;border-radius:8px;border:1px solid var(--line);object-fit:cover"/></a>'
-            doc_html += (
-                f'<div class="item" style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">'
-                f"{thumb}<div><strong>{esc(kind)}</strong>"
-                f'<div class="muted">{fmt_dt(d.get("date") or d.get("createdAt"))} · {note}</div>'
-                f'<a class="btn ghost" href="{href}" target="_blank" rel="noopener">Open / download</a></div></div>'
-            )
-        if not doc_html:
-            doc_html = '<p class="muted">No bills, warranty cards, or delivery challans yet</p>'
-        photo_html = ""
-        for ph in pack.get("photos") or []:
-            href = esc(ph.get("url") or "#")
-            if base_url and href.startswith("/"):
-                href = base_url.rstrip("/") + href
-            cap = esc(ph.get("note") or ph.get("filename") or "Photo")
-            photo_html += (
-                f'<a href="{href}" target="_blank" rel="noopener" style="display:inline-block;margin:.2rem">'
-                f'<img src="{href}" alt="{cap}" style="max-height:140px;max-width:180px;border-radius:10px;border:1px solid var(--line);object-fit:cover"/>'
-                f'<div class="muted" style="font-size:.72rem">{fmt_dt(ph.get("date") or ph.get("createdAt"))} · {cap}</div></a>'
-            )
-        if not photo_html:
-            photo_html = '<p class="muted">No process photos yet</p>'
-        pack_html = f"""
+    upd_html = ""
+    for u in pack.get("updates") or []:
+        upd_html += (
+            f"<div class='item'><div class='muted'>{fmt_dt(u.get('date') or u.get('createdAt'))}</div>"
+            f"<div>{esc(u.get('text') or u.get('note') or '')}</div></div>"
+        )
+    if not upd_html:
+        upd_html = '<p class="muted">No process updates yet</p>'
+    doc_html = ""
+    labels = {"bill": "Bill", "warranty": "Warranty card", "challan": "Delivery challan"}
+    for d in pack.get("documents") or []:
+        href = esc(d.get("url") or "#")
+        if base_url and href.startswith("/"):
+            href = base_url.rstrip("/") + href
+        kind = labels.get(str(d.get("kind") or ""), str(d.get("kind") or "File").title())
+        note = esc(d.get("note") or d.get("filename") or kind)
+        ct = str(d.get("contentType") or "")
+        thumb = ""
+        if ct.startswith("image/"):
+            thumb = f'<a href="{href}" target="_blank" rel="noopener"><img src="{href}" alt="" style="max-height:72px;max-width:110px;border-radius:8px;border:1px solid var(--line);object-fit:cover"/></a>'
+        doc_html += (
+            f'<div class="item" style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">'
+            f"{thumb}<div><strong>{esc(kind)}</strong>"
+            f'<div class="muted">{fmt_dt(d.get("date") or d.get("createdAt"))} · {note}</div>'
+            f'<a class="btn ghost" href="{href}" target="_blank" rel="noopener">Open / download</a></div></div>'
+        )
+    if not doc_html:
+        doc_html = '<p class="muted">No bills, warranty cards, or delivery challans yet</p>'
+    photo_html = ""
+    for ph in pack.get("photos") or []:
+        href = esc(ph.get("url") or "#")
+        if base_url and href.startswith("/"):
+            href = base_url.rstrip("/") + href
+        cap = esc(ph.get("note") or ph.get("filename") or "Photo")
+        photo_html += (
+            f'<a href="{href}" target="_blank" rel="noopener" style="display:inline-block;margin:.2rem">'
+            f'<img src="{href}" alt="{cap}" style="max-height:140px;max-width:180px;border-radius:10px;border:1px solid var(--line);object-fit:cover"/>'
+            f'<div class="muted" style="font-size:.72rem">{fmt_dt(ph.get("date") or ph.get("createdAt"))} · {cap}</div></a>'
+        )
+    if not photo_html:
+        photo_html = '<p class="muted">No process photos yet</p>'
+    pack_html = f"""
   <div class="card">
     <h2>Process updates</h2>
     {upd_html}
@@ -535,12 +611,6 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
   <div class="card">
     <h2>Process photos</h2>
     {photo_html}
-  </div>"""
-    else:
-        pack_html = """
-  <div class="card">
-    <h2>Process pack</h2>
-    <p class="muted">Available after approval</p>
   </div>"""
 
     ver_bits = []
@@ -580,6 +650,52 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     if led_html:
         links.append(f'<a class="btn ghost" href="{esc(led_html)}" target="_blank" rel="noopener">Ledger</a>')
     links_html = " ".join(links) if links else ""
+
+    scan = record.get("scanner") or {}
+    token = esc(record.get("shareToken") or "")
+    decide_bits = []
+    if scan.get("canApprove"):
+        decide_bits.append('<button class="btn" type="button" id="scanApprove">Approve quote</button>')
+    if scan.get("canReject"):
+        decide_bits.append('<button class="btn ghost" type="button" id="scanReject">Reject quote</button>')
+    if decide_bits:
+        decide_html = f"""
+  <div class="card" id="scanDecide">
+    <h2>Approve / Reject</h2>
+    <p class="muted">From generate date {esc(fmt_dt(scan.get('generatedAt')))}: reject up to {esc(scan.get('rejectDays') or 7)} days, approve up to {esc(scan.get('approveDays') or 15)} days. After that these buttons disappear here — the company panel can still decide any time.</p>
+    <div style="margin-top:.45rem">{''.join(decide_bits)}</div>
+    <p class="muted" id="scanDecideMsg" style="margin:.45rem 0 0"></p>
+  </div>
+<script>
+(function(){{
+    var token = {json.dumps(record.get("shareToken") or "")};
+  function go(path, extra){{
+    var msg = document.getElementById('scanDecideMsg');
+    extra = extra || {{}};
+    fetch('/api/public/quote/' + encodeURIComponent(token) + '/' + path, {{
+      method: 'POST',
+      headers: {{'Content-Type':'application/json'}},
+      body: JSON.stringify(extra)
+    }}).then(function(r){{ return r.json().then(function(j){{ return {{ok:r.ok, j:j}}; }}); }})
+      .then(function(res){{
+        if (!res.ok) {{ if (msg) msg.textContent = (res.j && (res.j.detail||res.j.message)) || 'Could not save'; return; }}
+        location.reload();
+      }}).catch(function(e){{ if (msg) msg.textContent = e.message || 'Network error'; }});
+  }}
+  var a = document.getElementById('scanApprove');
+  if (a) a.onclick = function(){{ if (confirm('Approve this quote?')) go('approve'); }};
+  var r = document.getElementById('scanReject');
+  if (r) r.onclick = function(){{ if (confirm('Reject this quote? It drops out of turnover.')) go('reject', {{confirm:true}}); }};
+}})();
+</script>"""
+    elif not approved and not scan.get("alreadyRejected"):
+        decide_html = """
+  <div class="card">
+    <h2>Approve / Reject</h2>
+    <p class="muted">Scanner window has ended (reject 7 days / approve 15 days from generate date). The company can still approve or reject from WEOS.</p>
+  </div>"""
+    else:
+        decide_html = ""
 
     co_name = esc(co.get("name") or "WEOS")
     return f"""<!DOCTYPE html>
@@ -672,6 +788,7 @@ th{{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mu
     {f'<div style="margin-top:.55rem">{type_tot_html}</div>' if type_tot_html else ''}
   </div>
   {pack_html}
+  {decide_html}
   <p class="foot">Last updated {fmt_dt(record.get('updatedAt'))}. This page always loads the live project from the company database — not a PDF snapshot.</p>
 </div>
 </body>

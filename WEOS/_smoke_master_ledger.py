@@ -4,6 +4,7 @@ from __future__ import annotations
 from WEOS.factory.master_ledger import job_quote_rows, ledger_from_docs, match_master_query
 from WEOS.factory.package_quote import compute_gst_split, normalize_package_quotes, package_money_for_doc
 from WEOS.factory.project_store import cart_quote_money, live_quote_money
+from WEOS.factory.quote_discount import apply_discount, normalize_discount
 
 
 def _ok(cond: bool, msg: str) -> None:
@@ -185,6 +186,52 @@ def main() -> None:
     parts = _quote_parts({"totalTaxable": 123285.80, "totalGst": 22191.44, "totalGrand": 145477.24})
     _ok(parts["totalGrand"] == 145477.24, "quote parts keep GST-inclusive grand")
     _ok(_status_live("approved") and _status_live("draft") and not _status_live("rejected"), "live statuses")
+
+    nd = normalize_discount({"mode": "percent", "percent": 10})
+    _ok(nd["mode"] == "percent" and nd["percent"] == 10, "normalize percent discount")
+    gstless = apply_discount(
+        {"totalTaxable": 100000, "totalGst": 18000, "totalGrand": 118000},
+        {"mode": "gst_off"},
+    )
+    _ok(gstless["totalGrand"] == 100000 and gstless["totalGst"] == 0, "GST off leaves taxable as value")
+    pct = apply_discount(
+        {"totalTaxable": 100000, "totalGst": 18000, "totalGrand": 118000},
+        {"mode": "percent", "percent": 10},
+    )
+    _ok(pct["discountAmount"] == 11800 and pct["totalGrand"] == 106200, f"10% off 118000 got {pct}")
+    fix = apply_discount(
+        {"totalTaxable": 100000, "totalGst": 18000, "totalGrand": 118000},
+        {"mode": "amount", "amount": 8000},
+    )
+    _ok(fix["totalGrand"] == 110000, f"fix 8000 off got {fix['totalGrand']}")
+
+    from WEOS.factory.master_ledger import _stamp_scope
+
+    one_a = ledger_from_docs([a])
+    _ok("pq_sib" not in {q["id"] for q in one_a["quotes"]}, "one project ledger excludes sibling quotes")
+    _ok(one_a["totals"]["projectValue"] == 133000, "one project value stays 133000")
+    _ok(one_a.get("quotationId") == "Q-A", f"ledger quote number is Q-A got {one_a.get('quotationId')}")
+    disc_a = dict(a)
+    disc_a["quoteDiscount"] = {"mode": "percent", "percent": 10}
+    live_disc = live_quote_money(disc_a)
+    _ok(live_disc["totalGrand"] == 119700, f"10% off project 133000 got {live_disc['totalGrand']}")
+    client_disc = ledger_from_docs([disc_a, sibling])
+    _ok(
+        client_disc["totals"]["projectValue"] == 144700,
+        f"client total = discounted project + sibling 144700 got {client_disc['totals']['projectValue']}",
+    )
+    gst_a = dict(a)
+    gst_a["quoteDiscount"] = {"mode": "gst_off"}
+    live_gst = live_quote_money(gst_a)
+    _ok(live_gst["totalGrand"] == 115000, f"GST off on 133000 package leaves taxable 115000 got {live_gst['totalGrand']}")
+    stamped = _stamp_scope(ledger_from_docs([a, sibling]), [a, sibling], scope="client", company_gst=None)
+    _ok(stamped["scope"] == "client" and len(stamped["projects"]) == 2, "client scope lists both projects")
+    _ok(
+        sum(p["projectValue"] for p in stamped["projects"]) == 158000,
+        "project rows sum to client total 158000",
+    )
+    proj_sum = next(p for p in stamped["projects"] if p["projectId"] == "PRJ-SMOKE-ISO-A")
+    _ok(proj_sum["quotationId"] == "Q-A", "project id display uses quote number")
 
     print("SMOKE_MASTER_LEDGER_OK")
 

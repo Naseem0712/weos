@@ -180,6 +180,17 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
         action = "quote_number_version"
     pid = doc.get("projectId") or new_project_id()
     doc["projectId"] = pid
+    if not str(doc.get("quotationId") or "").strip():
+        try:
+            doc["quotationId"] = new_quotation_id()
+        except Exception:
+            _log.debug("auto quotation id skipped for %s", pid, exc_info=True)
+    try:
+        from WEOS.factory.quote_discount import normalize_discount
+
+        doc["quoteDiscount"] = normalize_discount(doc.get("quoteDiscount"))
+    except Exception:
+        pass
     try:
         from WEOS.factory.package_quote import apply_package_fields
 
@@ -499,26 +510,30 @@ def cart_quote_money(doc: Mapping[str, Any] | None) -> dict[str, float]:
 
 
 def live_quote_money(doc: Mapping[str, Any] | None) -> dict[str, float]:
-    """Taxable + GST-inclusive grand: cart quote plus package quotes on this job."""
+    """Taxable + GST-inclusive grand: cart quote plus package quotes, then discount."""
     from WEOS.factory.package_quote import package_money_for_doc
+    from WEOS.factory.quote_discount import apply_discount
 
     cart = cart_quote_money(doc)
     pkg = package_money_for_doc(doc if isinstance(doc, Mapping) else {})
     if not pkg.get("quoteCount"):
-        return cart
-    if cart.get("totalGrand", 0) <= 0 and cart.get("totalTaxable", 0) <= 0:
-        return {
+        parts = dict(cart)
+    elif cart.get("totalGrand", 0) <= 0 and cart.get("totalTaxable", 0) <= 0:
+        parts = {
             "totalTaxable": float(pkg.get("totalTaxable") or 0),
             "totalGst": float(pkg.get("gstAmount") or 0),
             "totalGrand": float(pkg.get("projectValue") or 0),
             "gstPercent": pkg.get("gstPercent") if pkg.get("gstPercent") is not None else cart.get("gstPercent"),
         }
-    return {
-        "totalTaxable": round(float(cart.get("totalTaxable") or 0) + float(pkg.get("totalTaxable") or 0), 2),
-        "totalGst": round(float(cart.get("totalGst") or 0) + float(pkg.get("gstAmount") or 0), 2),
-        "totalGrand": round(float(cart.get("totalGrand") or 0) + float(pkg.get("projectValue") or 0), 2),
-        "gstPercent": cart.get("gstPercent"),
-    }
+    else:
+        parts = {
+            "totalTaxable": round(float(cart.get("totalTaxable") or 0) + float(pkg.get("totalTaxable") or 0), 2),
+            "totalGst": round(float(cart.get("totalGst") or 0) + float(pkg.get("gstAmount") or 0), 2),
+            "totalGrand": round(float(cart.get("totalGrand") or 0) + float(pkg.get("projectValue") or 0), 2),
+            "gstPercent": cart.get("gstPercent"),
+        }
+    disc = (doc or {}).get("quoteDiscount") if isinstance(doc, Mapping) else None
+    return apply_discount(parts, disc)
 
 
 def list_projects(
@@ -589,16 +604,19 @@ def list_projects(
                 "name": d.get("name"),
                 "customer": d.get("customer"),
                 "customerMobile": d.get("customerMobile"),
+                "customerAddress": d.get("customerAddress") or "",
+                "customerGst": d.get("customerGst") or "",
                 "status": st,
                 "updatedAt": d.get("updatedAt"),
                 "createdAt": d.get("createdAt"),
                 "version": d.get("version"),
                 "lineCount": len(d.get("lines") or []),
-                "quotationId": d.get("quotationId"),
+                "quotationId": d.get("quotationId") or d.get("projectId", p.stem),
                 "grandTotal": money["totalTaxable"],
                 "totalTaxable": money["totalTaxable"],
                 "totalGst": money["totalGst"],
                 "totalGrand": money["totalGrand"],
+                "discountMode": (d.get("quoteDiscount") or {}).get("mode") if isinstance(d.get("quoteDiscount"), dict) else "off",
                 "tenure": format_tenure(d.get("updatedAt") or d.get("createdAt")),
                 "companyGst": d.get("companyGst") or "",
                 "shareToken": d.get("shareToken") or d.get("quoteShareToken") or "",

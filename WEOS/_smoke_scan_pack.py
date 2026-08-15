@@ -123,9 +123,12 @@ def main() -> int:
     doc = save_project(doc, action="smoke")
     rec = build_public_quote_record(str(doc.get("shareToken") or doc["projectId"])) or {}
     _ok(not rec.get("approved"), "unapproved", fails)
-    _ok(not (rec.get("pack") or {}).get("available"), "pack hidden while draft", fails)
+    _ok((rec.get("pack") or {}).get("available"), "pack visible on scan even while draft", fails)
     html = render_scan_html(rec).lower()
-    _ok("available after approval" in html, "draft copy", fails)
+    _ok("process updates" in html, "draft shows process section", fails)
+    _ok("available after approval" not in html, "no pending-only copy", fails)
+    _ok("approve quote" in html, "scanner approve in 15-day window", fails)
+    _ok("reject quote" in html, "scanner reject in 7-day window", fails)
     prods = rec.get("products") or []
     _ok(all(float(p.get("amount") or 0) > 0 for p in prods), f"all scan amounts >0 {prods}", fails)
     _ok(any("Hall" in str(p.get("location") or "") for p in prods), "scan location passed", fails)
@@ -157,6 +160,7 @@ def main() -> int:
     _ok("glass fixed" in html2 and "process updates" in html2, "scan shows timeline", fails)
     _ok("download all" in html2, "download all button", fails)
     _ok("available after approval" not in html2, "no pending copy after approve", fails)
+    _ok("approve quote" not in html2, "no scanner approve after already approved", fails)
     _ok(render_scan_all_pdf(rec2).startswith(b"%PDF"), "all.pdf", fails)
 
     sheet = render_customer_quote_sheet(

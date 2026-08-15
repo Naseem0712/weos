@@ -16,7 +16,8 @@ import hashlib
 import json
 import logging
 import re
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -72,13 +73,74 @@ def company_has_delete_pin(gst: str | None = None, doc: Mapping[str, Any] | None
     return bool(str(row.get("deletePinHash") or "").strip())
 
 
+def hash_login_pin(pin: str, gst: str | None = None) -> str:
+    """SHA-256 of the 4-digit company login PIN. Never store the PIN itself."""
+    g = normalise_gstin(gst)
+    raw = f"weos-login-pin|{g}|{str(pin or '').strip()}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def normalise_login_pin(pin: str | None) -> str:
+    digits = re.sub(r"\D", "", str(pin or ""))
+    return digits
+
+
+def validate_login_pin(pin: str | None) -> str:
+    digits = normalise_login_pin(pin)
+    if len(digits) != 4:
+        raise ValueError("Company login PIN must be exactly 4 digits")
+    return digits
+
+
+def verify_login_pin(gst: str, pin: str | None) -> bool:
+    g = normalise_gstin(gst)
+    try:
+        typed = validate_login_pin(pin)
+    except ValueError:
+        return False
+    if not g:
+        return False
+    doc = load_company_by_gst(g) or {}
+    stored = str(doc.get("loginPinHash") or "").strip()
+    if not stored:
+        return False
+    return stored == hash_login_pin(typed, g)
+
+
+def company_has_login_pin(gst: str | None = None, doc: Mapping[str, Any] | None = None) -> bool:
+    if isinstance(doc, Mapping) and str(doc.get("loginPinHash") or "").strip():
+        return True
+    g = normalise_gstin(gst or ((doc or {}).get("gstNo") if isinstance(doc, Mapping) else gst))
+    if not g:
+        return False
+    row = load_company_by_gst(g) or {}
+    return bool(str(row.get("loginPinHash") or "").strip())
+
+
+def hash_session_token(token: str, gst: str | None = None) -> str:
+    g = normalise_gstin(gst)
+    raw = f"weos-ws-session|{g}|{str(token or '').strip()}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 def public_company_profile(doc: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Company payload safe for API / UI — never includes the PIN hash."""
+    """Company payload safe for API / UI — never includes PIN hashes or sessions."""
     out = dict(doc or {})
-    has = bool(str(out.get("deletePinHash") or "").strip() or out.get("hasDeletePin"))
+    has_del = bool(str(out.get("deletePinHash") or "").strip() or out.get("hasDeletePin"))
+    has_login = bool(str(out.get("loginPinHash") or "").strip() or out.get("hasLoginPin"))
+    email = str(out.get("email") or "").strip()
     out.pop("deletePinHash", None)
     out.pop("deletePin", None)
-    out["hasDeletePin"] = has
+    out.pop("loginPinHash", None)
+    out.pop("loginPin", None)
+    out.pop("pin", None)
+    out.pop("loginSessions", None)
+    out.pop("pinResetHash", None)
+    out.pop("pinResetExpiresAt", None)
+    out.pop("pinResetSentTo", None)
+    out["hasDeletePin"] = has_del
+    out["hasLoginPin"] = has_login
+    out["hasEmail"] = bool(email)
     return out
 
 _LOGO_EXT = {
@@ -135,6 +197,7 @@ def _empty() -> dict[str, Any]:
         "logoPath": None,
         "logoUrl": None,
         "hasDeletePin": False,
+        "hasLoginPin": False,
         "updatedAt": None,
         "persisted": False,
     }
@@ -243,8 +306,16 @@ def save_company_by_gst(gst: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     if payload.get("logoUrl") is not None:
         doc["logoUrl"] = str(payload["logoUrl"]) or None
     _apply_delete_pin(doc, payload, gst=g)
+    _apply_login_pin(doc, payload, gst=g)
+    for key in ("loginSessions", "pinResetHash", "pinResetExpiresAt", "pinResetSentTo"):
+        if key in payload:
+            doc[key] = payload[key]
     doc["updatedAt"] = datetime.now(timezone.utc).isoformat()
-    clean = {k: v for k, v in doc.items() if k not in ("persisted", "storage", "hasDeletePin", "deletePin")}
+    clean = {
+        k: v
+        for k, v in doc.items()
+        if k not in ("persisted", "storage", "hasDeletePin", "hasLoginPin", "hasEmail", "deletePin", "loginPin", "pin")
+    }
     ok = _db_put(clean, key=company_gst_key(g))
     # Mirror to active profile + filesystem for branding.
     _write_file(clean)
@@ -297,6 +368,7 @@ def load_company() -> dict[str, Any]:
     if base.get("gstNo"):
         base["gstNo"] = normalise_gstin(base.get("gstNo"))
     base["hasDeletePin"] = bool(str(base.get("deletePinHash") or "").strip())
+    base["hasLoginPin"] = bool(str(base.get("loginPinHash") or "").strip())
     return base
 
 
@@ -313,6 +385,22 @@ def _apply_delete_pin(doc: dict[str, Any], payload: Mapping[str, Any], *, gst: s
         return
     doc["deletePinHash"] = hash_delete_pin(pin, gst)
     doc["hasDeletePin"] = True
+
+
+def _apply_login_pin(doc: dict[str, Any], payload: Mapping[str, Any], *, gst: str) -> None:
+    """Store hashed 4-digit login PIN; never persist the typed PIN."""
+    if payload.get("clearLoginPin"):
+        doc.pop("loginPinHash", None)
+        doc["hasLoginPin"] = False
+        return
+    raw = payload.get("loginPin")
+    if raw is None and "pin" in payload:
+        raw = payload.get("pin")
+    if raw is None:
+        return
+    pin = validate_login_pin(raw)
+    doc["loginPinHash"] = hash_login_pin(pin, gst)
+    doc["hasLoginPin"] = True
 
 
 def save_company(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -497,3 +585,149 @@ def bootstrap_company() -> dict[str, Any]:
     doc = load_company()
     _ensure_logo_cache()
     return {"ok": True, "storage": doc.get("storage"), "hasName": bool((doc.get("companyName") or "").strip())}
+
+
+SESSION_DAYS = 30
+PIN_RESET_HOURS = 1
+
+
+def clear_active_gst(gst: str | None = None) -> None:
+    """Clear the server active-workspace pointer (logout)."""
+    want = normalise_gstin(gst) if gst else ""
+    current = get_active_gst() or ""
+    if want and current and want != current:
+        return
+    try:
+        from WEOS.db.durable_store import put_json
+
+        put_json(_ACTIVE_GST_KEY, "company_active", {"gstNo": ""})
+    except Exception:
+        _log.exception("clear_active_gst failed")
+
+
+def iter_company_docs() -> list[dict[str, Any]]:
+    """All GST workspace profiles (DB first, then local file)."""
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    try:
+        from WEOS.db.durable_store import list_payloads
+
+        for row in list_payloads(kind="company", prefix="company:gst:") or []:
+            payload = row.get("payload") if isinstance(row, dict) else None
+            if not isinstance(payload, dict):
+                continue
+            g = normalise_gstin(payload.get("gstNo"))
+            if not g or g in seen:
+                continue
+            seen.add(g)
+            doc = dict(payload)
+            doc["gstNo"] = g
+            out.append(doc)
+    except Exception:
+        _log.debug("iter_company_docs DB list skipped", exc_info=True)
+    file_doc = _read_file()
+    if isinstance(file_doc, dict):
+        g = normalise_gstin(file_doc.get("gstNo"))
+        if g and g not in seen:
+            out.append(dict(file_doc))
+    return out
+
+
+def mint_workspace_session(gst: str) -> str:
+    """Create a session token for this GST workspace and persist its hash."""
+    g = normalise_gstin(gst)
+    if not g:
+        raise ValueError("GSTIN required")
+    token = secrets.token_urlsafe(24)
+    digest = hash_session_token(token, g)
+    now = datetime.now(timezone.utc)
+    exp = now + timedelta(days=SESSION_DAYS)
+    doc = load_company_by_gst(g) or _empty()
+    sessions = [s for s in (doc.get("loginSessions") or []) if isinstance(s, dict)]
+    sessions = [
+        s
+        for s in sessions
+        if str(s.get("expiresAt") or "") > now.isoformat()
+    ]
+    sessions.append({"hash": digest, "createdAt": now.isoformat(), "expiresAt": exp.isoformat()})
+    sessions = sessions[-8:]
+    save_company_by_gst(g, {**doc, "loginSessions": sessions})
+    return token
+
+
+def verify_workspace_session(gst: str, token: str | None) -> bool:
+    g = normalise_gstin(gst)
+    raw = str(token or "").strip()
+    if not g or not raw:
+        return False
+    doc = load_company_by_gst(g) or {}
+    digest = hash_session_token(raw, g)
+    now = datetime.now(timezone.utc).isoformat()
+    for s in doc.get("loginSessions") or []:
+        if not isinstance(s, dict):
+            continue
+        if str(s.get("hash") or "") == digest and str(s.get("expiresAt") or "") >= now:
+            return True
+    return False
+
+
+def revoke_workspace_session(gst: str, token: str | None = None, *, all_sessions: bool = False) -> None:
+    g = normalise_gstin(gst)
+    if not g:
+        return
+    doc = load_company_by_gst(g) or {}
+    if all_sessions or not token:
+        save_company_by_gst(g, {**doc, "loginSessions": []})
+        return
+    digest = hash_session_token(str(token).strip(), g)
+    sessions = [s for s in (doc.get("loginSessions") or []) if isinstance(s, dict) and str(s.get("hash") or "") != digest]
+    save_company_by_gst(g, {**doc, "loginSessions": sessions})
+
+
+def mint_pin_reset_token(gst: str) -> str:
+    g = normalise_gstin(gst)
+    if not g:
+        raise ValueError("GSTIN required")
+    token = secrets.token_urlsafe(32)
+    digest = hashlib.sha256(f"weos-pin-reset|{g}|{token}".encode("utf-8")).hexdigest()
+    exp = datetime.now(timezone.utc) + timedelta(hours=PIN_RESET_HOURS)
+    doc = load_company_by_gst(g) or _empty()
+    save_company_by_gst(
+        g,
+        {
+            **doc,
+            "pinResetHash": digest,
+            "pinResetExpiresAt": exp.isoformat(),
+        },
+    )
+    return token
+
+
+def consume_pin_reset_token(token: str, new_pin: str) -> dict[str, Any]:
+    """Set a new login PIN from an emailed reset token. Returns the company GST."""
+    raw = str(token or "").strip()
+    pin = validate_login_pin(new_pin)
+    if not raw:
+        raise ValueError("Reset link is missing")
+    now = datetime.now(timezone.utc).isoformat()
+    for doc in iter_company_docs():
+        g = normalise_gstin(doc.get("gstNo"))
+        stored = str(doc.get("pinResetHash") or "").strip()
+        exp = str(doc.get("pinResetExpiresAt") or "")
+        if not g or not stored or not exp or exp < now:
+            continue
+        digest = hashlib.sha256(f"weos-pin-reset|{g}|{raw}".encode("utf-8")).hexdigest()
+        if digest != stored:
+            continue
+        save_company_by_gst(
+            g,
+            {
+                **doc,
+                "loginPin": pin,
+                "pinResetHash": None,
+                "pinResetExpiresAt": None,
+                "loginSessions": [],
+            },
+        )
+        return {"ok": True, "gstNo": g, "companyName": doc.get("companyName")}
+    raise ValueError("This PIN reset link is invalid or has expired")

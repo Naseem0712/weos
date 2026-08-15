@@ -6,6 +6,7 @@ Engines are never duplicated — always call factory pipeline.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import platform
@@ -243,6 +244,7 @@ class ProjectCreate(BaseModel):
     packageQuotes: list[Any] | None = None
     masterJobId: str | None = None
     quoteKind: str | None = None
+    quoteDiscount: dict[str, Any] | None = None
 
 
 class ProjectUpdate(BaseModel):
@@ -262,6 +264,7 @@ class ProjectUpdate(BaseModel):
     packageQuotes: list[Any] | None = None
     masterJobId: str | None = None
     quoteKind: str | None = None
+    quoteDiscount: dict[str, Any] | None = None
 
 
 class PackageQuoteBody(BaseModel):
@@ -398,11 +401,16 @@ class CompanyBody(BaseModel):
     cin: str | None = None
     terms: str | None = None
     deletePin: str | None = None
+    loginPin: str | None = None
     clearDeletePin: bool = False
+    clearLoginPin: bool = False
 
 
 class CompanyWorkspaceOpenBody(BaseModel):
-    gstNo: str
+    gstNo: str | None = None
+    login: str | None = None
+    pin: str | None = None
+    sessionToken: str | None = None
     companyName: str | None = None
     address: str | None = None
     website: str | None = None
@@ -1571,7 +1579,10 @@ def api_create_project(body: ProjectCreate) -> dict[str, Any]:
             doc[_fld] = _val
     from WEOS.factory.package_quote import apply_package_fields
 
-    apply_package_fields(doc, body.model_dump(exclude_none=True))
+    dumped = body.model_dump(exclude_none=True)
+    apply_package_fields(doc, dumped)
+    if dumped.get("quoteDiscount") is not None:
+        doc["quoteDiscount"] = dumped["quoteDiscount"]
     return save_project(doc, action="create")
 
 
@@ -1612,6 +1623,8 @@ def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
     from WEOS.factory.package_quote import apply_package_fields
 
     apply_package_fields(doc, dumped)
+    if "quoteDiscount" in dumped:
+        doc["quoteDiscount"] = dumped.get("quoteDiscount")
     return save_project(doc, action="update")
 
 
@@ -2412,6 +2425,49 @@ def api_public_quote(ref: str) -> dict[str, Any]:
     return rec
 
 
+class PublicScanDecideBody(BaseModel):
+    confirm: bool = False
+
+
+@app.post("/api/public/quote/{ref}/approve")
+def api_public_quote_approve(ref: str) -> dict[str, Any]:
+    """QR scanner approve — only within 15 days of generate date."""
+    from WEOS.factory.quote_share import apply_scanner_status, build_public_quote_record
+
+    try:
+        apply_scanner_status(ref, "approved")
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    rec = build_public_quote_record(ref)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    return rec
+
+
+@app.post("/api/public/quote/{ref}/reject")
+def api_public_quote_reject(ref: str, body: PublicScanDecideBody | None = None) -> dict[str, Any]:
+    """QR scanner reject — only within 7 days of generate date."""
+    from WEOS.factory.quote_share import apply_scanner_status, build_public_quote_record
+
+    body = body or PublicScanDecideBody()
+    try:
+        apply_scanner_status(ref, "rejected", confirm_reject=bool(body.confirm))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    rec = build_public_quote_record(ref)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    return rec
+
+
 @app.get("/api/public/quote/{ref}/pack/files/{item_id}")
 def api_public_pack_file(ref: str, item_id: str) -> Response:
     """Public download of an approved project-pack file (bill / warranty / photo)."""
@@ -2421,8 +2477,6 @@ def api_public_pack_file(ref: str, item_id: str) -> Response:
     rec = build_public_quote_record(ref)
     if not rec:
         raise HTTPException(status_code=404, detail="Quote not found")
-    if not rec.get("approved"):
-        raise HTTPException(status_code=404, detail="Available after approval")
     pid = str(rec.get("projectId") or "").strip()
     if not pid:
         raise HTTPException(status_code=404, detail="No project on this quote")
@@ -2631,18 +2685,121 @@ def api_save_company(body: CompanyBody) -> dict[str, Any]:
 
 @app.post("/api/company/workspace/open")
 def api_company_workspace_open(body: CompanyWorkspaceOpenBody) -> dict[str, Any]:
-    """GST-based seller login: open (or create) the company workspace."""
+    """Seller login: GST / company name / mobile + 4-digit PIN (or session)."""
     from WEOS.factory.company_workspace import open_workspace
 
-    profile = body.model_dump(exclude_none=True)
-    gst = profile.pop("gstNo", None)
-    create = bool(profile.pop("create", True))
+    dumped = body.model_dump(exclude_none=True)
+    gst = dumped.pop("gstNo", None)
+    create = bool(dumped.pop("create", True))
+    pin = dumped.pop("pin", None)
+    session_token = dumped.pop("sessionToken", None)
+    login = dumped.pop("login", None)
     try:
-        return open_workspace(str(gst or ""), profile=profile or None, create=create)
+        return open_workspace(
+            str(gst or "") or None,
+            profile=dumped or None,
+            create=create,
+            pin=pin,
+            session_token=session_token,
+            login=login,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+class CompanyWorkspaceLogoutBody(BaseModel):
+    gstNo: str | None = None
+    sessionToken: str | None = None
+
+
+@app.post("/api/company/workspace/logout")
+def api_company_workspace_logout(body: CompanyWorkspaceLogoutBody | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import logout_workspace
+
+    payload = (body.model_dump(exclude_none=True) if body else {}) or {}
+    return logout_workspace(gst_no=payload.get("gstNo"), session_token=payload.get("sessionToken"))
+
+
+class CompanyPinResetRequestBody(BaseModel):
+    login: str | None = None
+    gstNo: str | None = None
+    email: str | None = None
+
+
+@app.post("/api/company/workspace/pin-reset/request")
+def api_company_pin_reset_request(body: CompanyPinResetRequestBody, request: Request) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import request_pin_reset
+
+    q = (body.login or body.gstNo or body.email or "").strip()
+    if not q:
+        raise HTTPException(status_code=400, detail="Enter GSTIN, company name, mobile, or registered email.")
+    return request_pin_reset(q, base_url=_public_base_url(request))
+
+
+class CompanyPinResetConfirmBody(BaseModel):
+    token: str
+    pin: str
+
+
+@app.post("/api/company/workspace/pin-reset/confirm")
+def api_company_pin_reset_confirm(body: CompanyPinResetConfirmBody) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import confirm_pin_reset
+
+    try:
+        return confirm_pin_reset(body.token, body.pin)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/pin-reset")
+def pin_reset_page(token: str = "") -> HTMLResponse:
+    return HTMLResponse(
+        f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>WEOS PIN reset</title>
+<style>
+body{{font-family:system-ui,sans-serif;background:#e8e3d8;color:#141410;margin:0;padding:1.5rem}}
+.card{{max-width:420px;margin:2rem auto;background:#fffdf9;border:1px solid rgba(20,20,16,.12);border-radius:14px;padding:1.2rem}}
+label{{display:block;font-size:.78rem;margin:.55rem 0 .2rem}}
+input{{width:100%;padding:.5rem .6rem;border-radius:10px;border:1px solid rgba(20,20,16,.18);font:inherit;box-sizing:border-box}}
+button{{margin-top:.85rem;background:#0a5a48;color:#fff;border:0;border-radius:10px;padding:.55rem .9rem;font-weight:600;cursor:pointer}}
+.muted{{color:#5c584f;font-size:.82rem}}
+.err{{color:#8c1f18;font-size:.82rem;min-height:1.1em}}
+</style></head><body>
+<div class="card">
+  <h1 style="font-size:1.2rem;margin:.1rem 0 .35rem">Set a new 4-digit PIN</h1>
+  <p class="muted">This link was sent to the company’s registered email. After saving, log in with GST / name / mobile + this PIN.</p>
+  <label>New PIN</label><input id="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password"/>
+  <label>Confirm PIN</label><input id="pin2" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password"/>
+  <button type="button" id="go">Save PIN</button>
+  <p class="err" id="err"></p>
+</div>
+<script>
+document.getElementById('go').onclick = async function(){{
+  var err = document.getElementById('err'); err.textContent = '';
+  var a = (document.getElementById('pin').value||'').trim();
+  var b = (document.getElementById('pin2').value||'').trim();
+  if (!/^\\d{{4}}$/.test(a)) {{ err.textContent = 'PIN must be exactly 4 digits'; return; }}
+  if (a !== b) {{ err.textContent = 'PINs do not match'; return; }}
+  try {{
+    var res = await fetch('/api/company/workspace/pin-reset/confirm', {{
+      method:'POST', headers:{{'Content-Type':'application/json'}},
+      body: JSON.stringify({{ token: {json.dumps(token or "")}, pin: a }})
+    }});
+    var j = await res.json();
+    if (!res.ok) {{ err.textContent = j.detail || j.message || 'Could not save'; return; }}
+    err.style.color = '#0a5a48';
+    err.textContent = 'PIN saved. You can log in on WEOS now.';
+    setTimeout(function(){{ location.href = '/'; }}, 1200);
+  }} catch (e) {{ err.textContent = e.message || 'Network error'; }}
+}};
+</script>
+</body></html>"""
+    )
 
 
 class CompanyQuotesBulkBody(BaseModel):
@@ -2751,9 +2908,21 @@ def api_ensure_share_token(project_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/company/workspace")
-def api_company_workspace(gst: str | None = None) -> dict[str, Any]:
+def api_company_workspace(
+    request: Request,
+    gst: str | None = None,
+    session: str | None = None,
+) -> dict[str, Any]:
     """Return the open (or specified) company workspace hub payload."""
-    from WEOS.factory.company_store import get_active_gst, load_company, load_company_by_gst, normalise_gstin
+    from WEOS.factory.company_store import (
+        company_has_login_pin,
+        get_active_gst,
+        load_company,
+        load_company_by_gst,
+        normalise_gstin,
+        public_company_profile,
+        verify_workspace_session,
+    )
     from WEOS.factory.company_workspace import TOTALS_RULE, build_workspace_summary
 
     g = normalise_gstin(gst) if gst else (get_active_gst() or "")
@@ -2761,11 +2930,12 @@ def api_company_workspace(gst: str | None = None) -> dict[str, Any]:
         company = load_company()
         g = normalise_gstin(company.get("gstNo") or "")
     if not g:
-        raise HTTPException(status_code=400, detail="Open a company workspace with GSTIN first.")
+        raise HTTPException(status_code=400, detail="Log in to a company workspace first.")
+    token = (session or request.headers.get("X-WEOS-Session") or "").strip()
+    if company_has_login_pin(g) and not verify_workspace_session(g, token):
+        raise HTTPException(status_code=401, detail="Log in with GST / name / mobile and the 4-digit PIN.")
     company = load_company_by_gst(g) or load_company()
     summary = build_workspace_summary(g)
-    from WEOS.factory.company_store import public_company_profile
-
     return {
         "ok": True,
         "gstNo": g,
@@ -2980,7 +3150,7 @@ def api_master_advance(project_id: str, body: AdvanceBody, gst: str | None = Que
         raise HTTPException(status_code=400, detail="Select which quote this advance is against, or Any")
     row = None if any_quote else next((q for q in quotes if str(q.get("id")) == qid), None)
     if not any_quote and row is None:
-        raise HTTPException(status_code=400, detail="Quote is not on this customer ledger")
+        raise HTTPException(status_code=400, detail="Quote is not on this project")
     customer = (led.get("customer") or body.customerName or "").strip()
     if not customer:
         raise HTTPException(status_code=400, detail="Customer name required")

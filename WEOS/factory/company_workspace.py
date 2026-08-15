@@ -15,12 +15,22 @@ from typing import Any, Mapping
 
 from WEOS.factory.company_store import (
     _FIELDS,
+    clear_active_gst,
+    company_has_login_pin,
+    consume_pin_reset_token,
+    iter_company_docs,
     load_company,
     load_company_by_gst,
+    mint_pin_reset_token,
+    mint_workspace_session,
     normalise_gstin,
     public_company_profile,
+    revoke_workspace_session,
     save_company_by_gst,
     set_active_gst,
+    validate_login_pin,
+    verify_login_pin,
+    verify_workspace_session,
 )
 
 _log = logging.getLogger("weos.company_workspace")
@@ -33,52 +43,199 @@ TOTALS_RULE = (
 )
 
 
+def find_companies_for_login(query: str) -> list[dict[str, Any]]:
+    """Match GSTIN, company name, or registered mobile (last 10 digits)."""
+    raw = str(query or "").strip()
+    if not raw:
+        return []
+    gst_q = normalise_gstin(raw)
+    digits = re.sub(r"\D", "", raw)
+    name_q = re.sub(r"[^a-z0-9]+", "", raw.lower())
+    hits: list[dict[str, Any]] = []
+    for doc in iter_company_docs():
+        g = normalise_gstin(doc.get("gstNo"))
+        if not g:
+            continue
+        phone = re.sub(r"\D", "", str(doc.get("phone") or ""))
+        name = re.sub(r"[^a-z0-9]+", "", str(doc.get("companyName") or "").lower())
+        ok = False
+        if gst_q and g == gst_q:
+            ok = True
+        if digits and len(digits) >= 7 and phone:
+            if digits[-10:] == phone[-10:] or digits in phone or phone.endswith(digits):
+                ok = True
+        if name_q and len(name_q) >= 3 and name and (name_q == name or name_q in name or name in name_q):
+            ok = True
+        if ok:
+            hits.append(doc)
+    # Prefer exact GST / exact 10-digit mobile.
+    def _rank(d: Mapping[str, Any]) -> tuple[int, str]:
+        g = normalise_gstin(d.get("gstNo"))
+        phone = re.sub(r"\D", "", str(d.get("phone") or ""))
+        if gst_q and g == gst_q:
+            return (0, g)
+        if digits and len(digits) >= 10 and phone[-10:] == digits[-10:]:
+            return (1, g)
+        return (2, g)
+
+    hits.sort(key=_rank)
+    seen: set[str] = set()
+    uniq: list[dict[str, Any]] = []
+    for d in hits:
+        g = normalise_gstin(d.get("gstNo"))
+        if g in seen:
+            continue
+        seen.add(g)
+        uniq.append(d)
+    return uniq
+
+
+def _login_match_row(doc: Mapping[str, Any]) -> dict[str, Any]:
+    phone = re.sub(r"\D", "", str(doc.get("phone") or ""))
+    masked = (("******" + phone[-4:]) if len(phone) >= 4 else "") 
+    return {
+        "gstNo": doc.get("gstNo"),
+        "companyName": doc.get("companyName") or "",
+        "phoneMasked": masked,
+        "hasLoginPin": bool(str(doc.get("loginPinHash") or "").strip()),
+        "hasEmail": bool(str(doc.get("email") or "").strip()),
+    }
+
+
 def open_workspace(
-    gst_no: str,
+    gst_no: str | None = None,
     *,
     profile: Mapping[str, Any] | None = None,
     create: bool = True,
+    pin: str | None = None,
+    session_token: str | None = None,
+    login: str | None = None,
 ) -> dict[str, Any]:
-    """Login / open seller company workspace by GSTIN.
+    """Login / open seller company workspace by GSTIN, name, or mobile + PIN.
 
-    First-time: creates the company (optionally with profile fields).
-    Returns company + customers + projects + aggregates.
+    First-time: creates the company (PIN + profile). Returning companies with a
+    login PIN need that PIN or a valid session token. Same mobile/name/GST is
+    one company workspace — data is fetched after login.
     """
-    gst = normalise_gstin(gst_no)
+    prof = dict(profile or {})
+    gst = normalise_gstin(gst_no or prof.get("gstNo") or "")
+    login_q = str(login or "").strip()
+    matches: list[dict[str, Any]] = []
+    if not gst and login_q:
+        matches = find_companies_for_login(login_q)
+        if len(matches) > 1:
+            return {
+                "ok": False,
+                "needPick": True,
+                "matches": [_login_match_row(m) for m in matches],
+                "message": "More than one company matched. Pick GSTIN, then enter the PIN.",
+            }
+        if len(matches) == 1:
+            gst = normalise_gstin(matches[0].get("gstNo"))
+        elif not create:
+            raise FileNotFoundError("No company workspace matches that GST / name / mobile.")
+        else:
+            gst = normalise_gstin(login_q)
+            if len(gst) != 15:
+                raise FileNotFoundError(
+                    "No company matched. For a new company enter the 15-character GSTIN, name, mobile, PIN and email."
+                )
+
     if not gst:
-        raise ValueError("Enter a valid GSTIN to open the company workspace.")
+        raise ValueError("Enter company GSTIN, registered name, or mobile to log in.")
 
     existing = load_company_by_gst(gst)
     created = False
+    enrolled = False
     if existing is None:
         if not create:
             raise FileNotFoundError(f"No company workspace for GSTIN {gst}")
-        payload = dict(profile or {})
+        payload = dict(prof)
         payload["gstNo"] = gst
         if not (payload.get("companyName") or "").strip():
             payload.setdefault("companyName", f"Company {gst[-4:]}")
+        if pin:
+            payload["loginPin"] = validate_login_pin(pin)
         company = save_company_by_gst(gst, payload)
         created = True
-        # Migrate unscoped legacy data onto this company when it is the first GST workspace.
         _migrate_legacy_into(gst)
     else:
-        if profile:
-            # Allow completing / updating profile on open without wiping.
-            patch = {k: profile[k] for k in _FIELDS if k in profile and profile[k] is not None}
+        has_pin = company_has_login_pin(gst, existing)
+        session_ok = verify_workspace_session(gst, session_token)
+        if has_pin:
+            if not session_ok and not verify_login_pin(gst, pin):
+                raise PermissionError("Enter the 4-digit company PIN to open this workspace.")
+        elif pin:
+            save_company_by_gst(gst, {**existing, "loginPin": validate_login_pin(pin)})
+            enrolled = True
+            existing = load_company_by_gst(gst) or existing
+        if pin or session_ok or enrolled:
+            patch = {k: prof[k] for k in _FIELDS if k in prof and prof[k] is not None}
             if patch:
                 existing = save_company_by_gst(gst, {**existing, **patch})
         company = existing
 
     set_active_gst(gst)
+    token = mint_workspace_session(gst)
     summary = build_workspace_summary(gst)
     return {
         "ok": True,
         "created": created,
+        "enrolledPin": enrolled,
         "gstNo": gst,
+        "sessionToken": token,
         "company": public_company_profile(company),
         "totalsRule": TOTALS_RULE,
         **summary,
     }
+
+
+def logout_workspace(*, gst_no: str | None = None, session_token: str | None = None) -> dict[str, Any]:
+    gst = normalise_gstin(gst_no or "")
+    if gst:
+        revoke_workspace_session(gst, session_token)
+        clear_active_gst(gst)
+    else:
+        clear_active_gst()
+    return {"ok": True, "loggedOut": True}
+
+
+def request_pin_reset(query: str, *, base_url: str = "") -> dict[str, Any]:
+    """Always returns a generic ack. Emails a link when a registered mail exists."""
+    from WEOS.factory.company_mail import public_base_url, send_pin_reset_email
+
+    matches = find_companies_for_login(query)
+    ack = {
+        "ok": True,
+        "sent": False,
+        "message": "If this company has a registered email, a PIN reset link was sent.",
+    }
+    if len(matches) != 1:
+        return ack
+    doc = matches[0]
+    email = str(doc.get("email") or "").strip()
+    gst = normalise_gstin(doc.get("gstNo"))
+    if not email or "@" not in email or not gst:
+        return ack
+    token = mint_pin_reset_token(gst)
+    base = (base_url or public_base_url()).rstrip("/")
+    reset_url = f"{base}/pin-reset?token={token}" if base else f"/pin-reset?token={token}"
+    sent = send_pin_reset_email(
+        to_email=email,
+        company_name=str(doc.get("companyName") or gst),
+        reset_url=reset_url,
+    )
+    ack["sent"] = bool(sent)
+    return ack
+
+
+def confirm_pin_reset(token: str, new_pin: str) -> dict[str, Any]:
+    row = consume_pin_reset_token(token, new_pin)
+    gst = row.get("gstNo")
+    session = mint_workspace_session(str(gst)) if gst else None
+    if gst:
+        set_active_gst(str(gst))
+    return {"ok": True, "gstNo": gst, "sessionToken": session, "companyName": row.get("companyName")}
 
 
 def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:

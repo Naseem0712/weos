@@ -224,6 +224,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
         <p class="sub" id="subtitle">Manufacturing Operating System</p>
       </div>
       <button type="button" class="pill" id="enginePill" title="Click to retry backend health" style="margin-right:.5rem;background:#6b7280;color:#fff">● Engine…</button>
+      <span class="pill" id="wsPill" title="Company login">Not logged in</span>
       <span class="pill" id="projPill">No project</span>
     </div>
 
@@ -288,15 +289,24 @@ button.pill{border:0;font:inherit;cursor:pointer}
         <div class="row" style="margin-bottom:.6rem;align-items:flex-end;gap:.5rem .7rem;flex-wrap:wrap">
           <div class="grow"><label class="l">Customer address (prints on quote)</label><input id="projCustAddress" placeholder="optional"/></div>
           <div class="grow"><label class="l">Customer GSTIN</label><input id="projCustGst" placeholder="optional"/></div>
-          <div class="grow"><label class="l">Quote number (optional)</label><input id="projQuoteNo" placeholder="new number = new quote · extra text = new quote"/></div>
         </div>
+        <div id="setupClientBox" style="margin:.15rem 0 .65rem"></div>
+        <div class="row" style="margin-bottom:.6rem;align-items:flex-end;gap:.5rem .7rem;flex-wrap:wrap">
+          <div class="grow"><label class="l">Project / Quote number</label>
+            <select id="setupProjectPick" style="width:100%">
+              <option value="new">New project — new quote number</option>
+            </select>
+          </div>
+          <div class="grow"><label class="l">Quote number (one per project — add text for a new version)</label><input id="projQuoteNo" placeholder="saves as this project’s quote number"/></div>
+        </div>
+        <p class="muted" id="setupQuoteHint" style="margin:-.35rem 0 .55rem;font-size:.75rem">Same mobile = same client. New project = new quote number. Old project = same quote number; add text (e.g. /A2 or site note) for the new quote on that running job.</p>
         <div class="row" style="margin-bottom:.6rem;flex-wrap:wrap;gap:.5rem .7rem">
           <div class="grow" style="flex-basis:100%"><label class="l">Quote description (prints on quote)</label><textarea id="projDescription" rows="2" placeholder="Optional note that prints on the customer quotation" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
           <div class="grow" style="flex-basis:100%"><label class="l">Terms &amp; Conditions override (optional — defaults from Company Setup)</label><textarea id="projTerms" rows="3" placeholder="Leave blank to use the company default terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
         </div>
         <hr style="border:none;border-top:1px solid var(--line);margin:1.1rem 0 .7rem"/>
         <strong style="font-size:.92rem">Outside / package quotes on this project</strong>
-        <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">WEOS Window Cart quotes stay on this job. Add any <strong>outside finalized quote</strong> here (windows, louvers, vents, railing, fabrication, gates…). All quote totals become project value. Record advances on Master Ledger — running and closing balance stay on this project only.</p>
+        <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">WEOS Window Cart quotes stay on this job. Add any <strong>outside finalized quote</strong> here (windows, louvers, vents, railing, fabrication, gates…). All quote totals become this project’s value. An advance on Master Ledger reduces this project’s balance and this client’s total business.</p>
         <div class="pkg-tabs" id="pkgQuoteTabs"></div>
         <div class="row" style="gap:.4rem;flex-wrap:wrap;margin-bottom:.4rem">
           <button class="btn sm" id="btnPkgAddQuote" type="button">Add outside quote to this project</button>
@@ -304,6 +314,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
         <div id="pkgQuoteEditor"></div>
         <div id="pkgJobTotals" class="row" style="gap:.7rem;flex-wrap:wrap;margin:.55rem 0 .15rem"></div>
         <div id="pkgLedgerStrip" class="row" style="gap:.7rem;flex-wrap:wrap;margin:.15rem 0 .35rem"></div>
+        <div id="setupDiscountBox" style="margin:.45rem 0 .2rem"></div>
         <div class="row" style="margin-top:.35rem;gap:.5rem;flex-wrap:wrap">
           <button class="btn" id="btnSaveSetup" type="button">Save project setup</button>
           <button class="btn sec" id="btnSetupToCart" type="button">Continue to Window Cart</button>
@@ -322,7 +333,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
     <section id="view-master" class="grid hidden">
       <div class="panel">
         <strong>Master Ledger</strong>
-        <p class="muted" style="margin:.2rem 0 .7rem;font-size:.82rem">Search by mobile, name, or quote number. Same number = this customer’s <strong>all quotes</strong> (WEOS + outside) and one grand total. Any advance reduces this customer’s total balance.</p>
+        <p class="muted" style="margin:.2rem 0 .7rem;font-size:.82rem">Same mobile = one client (B2B company). Each project / quote number is separate. Search the client, then open a project for its quotes, advances and running balance. Any advance on a project also reduces the client’s total business.</p>
         <div class="row" style="align-items:flex-end;gap:.5rem;flex-wrap:wrap">
           <div class="grow"><label class="l">Search</label><input id="mlSearch" placeholder="mobile / name / quote number"/></div>
           <button class="btn" id="btnMlSearch" type="button">Search</button>
@@ -1459,12 +1470,16 @@ button.pill{border:0;font:inherit;cursor:pointer}
     <!-- COMPANY SETUP / GST WORKSPACE -->
     <section id="view-company" class="grid hidden">
       <div class="panel" id="coGstLoginPanel" style="margin-bottom:1rem">
-        <strong>Company workspace login (GSTIN)</strong>
-        <p class="muted" style="margin:.2rem 0 .7rem;font-size:.82rem">Enter your company GST number to open the seller workspace — customers, projects, accounts &amp; ledgers in one place. First time creates the workspace.</p>
+        <strong>Company login</strong>
+        <p class="muted" style="margin:.2rem 0 .7rem;font-size:.82rem">GSTIN, company name, or registered mobile + <strong>4-digit PIN</strong>. After login this company’s quotes, customers and advances load from the server. Log out before switching company on this device.</p>
         <div class="row" style="align-items:flex-end;gap:.5rem;flex-wrap:wrap">
-          <div class="grow"><label class="l">Seller GSTIN</label><input id="coGstLogin" placeholder="e.g. 22AAAAA0000A1Z5" style="text-transform:uppercase"/></div>
-          <div class="grow"><label class="l">Company name (first-time)</label><input id="coGstLoginName" style="text-transform:uppercase" placeholder="optional on return"/></div>
-          <button class="btn" id="btnCoGstOpen" type="button">Open workspace</button>
+          <div class="grow"><label class="l">GSTIN / name / mobile</label><input id="coGstLogin" placeholder="GSTIN, company name, or mobile" style="text-transform:uppercase"/></div>
+          <div><label class="l">4-digit PIN</label><input id="coGstPin" type="password" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="••••" style="width:110px"/></div>
+          <div class="grow"><label class="l">Company name (first time)</label><input id="coGstLoginName" style="text-transform:uppercase" placeholder="new company only"/></div>
+          <div class="grow"><label class="l">Registered email (PIN reset)</label><input id="coGstLoginEmail" type="email" placeholder="company email"/></div>
+          <button class="btn" id="btnCoGstOpen" type="button">Log in</button>
+          <button class="btn ghost sm" id="btnCoGstForgot" type="button">Forgot PIN</button>
+          <button class="btn ghost sm" id="btnCoGstLogout" type="button">Log out</button>
           <button class="btn ghost sm" id="btnCoGstRefresh" type="button">Refresh hub</button>
         </div>
         <div class="err" id="coGstErr" style="margin-top:.4rem"></div>
@@ -1480,7 +1495,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
           <div class="row" style="gap:.4rem;flex-wrap:wrap">
             <button class="btn sm" id="btnHubNewProject" type="button">New Project Setup</button>
             <button class="btn sec sm" id="btnHubNewQuote" type="button">New quote</button>
-            <button class="btn ghost sm" id="btnHubCustomers" type="button">Customers</button>
+            <button class="btn ghost sm" id="btnHubLogout" type="button">Log out</button>
           </div>
         </div>
         <div class="row" id="coHubKpis" style="gap:.7rem;flex-wrap:wrap;margin:0.8rem 0">
@@ -1536,7 +1551,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
       <div class="two">
         <div class="panel">
           <strong>Company Setup</strong>
-          <p class="muted" style="margin:.2rem 0 .8rem;font-size:.82rem">Saved once — auto-applied to every quote header &amp; branding. Company name prints in UPPERCASE. Use GST login above to switch workspace.</p>
+          <p class="muted" style="margin:.2rem 0 .8rem;font-size:.82rem">Saved once — auto-applied to every quote header &amp; branding. Company name prints in UPPERCASE. Log in above with GST / name / mobile + PIN. Log out when you change system or company.</p>
           <div class="row">
             <div class="grow"><label class="l">Company name</label><input id="coName" style="text-transform:uppercase"/></div>
             <div class="grow"><label class="l">GST No</label><input id="coGst"/></div>
@@ -1558,9 +1573,9 @@ button.pill{border:0;font:inherit;cursor:pointer}
             <div class="grow"><label class="l">Bank details (prints on quote)</label><input id="coBank" placeholder="Bank · A/c No · IFSC · Branch"/></div>
           </div>
           <div class="row" style="margin-top:.5rem">
-            <div class="grow"><label class="l">Delete PIN (optional)</label><input id="coDeletePin" type="password" autocomplete="new-password" placeholder="Optional — leave blank"/></div>
+            <div class="grow"><label class="l">Login PIN (4 digits)</label><input id="coDeletePin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="Set or change PIN"/></div>
           </div>
-          <p class="muted" id="coDeletePinHint" style="margin:.35rem 0 0;font-size:.75rem">To delete a project, type DELETE. A PIN is optional and never required.</p>
+          <p class="muted" id="coDeletePinHint" style="margin:.35rem 0 0;font-size:.75rem">4-digit PIN is required to log in on any system. Forgot PIN? use the registered email link above. To delete a project, type DELETE — PIN is not used for delete.</p>
           <div class="row" style="margin-top:.5rem">
             <div class="grow" style="flex-basis:100%"><label class="l">Default Terms &amp; Conditions (prints on every quote unless overridden)</label><textarea id="coTerms" rows="5" placeholder="One term per line…" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem;font:inherit"></textarea></div>
           </div>
@@ -2141,18 +2156,65 @@ const state = {
   packageQuotes: [],
   packageQuoteIndex: 0,
   masterJobId: null,
+  quoteDiscount: { mode: 'off', percent: 0, amount: 0, note: '' },
 };
 const $ = (id) => document.getElementById(id);
 const toast = (m) => { const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); };
 
 /** Persist active seller GST so refresh / minimize does not log out the workspace. */
 const WEOS_GST_KEY = 'weos.activeCompanyGst';
+const WEOS_SESSION_KEY = 'weos.workspaceSession';
 function persistCompanyGst(gst) {
   const g = (gst || '').trim().toUpperCase();
   if (!g) return;
   state.companyGst = g;
   try { localStorage.setItem(WEOS_GST_KEY, g); } catch (_) {}
   try { sessionStorage.setItem(WEOS_GST_KEY, g); } catch (_) {}
+}
+function persistWorkspaceSession(token, gst) {
+  if (gst) persistCompanyGst(gst);
+  const t = String(token || '').trim();
+  if (!t) return;
+  try { localStorage.setItem(WEOS_SESSION_KEY, t); } catch (_) {}
+  try { sessionStorage.setItem(WEOS_SESSION_KEY, t); } catch (_) {}
+}
+function savedSessionToken() {
+  try {
+    return (sessionStorage.getItem(WEOS_SESSION_KEY) || localStorage.getItem(WEOS_SESSION_KEY) || '').trim();
+  } catch (_) { return ''; }
+}
+function clearWorkspaceSession() {
+  state.companyGst = null;
+  state.workspace = null;
+  state.workspaceRestored = false;
+  try {
+    localStorage.removeItem(WEOS_GST_KEY);
+    sessionStorage.removeItem(WEOS_GST_KEY);
+    localStorage.removeItem(WEOS_SESSION_KEY);
+    sessionStorage.removeItem(WEOS_SESSION_KEY);
+  } catch (_) {}
+  if ($('coHubPanel')) $('coHubPanel').classList.add('hidden');
+  if ($('coGstStatus')) $('coGstStatus').textContent = 'Logged out';
+  if ($('coGstPin')) $('coGstPin').value = '';
+  updateWorkspacePill();
+}
+function updateWorkspacePill() {
+  const el = $('wsPill');
+  if (!el) return;
+  const gst = savedCompanyGst();
+  if (state.workspaceRestored && gst) {
+    el.textContent = 'Logged in · ' + gst.slice(0, 4) + '…';
+    el.title = 'Company workspace ' + gst + ' — click Company Setup to log out';
+  } else {
+    el.textContent = 'Not logged in';
+    el.title = 'Log in with GST / name / mobile + PIN';
+  }
+}
+function requireCompanyLogin() {
+  if (state.workspaceRestored && savedCompanyGst() && savedSessionToken()) return true;
+  toast('Log in with GST / name / mobile and PIN first');
+  setView('company');
+  return false;
 }
 function savedCompanyGst() {
   try {
@@ -2164,7 +2226,9 @@ function savedCompanyGst() {
 function updateDeletePinHint(co) {
   const hint = $('coDeletePinHint');
   if (!hint) return;
-  hint.textContent = 'To delete a project, type DELETE. A PIN is optional and never required.';
+  hint.textContent = (co && co.hasLoginPin)
+    ? 'Login PIN is set. Type a new 4-digit PIN here to change it. Forgot PIN? use the registered email link. Delete a project by typing DELETE.'
+    : 'Set a 4-digit PIN to lock this company. You need it to log in on any system. Delete a project by typing DELETE.';
 }
 async function confirmPinDelete(projectId, label) {
   const typed = prompt('Type DELETE to permanently remove this project:\n' + (label || projectId));
@@ -2214,6 +2278,9 @@ async function applyWorkspacePayload(ws) {
   if (!ws || !ws.gstNo) return;
   state.workspace = ws;
   persistCompanyGst(ws.gstNo);
+  if (ws.sessionToken) persistWorkspaceSession(ws.sessionToken, ws.gstNo);
+  state.workspaceRestored = true;
+  updateWorkspacePill();
   state.company = ws.company || state.company;
   if ($('coGstLogin')) $('coGstLogin').value = ws.gstNo;
   if (ws.company) {
@@ -2239,18 +2306,20 @@ async function applyWorkspacePayload(ws) {
 }
 async function restoreCompanyWorkspace() {
   const gst = savedCompanyGst();
-  if (!gst) return null;
+  const token = savedSessionToken();
+  if (!gst || !token) return null;
   try {
     const ws = await api('/api/company/workspace/open', {
       method: 'POST',
-      body: { gstNo: gst, create: true },
+      body: { gstNo: gst, sessionToken: token, create: false },
     });
+    if (ws && ws.needPick) return null;
     await applyWorkspacePayload(ws);
-    state.workspaceRestored = true;
     return ws;
   } catch (e) {
     console.warn('GST workspace restore failed', e);
-    if ($('coGstStatus')) $('coGstStatus').textContent = 'Restore failed — re-enter GSTIN';
+    if (/pin|log in|401/i.test(String((e && e.message) || ''))) clearWorkspaceSession();
+    if ($('coGstStatus')) $('coGstStatus').textContent = 'Session ended — log in with PIN';
     return null;
   }
 }
@@ -2264,7 +2333,8 @@ const API_BASE = (() => {
 
 function withGstQuery(qs) {
   const params = qs instanceof URLSearchParams ? qs : new URLSearchParams(qs || '');
-  const g = (typeof savedCompanyGst === 'function' && savedCompanyGst()) || state.companyGst || '';
+  const logged = typeof savedSessionToken === 'function' && savedSessionToken();
+  const g = logged ? ((typeof savedCompanyGst === 'function' && savedCompanyGst()) || state.companyGst || '') : '';
   if (g && !params.get('gst')) params.set('gst', g);
   return params;
 }
@@ -2283,9 +2353,14 @@ async function api(path, opts={}) {
   try {
     const res = await fetch(url, {
       ...rest,
-      headers: body && !(body instanceof FormData)
-        ? Object.assign({'Content-Type':'application/json'}, extraHeaders || {})
-        : extraHeaders,
+      headers: (function(){
+        const h = body && !(body instanceof FormData)
+          ? Object.assign({'Content-Type':'application/json'}, extraHeaders || {})
+          : Object.assign({}, extraHeaders || {});
+        const tok = typeof savedSessionToken === 'function' ? savedSessionToken() : '';
+        if (tok && !h['X-WEOS-Session']) h['X-WEOS-Session'] = tok;
+        return h;
+      })(),
       signal: ctrl.signal,
       body: body && !(body instanceof FormData) ? JSON.stringify(body) : body,
     });
@@ -2330,7 +2405,7 @@ function setView(v) {
   $('subtitle').textContent = titles[v][1];
   $('side').classList.remove('open');
   if (v==='dashboard') loadDashboard();
-  if (v==='setup') { refreshSetupSummary(); loadSetupList(); renderPackageQuotes(); }
+  if (v==='setup') { refreshSetupSummary(); loadSetupList(); renderPackageQuotes(); renderSetupDiscount(); lookupSetupClient(); }
   if (v==='master') initMasterLedger();
   if (v==='projects') loadProjects();
   if (v==='library') renderLibrary();
@@ -4439,6 +4514,158 @@ const PKG_UNITS = {
 function _pkgId(prefix){ return prefix + Math.random().toString(36).slice(2,10); }
 function emptyPkgItem(){ return { id:_pkgId('pi'), category:'window', qty:'', size:'', unit:'pcs', amount:'' }; }
 function emptyPkgQuote(){ return { id:_pkgId('pq'), quotationId:'', gstMode:'exclude', gstPercent:18, items:[emptyPkgItem()], note:'', attachmentName:'', attachments:[] }; }
+function emptyQuoteDiscount(){ return { mode:'off', percent:0, amount:0, note:'' }; }
+function adoptQuoteDiscount(doc){
+  const d = (doc && doc.quoteDiscount) || {};
+  state.quoteDiscount = {
+    mode: d.mode || 'off',
+    percent: d.percent || 0,
+    amount: d.amount || 0,
+    note: d.note || '',
+  };
+  renderSetupDiscount();
+}
+function renderSetupDiscount(){
+  const box = $('setupDiscountBox'); if (!box) return;
+  const d = state.quoteDiscount || emptyQuoteDiscount();
+  box.innerHTML = `
+    <strong style="font-size:.88rem">Site discount on this saved quote</strong>
+    <p class="muted" style="margin:.15rem 0 .35rem;font-size:.75rem">After the customer has the quote, final on-site: percent, fix amount, or GST off. Saves on this project’s quote number (versions stay).</p>
+    <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end">
+      <div><label class="l">Discount</label>
+        <select id="setupDiscMode">
+          <option value="off"${d.mode==='off'?' selected':''}>No discount</option>
+          <option value="percent"${d.mode==='percent'?' selected':''}>Percent %</option>
+          <option value="amount"${d.mode==='amount'?' selected':''}>Fix amount ₹</option>
+          <option value="gst_off"${d.mode==='gst_off'?' selected':''}>GST off</option>
+        </select>
+      </div>
+      <div id="setupDiscPctWrap"${d.mode==='percent'?'':' style="display:none"'}><label class="l">%</label><input id="setupDiscPct" type="number" min="0" max="100" step="0.01" value="${esc(d.percent||0)}" style="width:80px"/></div>
+      <div id="setupDiscAmtWrap"${d.mode==='amount'?'':' style="display:none"'}><label class="l">Amount ₹</label><input id="setupDiscAmt" type="number" min="0" step="0.01" value="${esc(d.amount||0)}" style="width:110px"/></div>
+      <div class="grow"><label class="l">Note</label><input id="setupDiscNote" value="${esc(d.note||'')}" placeholder="optional"/></div>
+    </div>`;
+  const sync = () => {
+    state.quoteDiscount = state.quoteDiscount || emptyQuoteDiscount();
+    if ($('setupDiscMode')) state.quoteDiscount.mode = $('setupDiscMode').value;
+    if ($('setupDiscPct')) state.quoteDiscount.percent = Number($('setupDiscPct').value||0);
+    if ($('setupDiscAmt')) state.quoteDiscount.amount = Number($('setupDiscAmt').value||0);
+    if ($('setupDiscNote')) state.quoteDiscount.note = $('setupDiscNote').value;
+    const pct = $('setupDiscPctWrap'); if (pct) pct.style.display = state.quoteDiscount.mode==='percent' ? '' : 'none';
+    const amt = $('setupDiscAmtWrap'); if (amt) amt.style.display = state.quoteDiscount.mode==='amount' ? '' : 'none';
+  };
+  if ($('setupDiscMode')) $('setupDiscMode').onchange = sync;
+  ['setupDiscPct','setupDiscAmt','setupDiscNote'].forEach(id => {
+    if ($(id)) $(id).addEventListener('input', sync);
+  });
+}
+function _mobileDigits(v){ return String(v||'').replace(/\D/g,''); }
+function _mobileMatch(a, b){
+  const x = _mobileDigits(a), y = _mobileDigits(b);
+  if (!x || !y || x.length < 7 || y.length < 7) return false;
+  return x.slice(-10) === y.slice(-10) || x.endsWith(y) || y.endsWith(x);
+}
+async function lookupSetupClient(){
+  const mob = ($('projMobile') && $('projMobile').value.trim()) || '';
+  const digits = _mobileDigits(mob);
+  const box = $('setupClientBox');
+  const pick = $('setupProjectPick');
+  if (digits.length < 7) {
+    if (box) box.innerHTML = '';
+    if (pick) pick.innerHTML = '<option value="new">New project — new quote number</option>';
+    return;
+  }
+  let projects = [];
+  let customers = [];
+  try {
+    const qs = withGstQuery({ sort:'updatedAt', order:'desc' });
+    qs.set('q', mob);
+    const data = await api('/api/projects?'+qs.toString());
+    projects = (data.projects || []).filter(p => _mobileMatch(p.customerMobile, digits));
+  } catch (_) {}
+  try {
+    const cq = withGstQuery({ q: mob });
+    const cdata = await api('/api/customers?'+cq.toString());
+    customers = cdata.customers || [];
+  } catch (_) {}
+  const latest = projects[0];
+  const prof = customers[0] || {};
+  if ($('projCustName') && !$('projCustName').value.trim()) {
+    const nm = (latest && latest.customer) || prof.name || '';
+    if (nm && !_mobileDigits(nm)) $('projCustName').value = nm;
+  }
+  if ($('projCustAddress') && !$('projCustAddress').value.trim() && (latest && latest.customerAddress || prof.address)) {
+    $('projCustAddress').value = (latest && latest.customerAddress) || prof.address || '';
+  }
+  if ($('projCustGst') && !$('projCustGst').value.trim() && (prof.gstNo || (latest && latest.customerGst))) {
+    $('projCustGst').value = prof.gstNo || (latest && latest.customerGst) || '';
+  }
+  syncProjectCustomer();
+  if (pick) {
+    pick.innerHTML = '<option value="new">New project — new quote number</option>' +
+      projects.map(p => {
+        const qn = p.quotationId || p.projectId;
+        const sel = state.projectId && p.projectId === state.projectId ? ' selected' : '';
+        return `<option value="${esc(p.projectId)}"${sel}>${esc(qn)} · ${esc(p.name||'')} · ${money(p.totalGrand != null ? p.totalGrand : p.grandTotal)}</option>`;
+      }).join('');
+  }
+  if (box) {
+    if (!projects.length) {
+      box.innerHTML = '<p class="muted" style="font-size:.78rem;margin:0">New client on this mobile — save will create a new project / quote number.</p>';
+    } else {
+      box.innerHTML = `<p class="muted" style="font-size:.78rem;margin:0 0 .35rem">This mobile already has <strong>${projects.length}</strong> running / old project(s). Select one, or New project.</p>
+        <div style="overflow:auto"><table><thead><tr><th>Quote no.</th><th>Name</th><th>Value</th><th></th></tr></thead><tbody>${
+          projects.map(p => `<tr>
+            <td>${esc(p.quotationId||p.projectId)}</td>
+            <td>${esc(p.name||'')} · ${esc(p.status||'')}</td>
+            <td>${money(p.totalGrand != null ? p.totalGrand : p.grandTotal)}</td>
+            <td><button class="btn ghost sm" type="button" data-setup-use="${esc(p.projectId)}">Use this project</button></td>
+          </tr>`).join('')
+        }</tbody></table></div>`;
+      box.querySelectorAll('[data-setup-use]').forEach(b => {
+        b.onclick = async () => {
+          if ($('setupProjectPick')) $('setupProjectPick').value = b.dataset.setupUse;
+          await applySetupProjectPick();
+        };
+      });
+    }
+  }
+  refreshSetupSummary();
+}
+async function applySetupProjectPick(){
+  const pick = $('setupProjectPick');
+  const v = pick && pick.value;
+  if (!v || v === 'new') {
+    const keepMob = ($('projMobile') && $('projMobile').value) || '';
+    const keepName = ($('projCustName') && $('projCustName').value) || '';
+    const keepAddr = ($('projCustAddress') && $('projCustAddress').value) || '';
+    const keepGst = ($('projCustGst') && $('projCustGst').value) || '';
+    state.projectId = null;
+    state.lines = [];
+    state.lastResult = null;
+    state.packageQuotes = [emptyPkgQuote()];
+    state.packageQuoteIndex = 0;
+    state.masterJobId = null;
+    state.quoteDiscount = emptyQuoteDiscount();
+    if ($('cartName')) $('cartName').value = 'WEOS Project';
+    if ($('projQuoteNo')) $('projQuoteNo').value = '';
+    if ($('projMobile')) $('projMobile').value = keepMob;
+    if ($('projCustName')) $('projCustName').value = keepName;
+    if ($('projCustAddress')) $('projCustAddress').value = keepAddr;
+    if ($('projCustGst')) $('projCustGst').value = keepGst;
+    syncProjectCustomer();
+    persistCartSession();
+    renderPackageQuotes();
+    renderSetupDiscount();
+    toast('New project — customer stays. Quote number generates on save. Add WEOS items or an outside quote.');
+    return;
+  }
+  await openProject(v);
+  setView('setup');
+  renderSetupDiscount();
+  toast('Running project opened. Add text to the quote number for a new version, then add WEOS or outside items.');
+  if ($('projQuoteNo')) { try { $('projQuoteNo').focus(); $('projQuoteNo').select(); } catch(_){} }
+  if ($('setupQuoteHint')) $('setupQuoteHint').textContent = 'This project’s quote number stays one. Add text (e.g. /A2 or site note) so the new quote is a version on this running job.';
+}
 function ensurePkgQuotes(){
   if (!Array.isArray(state.packageQuotes) || !state.packageQuotes.length) state.packageQuotes = [emptyPkgQuote()];
   if (state.packageQuoteIndex < 0 || state.packageQuoteIndex >= state.packageQuotes.length) state.packageQuoteIndex = 0;
@@ -5063,6 +5290,9 @@ function adoptServerLines(incoming, { allowShrink = false } = {}) {
 }
 
 async function ensureProject() {
+  if (typeof requireCompanyLogin === 'function' && !state.projectId && !requireCompanyLogin()) {
+    throw new Error('Log in first');
+  }
   if (state.projectId) {
     try {
       await api('/api/projects/'+state.projectId);
@@ -5081,13 +5311,14 @@ async function ensureProject() {
     status: 'draft',
     packageQuotes: packageQuotesPayload(),
     masterJobId: state.masterJobId || undefined,
+    quoteDiscount: state.quoteDiscount || emptyQuoteDiscount(),
     ...projectBillTo()
   }});
   state.projectId = doc.projectId;
   if (doc.masterJobId) state.masterJobId = doc.masterJobId;
   persistCartSession();
   updatePdfLinks();
-  toast('Created '+doc.projectId);
+  toast('Created '+(doc.quotationId || doc.projectId));
   return doc.projectId;
 }
 
@@ -5097,9 +5328,7 @@ function adoptSavedProject(doc) {
     state.projectId = doc.projectId;
   }
   if (doc.masterJobId) state.masterJobId = doc.masterJobId;
-  if (doc.quotationId && $('projQuoteNo') && !$('projQuoteNo').value.trim()) {
-    $('projQuoteNo').value = doc.quotationId;
-  }
+  if (doc.quotationId && $('projQuoteNo')) $('projQuoteNo').value = doc.quotationId;
   persistCartSession();
   updatePdfLinks();
   return doc;
@@ -5125,6 +5354,7 @@ async function saveProject(silent) {
           packageQuotes: packageQuotesPayload(),
           masterJobId: state.masterJobId || undefined,
           quoteKind: packageQuotesPayload().length ? ((state.lines||[]).length ? 'mixed' : 'package') : undefined,
+          quoteDiscount: state.quoteDiscount || emptyQuoteDiscount(),
           ...projectBillTo()
         };
         try {
@@ -5141,6 +5371,7 @@ async function saveProject(silent) {
         if (!silent) toast('Saved v'+doc.version+(doc.quoteNumberVersioned ? ' · quote versioned' : ''));
         refreshSetupSummary();
         adoptPackageQuotes(doc);
+        adoptQuoteDiscount(doc);
       } while (state._saveAgain);
       return doc;
     } finally {
@@ -5172,6 +5403,8 @@ async function openProject(id) {
   if ($('projDescription')) $('projDescription').value = doc.description || '';
   if ($('projTerms')) $('projTerms').value = doc.terms || '';
   adoptPackageQuotes(doc);
+  adoptQuoteDiscount(doc);
+  lookupSetupClient().catch(() => {});
   state.memoryAskedFor = null;
   if (doc.lastCalculation?.price) {
     state.lastResult = doc.lastCalculation;
@@ -7642,8 +7875,17 @@ function syncProjectCustomer(){
     scheduleLivePrice();
     if (typeof scheduleSave === 'function') scheduleSave();
     if (id === 'projCustName') maybeAskCustomerMemory();
+    if (id === 'projMobile') lookupSetupClient();
   });
 });
+if ($('projMobile') && !$('projMobile')._lookupBound) {
+  $('projMobile')._lookupBound = true;
+  $('projMobile').addEventListener('blur', () => lookupSetupClient());
+}
+if ($('setupProjectPick') && !$('setupProjectPick')._bound) {
+  $('setupProjectPick')._bound = true;
+  $('setupProjectPick').addEventListener('change', () => applySetupProjectPick());
+}
 // New bill-to + quote-text fields persist via autosave (they print on the quote).
 ['projCustAddress','projCustGst','projQuoteNo','projDescription','projTerms','cartName'].forEach(id => {
   const el = $(id); if (!el) return;
@@ -7672,6 +7914,7 @@ $('btnNewFromDash').onclick = $('btnNewProj').onclick = async () => {
   state.packageQuotes = [emptyPkgQuote()];
   state.packageQuoteIndex = 0;
   state.masterJobId = null;
+  state.quoteDiscount = emptyQuoteDiscount();
   $('cartTotal').textContent='₹ —'; renderCart();
   refreshSetupSummary();
   state._previewLineId = null;
@@ -7679,6 +7922,7 @@ $('btnNewFromDash').onclick = $('btnNewProj').onclick = async () => {
   persistCartSession();
   setView('setup'); scheduleLivePrice();
   renderPackageQuotes();
+  renderSetupDiscount();
 };
 if ($('btnSaveSetup')) $('btnSaveSetup').onclick = async () => {
   try {
@@ -7792,49 +8036,72 @@ function renderMasterLedger(wrap){
   const t = led.totals || {};
   const quotes = led.quotes || [];
   const adv = led.advances || [];
+  const projects = led.projects || [];
+  const scope = led.scope || (projects.length > 1 ? 'client' : 'project');
+  const clientT = led.clientTotals || (scope === 'client' ? t : null);
   const pid = led.projectId || state.projectId;
-  const quoteOpts = `<option value="any">Any — this customer’s total balance</option>` + quotes.map(q => {
-    const label = (q.kind==='weos'?'WEOS · ':'Outside · ') + (q.quotationId || q.id || 'quote') + (q.projectId?(' · '+q.projectId):'') + ' · ' + money(q.projectValue);
-    return `<option value="${esc(q.id)}">${esc(label)}</option>`;
-  }).join('');
+  function mlQuoteOpts(forPid){
+    const want = String(forPid||'');
+    const subset = want ? quotes.filter(q => !q.projectId || String(q.projectId)===want) : [];
+    return `<option value="any">Any — this project’s quotes</option>` + subset.map(q => {
+      const label = (q.kind==='weos'?'WEOS · ':'Outside · ') + (q.quotationId || q.id || 'quote') + ' · ' + money(q.projectValue);
+      return `<option value="${esc(q.id)}" data-pid="${esc(q.projectId||'')}">${esc(label)}</option>`;
+    }).join('');
+  }
+  const quoteOpts = mlQuoteOpts(scope === 'project' ? pid : '');
+  const projectOpts = projects.map(p =>
+    `<option value="${esc(p.projectId)}"${p.projectId===pid?' selected':''}>${esc(p.quotationId||p.projectId)} · ${esc(p.name||'')} · ${money(p.projectValue)}</option>`
+  ).join('');
   const catOpts = PKG_CATS.map(([id,lb]) => `<option value="${id}">${lb}</option>`).join('');
+  const disc = led.quoteDiscount || { mode:'off' };
   function mlFiles(q){
     const files = (q && q.attachments) || [];
+    const qpid = q.projectId || pid;
     if (files.length) {
       return files.map(a => {
-        const href = a.url ? (API_BASE + a.url) : (API_BASE+'/api/projects/'+encodeURIComponent(pid)+'/package-quotes/'+encodeURIComponent(q.id)+'/files/'+encodeURIComponent(a.id));
+        const href = a.url ? (API_BASE + a.url) : (API_BASE+'/api/projects/'+encodeURIComponent(qpid)+'/package-quotes/'+encodeURIComponent(q.id)+'/files/'+encodeURIComponent(a.id));
         const label = (a.kind==='photo'?'Photo':'PDF') + ' · ' + (a.filename||'file');
         return `<a href="${href}" target="_blank">${esc(label)}</a>`;
       }).join('<br/>');
     }
-    if (q && q.attachmentName && q.kind !== 'weos' && pid) {
-      return `<a href="${API_BASE}/api/projects/${encodeURIComponent(pid)}/package-quotes/${encodeURIComponent(q.id)}/file" target="_blank">${esc(q.attachmentName)}</a>`;
+    if (q && q.attachmentName && q.kind !== 'weos' && qpid) {
+      return `<a href="${API_BASE}/api/projects/${encodeURIComponent(qpid)}/package-quotes/${encodeURIComponent(q.id)}/file" target="_blank">${esc(q.attachmentName)}</a>`;
     }
     return '—';
   }
-  body.innerHTML = `
-    <p style="margin:0 0 .55rem"><strong>${esc(led.customer||led.name||'Job')}</strong>
-      <span class="muted"> · ${esc(led.customerMobile||'')} · ${esc(led.customerAddress||'')}</span></p>
-    <div class="row" style="gap:.7rem;flex-wrap:wrap;margin-bottom:.65rem">
-      <div class="kpi"><label class="l">Project value</label><div class="big" style="font-size:1.05rem">${money(t.projectValue)}</div></div>
-      <div class="kpi"><label class="l">Total advance</label><div class="big" style="font-size:1.05rem">${money(t.totalAdvances)}</div></div>
-      <div class="kpi"><label class="l">Running balance</label><div class="big" style="font-size:1.05rem">${money(t.runningBalance != null ? t.runningBalance : t.balance)}</div></div>
-      <div class="kpi"><label class="l">Closing balance</label><div class="big" style="font-size:1.05rem">${money(t.closingBalance != null ? t.closingBalance : t.balance)}</div></div>
-      <div class="kpi"><label class="l">Taxable</label><div class="big" style="font-size:1.05rem">${money(t.totalTaxable)}</div></div>
-      <div class="kpi"><label class="l">GST</label><div class="big" style="font-size:1.05rem">${money(t.gstAmount != null ? t.gstAmount : t.totalGst)}</div></div>
-    </div>
-    <strong style="font-size:.88rem">Quotes on this customer</strong>
-    <p class="muted" style="margin:.15rem 0 .35rem;font-size:.75rem">Every WEOS and outside quote on this mobile / name. Grand total below is the sum of all of them.</p>
-    <div style="overflow:auto;margin:.35rem 0 .8rem"><table><thead><tr><th>Quote</th><th>Kind</th><th>Taxable</th><th>GST</th><th>Value</th><th>PDF / photos</th></tr></thead><tbody>${
-      quotes.length ? quotes.map(q => `<tr>
-        <td>${esc(q.quotationId||q.id||'—')}${q.projectId?`<div class="muted" style="font-size:.72rem">${esc(q.projectId)}</div>`:''}${q.items&&q.items.length?`<div class="muted" style="font-size:.72rem">${q.items.map(it=>esc((it.categoryLabel||it.category||'')+' '+(it.qty||'')+(it.size?(' · '+it.size):'')+' · '+money(it.amount))).join('<br/>')}</div>`:''}</td>
-        <td>${q.kind==='weos'?'WEOS quote':'Outside quote'}</td>
-        <td>${money(q.totalTaxable)}</td>
-        <td>${money(q.gstAmount)}</td>
-        <td>${money(q.projectValue)}</td>
-        <td>${mlFiles(q)}</td>
-      </tr>`).join('') : '<tr><td colspan="6" class="muted">No quotes on this job yet</td></tr>'
-    }</tbody></table></div>
+  const kpiLabel = scope === 'client' ? 'Client total' : 'This project';
+  const clientStrip = (scope === 'project' && clientT) ? `
+    <p class="muted" style="font-size:.78rem;margin:0 0 .45rem">This client’s all projects: value ${money(clientT.projectValue)} · advance ${money(clientT.totalAdvances)} · balance ${money(clientT.closingBalance != null ? clientT.closingBalance : clientT.balance)}</p>` : '';
+  const projectsTable = projects.length ? `
+    <strong style="font-size:.88rem">${scope==='client'?'Projects of this client':'Other projects of this client'}</strong>
+    <p class="muted" style="margin:.15rem 0 .35rem;font-size:.75rem">Open a project to see only that job’s quotes, advances and running balance. Client total stays the sum of every project.</p>
+    <div style="overflow:auto;margin:.35rem 0 .8rem"><table><thead><tr><th>Quote no. / project</th><th>Quotes</th><th>Value</th><th>Advance</th><th>Running</th><th></th></tr></thead><tbody>${
+      projects.map(p => `<tr>
+        <td>${esc(p.quotationId||p.projectId)}<div class="muted" style="font-size:.72rem">${esc(p.name||'')} · ${esc(p.status||'')}</div></td>
+        <td>${p.quoteCount||0}</td>
+        <td>${money(p.projectValue)}</td>
+        <td>${money(p.totalAdvances)}</td>
+        <td>${money(p.runningBalance != null ? p.runningBalance : p.balance)}</td>
+        <td><button class="btn ghost sm" type="button" data-ml-proj="${esc(p.projectId)}">Open project</button></td>
+      </tr>`).join('')
+    }</tbody></table></div>` : '';
+  const discountBox = scope === 'project' ? `
+    <strong style="font-size:.88rem">Site discount on this quote</strong>
+    <p class="muted" style="margin:.15rem 0 .35rem;font-size:.75rem">Percent, fix amount, or GST off — updates this saved quote’s value (versions stay on the same quote number).</p>
+    <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.7rem">
+      <div><label class="l">Discount</label>
+        <select id="mlDiscMode">
+          <option value="off"${disc.mode==='off'?' selected':''}>No discount</option>
+          <option value="percent"${disc.mode==='percent'?' selected':''}>Percent %</option>
+          <option value="amount"${disc.mode==='amount'?' selected':''}>Fix amount ₹</option>
+          <option value="gst_off"${disc.mode==='gst_off'?' selected':''}>GST off</option>
+        </select>
+      </div>
+      <div><label class="l">%</label><input id="mlDiscPct" type="number" min="0" max="100" step="0.01" value="${esc(disc.percent||0)}" style="width:80px"/></div>
+      <div><label class="l">Amount ₹</label><input id="mlDiscAmt" type="number" min="0" step="0.01" value="${esc(disc.amount||0)}" style="width:110px"/></div>
+      <button class="btn sm" id="btnMlDiscSave" type="button">Save discount</button>
+    </div>` : '';
+  const outsideBox = scope === 'project' ? `
     <strong style="font-size:.88rem">Add outside / finalized quote</strong>
     <p class="muted" style="margin:.15rem 0 .4rem;font-size:.75rem">Existing WEOS cart quotes stay. Add a quote made outside this app — PDF and photos optional.</p>
     <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.35rem">
@@ -7858,10 +8125,38 @@ function renderMasterLedger(wrap){
       <label class="btn ghost sm" style="margin:0">Photos<input id="mlOutPhotos" type="file" accept="image/*" multiple hidden/></label>
       <button class="btn sm" id="btnMlOutsideSave" type="button">Add to this project</button>
       <button class="btn ghost sm" id="btnMlOutsideSetup" type="button">Open in Project Setup</button>
+    </div>` : '<p class="muted" style="font-size:.78rem;margin:0 0 .7rem">Open a project to add an outside quote or site discount. Record an advance below after selecting that project.</p>';
+  body.innerHTML = `
+    <p style="margin:0 0 .55rem"><strong>${esc(led.customer||led.name||'Client')}</strong>
+      <span class="muted"> · ${esc(led.customerMobile||'')} · ${esc(led.customerAddress||'')} · ${scope==='client'?'all projects':'project '+esc(led.quotationId||pid||'')}</span></p>
+    ${clientStrip}
+    <div class="row" style="gap:.7rem;flex-wrap:wrap;margin-bottom:.65rem">
+      <div class="kpi"><label class="l">${kpiLabel}</label><div class="big" style="font-size:1.05rem">${money(t.projectValue)}</div></div>
+      <div class="kpi"><label class="l">Total advance</label><div class="big" style="font-size:1.05rem">${money(t.totalAdvances)}</div></div>
+      <div class="kpi"><label class="l">Running balance</label><div class="big" style="font-size:1.05rem">${money(t.runningBalance != null ? t.runningBalance : t.balance)}</div></div>
+      <div class="kpi"><label class="l">Closing balance</label><div class="big" style="font-size:1.05rem">${money(t.closingBalance != null ? t.closingBalance : t.balance)}</div></div>
+      <div class="kpi"><label class="l">Taxable</label><div class="big" style="font-size:1.05rem">${money(t.totalTaxable)}</div></div>
+      <div class="kpi"><label class="l">GST</label><div class="big" style="font-size:1.05rem">${money(t.gstAmount != null ? t.gstAmount : t.totalGst)}</div></div>
     </div>
+    ${projectsTable}
+    ${discountBox}
+    <strong style="font-size:.88rem">${scope==='client'?'All quotes (open a project to work inside it)':'Quotes on this project'}</strong>
+    <p class="muted" style="margin:.15rem 0 .35rem;font-size:.75rem">${scope==='client'?'Client total = every project. Select a project for that job’s quotes and running balance.':'WEOS + outside quotes on this quote number. Discount applies to this project value.'}</p>
+    <div style="overflow:auto;margin:.35rem 0 .8rem"><table><thead><tr><th>Quote</th><th>Kind</th><th>Taxable</th><th>GST</th><th>Value</th><th>PDF / photos</th></tr></thead><tbody>${
+      quotes.length ? quotes.map(q => `<tr>
+        <td>${esc(q.quotationId||q.id||'—')}${q.projectId?`<div class="muted" style="font-size:.72rem">${esc(q.projectId)}</div>`:''}${q.items&&q.items.length?`<div class="muted" style="font-size:.72rem">${q.items.map(it=>esc((it.categoryLabel||it.category||'')+' '+(it.qty||'')+(it.size?(' · '+it.size):'')+' · '+money(it.amount))).join('<br/>')}</div>`:''}</td>
+        <td>${q.kind==='weos'?'WEOS quote':'Outside quote'}</td>
+        <td>${money(q.totalTaxable)}</td>
+        <td>${money(q.gstAmount)}</td>
+        <td>${money(q.projectValue)}</td>
+        <td>${mlFiles(q)}</td>
+      </tr>`).join('') : '<tr><td colspan="6" class="muted">No quotes on this job yet</td></tr>'
+    }</tbody></table></div>
+    ${outsideBox}
     <strong style="font-size:.88rem">Record advance</strong>
-    <p class="muted" style="margin:.15rem 0 .4rem;font-size:.75rem">Pick a quote, or <strong>Any</strong> if this customer paid against the full balance. Any advance reduces all quotes’ total remaining. Closing = grand total − all advances.</p>
+    <p class="muted" style="margin:.15rem 0 .4rem;font-size:.75rem">Search client → select <strong>project</strong> → quote (or Any on that project) → amount → mode. Entry reduces this project’s balance and the client’s total business.</p>
     <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.55rem">
+      <div class="grow"><label class="l">Project</label><select id="mlAdvProject" style="min-width:180px"><option value="">Select project</option>${projectOpts}</select></div>
       <div class="grow"><label class="l">Against quote</label><select id="mlAdvQuote" style="min-width:180px"><option value="">Select quote or Any</option>${quoteOpts}</select></div>
       <div><label class="l">Amount ₹</label><input id="mlAdvAmt" type="number" min="0" step="0.01" style="width:110px"/></div>
       <div><label class="l">Mode</label>
@@ -7891,6 +8186,37 @@ function renderMasterLedger(wrap){
   if ($('mlAdvDate') && !$('mlAdvDate').value) {
     try { $('mlAdvDate').value = new Date().toISOString().slice(0,10); } catch(_){}
   }
+  body.querySelectorAll('[data-ml-proj]').forEach(b => {
+    b.onclick = () => loadMasterLedger({ projectId: b.dataset.mlProj });
+  });
+  if ($('mlAdvProject') && pid && scope === 'project') {
+    try { $('mlAdvProject').value = pid; } catch(_){}
+  }
+  if ($('mlAdvProject') && $('mlAdvQuote')) {
+    const fillQuotes = () => {
+      const chosen = ($('mlAdvProject') && $('mlAdvProject').value) || (scope === 'project' ? pid : '');
+      $('mlAdvQuote').innerHTML = '<option value="">Select quote or Any</option>' + mlQuoteOpts(chosen);
+    };
+    $('mlAdvProject').addEventListener('change', fillQuotes);
+    if (scope === 'project' && pid) fillQuotes();
+  }
+  if ($('btnMlDiscSave')) $('btnMlDiscSave').onclick = async () => {
+    if (!pid) { toast('Open a project first'); return; }
+    try {
+      await api('/api/projects/'+encodeURIComponent(pid), {
+        method:'PUT',
+        body: {
+          quoteDiscount: {
+            mode: ($('mlDiscMode') && $('mlDiscMode').value) || 'off',
+            percent: Number(($('mlDiscPct') && $('mlDiscPct').value) || 0),
+            amount: Number(($('mlDiscAmt') && $('mlDiscAmt').value) || 0),
+          },
+        },
+      });
+      toast('Discount saved on this quote');
+      await loadMasterLedger({ projectId: pid });
+    } catch (e) { toast(e.message); }
+  };
   if ($('btnMlOutsideSetup')) $('btnMlOutsideSetup').onclick = () => goAddOutsideQuote(pid);
   if ($('btnMlOutsideSave')) $('btnMlOutsideSave').onclick = async () => {
     const amount = +(($('mlOutAmt') && $('mlOutAmt').value) || 0);
@@ -7942,12 +8268,14 @@ function renderMasterLedger(wrap){
   if ($('btnMlAdvAdd')) $('btnMlAdvAdd').onclick = async () => {
     const qid = ($('mlAdvQuote') && $('mlAdvQuote').value) || '';
     const amount = +(($('mlAdvAmt') && $('mlAdvAmt').value) || 0);
-    if (!qid) { toast('Select a quote, or Any for this customer’s total balance'); return; }
+    const advPid = ($('mlAdvProject') && $('mlAdvProject').value) || (scope === 'project' ? pid : '');
+    if (typeof requireCompanyLogin === 'function' && !requireCompanyLogin()) return;
+    if (!advPid) { toast('Select the project first'); return; }
+    if (!qid) { toast('Select a quote, or Any on this project'); return; }
     if (!(amount > 0)) { toast('Enter advance amount'); return; }
-    if (!pid) { toast('Save the project first'); return; }
     try {
       const qs = withGstQuery({});
-      await api('/api/projects/'+encodeURIComponent(pid)+'/master-advances?'+qs.toString(), {
+      await api('/api/projects/'+encodeURIComponent(advPid)+'/master-advances?'+qs.toString(), {
         method:'POST',
         body: {
           amount,
@@ -7959,8 +8287,8 @@ function renderMasterLedger(wrap){
       });
       if ($('mlAdvAmt')) $('mlAdvAmt').value = '';
       if ($('mlAdvRef')) $('mlAdvRef').value = '';
-      toast('Advance saved');
-      await loadMasterLedger({ projectId: pid });
+      toast('Advance saved — project and client totals updated');
+      await loadMasterLedger({ projectId: advPid });
     } catch (e) { if ($('mlErr')) $('mlErr').textContent = e.message; toast(e.message); }
   };
 }
@@ -9513,7 +9841,7 @@ async function initCompany() {
     renderCompanyPreview();
     const img = $('coLogoImg');
     if (img) { img.src = API_BASE+'/api/company/logo?t='+Date.now(); img.onload = () => img.style.display=''; img.onerror = () => img.style.display='none'; }
-    if (c.gstNo) await refreshCompanyHub(c.gstNo);
+    if (c.gstNo && savedSessionToken()) await refreshCompanyHub(c.gstNo);
   } catch(e) { $('coErr').textContent = e.message; }
 }
 function renderCompanyPreview() {
@@ -9538,7 +9866,10 @@ if ($('btnCoSave')) $('btnCoSave').onclick = async () => {
       terms: ($('coTerms') && $('coTerms').value) || '',
     };
     const pin = ($('coDeletePin') && $('coDeletePin').value) || '';
-    if (pin.trim()) body.deletePin = pin.trim();
+    if (pin.trim()) {
+      if (!/^\d{4}$/.test(pin.trim())) { $('coErr').textContent = 'Login PIN must be exactly 4 digits'; return; }
+      body.loginPin = pin.trim();
+    }
     const saved = await api('/api/company', {method:'PUT', body});
     if (saved && saved.gstNo) persistCompanyGst(saved.gstNo);
     state.company = saved || state.company;
@@ -9692,21 +10023,57 @@ async function hubNewQuoteForCustomer(name) {
 }
 if ($('btnCoGstOpen')) $('btnCoGstOpen').onclick = async () => {
   if ($('coGstErr')) $('coGstErr').textContent = '';
-  const gst = (($('coGstLogin') && $('coGstLogin').value) || ($('coGst') && $('coGst').value) || '').trim();
-  if (!gst) { if ($('coGstErr')) $('coGstErr').textContent = 'Enter GSTIN'; return; }
+  const ident = (($('coGstLogin') && $('coGstLogin').value) || ($('coGst') && $('coGst').value) || '').trim();
+  const pin = (($('coGstPin') && $('coGstPin').value) || '').trim();
+  if (!ident) { if ($('coGstErr')) $('coGstErr').textContent = 'Enter GSTIN, company name, or mobile'; return; }
+  if (!/^\d{4}$/.test(pin)) { if ($('coGstErr')) $('coGstErr').textContent = 'Enter the 4-digit PIN'; return; }
   try {
+    const looksGst = /^[0-9]{2}[A-Z0-9]{13}$/i.test(ident.replace(/\s/g,''));
     const body = {
-      gstNo: gst,
+      login: ident,
+      gstNo: looksGst ? ident : undefined,
+      pin,
       companyName: (($('coGstLoginName') && $('coGstLoginName').value) || ($('coName') && $('coName').value) || '').trim() || undefined,
+      email: (($('coGstLoginEmail') && $('coGstLoginEmail').value) || ($('coEmail') && $('coEmail').value) || '').trim() || undefined,
       create: true,
     };
     const ws = await api('/api/company/workspace/open', {method:'POST', body});
+    if (ws && ws.needPick) {
+      if ($('coGstErr')) $('coGstErr').textContent = 'More than one company matched — use the full GSTIN';
+      return;
+    }
     await applyWorkspacePayload(ws);
-    toast(ws.created ? 'Company workspace created' : 'Company workspace opened');
+    if ($('coGstPin')) $('coGstPin').value = '';
+    toast(ws.created ? 'Company created — logged in' : (ws.enrolledPin ? 'PIN saved — logged in' : 'Logged in'));
     if ($('coGstStatus')) $('coGstStatus').textContent = (ws.created ? 'Created · ' : 'Opened · ') + 'GSTIN ' + ws.gstNo;
   } catch(e) {
     if ($('coGstErr')) $('coGstErr').textContent = e.message;
     toast(e.message);
+  }
+};
+async function logoutCompanyWorkspace() {
+  try {
+    await api('/api/company/workspace/logout', {
+      method:'POST',
+      body: { gstNo: savedCompanyGst() || undefined, sessionToken: savedSessionToken() || undefined },
+    });
+  } catch (_) {}
+  clearWorkspaceSession();
+  toast('Logged out');
+  setView('company');
+}
+if ($('btnCoGstLogout')) $('btnCoGstLogout').onclick = () => logoutCompanyWorkspace();
+if ($('btnHubLogout')) $('btnHubLogout').onclick = () => logoutCompanyWorkspace();
+if ($('btnCoGstForgot')) $('btnCoGstForgot').onclick = async () => {
+  if ($('coGstErr')) $('coGstErr').textContent = '';
+  const ident = (($('coGstLogin') && $('coGstLogin').value) || ($('coEmail') && $('coEmail').value) || '').trim();
+  if (!ident) { if ($('coGstErr')) $('coGstErr').textContent = 'Enter GSTIN, name, mobile, or email first'; return; }
+  try {
+    const res = await api('/api/company/workspace/pin-reset/request', { method:'POST', body: { login: ident } });
+    toast(res.message || 'If email is registered, a reset link was sent');
+    if ($('coGstStatus')) $('coGstStatus').textContent = res.message || 'Check registered email for the PIN reset link';
+  } catch (e) {
+    if ($('coGstErr')) $('coGstErr').textContent = e.message;
   }
 };
 if ($('btnCoGstRefresh')) $('btnCoGstRefresh').onclick = () => refreshCompanyHub(state.companyGst || (($('coGstLogin')&&$('coGstLogin').value)||''));
@@ -10789,13 +11156,18 @@ async function pingEngine(){
   if (pill) pill.onclick = () => { pingEngine(); };
   pingEngine();
   setInterval(pingEngine, 30000);
+  if ($('wsPill') && !$('wsPill')._bound) {
+    $('wsPill')._bound = true;
+    $('wsPill').style.cursor = 'pointer';
+    $('wsPill').onclick = () => setView('company');
+  }
   const restoredCart = restoreCartSession();
   updatePdfLinks();
-  // Auto-restore GST company workspace on boot (refresh / minimize safe).
+  // Auto-restore company workspace only when a PIN session exists.
   try { await restoreCompanyWorkspace(); } catch (e) { console.warn(e); }
   updatePdfLinks();
-  // Dashboard + projects must not wait for Engine / product catalog.
-  setView(state.workspaceRestored ? 'company' : 'dashboard');
+  updateWorkspacePill();
+  setView(state.workspaceRestored ? 'dashboard' : 'company');
   if (state.workspaceRestored) {
     try { await loadDashboard(); } catch (_) {}
   }
