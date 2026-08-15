@@ -118,15 +118,13 @@ def main() -> int:
         fails.append("verify_delete_pin accepted wrong PIN")
 
     try:
-        require_delete_confirm(draft["projectId"], company_gst=gst, confirm=draft["projectId"])
-        fails.append("project-id confirm must not bypass a set PIN")
-    except PermissionError:
-        pass
-    try:
         require_delete_confirm(draft["projectId"], company_gst=gst, pin="0000")
         fails.append("wrong PIN must not delete")
     except PermissionError:
         pass
+    # PIN is optional — DELETE / project id still work after a PIN is saved.
+    require_delete_confirm(draft["projectId"], company_gst=gst, confirm="DELETE")
+    require_delete_confirm(draft["projectId"], company_gst=gst, confirm=draft["projectId"])
     require_delete_confirm(draft["projectId"], company_gst=gst, pin="2468")
 
     deleted = delete_company_quote(draft["projectId"], company_gst=gst, hard=True)

@@ -288,7 +288,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
         <div class="row" style="margin-bottom:.6rem;align-items:flex-end;gap:.5rem .7rem;flex-wrap:wrap">
           <div class="grow"><label class="l">Customer address (prints on quote)</label><input id="projCustAddress" placeholder="optional"/></div>
           <div class="grow"><label class="l">Customer GSTIN</label><input id="projCustGst" placeholder="optional"/></div>
-          <div class="grow"><label class="l">Quote number (reuse = new version)</label><input id="projQuoteNo" placeholder="optional — leave blank to auto"/></div>
+          <div class="grow"><label class="l">Quote number (optional)</label><input id="projQuoteNo" placeholder="new number = new quote · extra text = new quote"/></div>
         </div>
         <div class="row" style="margin-bottom:.6rem;flex-wrap:wrap;gap:.5rem .7rem">
           <div class="grow" style="flex-basis:100%"><label class="l">Quote description (prints on quote)</label><textarea id="projDescription" rows="2" placeholder="Optional note that prints on the customer quotation" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
@@ -1509,7 +1509,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
           <table><thead><tr><th>Account</th><th>Billed</th><th>Advances</th><th>Balance</th><th></th></tr></thead><tbody id="hubAccBody"></tbody></table>
         </div>
         <div id="hub-quotes" class="hidden">
-          <p class="muted" style="font-size:.78rem;margin:0 0 .55rem">Delete requires a company delete PIN (or typing the project ID / DELETE). Archive is the safer option. Approved quotes count toward year turnover; drafts do not.</p>
+          <p class="muted" style="font-size:.78rem;margin:0 0 .55rem">Delete: type <strong>DELETE</strong> in the prompt. Archive is the safer option. Approved quotes count toward year turnover; drafts do not.</p>
           <div class="row" style="gap:.4rem;flex-wrap:wrap;align-items:center;margin-bottom:.55rem">
             <select id="hubQuoteFilter" style="width:160px">
               <option value="all">All quotes</option>
@@ -1556,9 +1556,9 @@ button.pill{border:0;font:inherit;cursor:pointer}
             <div class="grow"><label class="l">Bank details (prints on quote)</label><input id="coBank" placeholder="Bank · A/c No · IFSC · Branch"/></div>
           </div>
           <div class="row" style="margin-top:.5rem">
-            <div class="grow"><label class="l">Delete PIN (required to delete quotes/projects)</label><input id="coDeletePin" type="password" autocomplete="new-password" placeholder="Leave blank to keep current PIN"/></div>
+            <div class="grow"><label class="l">Delete PIN (optional)</label><input id="coDeletePin" type="password" autocomplete="new-password" placeholder="Optional — leave blank"/></div>
           </div>
-          <p class="muted" id="coDeletePinHint" style="margin:.35rem 0 0;font-size:.75rem">Not set yet — deleting a quote requires typing the project ID exactly (or DELETE). Set a PIN so deletes cannot happen by accident.</p>
+          <p class="muted" id="coDeletePinHint" style="margin:.35rem 0 0;font-size:.75rem">To delete a project, type DELETE. A PIN is optional and never required.</p>
           <div class="row" style="margin-top:.5rem">
             <div class="grow" style="flex-basis:100%"><label class="l">Default Terms &amp; Conditions (prints on every quote unless overridden)</label><textarea id="coTerms" rows="5" placeholder="One term per line…" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem;font:inherit"></textarea></div>
           </div>
@@ -2162,24 +2162,20 @@ function savedCompanyGst() {
 function updateDeletePinHint(co) {
   const hint = $('coDeletePinHint');
   if (!hint) return;
-  const has = !!(co && co.hasDeletePin);
-  hint.textContent = has
-    ? 'Delete PIN is set. Deleting a quote/project requires this PIN, then a confirm. Archive stays the softer option.'
-    : 'Not set yet — deleting a quote requires typing the project ID exactly (or DELETE). Set a PIN so deletes cannot happen by accident.';
+  hint.textContent = 'To delete a project, type DELETE. A PIN is optional and never required.';
 }
 async function confirmPinDelete(projectId, label) {
-  const hasPin = !!(state.company && state.company.hasDeletePin);
-  const msg = hasPin
-    ? 'Type the company delete PIN to permanently delete:\n' + (label || projectId)
-    : 'Type the project ID exactly (' + projectId + ') or DELETE to permanently delete:\n' + (label || projectId) + '\n\nTip: set a delete PIN in Company Setup.';
-  const typed = prompt(msg);
+  const typed = prompt('Type DELETE to permanently remove this project:\n' + (label || projectId));
   if (typed == null || !String(typed).trim()) return null;
-  if (!confirm('Permanently delete ' + (label || projectId) + ' from the server (Postgres)? This cannot be undone.\n\nArchive is the safer option if you only want it out of the list.')) return null;
+  const phrase = String(typed).trim();
+  if (phrase.toUpperCase() !== 'DELETE' && phrase.toUpperCase() !== String(projectId || '').toUpperCase()) {
+    toast('Type DELETE to confirm');
+    return null;
+  }
   const gst = state.companyGst || savedCompanyGst() || '';
   const body = {
     gstNo: gst || undefined,
-    pin: hasPin ? String(typed).trim() : undefined,
-    confirm: String(typed).trim(),
+    confirm: phrase,
     hard: true,
   };
   if (gst) return api('/api/company/quotes/'+encodeURIComponent(projectId)+'/delete', {method:'POST', body});
@@ -4993,20 +4989,46 @@ function adoptServerLines(incoming, { allowShrink = false } = {}) {
 }
 
 async function ensureProject() {
-  if (state.projectId) return state.projectId;
+  if (state.projectId) {
+    try {
+      await api('/api/projects/'+state.projectId);
+      return state.projectId;
+    } catch (e) {
+      const msg = String((e && e.message) || e || '');
+      if (!/not found/i.test(msg)) throw e;
+      state.projectId = null;
+      persistCartSession();
+    }
+  }
   const doc = await api('/api/projects', {method:'POST', body:{
     name: $('cartName').value || 'WEOS Project',
     customer: $('cartCustomer').value || '',
-    lines: [],
+    lines: serializeCartLines(state.lines),
     status: 'draft',
     packageQuotes: packageQuotesPayload(),
+    masterJobId: state.masterJobId || undefined,
     ...projectBillTo()
   }});
   state.projectId = doc.projectId;
+  if (doc.masterJobId) state.masterJobId = doc.masterJobId;
   persistCartSession();
   updatePdfLinks();
   toast('Created '+doc.projectId);
   return doc.projectId;
+}
+
+function adoptSavedProject(doc) {
+  if (!doc || !doc.projectId) return doc;
+  if (state.projectId !== doc.projectId) {
+    state.projectId = doc.projectId;
+  }
+  if (doc.masterJobId) state.masterJobId = doc.masterJobId;
+  if (doc.quotationId && $('projQuoteNo') && !$('projQuoteNo').value.trim()) {
+    $('projQuoteNo').value = doc.quotationId;
+  }
+  persistCartSession();
+  updatePdfLinks();
+  return doc;
 }
 
 async function saveProject(silent) {
@@ -5023,16 +5045,26 @@ async function saveProject(silent) {
         (state.lines || []).forEach(ensureLineId);
         persistCartSession();
         await ensureProject();
-        doc = await api('/api/projects/'+state.projectId, {method:'PUT', body:{
+        const body = {
           name: $('cartName').value, customer: $('cartCustomer').value,
           lines: serializeCartLines(state.lines),
           packageQuotes: packageQuotesPayload(),
           masterJobId: state.masterJobId || undefined,
           quoteKind: packageQuotesPayload().length ? ((state.lines||[]).length ? 'mixed' : 'package') : undefined,
           ...projectBillTo()
-        }});
-        if (!silent) toast('Saved v'+doc.version);
-        updatePdfLinks();
+        };
+        try {
+          doc = await api('/api/projects/'+state.projectId, {method:'PUT', body});
+        } catch (e) {
+          const msg = String((e && e.message) || e || '');
+          if (!/not found/i.test(msg)) throw e;
+          state.projectId = null;
+          persistCartSession();
+          await ensureProject();
+          doc = await api('/api/projects/'+state.projectId, {method:'PUT', body});
+        }
+        adoptSavedProject(doc);
+        if (!silent) toast('Saved v'+doc.version+(doc.quoteNumberVersioned ? ' · quote versioned' : ''));
         refreshSetupSummary();
         adoptPackageQuotes(doc);
       } while (state._saveAgain);
@@ -9594,16 +9626,13 @@ if ($('btnHubQuotesRefresh')) $('btnHubQuotesRefresh').onclick = () => loadHubQu
 if ($('btnHubQuotesBulkUnused')) $('btnHubQuotesBulkUnused').onclick = async () => {
   const gst = state.companyGst || savedCompanyGst() || '';
   if (!gst) { toast('Open GST workspace first'); return; }
-  if (!confirm('Bulk-delete UNUSED quotes for this company from the server? Confirmed / approved quotes and any with advances are kept.\n\nYou will type PIN or DELETE next.')) return;
+  if (!confirm('Bulk-delete UNUSED quotes for this company from the server? Confirmed / approved quotes and any with advances are kept.\n\nYou will type DELETE next.')) return;
   try {
-    const hasPin = !!(state.company && state.company.hasDeletePin);
-    const typed = prompt(hasPin
-      ? 'Type the company delete PIN to bulk-delete unused quotes'
-      : 'Type DELETE to confirm bulk-delete of unused quotes');
+    const typed = prompt('Type DELETE to confirm bulk-delete of unused quotes');
     if (typed == null || !String(typed).trim()) return;
     const res = await api('/api/company/quotes/bulk-delete', {
       method:'POST',
-      body:{ gstNo: gst, filter: 'unused', pin: hasPin ? String(typed).trim() : undefined, confirm: String(typed).trim() },
+      body:{ gstNo: gst, filter: 'unused', confirm: String(typed).trim() },
     });
     toast('Deleted '+(res.deletedCount||0)+' unused quote(s)');
     await loadHubQuotes();

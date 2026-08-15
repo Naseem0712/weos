@@ -1575,8 +1575,10 @@ def api_get_project(project_id: str) -> dict[str, Any]:
 def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
     try:
         doc = load_project(project_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileNotFoundError:
+        # Stale browser id (deleted / never persisted / merged away) — start a new job.
+        doc = empty_project(name=body.name or "WEOS Project", customer=body.customer or "")
+        doc["status"] = body.status or "draft"
     if body.name is not None:
         doc["name"] = body.name
     if body.customer is not None:

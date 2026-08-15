@@ -232,27 +232,22 @@ def require_delete_confirm(
     pin: str | None = None,
     confirm: str | None = None,
 ) -> None:
-    """PIN (if set) or typed project ID / DELETE — never one-click delete."""
+    """Type DELETE (or the project id). PIN is optional, never required."""
     pid = str(project_id or "").strip()
     if not pid:
         raise ValueError("project id required")
     gst = _norm_gst(company_gst)
     typed_pin = str(pin or "").strip()
     typed_confirm = str(confirm or "").strip()
-    if gst:
-        from WEOS.factory.company_store import company_has_delete_pin, verify_delete_pin
-
-        if company_has_delete_pin(gst):
-            if not verify_delete_pin(gst, typed_pin or typed_confirm):
-                raise PermissionError("Company delete PIN is required and did not match.")
-            return
     phrase = typed_confirm or typed_pin
     if phrase.upper() == "DELETE" or (pid and phrase.upper() == pid.upper()):
         return
-    raise PermissionError(
-        "Type the project ID exactly, or DELETE, to confirm. "
-        "Set a company delete PIN in Company Setup to use a PIN instead."
-    )
+    if gst and typed_pin:
+        from WEOS.factory.company_store import company_has_delete_pin, verify_delete_pin
+
+        if company_has_delete_pin(gst) and verify_delete_pin(gst, typed_pin):
+            return
+    raise PermissionError("Type DELETE to confirm permanent delete.")
 
 
 def require_bulk_delete_confirm(
@@ -264,21 +259,18 @@ def require_bulk_delete_confirm(
     gst = _norm_gst(company_gst)
     if not gst:
         raise ValueError("Company GSTIN required")
-    from WEOS.factory.company_store import company_has_delete_pin, verify_delete_pin
 
     typed_pin = str(pin or "").strip()
     typed_confirm = str(confirm or "").strip()
-    if company_has_delete_pin(gst):
-        if not verify_delete_pin(gst, typed_pin or typed_confirm):
-            raise PermissionError("Company delete PIN is required and did not match.")
-        return
     phrase = typed_confirm or typed_pin
     if phrase.upper() == "DELETE":
         return
-    raise PermissionError(
-        "Type DELETE to confirm bulk delete. "
-        "Set a company delete PIN in Company Setup to use a PIN instead."
-    )
+    if typed_pin:
+        from WEOS.factory.company_store import company_has_delete_pin, verify_delete_pin
+
+        if company_has_delete_pin(gst) and verify_delete_pin(gst, typed_pin):
+            return
+    raise PermissionError("Type DELETE to confirm bulk delete.")
 
 
 def delete_company_quote(

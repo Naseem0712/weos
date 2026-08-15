@@ -344,16 +344,6 @@ def _norm_quote_number(value: Any) -> str:
     return re.sub(r"\s+", "", str(value or "").strip()).upper()
 
 
-def _quote_match_key(value: Any) -> str:
-    """Match quote families ignoring A1/A2 suffix (and legacy exact ids)."""
-    try:
-        from WEOS.factory.quote_number import quote_number_base
-
-        return quote_number_base(value)
-    except Exception:
-        return _norm_quote_number(value)
-
-
 def _belongs_to_company(doc: Mapping[str, Any] | dict[str, Any], company_gst: str | None, *, include_unscoped: bool) -> bool:
     if not company_gst:
         return True
@@ -372,7 +362,11 @@ def find_project_by_quotation_id(
     company_gst: str | None = None,
     exclude_project_id: str | None = None,
 ) -> dict[str, Any] | None:
-    """Canonical live project for a quotation number within customer/company scope."""
+    """Canonical live project for an exact quotation number within customer/company scope.
+
+    Extra text on a quote number (e.g. ``AK-26/00007/A1`` vs ``AK-26/00007``) is a
+    different quote — it must not fold into the older job.
+    """
     qid = _norm_quote_number(quotation_id)
     if not qid:
         return None
@@ -382,10 +376,8 @@ def find_project_by_quotation_id(
     gst = _norm_company_gst(company_gst) if company_gst else ""
     rows = list_projects(include_archived=False, company_gst=gst or None, include_unscoped=bool(gst))
     matches: list[dict[str, Any]] = []
-    want = _quote_match_key(qid)
     for row in rows:
-        row_key = _quote_match_key(row.get("quotationId"))
-        if row_key != want and _norm_quote_number(row.get("quotationId")) != qid:
+        if _norm_quote_number(row.get("quotationId")) != qid:
             continue
         if exclude_project_id and str(row.get("projectId")) == str(exclude_project_id):
             continue
@@ -404,82 +396,14 @@ def find_project_by_quotation_id(
 
 
 def apply_quote_number_versioning(doc: dict[str, Any]) -> tuple[dict[str, Any], bool]:
-    """If quotationId already exists for this customer/company, merge into that project.
+    """Keep each saved job on its own project id.
 
-    Old versions remain under ``projects/versions/{projectId}_vN.json``.
-    Returns ``(doc, True)`` when merged onto an existing quote number.
+    Reusing a customer or editing a quote number must save *this* project.
+    Folding into an older job deleted the draft id the browser still held
+    (Project not found: PRJ-…) and could overwrite the previous quote.
+    Versions still stack on the same projectId via ``save_project``.
     """
-    qid = _norm_quote_number(doc.get("quotationId"))
-    if not qid:
-        return doc, False
-    customer = str(doc.get("customer") or "").strip()
-    company_gst = _norm_company_gst(doc.get("companyGst"))
-    if not company_gst:
-        try:
-            from WEOS.factory.company_store import get_active_gst
-
-            company_gst = get_active_gst() or ""
-        except Exception:
-            company_gst = ""
-    existing = find_project_by_quotation_id(
-        qid,
-        customer=customer or None,
-        company_gst=company_gst or None,
-        exclude_project_id=str(doc.get("projectId") or "") or None,
-    )
-    if existing is None:
-        return doc, False
-    if str(existing.get("projectId")) == str(doc.get("projectId") or ""):
-        return doc, False
-
-    orphan_id = str(doc.get("projectId") or "")
-    # Fold incoming content into the canonical project (keep its id / createdAt).
-    merged = dict(existing)
-    for key in (
-        "name",
-        "customer",
-        "customerMobile",
-        "customerAddress",
-        "customerGst",
-        "description",
-        "terms",
-        "lines",
-        "status",
-        "lastCalculation",
-        "companyGst",
-        "pdfBrand",
-    ):
-        if key in doc and doc[key] is not None:
-            merged[key] = doc[key]
-    merged["projectId"] = existing["projectId"]
-    # Bump company-style VERSION (A1→A2) when the same quote family is reused.
-    prev_qid = str(existing.get("quotationId") or doc.get("quotationId") or qid)
-    bumped = prev_qid
-    try:
-        from WEOS.factory.quote_number import bump_quote_version, parse_quote_number
-
-        parsed = parse_quote_number(prev_qid)
-        if parsed and parsed.get("style") == "company":
-            bumped = bump_quote_version(prev_qid)
-    except Exception:
-        bumped = doc.get("quotationId") or existing.get("quotationId") or qid
-    merged["quotationId"] = bumped
-    doc["quotationId"] = bumped
-    if company_gst:
-        merged["companyGst"] = company_gst
-    merged["_quoteNumberMergedFrom"] = orphan_id or None
-    # Soft-remove orphan draft so it does not double-count in ledgers.
-    if orphan_id and orphan_id != merged["projectId"]:
-        try:
-            op = project_path(orphan_id)
-            if op.is_file():
-                snap = PROJECTS_DIR / "versions" / f"{orphan_id}_merged_into_{merged['projectId']}.json"
-                shutil.copy2(op, snap)
-                op.unlink()
-            _db_delete_project(orphan_id)
-        except Exception:
-            _log.exception("failed cleaning orphan project %s after quote-number merge", orphan_id)
-    return merged, True
+    return doc, False
 
 
 def load_project(project_id: str) -> dict[str, Any]:

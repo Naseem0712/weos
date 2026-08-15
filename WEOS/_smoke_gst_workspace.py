@@ -57,25 +57,34 @@ def main() -> int:
     pid_canon = p1["projectId"]
     ver1 = int(p1.get("version") or 0)
 
-    # New project reusing same quote number → should merge as version, not orphan.
+    # New project with the same customer / quote number stays its own job.
     p2 = empty_project(name="Quote A v2", customer=cust)
     p2["companyGst"] = gst
     p2["quotationId"] = "QT-SMOKE-1"
     p2["lastCalculation"] = {"price": {"total": 125000.0}}
     p2 = save_project(p2, action="smoke")
-    if p2.get("projectId") != pid_canon:
-        fails.append(f"expected merge into {pid_canon}, got {p2.get('projectId')}")
-    if not p2.get("quoteNumberVersioned"):
-        fails.append("quoteNumberVersioned flag missing on reuse")
-    if int(p2.get("version") or 0) <= ver1:
-        fails.append(f"version did not bump: {ver1} -> {p2.get('version')}")
-    set_project_status(pid_canon, "approved")
+    if p2.get("projectId") == pid_canon:
+        fails.append("new project must not fold into the older quote")
+    if p2.get("quoteNumberVersioned"):
+        fails.append("new project must not be marked quoteNumberVersioned")
+    if int(p2.get("version") or 0) < 1:
+        fails.append(f"new project version missing: {p2.get('version')}")
 
-    # Only one live project for that quote number under this company.
     rows = list_projects(company_gst=gst)
     same_qid = [r for r in rows if str(r.get("quotationId") or "").upper() == "QT-SMOKE-1"]
-    if len(same_qid) != 1:
-        fails.append(f"expected 1 live project for QT-SMOKE-1, got {len(same_qid)}")
+    if len(same_qid) != 2:
+        fails.append(f"expected 2 live projects for QT-SMOKE-1, got {len(same_qid)}")
+
+    # Extra text on a quote number is also a new quote.
+    p3 = empty_project(name="Quote A extra", customer=cust)
+    p3["companyGst"] = gst
+    p3["quotationId"] = "QT-SMOKE-1/A1"
+    p3["lastCalculation"] = {"price": {"total": 50000.0}}
+    p3 = save_project(p3, action="smoke")
+    if p3.get("projectId") in {pid_canon, p2.get("projectId")}:
+        fails.append("modified quote number must not merge into an old project")
+
+    set_project_status(p2["projectId"], "approved")
 
     # Totals: live billed uses latest grand total (125000), not sum of versions.
     add_advance(cust, {"amount": 25000, "paymentMode": "upi", "reference": "GST-SMOKE"})
