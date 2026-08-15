@@ -12,6 +12,7 @@ from typing import Any, Mapping
 
 MAX_QUOTES = 20
 MAX_ITEMS = 40
+MAX_ATTACHMENTS = 12
 
 CATEGORIES: tuple[tuple[str, str], ...] = (
     ("window", "Windows"),
@@ -72,6 +73,174 @@ def _slug_id(value: Any, prefix: str) -> str:
     import secrets
 
     return prefix + secrets.token_hex(4)
+
+
+def attachment_kind(filename: Any, hint: Any = None) -> str:
+    h = str(hint or "").strip().lower().replace("-", "_")
+    if h in {"photo", "image", "pic", "photos"}:
+        return "photo"
+    if h in {"quote", "quote_pdf", "pdf", "quotation"}:
+        return "quote_pdf"
+    name = str(filename or "").strip().lower()
+    if name.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+        return "photo"
+    return "quote_pdf"
+
+
+def attachment_blob_key(project_id: str, quote_id: str, file_id: str) -> str:
+    return f"package_quote_file:{project_id}:{quote_id}:{file_id}"
+
+
+def normalize_attachment(
+    raw: Mapping[str, Any] | None,
+    *,
+    project_id: str | None = None,
+    quote_id: str | None = None,
+) -> dict[str, Any] | None:
+    if not isinstance(raw, Mapping):
+        return None
+    fname = str(raw.get("filename") or raw.get("name") or "").strip()
+    if not fname and not raw.get("key") and not raw.get("id"):
+        return None
+    fid = str(raw.get("id") or "").strip() or _slug_id(None, "pf")
+    kind = attachment_kind(fname, raw.get("kind") or raw.get("type"))
+    pid = str(project_id or raw.get("projectId") or "").strip()
+    qid = str(quote_id or raw.get("quoteId") or "").strip()
+    key = str(raw.get("key") or "").strip() or (
+        attachment_blob_key(pid, qid, fid) if pid and qid else None
+    )
+    url = str(raw.get("url") or "").strip() or None
+    if not url and pid and qid:
+        url = f"/api/projects/{pid}/package-quotes/{qid}/files/{fid}"
+    return {
+        "id": fid[:24],
+        "kind": kind,
+        "filename": fname or ("photo" if kind == "photo" else "quote"),
+        "key": key,
+        "contentType": str(raw.get("contentType") or "").strip() or None,
+        "url": url,
+    }
+
+
+def normalize_attachments(
+    raw: Any,
+    *,
+    project_id: str | None = None,
+    quote_id: str | None = None,
+    attachment_name: str | None = None,
+    attachment_key: str | None = None,
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    if isinstance(raw, list):
+        for row in raw[:MAX_ATTACHMENTS]:
+            att = normalize_attachment(
+                row if isinstance(row, Mapping) else None,
+                project_id=project_id,
+                quote_id=quote_id,
+            )
+            if not att or att["id"] in seen:
+                continue
+            seen.add(att["id"])
+            out.append(att)
+    name = str(attachment_name or "").strip()
+    if name and not any(a.get("filename") == name for a in out):
+        legacy = normalize_attachment(
+            {
+                "id": "legacy",
+                "kind": "quote_pdf",
+                "filename": name,
+                "key": attachment_key,
+                "url": (
+                    f"/api/projects/{project_id}/package-quotes/{quote_id}/file"
+                    if project_id and quote_id
+                    else None
+                ),
+            },
+            project_id=project_id,
+            quote_id=quote_id,
+        )
+        if legacy:
+            out.insert(0, legacy)
+    return out[:MAX_ATTACHMENTS]
+
+
+def store_package_file(
+    *,
+    project_id: str,
+    quote_id: str,
+    raw: bytes,
+    filename: str,
+    content_type: str | None,
+    kind_hint: str | None = None,
+) -> dict[str, Any]:
+    fid = _slug_id(None, "pf")
+    kind = attachment_kind(filename, kind_hint)
+    key = attachment_blob_key(project_id, quote_id, fid)
+    stored = False
+    try:
+        from WEOS.db.durable_store import put_blob
+
+        stored = bool(
+            put_blob(
+                key,
+                kind="package_quote_file",
+                raw=raw,
+                content_type=content_type or "application/octet-stream",
+                filename=filename,
+                payload={"projectId": project_id, "quoteId": quote_id, "fileId": fid, "kind": kind},
+            )
+        )
+    except Exception:
+        stored = False
+    if not stored:
+        from WEOS.paths import data_dir
+
+        dest = data_dir() / "package_quotes" / project_id
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / f"{quote_id}_{fid}.bin").write_bytes(raw)
+        (dest / f"{quote_id}_{fid}.name.txt").write_text(filename, encoding="utf-8")
+        (dest / f"{quote_id}_{fid}.kind.txt").write_text(kind, encoding="utf-8")
+    return {
+        "id": fid,
+        "kind": kind,
+        "filename": filename,
+        "key": key,
+        "contentType": content_type,
+        "url": f"/api/projects/{project_id}/package-quotes/{quote_id}/files/{fid}",
+    }
+
+
+def load_package_file(project_id: str, quote_id: str, file_id: str | None = None) -> tuple[bytes | None, str | None, str | None]:
+    keys = []
+    if file_id:
+        keys.append(attachment_blob_key(project_id, quote_id, file_id))
+    keys.append(f"package_quote_file:{project_id}:{quote_id}")
+    try:
+        from WEOS.db.durable_store import get_blob
+
+        for key in keys:
+            raw, ctype, fname = get_blob(key)
+            if raw is not None:
+                return raw, ctype, fname
+    except Exception:
+        pass
+    from WEOS.paths import data_dir
+
+    folder = data_dir() / "package_quotes" / project_id
+    names = []
+    if file_id:
+        names.append(f"{quote_id}_{file_id}.bin")
+    names.append(f"{quote_id}.bin")
+    for name in names:
+        p = folder / name
+        if p.is_file():
+            fname = name.replace(".bin", "")
+            np = folder / (p.stem + ".name.txt")
+            if np.is_file():
+                fname = np.read_text(encoding="utf-8").strip() or fname
+            return p.read_bytes(), "application/octet-stream", fname
+    return None, None, None
 
 
 def category_id(raw: Any) -> str:
@@ -181,7 +350,12 @@ def normalize_package_item(raw: Mapping[str, Any] | None, *, index: int = 0) -> 
     }
 
 
-def normalize_package_quote(raw: Mapping[str, Any] | None, *, index: int = 0) -> dict[str, Any] | None:
+def normalize_package_quote(
+    raw: Mapping[str, Any] | None,
+    *,
+    index: int = 0,
+    project_id: str | None = None,
+) -> dict[str, Any] | None:
     if not isinstance(raw, Mapping):
         return None
     items_in = raw.get("items") or raw.get("lines") or []
@@ -194,31 +368,45 @@ def normalize_package_quote(raw: Mapping[str, Any] | None, *, index: int = 0) ->
     if not items:
         return None
     qid = str(raw.get("id") or "").strip() or _slug_id(None, "pq")
+    pid = str(project_id or raw.get("projectId") or "").strip() or None
     split = compute_gst_split(
         sum(_money(it.get("amount")) for it in items),
         gst_mode=str(raw.get("gstMode") or raw.get("gst") or "exclude"),
         gst_percent=raw.get("gstPercent") if raw.get("gstPercent") is not None else DEFAULT_GST_PERCENT,
     )
     quote_no = str(raw.get("quotationId") or raw.get("quoteNumber") or raw.get("quoteNo") or "").strip() or None
+    atts = normalize_attachments(
+        raw.get("attachments"),
+        project_id=pid,
+        quote_id=qid,
+        attachment_name=str(raw.get("attachmentName") or "").strip() or None,
+        attachment_key=str(raw.get("attachmentKey") or "").strip() or None,
+    )
+    first = next((a for a in atts if a.get("kind") == "quote_pdf"), atts[0] if atts else None)
     return {
         "id": qid[:24],
         "index": index,
         "quotationId": quote_no,
         "note": str(raw.get("note") or "").strip() or None,
         "items": items,
-        "attachmentName": str(raw.get("attachmentName") or "").strip() or None,
-        "attachmentKey": str(raw.get("attachmentKey") or "").strip() or None,
+        "attachments": atts,
+        "attachmentName": (first or {}).get("filename") or (str(raw.get("attachmentName") or "").strip() or None),
+        "attachmentKey": (first or {}).get("key") or (str(raw.get("attachmentKey") or "").strip() or None),
         **split,
     }
 
 
-def normalize_package_quotes(raw: Any) -> list[dict[str, Any]]:
+def normalize_package_quotes(raw: Any, *, project_id: str | None = None) -> list[dict[str, Any]]:
     if not isinstance(raw, list):
         return []
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     for i, row in enumerate(raw[:MAX_QUOTES]):
-        q = normalize_package_quote(row if isinstance(row, Mapping) else None, index=i)
+        q = normalize_package_quote(
+            row if isinstance(row, Mapping) else None,
+            index=i,
+            project_id=project_id,
+        )
         if not q:
             continue
         if q["id"] in seen:
@@ -254,10 +442,11 @@ def apply_package_fields(doc: dict[str, Any], payload: Mapping[str, Any] | None)
     if not isinstance(doc, dict):
         return doc
     src = payload if isinstance(payload, Mapping) else {}
+    pid = str(doc.get("projectId") or "").strip() or None
     if "packageQuotes" in src and src.get("packageQuotes") is not None:
-        doc["packageQuotes"] = normalize_package_quotes(src.get("packageQuotes"))
+        doc["packageQuotes"] = normalize_package_quotes(src.get("packageQuotes"), project_id=pid)
     elif isinstance(doc.get("packageQuotes"), list):
-        doc["packageQuotes"] = normalize_package_quotes(doc.get("packageQuotes"))
+        doc["packageQuotes"] = normalize_package_quotes(doc.get("packageQuotes"), project_id=pid)
     quotes = doc.get("packageQuotes") or []
     if quotes:
         has_lines = bool(doc.get("lines"))

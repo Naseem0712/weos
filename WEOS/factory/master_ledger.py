@@ -142,6 +142,7 @@ def job_quote_rows(docs: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
                     "gstPercent": q.get("gstPercent"),
                     "attachmentName": q.get("attachmentName"),
                     "attachmentKey": q.get("attachmentKey"),
+                    "attachments": q.get("attachments") or [],
                 }
             )
     return rows
@@ -250,6 +251,10 @@ def ledger_from_docs(docs: list[Mapping[str, Any]], *, company_gst: str | None =
     gst_amt = round(sum(_money(q.get("gstAmount")) for q in quotes), 2)
     value = round(sum(_money(q.get("projectValue")) for q in quotes), 2)
     adv_total = round(sum(_money(a.get("amount")) for a in advances), 2)
+    closing = round(value - adv_total, 2)
+    running = closing
+    if advances:
+        running = _money(advances[-1].get("balanceAfter"))
     seed = docs[0] if docs else {}
     return {
         "kind": "master",
@@ -273,7 +278,9 @@ def ledger_from_docs(docs: list[Mapping[str, Any]], *, company_gst: str | None =
             "totalGrand": value,
             "projectValue": value,
             "totalAdvances": adv_total,
-            "balance": round(value - adv_total, 2),
+            "runningBalance": running,
+            "closingBalance": closing,
+            "balance": closing,
             "currency": "INR",
         },
         "asOf": datetime.now(timezone.utc).isoformat(),

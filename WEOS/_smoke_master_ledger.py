@@ -102,6 +102,64 @@ def main() -> None:
     empty = normalize_package_quotes([{"items": [{"category": "window"}]}])
     _ok(empty == [], "zero-amount quotes are dropped")
 
+    att_q = normalize_package_quotes(
+        [
+            {
+                "id": "pq_att",
+                "quotationId": "OUT-1",
+                "gstMode": "off",
+                "items": [{"category": "window", "qty": 2, "size": "1200x1500", "amount": 25000}],
+                "attachments": [
+                    {"id": "pf_pdf", "kind": "quote_pdf", "filename": "outside.pdf"},
+                    {"id": "pf_pic", "kind": "photo", "filename": "site.jpg"},
+                ],
+            }
+        ],
+        project_id="PRJ-SMOKE-MIX",
+    )
+    _ok(len(att_q) == 1 and len(att_q[0]["attachments"]) == 2, "PDF + photo attachments survive normalize")
+    kinds = {a["kind"] for a in att_q[0]["attachments"]}
+    _ok("quote_pdf" in kinds and "photo" in kinds, f"attachment kinds {kinds}")
+    _ok("/files/pf_pdf" in str(att_q[0]["attachments"][0].get("url") or ""), "attachment URL is per-file")
+
+    from WEOS.factory.master_ledger import _running_advances
+    from WEOS.factory.package_quote import apply_package_fields
+
+    mixed = {
+        "projectId": "PRJ-SMOKE-MIX",
+        "masterJobId": "PRJ-SMOKE-MIX",
+        "customer": "Mixed Job",
+        "customerMobile": "9000000001",
+        "quotationId": "WEOS-CART-1",
+        "lines": [{"id": "L1", "sellingAmount": 50000}],
+        "packageQuotes": [],
+        "lastCalculation": {"price": {"total": 50000, "commercialTotal": 50000}},
+    }
+    apply_package_fields(
+        mixed,
+        {"packageQuotes": att_q, "masterJobId": "PRJ-SMOKE-MIX"},
+    )
+    _ok(len(mixed["lines"]) == 1, "appending an outside quote must not wipe WEOS cart lines")
+    _ok(mixed.get("quoteKind") == "mixed", f"mixed quoteKind got {mixed.get('quoteKind')}")
+    live_m = live_quote_money(mixed)
+    cart_m = cart_quote_money(mixed)
+    _ok(cart_m["totalGrand"] == 59000, f"WEOS cart 50k + 18% GST = 59000 got {cart_m['totalGrand']}")
+    _ok(live_m["totalGrand"] == 84000, f"cart 59k + outside 25k = 84000 got {live_m['totalGrand']}")
+    led_m = ledger_from_docs([mixed])
+    kinds_q = {q["kind"] for q in led_m["quotes"]}
+    _ok("weos" in kinds_q and "package" in kinds_q, f"ledger shows cart + outside quotes {kinds_q}")
+    _ok(led_m["totals"]["projectValue"] == 84000, f"mixed project value 84000 got {led_m['totals']['projectValue']}")
+    _ok(led_m["totals"]["closingBalance"] == 84000, "closing = project value when no advances")
+    _ok(led_m["totals"]["runningBalance"] == 84000, "running = project value when no advances")
+    run = _running_advances(
+        [{"id": 1, "amount": 10000, "paidAt": "2026-01-01"}, {"id": 2, "amount": 15000, "paidAt": "2026-02-01"}],
+        84000,
+    )
+    _ok(run[0]["runningAdvance"] == 10000 and run[0]["balanceAfter"] == 74000, "first advance running 10k / balance 74k")
+    _ok(run[1]["runningAdvance"] == 25000 and run[1]["balanceAfter"] == 59000, "second advance running 25k / closing 59k")
+    att_row = next(q for q in led_m["quotes"] if q["id"] == "pq_att")
+    _ok(len(att_row.get("attachments") or []) == 2, "master ledger quote row keeps PDF + photos")
+
     print("SMOKE_MASTER_LEDGER_OK")
 
 

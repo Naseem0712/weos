@@ -264,6 +264,18 @@ class ProjectUpdate(BaseModel):
     quoteKind: str | None = None
 
 
+class PackageQuoteBody(BaseModel):
+    model_config = {"extra": "allow"}
+
+    id: str | None = None
+    quotationId: str | None = None
+    gstMode: str | None = "exclude"
+    gstPercent: float | None = 18
+    note: str | None = None
+    items: list[Any] = Field(default_factory=list)
+    attachments: list[Any] | None = None
+
+
 class ProjectCalculateOpts(BaseModel):
     model_config = {"extra": "allow"}
     optimize: bool = True
@@ -1633,19 +1645,53 @@ def api_project_master_ledger(project_id: str, gst: str | None = Query(None)) ->
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
+@app.post("/api/projects/{project_id}/package-quotes")
+def api_append_package_quote(
+    project_id: str,
+    body: PackageQuoteBody,
+    gst: str | None = Query(None),
+) -> dict[str, Any]:
+    """Append an outside / finalized quote onto an existing job. Cart lines stay."""
+    from WEOS.factory.master_ledger import build_master_ledger
+    from WEOS.factory.package_quote import MAX_QUOTES, apply_package_fields, normalize_package_quote
+    from WEOS.factory.project_store import load_project, save_project
+
+    try:
+        doc = load_project(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    quotes = list(doc.get("packageQuotes") or [])
+    if len(quotes) >= MAX_QUOTES:
+        raise HTTPException(status_code=400, detail=f"Maximum {MAX_QUOTES} outside quotes on one project")
+    incoming = body.model_dump(exclude_none=True)
+    q = normalize_package_quote(incoming, index=len(quotes), project_id=project_id)
+    if not q:
+        raise HTTPException(status_code=400, detail="Enter at least one item amount")
+    quotes.append(q)
+    apply_package_fields(doc, {"packageQuotes": quotes, "masterJobId": doc.get("masterJobId") or project_id})
+    saved = save_project(doc, action="package_quote_add")
+    wrap: dict[str, Any] = {}
+    try:
+        wrap = build_master_ledger(project_id=project_id, company_gst=gst)
+    except Exception:
+        wrap = {}
+    return {"ok": True, "quote": q, "projectId": saved.get("projectId"), "ledger": wrap.get("ledger")}
+
+
 @app.post("/api/projects/{project_id}/package-quotes/{quote_id}/file")
 async def api_package_quote_file(
     project_id: str,
     quote_id: str,
     file: UploadFile = File(...),
+    kind: str | None = Query(None),
     gst: str | None = Query(None),
 ) -> dict[str, Any]:
     from WEOS.factory.master_ledger import build_master_ledger
-    from WEOS.factory.package_quote import normalize_package_quotes
+    from WEOS.factory.package_quote import MAX_ATTACHMENTS, apply_package_fields, store_package_file
     from WEOS.factory.project_store import load_project, save_project
 
     try:
-        load_project(project_id)
+        doc = load_project(project_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if gst:
@@ -1661,79 +1707,61 @@ async def api_package_quote_file(
     if len(raw) > 8 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 8 MB)")
     fname = str(file.filename or "quote").strip() or "quote"
-    key = f"package_quote_file:{project_id}:{qid}"
-    stored = False
-    try:
-        from WEOS.db.durable_store import put_blob
-
-        stored = bool(
-            put_blob(
-                key,
-                "package_quote_file",
-                raw,
-                content_type=file.content_type or "application/octet-stream",
-                filename=fname,
-            )
-        )
-    except Exception:
-        stored = False
-    if not stored:
-        from WEOS.paths import data_dir
-
-        dest = data_dir() / "package_quotes" / project_id
-        dest.mkdir(parents=True, exist_ok=True)
-        (dest / f"{qid}.bin").write_bytes(raw)
-        (dest / f"{qid}.name.txt").write_text(fname, encoding="utf-8")
-    doc = load_project(project_id)
-    quotes = normalize_package_quotes(doc.get("packageQuotes") or [])
+    att = store_package_file(
+        project_id=project_id,
+        quote_id=qid,
+        raw=raw,
+        filename=fname,
+        content_type=file.content_type,
+        kind_hint=kind,
+    )
+    quotes = list(doc.get("packageQuotes") or [])
     hit = False
     for pq in quotes:
-        if str(pq.get("id")) == qid:
-            pq["attachmentName"] = fname
-            pq["attachmentKey"] = key
-            hit = True
+        if str(pq.get("id")) != qid:
+            continue
+        files = list(pq.get("attachments") or [])
+        files.append(att)
+        pq["attachments"] = files[:MAX_ATTACHMENTS]
+        if att.get("kind") == "quote_pdf" or not pq.get("attachmentName"):
+            pq["attachmentName"] = att.get("filename")
+            pq["attachmentKey"] = att.get("key")
+        hit = True
     if hit:
-        doc["packageQuotes"] = quotes
+        apply_package_fields(doc, {"packageQuotes": quotes})
         save_project(doc, bump_version=False, action="package_quote_file")
-    return {
-        "ok": True,
-        "quoteId": qid,
-        "filename": fname,
-        "url": f"/api/projects/{project_id}/package-quotes/{qid}/file",
-    }
+    return {"ok": True, "quoteId": qid, "attachment": att, "filename": fname, "url": att.get("url")}
 
 
-@app.get("/api/projects/{project_id}/package-quotes/{quote_id}/file")
-def api_get_package_quote_file(project_id: str, quote_id: str) -> Response:
+@app.get("/api/projects/{project_id}/package-quotes/{quote_id}/files/{file_id}")
+def api_get_package_quote_file_id(project_id: str, quote_id: str, file_id: str) -> Response:
+    from WEOS.factory.package_quote import load_package_file
     from WEOS.factory.project_store import load_project
 
     try:
         load_project(project_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    qid = str(quote_id or "").strip()
-    key = f"package_quote_file:{project_id}:{qid}"
-    raw = None
-    ctype = "application/octet-stream"
-    fname = "quote"
-    try:
-        from WEOS.db.durable_store import get_blob
-
-        raw, ctype, fname = get_blob(key)
-    except Exception:
-        raw = None
-    if raw is None:
-        from WEOS.paths import data_dir
-
-        p = data_dir() / "package_quotes" / project_id / f"{qid}.bin"
-        if p.is_file():
-            raw = p.read_bytes()
-            np = data_dir() / "package_quotes" / project_id / f"{qid}.name.txt"
-            if np.is_file():
-                fname = np.read_text(encoding="utf-8").strip() or fname
+    raw, ctype, fname = load_package_file(project_id, quote_id, file_id)
     if raw is None:
         raise HTTPException(status_code=404, detail="No file attached")
-    headers = {"Content-Disposition": f'inline; filename="{fname}"'}
+    headers = {"Content-Disposition": f'inline; filename="{fname or "file"}"'}
+    return Response(content=raw, media_type=ctype or "application/octet-stream", headers=headers)
+
+
+@app.get("/api/projects/{project_id}/package-quotes/{quote_id}/file")
+def api_get_package_quote_file(project_id: str, quote_id: str) -> Response:
+    from WEOS.factory.package_quote import load_package_file
+    from WEOS.factory.project_store import load_project
+
+    try:
+        load_project(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    raw, ctype, fname = load_package_file(project_id, quote_id, None)
+    if raw is None:
+        raise HTTPException(status_code=404, detail="No file attached")
+    headers = {"Content-Disposition": f'inline; filename="{fname or "quote"}"'}
     return Response(content=raw, media_type=ctype or "application/octet-stream", headers=headers)
 
 

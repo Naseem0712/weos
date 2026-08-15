@@ -295,14 +295,15 @@ button.pill{border:0;font:inherit;cursor:pointer}
           <div class="grow" style="flex-basis:100%"><label class="l">Terms &amp; Conditions override (optional — defaults from Company Setup)</label><textarea id="projTerms" rows="3" placeholder="Leave blank to use the company default terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
         </div>
         <hr style="border:none;border-top:1px solid var(--line);margin:1.1rem 0 .7rem"/>
-        <strong style="font-size:.92rem">Deal / package quote</strong>
-        <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">For jobs closed at a package amount without a WEOS drawing. Type items and amounts (qty / size optional). You can also upload an outside quote. One project can hold up to 20 quotes — all totals become project value. Ledger stays on this job only.</p>
+        <strong style="font-size:.92rem">Outside / package quotes on this project</strong>
+        <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">WEOS Window Cart quotes stay on this job. Add any <strong>outside finalized quote</strong> here (windows, louvers, vents, railing, fabrication, gates…). All quote totals become project value. Record advances on Master Ledger — running and closing balance stay on this project only.</p>
         <div class="pkg-tabs" id="pkgQuoteTabs"></div>
         <div class="row" style="gap:.4rem;flex-wrap:wrap;margin-bottom:.4rem">
-          <button class="btn ghost sm" id="btnPkgAddQuote" type="button">Add another quote</button>
+          <button class="btn sm" id="btnPkgAddQuote" type="button">Add outside quote to this project</button>
         </div>
         <div id="pkgQuoteEditor"></div>
         <div id="pkgJobTotals" class="row" style="gap:.7rem;flex-wrap:wrap;margin:.55rem 0 .15rem"></div>
+        <div id="pkgLedgerStrip" class="row" style="gap:.7rem;flex-wrap:wrap;margin:.15rem 0 .35rem"></div>
         <div class="row" style="margin-top:.35rem;gap:.5rem;flex-wrap:wrap">
           <button class="btn" id="btnSaveSetup" type="button">Save project setup</button>
           <button class="btn sec" id="btnSetupToCart" type="button">Continue to Window Cart</button>
@@ -321,7 +322,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
     <section id="view-master" class="grid hidden">
       <div class="panel">
         <strong>Master Ledger</strong>
-        <p class="muted" style="margin:.2rem 0 .7rem;font-size:.82rem">Search by mobile, name, or quote number. Shows this job’s quotes, GST, advances and balance only — never another project.</p>
+        <p class="muted" style="margin:.2rem 0 .7rem;font-size:.82rem">Search by mobile, name, or quote number. Shows this job’s WEOS quotes and outside quotes, GST, advances, running and closing balance only — never another project. Add a finalized outside quote onto a running job here.</p>
         <div class="row" style="align-items:flex-end;gap:.5rem;flex-wrap:wrap">
           <div class="grow"><label class="l">Search</label><input id="mlSearch" placeholder="mobile / name / quote number"/></div>
           <button class="btn" id="btnMlSearch" type="button">Search</button>
@@ -349,6 +350,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
             <span class="muted">Active setup</span>
             <strong id="setupSummaryText">No setup yet</strong>
             <button class="btn ghost sm" id="btnEditSetup" type="button">Edit Project Setup</button>
+            <button class="btn ghost sm" id="btnCartOutsideQuote" type="button">Add outside quote</button>
           </div>
           <div class="row">
             <div class="grow"><label class="l">Product</label><select id="lineProduct"></select></div>
@@ -2635,12 +2637,14 @@ async function loadProjects() {
       <td>${esc(p.tenure || formatTenure(p.updatedAt || p.createdAt))}</td>
       <td class="actions-inline">
         <button class="btn ghost sm" data-o="${p.projectId}">Open</button>
+        <button class="btn ghost sm" data-outside="${p.projectId}">Add outside quote</button>
         <button class="btn ghost sm" data-d="${p.projectId}">Dup</button>
         <button class="btn ghost sm" data-a="${p.projectId}">${p.status==='archived'?'Restore':'Archive'}</button>
         ${p.status==='archived'?'':`<button class="btn ghost sm" data-del="${p.projectId}" data-del-label="${esc((p.quotationId||p.projectId)+' / '+(p.customer||p.name||''))}">Delete</button>`}
       </td>
     </tr>`).join('') || '<tr><td colspan="8" class="muted">None</td></tr>';
   $('projBody').querySelectorAll('[data-o]').forEach(b => b.onclick = async () => { await openProject(b.dataset.o); setView('cart'); });
+  $('projBody').querySelectorAll('[data-outside]').forEach(b => b.onclick = async () => { await goAddOutsideQuote(b.dataset.outside); });
   $('projBody').querySelectorAll('[data-d]').forEach(b => b.onclick = async () => { await api('/api/projects/'+b.dataset.d+'/duplicate',{method:'POST'}); toast('Duplicated'); loadProjects(); });
   $('projBody').querySelectorAll('[data-a]').forEach(b => b.onclick = async () => {
     const p = (data.projects||[]).find(x=>x.projectId===b.dataset.a);
@@ -4332,10 +4336,14 @@ async function loadSetupList(){
     body.innerHTML = (data.projects||[]).map(p => `
       <tr>
         <td>${p.projectId}</td><td>${p.name||''}</td><td>${p.customer||''}</td>
-        <td><button class="btn ghost sm" data-setup-open="${p.projectId}">Edit</button></td>
+        <td><button class="btn ghost sm" data-setup-open="${p.projectId}">Edit</button>
+            <button class="btn ghost sm" data-setup-outside="${p.projectId}">Add outside quote</button></td>
       </tr>`).join('') || '<tr><td colspan="4" class="muted">No saved projects yet</td></tr>';
     body.querySelectorAll('[data-setup-open]').forEach(b => {
       b.onclick = async () => { await openProject(b.dataset.setupOpen); setView('setup'); };
+    });
+    body.querySelectorAll('[data-setup-outside]').forEach(b => {
+      b.onclick = async () => { await goAddOutsideQuote(b.dataset.setupOutside); };
     });
   } catch(e) {
     body.innerHTML = `<tr><td colspan="4" class="err">${e.message}</td></tr>`;
@@ -4430,7 +4438,7 @@ const PKG_UNITS = {
 };
 function _pkgId(prefix){ return prefix + Math.random().toString(36).slice(2,10); }
 function emptyPkgItem(){ return { id:_pkgId('pi'), category:'window', qty:'', size:'', unit:'pcs', amount:'' }; }
-function emptyPkgQuote(){ return { id:_pkgId('pq'), quotationId:'', gstMode:'exclude', gstPercent:18, items:[emptyPkgItem()], note:'', attachmentName:'' }; }
+function emptyPkgQuote(){ return { id:_pkgId('pq'), quotationId:'', gstMode:'exclude', gstPercent:18, items:[emptyPkgItem()], note:'', attachmentName:'', attachments:[] }; }
 function ensurePkgQuotes(){
   if (!Array.isArray(state.packageQuotes) || !state.packageQuotes.length) state.packageQuotes = [emptyPkgQuote()];
   if (state.packageQuoteIndex < 0 || state.packageQuoteIndex >= state.packageQuotes.length) state.packageQuoteIndex = 0;
@@ -4466,6 +4474,7 @@ function adoptPackageQuotes(doc){
       note: q.note || '',
       attachmentName: q.attachmentName || '',
       attachmentKey: q.attachmentKey || '',
+      attachments: Array.isArray(q.attachments) ? q.attachments : [],
       items: (q.items && q.items.length) ? q.items : [emptyPkgItem()],
     })) : [emptyPkgQuote()];
     if (state.packageQuoteIndex >= state.packageQuotes.length) state.packageQuoteIndex = 0;
@@ -4481,6 +4490,7 @@ function packageQuotesPayload(){
     note: (q.note || '').trim() || undefined,
     attachmentName: q.attachmentName || undefined,
     attachmentKey: q.attachmentKey || undefined,
+    attachments: q.attachments || [],
     items: (q.items || []).map((it, n) => ({
       id: it.id, category: it.category, qty: it.qty === '' ? undefined : Number(it.qty),
       size: (it.size || '').trim() || undefined, unit: it.unit || 'pcs',
@@ -4502,8 +4512,56 @@ function renderPkgTotalsOnly(){
   box.innerHTML = quotes.length ? `
     <div class="kpi"><label class="l">Items / taxable</label><div class="big" style="font-size:1.05rem">${money(taxable)}</div></div>
     <div class="kpi"><label class="l">GST</label><div class="big" style="font-size:1.05rem">${money(gst)}</div></div>
-    <div class="kpi"><label class="l">Project value</label><div class="big" style="font-size:1.05rem">${money(value)}</div></div>
-    <div class="muted" style="font-size:.75rem;align-self:center">${quotes.length} quote${quotes.length===1?'':'s'} · advances recorded on Master Ledger</div>` : '<p class="muted" style="font-size:.8rem;margin:0">No package amounts yet — Window Cart quotes still count on their own.</p>';
+    <div class="kpi"><label class="l">Outside quotes</label><div class="big" style="font-size:1.05rem">${money(value)}</div></div>
+    <div class="muted" style="font-size:.75rem;align-self:center">${quotes.length} outside quote${quotes.length===1?'':'s'} · WEOS cart quotes also count in Master Ledger</div>` : '<p class="muted" style="font-size:.8rem;margin:0">No outside quote amounts yet — Window Cart quotes still count. Use <strong>Add outside quote</strong> for a finalized job made elsewhere.</p>';
+  refreshSetupLedgerStrip();
+}
+async function refreshSetupLedgerStrip(){
+  const box = $('pkgLedgerStrip'); if (!box) return;
+  if (!state.projectId) { box.innerHTML = ''; return; }
+  try {
+    const qs = withGstQuery({});
+    qs.set('projectId', state.projectId);
+    const wrap = await api('/api/ledger/master?'+qs.toString());
+    const t = (wrap && wrap.ledger && wrap.ledger.totals) || {};
+    if (!wrap || !wrap.ledger) { box.innerHTML = ''; return; }
+    box.innerHTML = `
+      <div class="kpi"><label class="l">Project value</label><div class="big" style="font-size:1.05rem">${money(t.projectValue)}</div></div>
+      <div class="kpi"><label class="l">Total advance</label><div class="big" style="font-size:1.05rem">${money(t.totalAdvances)}</div></div>
+      <div class="kpi"><label class="l">Running balance</label><div class="big" style="font-size:1.05rem">${money(t.runningBalance != null ? t.runningBalance : t.balance)}</div></div>
+      <div class="kpi"><label class="l">Closing balance</label><div class="big" style="font-size:1.05rem">${money(t.closingBalance != null ? t.closingBalance : t.balance)}</div></div>`;
+  } catch (_) { box.innerHTML = ''; }
+}
+function pkgAttachListHtml(q){
+  const files = (q && q.attachments) || [];
+  const pid = state.projectId || '';
+  if (files.length) {
+    return files.map(a => {
+      const href = a.url ? (API_BASE + a.url) : (API_BASE+'/api/projects/'+encodeURIComponent(pid)+'/package-quotes/'+encodeURIComponent(q.id)+'/files/'+encodeURIComponent(a.id));
+      const label = (a.kind==='photo'?'Photo':'Quote PDF') + ' · ' + (a.filename||'file');
+      return `<a href="${href}" target="_blank">${esc(label)}</a>`;
+    }).join(' · ');
+  }
+  if (q && q.attachmentName && pid) {
+    return `<a href="${API_BASE}/api/projects/${encodeURIComponent(pid)}/package-quotes/${encodeURIComponent(q.id)}/file" target="_blank">${esc(q.attachmentName)}</a>`;
+  }
+  return '';
+}
+async function uploadPkgFiles(quoteId, fileList, kind){
+  const files = Array.from(fileList || []).filter(Boolean);
+  if (!files.length) return [];
+  await ensureProject();
+  const qs = withGstQuery({});
+  if (kind) qs.set('kind', kind);
+  const out = [];
+  for (const f of files) {
+    const fd = new FormData();
+    fd.append('file', f);
+    const res = await api('/api/projects/'+state.projectId+'/package-quotes/'+encodeURIComponent(quoteId)+'/file?'+qs.toString(), { method:'POST', body: fd });
+    if (res && res.attachment) out.push(res.attachment);
+    else if (res && res.filename) out.push({ filename: res.filename, url: res.url, kind: kind==='photo'?'photo':'quote_pdf' });
+  }
+  return out;
 }
 function renderPackageQuotes(){
   const tabs = $('pkgQuoteTabs');
@@ -4549,9 +4607,10 @@ function renderPackageQuotes(){
     </div>
     <div class="row" style="flex-wrap:wrap;gap:.45rem;align-items:center;margin:.35rem 0">
       <span class="muted" style="font-size:.8rem">This quote: items ${money(t.itemsSubtotal)} · GST ${money(t.gstAmount)} · value ${money(t.projectValue)}</span>
-      <label class="btn ghost sm" style="margin:0">Upload quote<input id="pkgFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" hidden/></label>
-      <span class="muted" style="font-size:.75rem" id="pkgFileName">${q.attachmentName?esc(q.attachmentName):''}</span>
-    </div>`;
+      <label class="btn ghost sm" style="margin:0">Upload quote PDF<input id="pkgFile" type="file" accept=".pdf,application/pdf" hidden/></label>
+      <label class="btn ghost sm" style="margin:0">Upload photos<input id="pkgPhotos" type="file" accept="image/*" multiple hidden/></label>
+    </div>
+    <div class="muted" style="font-size:.75rem" id="pkgFileName">${pkgAttachListHtml(q) || 'No PDF / photos yet'}</div>`;
   if ($('pkgQuoteNo')) $('pkgQuoteNo').addEventListener('input', () => { ensurePkgQuotes()[state.packageQuoteIndex].quotationId = $('pkgQuoteNo').value; });
   if ($('pkgQuoteNote')) $('pkgQuoteNote').addEventListener('input', () => { ensurePkgQuotes()[state.packageQuoteIndex].note = $('pkgQuoteNote').value; });
   ed.querySelectorAll('[name="pkgGstMode"]').forEach(r => {
@@ -4611,21 +4670,36 @@ function renderPackageQuotes(){
     if (state.packageQuoteIndex >= state.packageQuotes.length) state.packageQuoteIndex = state.packageQuotes.length-1;
     renderPackageQuotes();
   };
-  if ($('pkgFile')) $('pkgFile').onchange = async () => {
-    const f = $('pkgFile').files && $('pkgFile').files[0];
-    if (!f) return;
+  async function _attachPkgFiles(fileList, kind){
+    const files = Array.from(fileList || []).filter(Boolean);
+    if (!files.length) return;
+    const cur = ensurePkgQuotes()[state.packageQuoteIndex];
+    if (!(cur.items || []).some(it => Number(it.amount) > 0)) {
+      toast('Enter this quote amount first, then upload');
+      return;
+    }
+    const qid = cur.id;
     try {
-      await ensureProject();
-      const cur = ensurePkgQuotes()[state.packageQuoteIndex];
-      const fd = new FormData();
-      fd.append('file', f);
-      const qs = withGstQuery({});
-      const res = await api('/api/projects/'+state.projectId+'/package-quotes/'+encodeURIComponent(cur.id)+'/file?'+qs.toString(), { method:'POST', body: fd });
-      cur.attachmentName = (res && res.filename) || f.name;
-      cur.attachmentKey = res && res.quoteId ? ('package_quote_file:'+state.projectId+':'+cur.id) : cur.attachmentKey;
-      if ($('pkgFileName')) $('pkgFileName').textContent = cur.attachmentName;
-      toast('Quote file attached');
+      await saveProject(false);
+      const live = ensurePkgQuotes().find(q => q.id === qid) || ensurePkgQuotes()[state.packageQuoteIndex];
+      const added = await uploadPkgFiles(live.id, files, kind);
+      live.attachments = (live.attachments || []).concat(added);
+      const pdf = added.find(a => a && a.kind !== 'photo') || added[0];
+      if (pdf) {
+        live.attachmentName = pdf.filename || live.attachmentName;
+        live.attachmentKey = pdf.key || live.attachmentKey;
+      }
+      if ($('pkgFileName')) $('pkgFileName').innerHTML = pkgAttachListHtml(live) || 'No PDF / photos yet';
+      toast(kind === 'photo' ? 'Photo attached' : 'Quote PDF attached');
     } catch (e) { toast(e.message); }
+  }
+  if ($('pkgFile')) $('pkgFile').onchange = async () => {
+    await _attachPkgFiles($('pkgFile').files, 'quote');
+    if ($('pkgFile')) $('pkgFile').value = '';
+  };
+  if ($('pkgPhotos')) $('pkgPhotos').onchange = async () => {
+    await _attachPkgFiles($('pkgPhotos').files, 'photo');
+    if ($('pkgPhotos')) $('pkgPhotos').value = '';
   };
   renderPkgTotalsOnly();
 }
@@ -7649,6 +7723,28 @@ if ($('btnSetupToCart')) $('btnSetupToCart').onclick = async () => {
 if ($('btnSetupLoadList')) $('btnSetupLoadList').onclick = loadSetupList;
 if ($('btnEditSetup')) $('btnEditSetup').onclick = () => setView('setup');
 if ($('btnSetupMaster')) $('btnSetupMaster').onclick = () => setView('master');
+async function goAddOutsideQuote(projectId){
+  if (projectId && String(projectId) !== String(state.projectId || '')) {
+    await openProject(projectId);
+  }
+  const list = ensurePkgQuotes();
+  const last = list[list.length - 1];
+  const empty = last && !(last.items || []).some(it => Number(it.amount) > 0) && !String(last.quotationId || '').trim();
+  if (!empty) {
+    if (list.length >= 20) { toast('Maximum 20 quotes on one project'); return; }
+    list.push(emptyPkgQuote());
+  }
+  state.packageQuoteIndex = list.length - 1;
+  setView('setup');
+  renderPackageQuotes();
+  toast('Add the outside quote here (amount, PDF, photos), then Save project setup');
+}
+if ($('btnCartOutsideQuote')) $('btnCartOutsideQuote').onclick = () => {
+  if (!state.projectId && !(state.lines || []).length) {
+    toast('Open a saved project first, or save this setup');
+  }
+  goAddOutsideQuote(state.projectId);
+};
 if ($('btnPkgAddQuote')) $('btnPkgAddQuote').onclick = () => {
   const list = ensurePkgQuotes();
   if (list.length >= 20) { toast('Maximum 20 quotes on one project'); return; }
@@ -7667,12 +7763,13 @@ function renderMasterLedger(wrap){
   if (matchesEl) {
     const hits = (wrap && wrap.matches) || [];
     if (hits.length > 1) {
-      matchesEl.innerHTML = `<table><thead><tr><th>Customer</th><th>Mobile</th><th>Quotes</th><th>Value</th><th>Balance</th><th></th></tr></thead><tbody>${
+      matchesEl.innerHTML = `<table><thead><tr><th>Customer</th><th>Mobile</th><th>Quotes</th><th>Value</th><th>Advance</th><th>Closing</th><th></th></tr></thead><tbody>${
         hits.map(h => `<tr>
           <td>${esc(h.customer||h.name||'—')}<div class="muted" style="font-size:.72rem">${esc(h.projectId||'')}</div></td>
           <td>${esc(h.customerMobile||'')}</td>
           <td>${h.quoteCount||0}</td>
           <td>${money(h.projectValue)}</td>
+          <td>${money(h.totalAdvances)}</td>
           <td>${money(h.balance)}</td>
           <td><button class="btn ghost sm" type="button" data-ml-open="${esc(h.projectId)}">Open</button></td>
         </tr>`).join('')
@@ -7695,32 +7792,75 @@ function renderMasterLedger(wrap){
   const t = led.totals || {};
   const quotes = led.quotes || [];
   const adv = led.advances || [];
+  const pid = led.projectId || state.projectId;
   const quoteOpts = quotes.map(q => {
-    const label = (q.kind==='weos'?'WEOS · ':'Deal · ') + (q.quotationId || q.id || 'quote') + ' · ' + money(q.projectValue);
+    const label = (q.kind==='weos'?'WEOS · ':'Outside · ') + (q.quotationId || q.id || 'quote') + ' · ' + money(q.projectValue);
     return `<option value="${esc(q.id)}">${esc(label)}</option>`;
   }).join('');
+  const catOpts = PKG_CATS.map(([id,lb]) => `<option value="${id}">${lb}</option>`).join('');
+  function mlFiles(q){
+    const files = (q && q.attachments) || [];
+    if (files.length) {
+      return files.map(a => {
+        const href = a.url ? (API_BASE + a.url) : (API_BASE+'/api/projects/'+encodeURIComponent(pid)+'/package-quotes/'+encodeURIComponent(q.id)+'/files/'+encodeURIComponent(a.id));
+        const label = (a.kind==='photo'?'Photo':'PDF') + ' · ' + (a.filename||'file');
+        return `<a href="${href}" target="_blank">${esc(label)}</a>`;
+      }).join('<br/>');
+    }
+    if (q && q.attachmentName && q.kind !== 'weos' && pid) {
+      return `<a href="${API_BASE}/api/projects/${encodeURIComponent(pid)}/package-quotes/${encodeURIComponent(q.id)}/file" target="_blank">${esc(q.attachmentName)}</a>`;
+    }
+    return '—';
+  }
   body.innerHTML = `
     <p style="margin:0 0 .55rem"><strong>${esc(led.customer||led.name||'Job')}</strong>
       <span class="muted"> · ${esc(led.customerMobile||'')} · ${esc(led.customerAddress||'')}</span></p>
     <div class="row" style="gap:.7rem;flex-wrap:wrap;margin-bottom:.65rem">
-      <div class="kpi"><label class="l">Quotes total</label><div class="big" style="font-size:1.05rem">${money(t.totalTaxable)}</div></div>
-      <div class="kpi"><label class="l">GST</label><div class="big" style="font-size:1.05rem">${money(t.gstAmount != null ? t.gstAmount : t.totalGst)}</div></div>
       <div class="kpi"><label class="l">Project value</label><div class="big" style="font-size:1.05rem">${money(t.projectValue)}</div></div>
       <div class="kpi"><label class="l">Total advance</label><div class="big" style="font-size:1.05rem">${money(t.totalAdvances)}</div></div>
-      <div class="kpi"><label class="l">Balance</label><div class="big" style="font-size:1.05rem">${money(t.balance)}</div></div>
+      <div class="kpi"><label class="l">Running balance</label><div class="big" style="font-size:1.05rem">${money(t.runningBalance != null ? t.runningBalance : t.balance)}</div></div>
+      <div class="kpi"><label class="l">Closing balance</label><div class="big" style="font-size:1.05rem">${money(t.closingBalance != null ? t.closingBalance : t.balance)}</div></div>
+      <div class="kpi"><label class="l">Taxable</label><div class="big" style="font-size:1.05rem">${money(t.totalTaxable)}</div></div>
+      <div class="kpi"><label class="l">GST</label><div class="big" style="font-size:1.05rem">${money(t.gstAmount != null ? t.gstAmount : t.totalGst)}</div></div>
     </div>
-    <strong style="font-size:.88rem">Quotes</strong>
-    <div style="overflow:auto;margin:.35rem 0 .8rem"><table><thead><tr><th>Quote</th><th>Kind</th><th>Taxable</th><th>GST</th><th>Value</th></tr></thead><tbody>${
+    <strong style="font-size:.88rem">Quotes on this project</strong>
+    <p class="muted" style="margin:.15rem 0 .35rem;font-size:.75rem">WEOS Window Cart quotes and outside finalized quotes both count in project value.</p>
+    <div style="overflow:auto;margin:.35rem 0 .8rem"><table><thead><tr><th>Quote</th><th>Kind</th><th>Taxable</th><th>GST</th><th>Value</th><th>PDF / photos</th></tr></thead><tbody>${
       quotes.length ? quotes.map(q => `<tr>
         <td>${esc(q.quotationId||q.id||'—')}${q.items&&q.items.length?`<div class="muted" style="font-size:.72rem">${q.items.map(it=>esc((it.categoryLabel||it.category||'')+' '+(it.qty||'')+(it.size?(' · '+it.size):'')+' · '+money(it.amount))).join('<br/>')}</div>`:''}</td>
-        <td>${q.kind==='weos'?'WEOS quote':'Package'}</td>
+        <td>${q.kind==='weos'?'WEOS quote':'Outside quote'}</td>
         <td>${money(q.totalTaxable)}</td>
         <td>${money(q.gstAmount)}</td>
         <td>${money(q.projectValue)}</td>
-      </tr>`).join('') : '<tr><td colspan="5" class="muted">No quotes on this job yet</td></tr>'
+        <td>${mlFiles(q)}</td>
+      </tr>`).join('') : '<tr><td colspan="6" class="muted">No quotes on this job yet</td></tr>'
     }</tbody></table></div>
+    <strong style="font-size:.88rem">Add outside / finalized quote</strong>
+    <p class="muted" style="margin:.15rem 0 .4rem;font-size:.75rem">Existing WEOS cart quotes stay. Add a quote made outside this app — PDF and photos optional.</p>
+    <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.35rem">
+      <div class="grow"><label class="l">Quote number</label><input id="mlOutNo" placeholder="optional"/></div>
+      <div><label class="l">Item</label><select id="mlOutCat" style="min-width:140px">${catOpts}</select></div>
+      <div><label class="l">Qty</label><input id="mlOutQty" type="number" min="0" step="0.01" style="width:80px"/></div>
+      <div class="grow"><label class="l">Size</label><input id="mlOutSize" placeholder="optional" style="min-width:110px"/></div>
+      <div><label class="l">Amount ₹</label><input id="mlOutAmt" type="number" min="0" step="0.01" style="width:110px"/></div>
+      <div><label class="l">GST</label>
+        <select id="mlOutGst" style="width:130px">
+          <option value="exclude">GST extra</option>
+          <option value="include">GST included</option>
+          <option value="off">GST off</option>
+        </select>
+      </div>
+      <div><label class="l">GST %</label><input id="mlOutPct" type="number" min="0" max="28" step="0.01" value="18" style="width:72px"/></div>
+    </div>
+    <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:center;margin-bottom:.7rem">
+      <div class="grow"><label class="l">Note</label><input id="mlOutNote" placeholder="optional"/></div>
+      <label class="btn ghost sm" style="margin:0">Quote PDF<input id="mlOutPdf" type="file" accept=".pdf,application/pdf" hidden/></label>
+      <label class="btn ghost sm" style="margin:0">Photos<input id="mlOutPhotos" type="file" accept="image/*" multiple hidden/></label>
+      <button class="btn sm" id="btnMlOutsideSave" type="button">Add to this project</button>
+      <button class="btn ghost sm" id="btnMlOutsideSetup" type="button">Open in Project Setup</button>
+    </div>
     <strong style="font-size:.88rem">Record advance</strong>
-    <p class="muted" style="margin:.15rem 0 .4rem;font-size:.75rem">Select the quote this payment is against. Previous advances stay; balance = project value − all advances.</p>
+    <p class="muted" style="margin:.15rem 0 .4rem;font-size:.75rem">Select the quote this payment is against. Running balance updates after each advance. Closing balance = project value − all advances.</p>
     <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.55rem">
       <div class="grow"><label class="l">Against quote</label><select id="mlAdvQuote" style="min-width:180px"><option value="">Select quote</option>${quoteOpts}</select></div>
       <div><label class="l">Amount ₹</label><input id="mlAdvAmt" type="number" min="0" step="0.01" style="width:110px"/></div>
@@ -7736,7 +7876,7 @@ function renderMasterLedger(wrap){
     </div>
     <strong style="font-size:.88rem">Transactions</strong>
     <div style="overflow:auto;margin:.35rem 0">${
-      adv.length ? `<table><thead><tr><th>Date</th><th>Quote</th><th>Amount</th><th>Running advance</th><th>Balance</th><th>Mode</th><th>Ref</th></tr></thead><tbody>${
+      adv.length ? `<table><thead><tr><th>Date</th><th>Quote</th><th>Amount</th><th>Running advance</th><th>Running balance</th><th>Mode</th><th>Ref</th></tr></thead><tbody>${
         adv.map(a => `<tr>
           <td>${esc(mlFmtDate(a.paidAt||a.createdAt))}</td>
           <td>${esc(a.quoteId||'—')}</td>
@@ -7751,7 +7891,54 @@ function renderMasterLedger(wrap){
   if ($('mlAdvDate') && !$('mlAdvDate').value) {
     try { $('mlAdvDate').value = new Date().toISOString().slice(0,10); } catch(_){}
   }
-  const pid = led.projectId || state.projectId;
+  if ($('btnMlOutsideSetup')) $('btnMlOutsideSetup').onclick = () => goAddOutsideQuote(pid);
+  if ($('btnMlOutsideSave')) $('btnMlOutsideSave').onclick = async () => {
+    const amount = +(($('mlOutAmt') && $('mlOutAmt').value) || 0);
+    if (!(amount > 0)) { toast('Enter the outside quote amount'); return; }
+    if (!pid) { toast('Save or open a project first'); return; }
+    try {
+      const qs = withGstQuery({});
+      const gstMode = ($('mlOutGst') && $('mlOutGst').value) || 'exclude';
+      const res = await api('/api/projects/'+encodeURIComponent(pid)+'/package-quotes?'+qs.toString(), {
+        method:'POST',
+        body: {
+          quotationId: ($('mlOutNo') && $('mlOutNo').value.trim()) || undefined,
+          gstMode,
+          gstPercent: gstMode === 'off' ? 0 : Number(($('mlOutPct') && $('mlOutPct').value) || 18),
+          note: ($('mlOutNote') && $('mlOutNote').value.trim()) || undefined,
+          items: [{
+            category: ($('mlOutCat') && $('mlOutCat').value) || 'window',
+            qty: ($('mlOutQty') && $('mlOutQty').value) ? Number($('mlOutQty').value) : undefined,
+            size: ($('mlOutSize') && $('mlOutSize').value.trim()) || undefined,
+            amount,
+          }],
+        },
+      });
+      const qid = res && res.quote && res.quote.id;
+      if (qid) {
+        const pdf = $('mlOutPdf') && $('mlOutPdf').files && $('mlOutPdf').files[0];
+        const photos = $('mlOutPhotos') && $('mlOutPhotos').files ? Array.from($('mlOutPhotos').files) : [];
+        if (pdf) {
+          const fd = new FormData(); fd.append('file', pdf);
+          const fqs = withGstQuery({}); fqs.set('kind', 'quote');
+          await api('/api/projects/'+encodeURIComponent(pid)+'/package-quotes/'+encodeURIComponent(qid)+'/file?'+fqs.toString(), { method:'POST', body: fd });
+        }
+        for (const ph of photos) {
+          const fd = new FormData(); fd.append('file', ph);
+          const fqs = withGstQuery({}); fqs.set('kind', 'photo');
+          await api('/api/projects/'+encodeURIComponent(pid)+'/package-quotes/'+encodeURIComponent(qid)+'/file?'+fqs.toString(), { method:'POST', body: fd });
+        }
+      }
+      toast('Outside quote added to this project');
+      if (String(pid) === String(state.projectId || '')) {
+        try {
+          const fresh = await api('/api/projects/'+encodeURIComponent(pid));
+          adoptPackageQuotes(fresh);
+        } catch (_) {}
+      }
+      await loadMasterLedger({ projectId: pid });
+    } catch (e) { if ($('mlErr')) $('mlErr').textContent = e.message; toast(e.message); }
+  };
   if ($('btnMlAdvAdd')) $('btnMlAdvAdd').onclick = async () => {
     const qid = ($('mlAdvQuote') && $('mlAdvQuote').value) || '';
     const amount = +(($('mlAdvAmt') && $('mlAdvAmt').value) || 0);
