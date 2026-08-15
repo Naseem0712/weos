@@ -180,6 +180,14 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
         action = "quote_number_version"
     pid = doc.get("projectId") or new_project_id()
     doc["projectId"] = pid
+    try:
+        from WEOS.factory.package_quote import apply_package_fields
+
+        apply_package_fields(doc, doc)
+    except Exception:
+        _log.debug("package quote stamp skipped for %s", pid, exc_info=True)
+    if not str(doc.get("masterJobId") or "").strip():
+        doc["masterJobId"] = pid
     doc.setdefault("status", "active")  # active | draft | archived
     # Stamp seller GST from active workspace when missing.
     if not _norm_company_gst(doc.get("companyGst")):
@@ -522,8 +530,8 @@ def format_tenure(iso: Any, *, now: datetime | None = None) -> str:
     return f"{max(1, int(round(days / 365.0)))}y"
 
 
-def live_quote_money(doc: Mapping[str, Any] | None) -> dict[str, float]:
-    """Taxable + GST-inclusive grand matching Quote PDF (recalc from lines if stale)."""
+def cart_quote_money(doc: Mapping[str, Any] | None) -> dict[str, float]:
+    """WEOS cart / drawing quote only — never package-deal amounts."""
     from WEOS.factory.customer_line_view import customer_line_amount
     from WEOS.factory.ledger_store import quote_money_parts
 
@@ -550,8 +558,43 @@ def live_quote_money(doc: Mapping[str, Any] | None) -> dict[str, float]:
         stored_n = float(stored) if stored is not None and str(stored).strip() != "" else 0.0
     except (TypeError, ValueError):
         stored_n = 0.0
+    pkg_n = 0.0
+    try:
+        from WEOS.factory.package_quote import package_money_for_doc
+
+        pkg_n = float((package_money_for_doc(doc) or {}).get("projectValue") or 0)
+    except Exception:
+        pkg_n = 0.0
+    # Stale lastCalculation must not count as a cart total on package-only jobs.
+    if not any_amt and pkg_n > 0 and not (doc.get("lines") or []):
+        stored_n = 0.0
     taxable = line_sum if any_amt and line_sum > 0 else stored_n
+    if taxable <= 0:
+        return quote_money_parts(0)
     return quote_money_parts(taxable)
+
+
+def live_quote_money(doc: Mapping[str, Any] | None) -> dict[str, float]:
+    """Taxable + GST-inclusive grand: cart quote plus package quotes on this job."""
+    from WEOS.factory.package_quote import package_money_for_doc
+
+    cart = cart_quote_money(doc)
+    pkg = package_money_for_doc(doc if isinstance(doc, Mapping) else {})
+    if not pkg.get("quoteCount"):
+        return cart
+    if cart.get("totalGrand", 0) <= 0 and cart.get("totalTaxable", 0) <= 0:
+        return {
+            "totalTaxable": float(pkg.get("totalTaxable") or 0),
+            "totalGst": float(pkg.get("gstAmount") or 0),
+            "totalGrand": float(pkg.get("projectValue") or 0),
+            "gstPercent": pkg.get("gstPercent") if pkg.get("gstPercent") is not None else cart.get("gstPercent"),
+        }
+    return {
+        "totalTaxable": round(float(cart.get("totalTaxable") or 0) + float(pkg.get("totalTaxable") or 0), 2),
+        "totalGst": round(float(cart.get("totalGst") or 0) + float(pkg.get("gstAmount") or 0), 2),
+        "totalGrand": round(float(cart.get("totalGrand") or 0) + float(pkg.get("projectValue") or 0), 2),
+        "gstPercent": cart.get("gstPercent"),
+    }
 
 
 def list_projects(
@@ -611,6 +654,12 @@ def list_projects(
             if gst and not _belongs_to_company(d, gst, include_unscoped=include_unscoped):
                 continue
             money = live_quote_money(d)
+            pkg_quotes = d.get("packageQuotes") if isinstance(d.get("packageQuotes"), list) else []
+            pkg_nos = " ".join(
+                str((pq or {}).get("quotationId") or "")
+                for pq in pkg_quotes
+                if isinstance(pq, dict)
+            )
             row = {
                 "projectId": d.get("projectId", p.stem),
                 "name": d.get("name"),
@@ -629,10 +678,22 @@ def list_projects(
                 "tenure": format_tenure(d.get("updatedAt") or d.get("createdAt")),
                 "companyGst": d.get("companyGst") or "",
                 "shareToken": d.get("shareToken") or d.get("quoteShareToken") or "",
+                "masterJobId": d.get("masterJobId") or d.get("projectId", p.stem),
+                "quoteKind": d.get("quoteKind") or ("package" if pkg_quotes else "cart"),
+                "packageQuoteCount": len(pkg_quotes),
             }
             if q:
-                blob = f"{row['projectId']} {row['name']} {row['customer']} {row.get('quotationId')}".lower()
-                if q.lower() not in blob:
+                blob = (
+                    f"{row['projectId']} {row['name']} {row['customer']} {row.get('quotationId')} "
+                    f"{row.get('customerMobile') or ''} {pkg_nos} {row.get('masterJobId') or ''}"
+                ).lower()
+                qn = q.lower()
+                digits = re.sub(r"\D", "", q)
+                mob = re.sub(r"\D", "", str(row.get("customerMobile") or ""))
+                hit = qn in blob
+                if not hit and digits and len(digits) >= 7 and mob and (digits in mob or mob in digits):
+                    hit = True
+                if not hit:
                     continue
             out.append(row)
         except Exception:

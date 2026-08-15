@@ -193,6 +193,58 @@ def list_advances(customer: str) -> list[dict[str, Any]]:
         return [r.to_dict() for r in rows]
 
 
+def list_advances_for_projects(project_ids: list[str] | tuple[str, ...] | None) -> list[dict[str, Any]]:
+    """Advances posted against these project ids only — never another job."""
+    ids = [str(x).strip() for x in (project_ids or []) if str(x).strip()]
+    if not ids:
+        return []
+    try:
+        _ensure_ready()
+    except RuntimeError:
+        return []
+    from sqlalchemy import select
+
+    from WEOS.db.models import CustomerAdvance
+
+    with session_scope() as s:
+        rows = (
+            s.execute(
+                select(CustomerAdvance)
+                .where(CustomerAdvance.project_id.in_(ids))
+                .order_by(CustomerAdvance.paid_at.asc(), CustomerAdvance.id.asc())
+            )
+            .scalars()
+            .all()
+        )
+        return [r.to_dict() for r in rows]
+
+
+def list_advances_for_quote_ids(quote_ids: list[str] | tuple[str, ...] | None) -> list[dict[str, Any]]:
+    """Internal quote ids (pq_… / cart) only — not human quotation numbers."""
+    ids = [str(x).strip() for x in (quote_ids or []) if str(x).strip()]
+    if not ids:
+        return []
+    try:
+        _ensure_ready()
+    except RuntimeError:
+        return []
+    from sqlalchemy import select
+
+    from WEOS.db.models import CustomerAdvance
+
+    with session_scope() as s:
+        rows = (
+            s.execute(
+                select(CustomerAdvance)
+                .where(CustomerAdvance.quote_id.in_(ids))
+                .order_by(CustomerAdvance.paid_at.asc(), CustomerAdvance.id.asc())
+            )
+            .scalars()
+            .all()
+        )
+        return [r.to_dict() for r in rows]
+
+
 def add_advance(customer: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     _ensure_ready()
     from WEOS.db.models import CustomerAdvance

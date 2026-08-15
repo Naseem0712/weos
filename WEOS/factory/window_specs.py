@@ -269,6 +269,16 @@ def _frame_material(line: Mapping[str, Any]) -> str:
     return "aluminium"
 
 
+def _upvc_print(text: Any, mat: str) -> str:
+    s = str(text or "").strip()
+    if mat != "upvc" or not s:
+        return s
+    s = re.sub(r"(?i)\balumin(?:ium|um)\b", "UPVC", s)
+    s = re.sub(r"(?i)\balloy\b", "UPVC", s)
+    s = re.sub(r"(?i)powder\s*-?\s*coat", "uPVC colour", s)
+    return s
+
+
 def _section_summary(line: Mapping[str, Any]) -> dict[str, Any]:
     from WEOS.factory.quote_item_snapshot import get_item_snapshot
 
@@ -370,9 +380,7 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
     if isinstance(ident, Mapping):
         snap_title = str(ident.get("product_name_snapshot") or "").strip()
     title = str(snap_title or line.get("displayName") or line.get("product") or "Window")
-    if mat == "upvc":
-        title = re.sub(r"(?i)\balumin(?:ium|um)\b", "UPVC", title)
-        title = re.sub(r"(?i)\balloy\b", "UPVC", title)
+    title = _upvc_print(title, mat)
     try:
         from WEOS.factory.section_catalogue import clean_series_print_name, has_track_option_dump
 
@@ -434,11 +442,13 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
                 add("SHUTTER", f"{glass_n_i} Nos · side opening")
 
     wall = section.get("wallThicknessMm") or section.get("trackWallMm") or section.get("sashWallMm")
-    track_lbl = section.get("trackPrint") or section.get("track")
-    sash_lbl = section.get("sashPrint") or section.get("sash")
-    frame_lbl = section.get("framePrint") or section.get("frame")
+    track_lbl = _upvc_print(section.get("trackPrint") or section.get("track"), mat)
+    sash_lbl = _upvc_print(section.get("sashPrint") or section.get("sash"), mat)
+    frame_lbl = _upvc_print(section.get("framePrint") or section.get("frame"), mat)
     if is_casement or is_vent:
         add("FRAME", _dim_wall(frame_lbl or track_lbl, wall or section.get("frameWallMm")))
+        if is_vent and mat == "upvc":
+            add("PROFILE", "Casement / openable")
     elif not is_bifold:
         tc = (layout or {}).get("trackCount") if layout else None
         if tc is None:
@@ -525,6 +535,11 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
     hw_type = opts.get("hardwareType") or line.get("hardwareType") or handle_name or (
         str(handle).replace("_", " ").title() if handle else ""
     )
+    if mat == "upvc":
+        hw_type = _upvc_print(hw_type, mat)
+        if not hw_type:
+            hw_type = "uPVC Espag handle"
+        handle_brand = _upvc_print(handle_brand, mat) if handle_brand else handle_brand
     hbits = []
     if handle_brand:
         hbits.append(str(handle_brand))

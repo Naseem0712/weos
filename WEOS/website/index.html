@@ -174,6 +174,12 @@ button.pill{border:0;font:inherit;cursor:pointer}
 .memory-banner .mb-title{font-family:var(--serif);font-size:1.05rem;margin:0 0 .25rem}
 .memory-banner .mb-body{font-size:.88rem;color:#9bb0a4;margin:0 0 .55rem}
 .memory-banner .mb-actions{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+.pkg-tabs{display:flex;flex-wrap:wrap;gap:.3rem;margin:.35rem 0 .45rem}
+.pkg-tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:.18rem .65rem;font-size:.75rem;cursor:pointer}
+.pkg-tabs button.active{background:var(--green);color:#fff;border-color:var(--green)}
+.pkg-item{display:grid;grid-template-columns:minmax(7.5rem,1.1fr) 4.5rem minmax(6rem,1fr) 4.8rem minmax(6.5rem,1fr) auto;gap:.35rem;align-items:end;margin-bottom:.35rem}
+@media(max-width:820px){.pkg-item{grid-template-columns:1fr 1fr}}
+.pkg-gst{display:flex;flex-wrap:wrap;gap:.55rem 1rem;align-items:center;margin:.4rem 0}
 .stream-item{border-bottom:1px solid var(--line);padding:.45rem 0;font-size:.84rem}
 .stream-item .ts{font-size:.72rem;color:var(--muted)}
 .sug-card{border:1px solid var(--line);border-radius:10px;padding:.65rem .75rem;margin-bottom:.5rem;background:#fff}
@@ -197,6 +203,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
     </div>
     <button class="navbtn active" data-view="dashboard">Dashboard</button>
     <button class="navbtn" data-view="setup">Project Setup</button>
+    <button class="navbtn" data-view="master">Master Ledger</button>
     <button class="navbtn" data-view="projects">Saved Projects</button>
     <button class="navbtn" data-view="cart">Window Cart</button>
     <button class="navbtn" data-view="library">Product Library</button>
@@ -287,16 +294,42 @@ button.pill{border:0;font:inherit;cursor:pointer}
           <div class="grow" style="flex-basis:100%"><label class="l">Quote description (prints on quote)</label><textarea id="projDescription" rows="2" placeholder="Optional note that prints on the customer quotation" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
           <div class="grow" style="flex-basis:100%"><label class="l">Terms &amp; Conditions override (optional — defaults from Company Setup)</label><textarea id="projTerms" rows="3" placeholder="Leave blank to use the company default terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
         </div>
+        <hr style="border:none;border-top:1px solid var(--line);margin:1.1rem 0 .7rem"/>
+        <strong style="font-size:.92rem">Deal / package quote</strong>
+        <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">For jobs closed at a package amount without a WEOS drawing. Type items and amounts (qty / size optional). You can also upload an outside quote. One project can hold up to 20 quotes — all totals become project value. Ledger stays on this job only.</p>
+        <div class="pkg-tabs" id="pkgQuoteTabs"></div>
+        <div class="row" style="gap:.4rem;flex-wrap:wrap;margin-bottom:.4rem">
+          <button class="btn ghost sm" id="btnPkgAddQuote" type="button">Add another quote</button>
+        </div>
+        <div id="pkgQuoteEditor"></div>
+        <div id="pkgJobTotals" class="row" style="gap:.7rem;flex-wrap:wrap;margin:.55rem 0 .15rem"></div>
         <div class="row" style="margin-top:.35rem;gap:.5rem;flex-wrap:wrap">
           <button class="btn" id="btnSaveSetup" type="button">Save project setup</button>
           <button class="btn sec" id="btnSetupToCart" type="button">Continue to Window Cart</button>
           <button class="btn ghost sm" id="btnSetupLoadList" type="button">Refresh saved setups</button>
+          <button class="btn ghost sm" id="btnSetupMaster" type="button">Open Master Ledger</button>
         </div>
         <div style="margin-top:1rem">
           <label class="l">Saved setups (open to edit)</label>
           <div style="overflow:auto;margin-top:.35rem"><table><thead><tr><th>ID</th><th>Name</th><th>Customer</th><th></th></tr></thead><tbody id="setupListBody"></tbody></table></div>
         </div>
         <div class="err" id="setupErr"></div>
+      </div>
+    </section>
+
+    <!-- MASTER LEDGER -->
+    <section id="view-master" class="grid hidden">
+      <div class="panel">
+        <strong>Master Ledger</strong>
+        <p class="muted" style="margin:.2rem 0 .7rem;font-size:.82rem">Search by mobile, name, or quote number. Shows this job’s quotes, GST, advances and balance only — never another project.</p>
+        <div class="row" style="align-items:flex-end;gap:.5rem;flex-wrap:wrap">
+          <div class="grow"><label class="l">Search</label><input id="mlSearch" placeholder="mobile / name / quote number"/></div>
+          <button class="btn" id="btnMlSearch" type="button">Search</button>
+          <button class="btn ghost sm" id="btnMlThisJob" type="button">This project</button>
+        </div>
+        <div id="mlMatches" style="margin-top:.7rem"></div>
+        <div id="mlErr" class="err" style="margin-top:.4rem"></div>
+        <div id="mlBody" style="margin-top:.85rem"></div>
       </div>
     </section>
 
@@ -321,6 +354,34 @@ button.pill{border:0;font:inherit;cursor:pointer}
             <div class="grow"><label class="l">Product</label><select id="lineProduct"></select></div>
             <div class="grow"><label class="l">Location / Position</label>
               <input id="lineLocation" placeholder="e.g. Master Bedroom, Kitchen" style="width:100%" title="Optional. Prints with serial on quote PDF, e.g. W8 · Master Bedroom"/>
+            </div>
+          </div>
+          <div class="row" id="sharedMaterialRow" style="margin-top:.5rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
+            <div><label class="l">Frame material</label>
+              <select id="lineFrameMaterial" style="width:120px" title="Aluminium or UPVC">
+                <option value="aluminium" selected>Aluminium</option>
+                <option value="upvc">UPVC</option>
+              </select>
+            </div>
+            <div id="wrapUpvcReinf" style="display:none">
+              <label class="l">Reinforcement</label>
+              <div style="display:flex;gap:.35rem;flex-wrap:wrap">
+                <select id="lineReinfPresent" style="width:80px">
+                  <option value="yes" selected>Yes</option>
+                  <option value="no">No</option>
+                </select>
+                <select id="lineReinfMaterial" style="width:110px" title="Inside UPVC sections">
+                  <option value="gi" selected>GI</option>
+                  <option value="iron">Iron</option>
+                  <option value="aluminium">Aluminium</option>
+                </select>
+              </div>
+            </div>
+            <div class="grow"><label class="l" id="lineColourLabel">Colour / Powder-coat</label>
+              <div style="display:flex;gap:.35rem;align-items:flex-end;flex-wrap:wrap">
+                <select id="lineColour" style="min-width:140px;flex:1"><option value="white">White (most common)</option><option value="black">Black (premium)</option><option value="brown">Brown (premium)</option><option value="black_texture">Black Texture</option><option value="wood_oak">Wood Oak</option></select>
+                <button class="btn ghost sm" type="button" id="btnAddColour" title="Add a custom colour">+ custom colour</button>
+              </div>
             </div>
           </div>
           <div id="windowCartTools">
@@ -451,34 +512,8 @@ button.pill{border:0;font:inherit;cursor:pointer}
             <div id="gridCells" style="flex-basis:100%"></div>
           </div>
           <div class="row" style="margin-top:.5rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
-            <div><label class="l">Frame material</label>
-              <select id="lineFrameMaterial" style="width:120px" title="Aluminium or UPVC">
-                <option value="aluminium" selected>Aluminium</option>
-                <option value="upvc">UPVC</option>
-              </select>
-            </div>
-            <div id="wrapUpvcReinf" style="display:none">
-              <label class="l">Reinforcement</label>
-              <div style="display:flex;gap:.35rem;flex-wrap:wrap">
-                <select id="lineReinfPresent" style="width:80px">
-                  <option value="yes" selected>Yes</option>
-                  <option value="no">No</option>
-                </select>
-                <select id="lineReinfMaterial" style="width:110px" title="Inside UPVC sections">
-                  <option value="gi" selected>GI</option>
-                  <option value="iron">Iron</option>
-                  <option value="aluminium">Aluminium</option>
-                </select>
-              </div>
-            </div>
             <div id="wrapSeries"><label class="l">Section series</label>
               <select id="lineSeries" style="min-width:160px"><option value="">— optional —</option></select>
-            </div>
-            <div class="grow"><label class="l">Colour / Powder-coat</label>
-              <div style="display:flex;gap:.35rem;align-items:flex-end;flex-wrap:wrap">
-                <select id="lineColour" style="min-width:140px;flex:1"><option value="white">White</option><option value="black_texture" selected>Black Texture</option><option value="wood_oak">Wood Oak</option></select>
-                <button class="btn ghost sm" type="button" id="btnAddColour" title="Add a colour name">+ colour</button>
-              </div>
             </div>
             <div id="wrapLineHandle"><label class="l">Handle (type · finish · name)</label>
               <div style="display:flex;gap:.35rem;flex-wrap:wrap">
@@ -2101,6 +2136,9 @@ const state = {
   draftCasementPanels: [],
   selectedCasementPanel: null,
   _lineById: {},
+  packageQuotes: [],
+  packageQuoteIndex: 0,
+  masterJobId: null,
 };
 const $ = (id) => document.getElementById(id);
 const toast = (m) => { const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); };
@@ -2270,12 +2308,13 @@ async function api(path, opts={}) {
 function setView(v) {
   state.view = v;
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view===v));
-  ['dashboard','setup','projects','cart','library','product','admin','customers','company','scan','learning','formulas','templates','engines'].forEach(id => {
+  ['dashboard','setup','master','projects','cart','library','product','admin','customers','company','scan','learning','formulas','templates','engines'].forEach(id => {
     const el = $('view-'+id); if (el) el.classList.toggle('hidden', id!==v);
   });
   const titles = {
     dashboard:['Dashboard','Active work across factory & quotations'],
     setup:['Project Setup','Customer, brand, quote text — once per project, editable anytime'],
+    master:['Master Ledger','Package quotes, advances, GST and balance — one job only'],
     projects:['Saved Projects','Search, filter, duplicate, archive — versions kept'],
     cart:['Window Cart','Products & design only · pick print setup at export'],
     library:['Product Library','Digital catalogue + manufacturing source of truth'],
@@ -2293,7 +2332,8 @@ function setView(v) {
   $('subtitle').textContent = titles[v][1];
   $('side').classList.remove('open');
   if (v==='dashboard') loadDashboard();
-  if (v==='setup') { refreshSetupSummary(); loadSetupList(); }
+  if (v==='setup') { refreshSetupSummary(); loadSetupList(); renderPackageQuotes(); }
+  if (v==='master') initMasterLedger();
   if (v==='projects') loadProjects();
   if (v==='library') renderLibrary();
   if (v==='cart') { renderCart(); refreshPreview(); refreshSetupSummary(); refreshExportSetupSelect(); }
@@ -2357,24 +2397,36 @@ function captureLivePreviewSvg() {
   const svg = box.querySelector('svg');
   return svg ? svg.outerHTML : '';
 }
+function lineIdentityKey(ln) {
+  if (!ln || typeof ln !== 'object') return '';
+  const world = productWorldOf(null, ln);
+  return [
+    world || '',
+    String(ln.product || ln.productId || ''),
+    String(ln.system || ''),
+    String(Math.round(Number(ln.width || ln.widthMm || 0) || 0)),
+    String(Math.round(Number(ln.height || ln.heightMm || 0) || 0)),
+    ln.trackCount != null && ln.trackCount !== '' ? String(ln.trackCount) : '',
+    ln.glassShutters != null && ln.glassShutters !== '' ? String(ln.glassShutters) : '',
+    String(ln.frameMaterial || (ln.options && ln.options.frameMaterial) || ''),
+    String(ln.glass || ''),
+  ].join('|');
+}
 function stampLinePreviewSvg(ln, svg) {
   if (!ln || typeof ln !== 'object') return;
   const raw = String(svg || '');
   if (raw.toLowerCase().indexOf('<svg') < 0) return;
-  ln.preview = Object.assign({}, ln.preview || {}, { svg: raw });
+  ln.preview = { svg: raw, key: lineIdentityKey(ln) };
 }
-function livePreviewBelongsTo(ln) {
-  const id = ln && (ln.lineId || ln.id);
-  return !!(id && state._previewLineId && String(state._previewLineId) === String(id));
+function linePreviewIsValid(ln) {
+  const p = ln && ln.preview;
+  if (!p || !p.svg) return false;
+  if (!p.key) return true;
+  return p.key === lineIdentityKey(ln);
 }
-function markLivePreviewLine(ln) {
+function markLivePreviewLine(ln, key) {
   state._previewLineId = (ln && (ln.lineId || ln.id)) || null;
-}
-function stampSelectedPreviewFromDom() {
-  const ln = state.lines && state.lines[state.selectedLine];
-  if (!ln || !livePreviewBelongsTo(ln)) return;
-  const svg = captureLivePreviewSvg();
-  if (svg) stampLinePreviewSvg(ln, svg);
+  state._previewKey = key || (ln ? lineIdentityKey(ln) : null);
 }
 function invalidatePdfCache() {
   if (state._custPdfCache && state._custPdfCache.url) {
@@ -2758,7 +2810,6 @@ async function loadCartColourOptions(preferId) {
     const d = await api('/api/finishes');
     opts = d.options || (d.finishes || []).map(f => ({ id: f.id, label: f.name || f.label || f.id }));
   } catch (_) {}
-  if (!opts.length) return;
   const seen = new Set();
   const cleaned = [];
   for (const o of opts) {
@@ -2767,10 +2818,36 @@ async function loadCartColourOptions(preferId) {
     seen.add(id);
     cleaned.push({ id, label: o.label || o.name || id.replace(/_/g, ' ') });
   }
-  sel.innerHTML = cleaned.map(o => `<option value="${o.id}">${o.label}</option>`).join('');
-  if (prev && cleaned.some(o => o.id === prev)) sel.value = prev;
-  else if (cleaned.some(o => o.id === 'black_texture')) sel.value = 'black_texture';
-  else if (cleaned.length) sel.value = cleaned[0].id;
+  state._colourOptions = cleaned;
+  fillColourSelect(prev);
+}
+function fillColourSelect(preferId) {
+  const sel = $('lineColour');
+  if (!sel) return;
+  const upvc = String(($('lineFrameMaterial') && $('lineFrameMaterial').value) || '').toLowerCase() === 'upvc';
+  const extras = state._colourOptions || [];
+  let list;
+  if (upvc) {
+    const skip = new Set(['white', 'black', 'brown', 'black_texture']);
+    list = [
+      { id: 'white', label: 'White (most common)' },
+      { id: 'black', label: 'Black (premium)' },
+      { id: 'brown', label: 'Brown (premium)' },
+    ];
+    extras.forEach((o) => { if (o && o.id && !skip.has(o.id)) list.push(o); });
+  } else {
+    list = extras.length ? extras.slice() : [
+      { id: 'white', label: 'White' },
+      { id: 'black_texture', label: 'Black Texture' },
+      { id: 'wood_oak', label: 'Wood Oak' },
+    ];
+  }
+  const prev = preferId || sel.value;
+  sel.innerHTML = list.map((o) => `<option value="${o.id}">${o.label}</option>`).join('');
+  if (prev && list.some((o) => o.id === prev)) sel.value = prev;
+  else if (upvc && list.some((o) => o.id === 'white')) sel.value = 'white';
+  else if (!upvc && list.some((o) => o.id === 'black_texture')) sel.value = 'black_texture';
+  else if (list.length) sel.value = list[0].id;
 }
 
 function casementPanelRole(r) {
@@ -3106,34 +3183,56 @@ function quoteQtyBreakdown(lines) {
     return (ia < 0 ? 80 : ia) - (ib < 0 ? 80 : ib) || a[0].localeCompare(b[0]);
   });
 }
-function productWorldOf(p, ln) {
-  const typ = String((p && p.productType) || (ln && ln.productType) || (ln && ln.options && ln.options.productType) || '').toLowerCase();
-  if (typ === 'staircase_railing' || typ === 'staircase') return 'staircase_railing';
-  if (typ.includes('rail')) return 'railing';
-  if (typ.includes('ventilat')) return 'ventilator';
-  if (typ.includes('shower')) return 'shower';
-  if (productLooksLikeRailing(p)) {
-    if (typ.includes('stair') || String((p && p.category) || '').toLowerCase().includes('stair')) return 'staircase_railing';
+function _worldFromBits(typ, pid, cat) {
+  const t = String(typ || '').toLowerCase();
+  const id = String(pid || '').toLowerCase();
+  const c = String(cat || '').toLowerCase();
+  if (t === 'staircase_railing' || t === 'staircase') return 'staircase_railing';
+  if (t.includes('rail') || id.includes('rail') || c.includes('rail')) {
+    if (t.includes('stair') || c.includes('stair') || id.includes('stair')) return 'staircase_railing';
     return 'railing';
   }
-  if (ln && (ln.options && ln.options.railing || String(ln.product || '').toLowerCase().includes('rail'))) {
-    const shape = (ln.options && ln.options.railing && ln.options.railing.shape) || '';
-    return shape === 'staircase' ? 'staircase_railing' : 'railing';
+  if (t.includes('ventilat') || id.includes('ventilat') || c.includes('ventilat')) return 'ventilator';
+  if (t.includes('shower') || id.includes('shower') || (c.includes('bathroom') && !c.includes('ventilat') && !id.includes('ventilat'))) return 'shower';
+  if (t.includes('louver') || t.includes('louvre') || id.includes('louver') || id.includes('louvre') || c.includes('louver') || c.includes('louvre')) return 'louver';
+  return '';
+}
+function productWorldOf(p, ln) {
+  // Catalogue pick wins. Never let a previously selected vent/shower/rail cart
+  // line keep the designer in that world after the user picks a window.
+  if (p) {
+    const w = _worldFromBits(p.productType, p.id, p.category || p.displayName);
+    if (w) return w;
+    if (typeof productLooksLikeRailing === 'function' && productLooksLikeRailing(p)) {
+      const t = String(p.productType || p.category || '').toLowerCase();
+      return t.includes('stair') ? 'staircase_railing' : 'railing';
+    }
+    return 'window';
   }
-  const pid = String((p && p.id) || (ln && ln.product) || '').toLowerCase();
-  if (pid.includes('rail')) return 'railing';
-  if (pid.includes('ventilat') || typ.includes('ventilat')) return 'ventilator';
-  const cat = String((p && p.category) || (ln && ln.category) || '').toLowerCase();
-  if (pid.includes('shower') || typ.includes('shower') || (cat.includes('bathroom') && !pid.includes('ventilat') && !cat.includes('ventilat'))) return 'shower';
-  if (typ.includes('louver') || typ.includes('louvre') || pid.includes('louver') || pid.includes('louvre') || cat.includes('louver') || cat.includes('louvre')) return 'louver';
-  if (ln && (ln.itemSnapshot || ln.item_snapshot)) {
+  if (ln) {
+    const w = _worldFromBits(
+      ln.productType || (ln.options && ln.options.productType),
+      ln.product || ln.productId,
+      ln.category || ln.displayName
+    );
+    if (w) return w;
+    if (ln.options && ln.options.railing) {
+      return String(ln.options.railing.shape || '') === 'staircase' ? 'staircase_railing' : 'railing';
+    }
+    if (ln.options && ln.options.ventilator) return 'ventilator';
+    if (ln.options && ln.options.shower) return 'shower';
     const snap = ln.itemSnapshot || ln.item_snapshot;
-    const sw = String((snap.profile_snapshot && snap.profile_snapshot.world) || '').toLowerCase();
-    if (sw && sw !== 'window') return sw;
-    const sc = String(snap.category_snapshot || '').toLowerCase();
-    if (sc.includes('louver') || sc.includes('louvre')) return 'louver';
+    if (snap) {
+      const sw = String((snap.profile_snapshot && snap.profile_snapshot.world) || '').toLowerCase();
+      if (sw && sw !== 'window') return sw;
+      const sc = String(snap.category_snapshot || '').toLowerCase();
+      if (sc.includes('louver') || sc.includes('louvre')) return 'louver';
+    }
   }
   return 'window';
+}
+function designerWorld() {
+  return productWorldOf(selectedProductMeta(), null);
 }
 function productHasTracks(p, ln, sys) {
   const s = String(sys || (ln && ln.system) || '').toLowerCase();
@@ -3148,8 +3247,7 @@ function productHasTracks(p, ln, sys) {
 }
 function applyProductWorld() {
   const p = selectedProductMeta();
-  const ln = state.lines[state.selectedLine];
-  const world = productWorldOf(p, ln);
+  const world = productWorldOf(p, null);
   const win = $('windowCartTools');
   const addBtn = $('btnAddLine');
   if (world === 'louver') {
@@ -3197,6 +3295,10 @@ function applyProductWorld() {
   state.ventMode = false;
   showShowerTools(false);
   showVentTools(false);
+  if (world === 'window' || world === 'louver') {
+    state._previewLineId = null;
+    if ($('livePreview')) $('livePreview').innerHTML = '<span class="muted">Drawing…</span>';
+  }
   if (world === 'railing' || world === 'staircase_railing') {
     state.railingMode = true;
     // Product-type lock: staircase_railing forces stairs. Generic railing must NOT
@@ -3223,8 +3325,9 @@ function applyProductWorld() {
   showRailTools(false);
   if (addBtn) addBtn.textContent = 'Add to cart';
   const sysEl = $('lineSystem');
-  const sys = systemForProduct(p);
-  if (sys && sysEl && sysEl.value !== sys) {
+  const sys = systemForProduct(p) || 'sliding';
+  const curSys = String((sysEl && sysEl.value) || '').toLowerCase();
+  if (sysEl && (sysEl.value !== sys || curSys === 'ventilator' || curSys === 'shower' || curSys === 'railing')) {
     sysEl.value = sys;
     state.draftHandleOverrides = {};
     applySystemUiRules({ applyFoldPreset: sys === 'bifold' });
@@ -3387,9 +3490,14 @@ function currentLineDraft() {
   const rateRaw = $('lineSellRate') ? $('lineSellRate').value : '';
   applyMeshTrackRules();
   applySystemUiRules();
-  const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
-  const finish = ($('lineHandleFinish') && $('lineHandleFinish').value) || 'auto';
   const p = selectedProductMeta();
+  let sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
+  const dw = productWorldOf(p, null);
+  if ((dw === 'window' || dw === 'louver') && (sys === 'ventilator' || sys === 'shower' || sys === 'railing')) {
+    sys = dw === 'louver' ? 'louver' : (systemForProduct(p) || 'sliding');
+    if ($('lineSystem')) $('lineSystem').value = sys;
+  }
+  const finish = ($('lineHandleFinish') && $('lineHandleFinish').value) || 'auto';
   let sectionSeries = ($('lineSeries') && $('lineSeries').value) || null;
   if (!sectionSeries && p) {
     sectionSeries = p.sectionSeries || (p.catalogue && p.catalogue.sectionSeries) || null;
@@ -3847,9 +3955,18 @@ function renderCart() {
       if ($('lineSeries')) $('lineSeries').value = ln.sectionSeries || '';
       if ($('lineLocation')) $('lineLocation').value = ln.locationName || ln.positionName || (ln.options && (ln.options.locationName || ln.options.positionName)) || '';
       syncDraftFromLine(ln);
+      applyProductWorld();
       if (ln.options && ln.options.railing) populateRailTools(ln.options.railing);
       else if (ln.options && ln.options.ventilator) populateVentTools(ln.options.ventilator);
       else if (String(ln.product||'').toLowerCase().includes('rail')) { state.railingMode = true; }
+      if (linePreviewIsValid(ln) && $('livePreview')) {
+        $('livePreview').innerHTML = ln.preview.svg;
+        markLivePreviewLine(ln, ln.preview.key);
+      } else if ($('livePreview')) {
+        $('livePreview').innerHTML = '<span class="muted">Drawing…</span>';
+        state._previewLineId = null;
+        state._previewKey = null;
+      }
       refreshDesignPhotoUi();
     }
     renderCart(); refreshPreview(); scheduleLivePrice();
@@ -3996,7 +4113,8 @@ function specialPreviewFresh() { return (Date.now() - _specialPreviewAt) < 450; 
 
 async function refreshPreview() {
   const gen = ++_previewGen;
-  if (state.ventMode || isVentMode()) {
+  const world = designerWorld();
+  if (world === 'ventilator') {
     if (specialPreviewFresh()) return;
     try {
       await ventCalc();
@@ -4005,7 +4123,7 @@ async function refreshPreview() {
     }
     return;
   }
-  if (state.showerMode || isShowerMode()) {
+  if (world === 'shower') {
     if (specialPreviewFresh()) return;
     try {
       await showerCalc();
@@ -4015,7 +4133,7 @@ async function refreshPreview() {
     return;
   }
   // Railing mode: shared livePreview shows railing 2D drawing (never window geometry).
-  if (isRailingMode()) {
+  if (world === 'railing' || world === 'staircase_railing') {
     if (specialPreviewFresh()) return;
     try {
       await railingCalc();
@@ -4029,10 +4147,19 @@ async function refreshPreview() {
     return;
   }
   showRailTools(false);
+  showShowerTools(false);
+  showVentTools(false);
+  state.ventMode = false;
+  state.showerMode = false;
+  state.railingMode = false;
   const draft = currentLineDraft();
   const selectedCart = state.lines[state.selectedLine];
-  const previewTargetId = selectedCart && (selectedCart.lineId || selectedCart.id);
-  const ln = selectedCart ? { ...selectedCart, ...draft } : draft;
+  const cartWorld = productWorldOf(null, selectedCart);
+  const sameIdentity = !!(selectedCart && lineIdentityKey(selectedCart) === lineIdentityKey(draft)
+    && (cartWorld === 'window' || cartWorld === 'louver')
+    && (world === 'window' || world === 'louver'));
+  const previewTargetId = sameIdentity ? (selectedCart.lineId || selectedCart.id) : null;
+  const ln = sameIdentity ? { ...selectedCart, ...draft, preview: undefined } : draft;
   const bits = [designSerialLabel(state.selectedLine, ln), `${ln.width}×${ln.height}`];
   if (productHasTracks(selectedProductMeta(), ln, ln.system) && ln.trackCount != null) bits.push(`${ln.trackCount}-track`);
   const gN = parseInt(ln.glassShutters, 10) || 0;
@@ -4080,8 +4207,8 @@ async function refreshPreview() {
       panelFill: ln.panelFill || currentPanelFill() || null,
       features: ln.features || null,
       productType: ln.productType || null,
-      shower: (ln.system === 'shower' || state.showerMode) ? showerConfig() : null,
-      ventilator: (ln.system === 'ventilator' || state.ventMode || ln.productType === 'bathroom_ventilator') ? ventConfig() : null,
+      shower: null,
+      ventilator: null,
     }});
     if (prev.meshTrack && prev.meshTrack.shifted && $('lineTrack')) {
       $('lineTrack').value = String(prev.trackCount || 3);
@@ -4104,15 +4231,11 @@ async function refreshPreview() {
     }
     if (gen !== _previewGen) return;
     const target = (state.lines || []).find((x) => x && previewTargetId && (x.lineId === previewTargetId || x.id === previewTargetId)) || null;
-    if (prev.svg && target) stampLinePreviewSvg(target, prev.svg);
+    if (prev.svg && target && sameIdentity) stampLinePreviewSvg(target, prev.svg);
     if (prev.svg) {
-      const stillSelected = !!(target && state.lines[state.selectedLine]
-        && (state.lines[state.selectedLine].lineId === previewTargetId || state.lines[state.selectedLine].id === previewTargetId));
-      if (stillSelected) {
-        $('livePreview').innerHTML = prev.svg;
-        attachHandleDrag($('livePreview'), (prev.layout && prev.layout.meta) || prev.meta || null, ln.system || prev.system || 'sliding');
-        markLivePreviewLine(target);
-      }
+      $('livePreview').innerHTML = prev.svg;
+      attachHandleDrag($('livePreview'), (prev.layout && prev.layout.meta) || prev.meta || null, ln.system || prev.system || 'sliding');
+      markLivePreviewLine(sameIdentity ? target : null, lineIdentityKey(ln));
     }
     else if (prev.heroImage) $('livePreview').innerHTML = `<img src="${prev.heroImage}" alt=""/>`;
     else $('livePreview').innerHTML = '<span class="muted">No preview</span>';
@@ -4150,7 +4273,7 @@ async function refreshPreview() {
     }
     if (prev.notes && prev.notes.length) extra.push(['Note', prev.notes.join('; ')]);
     // Never paint window series metadata when this line is actually a railing.
-    if (prev.system === 'railing' || (ln.productType && String(ln.productType).toLowerCase().includes('rail'))) {
+    if (sameIdentity && (prev.system === 'railing' || (ln.productType && String(ln.productType).toLowerCase().includes('rail')))) {
       renderRailingLineSpecs(prev.railing || {}, ln.options && ln.options.railing);
       return;
     }
@@ -4297,6 +4420,218 @@ function projectBillTo() {
   if (qno) out.quotationId = qno;
   if (state.companyGst) out.companyGst = state.companyGst;
   return out;
+}
+
+const PKG_CATS = [
+  ['window','Windows'],['casement','Casement windows'],['ventilator','Vents'],['louver','Louvers'],
+  ['railing','Railings'],['iron_fabrication','Iron fabrication'],['gate','Gates'],['grill','Grills'],
+  ['pergola','Pergola'],['other','Other'],
+];
+const PKG_UNITS = {
+  window:['pcs'], casement:['pcs'], ventilator:['pcs'], louver:['pcs'],
+  railing:['rft','sft','pcs'], iron_fabrication:['kg','sft'],
+  gate:['pcs','sft'], grill:['pcs','sft'], pergola:['sft','pcs'], other:['pcs','sft','kg','rft'],
+};
+function _pkgId(prefix){ return prefix + Math.random().toString(36).slice(2,10); }
+function emptyPkgItem(){ return { id:_pkgId('pi'), category:'window', qty:'', size:'', unit:'pcs', amount:'' }; }
+function emptyPkgQuote(){ return { id:_pkgId('pq'), quotationId:'', gstMode:'exclude', gstPercent:18, items:[emptyPkgItem()], note:'', attachmentName:'' }; }
+function ensurePkgQuotes(){
+  if (!Array.isArray(state.packageQuotes) || !state.packageQuotes.length) state.packageQuotes = [emptyPkgQuote()];
+  if (state.packageQuoteIndex < 0 || state.packageQuoteIndex >= state.packageQuotes.length) state.packageQuoteIndex = 0;
+  return state.packageQuotes;
+}
+function pkgGstSplit(itemsTotal, mode, percent){
+  const sub = Math.max(0, Number(itemsTotal)||0);
+  const m = String(mode||'exclude');
+  const pct = m === 'off' ? 0 : Math.max(0, Number(percent)||0);
+  if (m === 'off' || pct === 0) return { itemsSubtotal:sub, totalTaxable:sub, gstAmount:0, projectValue:sub };
+  if (m === 'include') {
+    const gst = Math.round(sub * pct / (100+pct) * 100) / 100;
+    return { itemsSubtotal:sub, totalTaxable:Math.round((sub-gst)*100)/100, gstAmount:gst, projectValue:sub };
+  }
+  const gst = Math.round(sub * pct) / 100;
+  return { itemsSubtotal:sub, totalTaxable:sub, gstAmount:gst, projectValue:Math.round((sub+gst)*100)/100 };
+}
+function pkgQuoteTotals(q){
+  const items = (q && q.items) || [];
+  const sum = items.reduce((s,it)=>s+(Number(it.amount)||0),0);
+  return pkgGstSplit(sum, q && q.gstMode, q && q.gstPercent);
+}
+function adoptPackageQuotes(doc){
+  if (!doc || typeof doc !== 'object') return;
+  if (doc.masterJobId) state.masterJobId = doc.masterJobId;
+  else if (doc.projectId && !state.masterJobId) state.masterJobId = doc.projectId;
+  if (Array.isArray(doc.packageQuotes)) {
+    state.packageQuotes = doc.packageQuotes.length ? doc.packageQuotes.map(q => ({
+      id: q.id || _pkgId('pq'),
+      quotationId: q.quotationId || '',
+      gstMode: q.gstMode || 'exclude',
+      gstPercent: q.gstPercent == null ? 18 : q.gstPercent,
+      note: q.note || '',
+      attachmentName: q.attachmentName || '',
+      attachmentKey: q.attachmentKey || '',
+      items: (q.items && q.items.length) ? q.items : [emptyPkgItem()],
+    })) : [emptyPkgQuote()];
+    if (state.packageQuoteIndex >= state.packageQuotes.length) state.packageQuoteIndex = 0;
+    renderPackageQuotes();
+  }
+}
+function packageQuotesPayload(){
+  return (state.packageQuotes || []).map((q, i) => ({
+    id: q.id,
+    quotationId: (q.quotationId || '').trim() || undefined,
+    gstMode: q.gstMode || 'exclude',
+    gstPercent: q.gstMode === 'off' ? 0 : (Number(q.gstPercent)||18),
+    note: (q.note || '').trim() || undefined,
+    attachmentName: q.attachmentName || undefined,
+    attachmentKey: q.attachmentKey || undefined,
+    items: (q.items || []).map((it, n) => ({
+      id: it.id, category: it.category, qty: it.qty === '' ? undefined : Number(it.qty),
+      size: (it.size || '').trim() || undefined, unit: it.unit || 'pcs',
+      amount: Number(it.amount)||0, note: (it.note || '').trim() || undefined, sort: n,
+    })),
+    index: i,
+  })).filter(q => (q.items || []).some(it => Number(it.amount) > 0));
+}
+function renderPkgTotalsOnly(){
+  const box = $('pkgJobTotals'); if (!box) return;
+  const quotes = packageQuotesPayload();
+  let taxable=0, gst=0, value=0;
+  (state.packageQuotes||[]).forEach(q => {
+    const t = pkgQuoteTotals(q);
+    if ((q.items||[]).some(it => Number(it.amount)>0)) {
+      taxable += t.totalTaxable; gst += t.gstAmount; value += t.projectValue;
+    }
+  });
+  box.innerHTML = quotes.length ? `
+    <div class="kpi"><label class="l">Items / taxable</label><div class="big" style="font-size:1.05rem">${money(taxable)}</div></div>
+    <div class="kpi"><label class="l">GST</label><div class="big" style="font-size:1.05rem">${money(gst)}</div></div>
+    <div class="kpi"><label class="l">Project value</label><div class="big" style="font-size:1.05rem">${money(value)}</div></div>
+    <div class="muted" style="font-size:.75rem;align-self:center">${quotes.length} quote${quotes.length===1?'':'s'} · advances recorded on Master Ledger</div>` : '<p class="muted" style="font-size:.8rem;margin:0">No package amounts yet — Window Cart quotes still count on their own.</p>';
+}
+function renderPackageQuotes(){
+  const tabs = $('pkgQuoteTabs');
+  const ed = $('pkgQuoteEditor');
+  if (!ed) return;
+  const list = ensurePkgQuotes();
+  const qi = state.packageQuoteIndex;
+  const q = list[qi];
+  if (tabs) {
+    tabs.innerHTML = list.map((row, i) =>
+      `<button type="button" class="${i===qi?'active':''}" data-pkg-tab="${i}">Quote ${i+1}${row.quotationId?(' · '+esc(row.quotationId)):''}</button>`
+    ).join('');
+    tabs.querySelectorAll('[data-pkg-tab]').forEach(b => {
+      b.onclick = () => { state.packageQuoteIndex = +b.dataset.pkgTab; renderPackageQuotes(); };
+    });
+  }
+  const t = pkgQuoteTotals(q);
+  const unitsFor = (cat) => PKG_UNITS[cat] || ['pcs'];
+  ed.innerHTML = `
+    <div class="row" style="flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end;margin-bottom:.4rem">
+      <div class="grow"><label class="l">This quote number (optional)</label><input id="pkgQuoteNo" value="${esc(q.quotationId||'')}" placeholder="optional"/></div>
+      <div class="grow"><label class="l">Note</label><input id="pkgQuoteNote" value="${esc(q.note||'')}" placeholder="optional"/></div>
+      ${list.length>1?`<button class="btn ghost sm" id="btnPkgDelQuote" type="button">Remove this quote</button>`:''}
+    </div>
+    <div id="pkgItemRows">${(q.items||[]).map((it, i) => {
+      const units = unitsFor(it.category);
+      if (units.indexOf(it.unit) < 0) it.unit = units[0];
+      return `<div class="pkg-item" data-pkg-item="${i}">
+        <div><label class="l">Item</label><select data-pkg="category">${PKG_CATS.map(([id,lb])=>`<option value="${id}"${it.category===id?' selected':''}>${lb}</option>`).join('')}</select></div>
+        <div><label class="l">Qty</label><input data-pkg="qty" type="number" min="0" step="0.01" value="${esc(it.qty)}" placeholder="opt."/></div>
+        <div><label class="l">Size</label><input data-pkg="size" value="${esc(it.size||'')}" placeholder="optional"/></div>
+        <div><label class="l">Unit</label><select data-pkg="unit">${units.map(u=>`<option value="${u}"${it.unit===u?' selected':''}>${u}</option>`).join('')}</select></div>
+        <div><label class="l">Amount ₹</label><input data-pkg="amount" type="number" min="0" step="0.01" value="${esc(it.amount)}"/></div>
+        <button class="btn ghost sm" type="button" data-pkg-del="${i}" title="Remove">✕</button>
+      </div>`;
+    }).join('')}</div>
+    <button class="btn ghost sm" id="btnPkgAddItem" type="button">Add item</button>
+    <div class="pkg-gst">
+      <label class="muted" style="font-size:.8rem"><input type="radio" name="pkgGstMode" value="exclude"${q.gstMode!=='include'&&q.gstMode!=='off'?' checked':''}/> GST extra (exclude)</label>
+      <label class="muted" style="font-size:.8rem"><input type="radio" name="pkgGstMode" value="include"${q.gstMode==='include'?' checked':''}/> GST included</label>
+      <label class="muted" style="font-size:.8rem"><input type="radio" name="pkgGstMode" value="off"${q.gstMode==='off'?' checked':''}/> GST off</label>
+      <div id="pkgGstPctWrap"${q.gstMode==='off'?' style="display:none"':''}><label class="l">GST %</label><input id="pkgGstPct" type="number" min="0" max="28" step="0.01" value="${esc(q.gstPercent==null?18:q.gstPercent)}" style="width:72px"/></div>
+    </div>
+    <div class="row" style="flex-wrap:wrap;gap:.45rem;align-items:center;margin:.35rem 0">
+      <span class="muted" style="font-size:.8rem">This quote: items ${money(t.itemsSubtotal)} · GST ${money(t.gstAmount)} · value ${money(t.projectValue)}</span>
+      <label class="btn ghost sm" style="margin:0">Upload quote<input id="pkgFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" hidden/></label>
+      <span class="muted" style="font-size:.75rem" id="pkgFileName">${q.attachmentName?esc(q.attachmentName):''}</span>
+    </div>`;
+  if ($('pkgQuoteNo')) $('pkgQuoteNo').addEventListener('input', () => { ensurePkgQuotes()[state.packageQuoteIndex].quotationId = $('pkgQuoteNo').value; });
+  if ($('pkgQuoteNote')) $('pkgQuoteNote').addEventListener('input', () => { ensurePkgQuotes()[state.packageQuoteIndex].note = $('pkgQuoteNote').value; });
+  ed.querySelectorAll('[name="pkgGstMode"]').forEach(r => {
+    r.onchange = () => {
+      const cur = ensurePkgQuotes()[state.packageQuoteIndex];
+      cur.gstMode = r.value;
+      const wrap = $('pkgGstPctWrap'); if (wrap) wrap.style.display = r.value==='off' ? 'none' : '';
+      const tt = pkgQuoteTotals(cur);
+      const live = ed.querySelector('.row span.muted');
+      if (live) live.textContent = `This quote: items ${money(tt.itemsSubtotal)} · GST ${money(tt.gstAmount)} · value ${money(tt.projectValue)}`;
+      renderPkgTotalsOnly();
+    };
+  });
+  if ($('pkgGstPct')) $('pkgGstPct').addEventListener('input', () => {
+    const cur = ensurePkgQuotes()[state.packageQuoteIndex];
+    cur.gstPercent = $('pkgGstPct').value;
+    const tt = pkgQuoteTotals(cur);
+    const live = ed.querySelector('.row span.muted');
+    if (live) live.textContent = `This quote: items ${money(tt.itemsSubtotal)} · GST ${money(tt.gstAmount)} · value ${money(tt.projectValue)}`;
+    renderPkgTotalsOnly();
+  });
+  ed.querySelectorAll('[data-pkg-item]').forEach(row => {
+    const idx = +row.dataset.pkgItem;
+    row.querySelectorAll('[data-pkg]').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const cur = ensurePkgQuotes()[state.packageQuoteIndex];
+        const it = cur.items[idx]; if (!it) return;
+        it[inp.dataset.pkg] = inp.value;
+        if (inp.dataset.pkg === 'category') {
+          const units = unitsFor(it.category);
+          if (units.indexOf(it.unit) < 0) it.unit = units[0];
+          renderPackageQuotes();
+          return;
+        }
+        const tt = pkgQuoteTotals(cur);
+        const live = ed.querySelector('.row span.muted');
+        if (live) live.textContent = `This quote: items ${money(tt.itemsSubtotal)} · GST ${money(tt.gstAmount)} · value ${money(tt.projectValue)}`;
+        renderPkgTotalsOnly();
+      });
+    });
+  });
+  ed.querySelectorAll('[data-pkg-del]').forEach(b => {
+    b.onclick = () => {
+      const cur = ensurePkgQuotes()[state.packageQuoteIndex];
+      cur.items.splice(+b.dataset.pkgDel, 1);
+      if (!cur.items.length) cur.items.push(emptyPkgItem());
+      renderPackageQuotes();
+    };
+  });
+  if ($('btnPkgAddItem')) $('btnPkgAddItem').onclick = () => {
+    ensurePkgQuotes()[state.packageQuoteIndex].items.push(emptyPkgItem());
+    renderPackageQuotes();
+  };
+  if ($('btnPkgDelQuote')) $('btnPkgDelQuote').onclick = () => {
+    ensurePkgQuotes().splice(state.packageQuoteIndex, 1);
+    if (!state.packageQuotes.length) state.packageQuotes = [emptyPkgQuote()];
+    if (state.packageQuoteIndex >= state.packageQuotes.length) state.packageQuoteIndex = state.packageQuotes.length-1;
+    renderPackageQuotes();
+  };
+  if ($('pkgFile')) $('pkgFile').onchange = async () => {
+    const f = $('pkgFile').files && $('pkgFile').files[0];
+    if (!f) return;
+    try {
+      await ensureProject();
+      const cur = ensurePkgQuotes()[state.packageQuoteIndex];
+      const fd = new FormData();
+      fd.append('file', f);
+      const qs = withGstQuery({});
+      const res = await api('/api/projects/'+state.projectId+'/package-quotes/'+encodeURIComponent(cur.id)+'/file?'+qs.toString(), { method:'POST', body: fd });
+      cur.attachmentName = (res && res.filename) || f.name;
+      cur.attachmentKey = res && res.quoteId ? ('package_quote_file:'+state.projectId+':'+cur.id) : cur.attachmentKey;
+      if ($('pkgFileName')) $('pkgFileName').textContent = cur.attachmentName;
+      toast('Quote file attached');
+    } catch (e) { toast(e.message); }
+  };
+  renderPkgTotalsOnly();
 }
 
 const WEOS_CART_KEY = 'weos.cart.v1';
@@ -4557,11 +4892,11 @@ function serializeCartLinesForPdf(lines) {
     const copy = slimCartLine(ln, { keepPreviewSvg: true });
     if (!copy) return null;
     const src = hydrateCartLine(ln);
-    if (livePreviewBelongsTo(src)) {
-      const svg = captureLivePreviewSvg();
-      if (svg) copy.preview = Object.assign({}, copy.preview || {}, { svg });
-    } else if (src && src.preview && src.preview.svg) {
-      copy.preview = Object.assign({}, copy.preview || {}, { svg: src.preview.svg });
+    if (linePreviewIsValid(src)) {
+      copy.preview = Object.assign({}, copy.preview || {}, { svg: src.preview.svg, key: src.preview.key });
+    } else if (copy.preview) {
+      delete copy.preview.svg;
+      delete copy.preview.pdfSvg;
     }
     return copy;
   }).filter((ln) => ln && typeof ln === 'object' && !Array.isArray(ln));
@@ -4578,6 +4913,8 @@ function persistCartSession() {
       name: ($('cartName') && $('cartName').value) || '',
       customer: ($('cartCustomer') && $('cartCustomer').value) || '',
       bill: typeof projectBillTo === 'function' ? projectBillTo() : {},
+      packageQuotes: state.packageQuotes || [],
+      masterJobId: state.masterJobId || null,
     };
     const payload = JSON.stringify(pack);
     sessionStorage.setItem(WEOS_CART_KEY, payload);
@@ -4609,6 +4946,11 @@ function restoreCartSession() {
     if ($('projQuoteNo') && bill.quotationId) $('projQuoteNo').value = bill.quotationId;
     if ($('projDescription') && bill.description != null) $('projDescription').value = bill.description;
     if ($('projTerms') && bill.terms != null) $('projTerms').value = bill.terms;
+    if (Array.isArray(d.packageQuotes) && d.packageQuotes.length) {
+      state.packageQuotes = d.packageQuotes;
+      state.packageQuoteIndex = 0;
+    }
+    if (d.masterJobId) state.masterJobId = d.masterJobId;
     return !!(state.projectId || hasLines);
   } catch (_) { return false; }
 }
@@ -4657,6 +4999,7 @@ async function ensureProject() {
     customer: $('cartCustomer').value || '',
     lines: [],
     status: 'draft',
+    packageQuotes: packageQuotesPayload(),
     ...projectBillTo()
   }});
   state.projectId = doc.projectId;
@@ -4683,11 +5026,15 @@ async function saveProject(silent) {
         doc = await api('/api/projects/'+state.projectId, {method:'PUT', body:{
           name: $('cartName').value, customer: $('cartCustomer').value,
           lines: serializeCartLines(state.lines),
+          packageQuotes: packageQuotesPayload(),
+          masterJobId: state.masterJobId || undefined,
+          quoteKind: packageQuotesPayload().length ? ((state.lines||[]).length ? 'mixed' : 'package') : undefined,
           ...projectBillTo()
         }});
         if (!silent) toast('Saved v'+doc.version);
         updatePdfLinks();
         refreshSetupSummary();
+        adoptPackageQuotes(doc);
       } while (state._saveAgain);
       return doc;
     } finally {
@@ -4718,6 +5065,7 @@ async function openProject(id) {
   if ($('projQuoteNo')) $('projQuoteNo').value = doc.quotationId || '';
   if ($('projDescription')) $('projDescription').value = doc.description || '';
   if ($('projTerms')) $('projTerms').value = doc.terms || '';
+  adoptPackageQuotes(doc);
   state.memoryAskedFor = null;
   if (doc.lastCalculation?.price) {
     state.lastResult = doc.lastCalculation;
@@ -4832,8 +5180,14 @@ $('btnAddLine').onclick = () => {
   }
   stampLineAmount(draft);
   stampItemSnapshot(draft, true);
-  state.lines.push(ensureLineId(draft));
+  const added = ensureLineId(draft);
+  const liveSvg = captureLivePreviewSvg();
+  if (liveSvg && state._previewKey && state._previewKey === lineIdentityKey(added)) {
+    stampLinePreviewSvg(added, liveSvg);
+  }
+  state.lines.push(added);
   state.selectedLine = state.lines.length-1;
+  markLivePreviewLine(added);
   invalidatePdfCache();
   renderCart(); scheduleSave(); refreshPreview(); scheduleLivePrice();
   toast('Line added');
@@ -4863,9 +5217,7 @@ function productLooksLikeRailing(p) {
   return id.includes('rail') || cat.includes('rail') || typ.includes('rail') || name.includes('rail');
 }
 function isRailingMode() {
-  const p = selectedProductMeta();
-  const ln = state.lines[state.selectedLine];
-  const world = productWorldOf(p, ln);
+  const world = designerWorld();
   return world === 'railing' || world === 'staircase_railing';
 }
 function showRailTools(on) {
@@ -6122,7 +6474,14 @@ async function railingCalc(){
     $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Railing · ${q.shape || 'straight'} · ${q.lengthMm || 0} mm · ${q.panelCount || 0} panels`;
     $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
     const selRail = state.lines[state.selectedLine];
-    if (res.svg && selRail && isRailCartLine(selRail)) {
+    const drawn = {
+      product: (selRail && isRailCartLine(selRail) && (selRail.product || selRail.productId)) || 'railing',
+      productType: (selRail && selRail.productType) || 'railing',
+      width: q.lengthMm || cfg.lengthMm,
+      height: q.heightMm || q.glassHeightMm || cfg.heightMm,
+    };
+    state._previewKey = lineIdentityKey(drawn);
+    if (res.svg && selRail && isRailCartLine(selRail) && lineIdentityKey(selRail) === state._previewKey) {
       stampLinePreviewSvg(selRail, res.svg);
       markLivePreviewLine(selRail);
     } else {
@@ -6217,11 +6576,12 @@ async function railingAdd(){
     glass: cfg.glassPreset || cfg.glass || '',
     description: `Railing · ${q.shape||'straight'} · ${q.lengthMm} mm · ${q.panelCount||0} panels · ${q.glassThicknessMm||12}mm ${q.glassType||''} · ${q.sellingPerUnit}/${String(q.saleUnit||'rft').toUpperCase()}`,
     options: { railing: cfg, railingQuote: q, productType: ptype, commercialOnly: q.commercial || { sellingRatePerUnit: q.sellingPerUnit, saleUnit: q.saleUnit }, locationName: currentLocationName() || null },
-    preview: (res && res.svg) ? { svg: res.svg } : undefined,
   };
   stampLineAmount(railLine);
   stampItemSnapshot(railLine, true);
-  state.lines.push(ensureLineId(railLine));
+  const addedRail = ensureLineId(railLine);
+  if (res && res.svg) stampLinePreviewSvg(addedRail, res.svg);
+  state.lines.push(addedRail);
   // Never inherit window series from the product dropdown onto a railing line.
   delete state.lines[state.lines.length - 1].sectionSeries;
   if ($('lineSeries')) $('lineSeries').value = '';
@@ -6233,9 +6593,7 @@ async function railingAdd(){
 }
 
 function isShowerMode() {
-  const p = selectedProductMeta();
-  const ln = state.lines[state.selectedLine];
-  return productWorldOf(p, ln) === 'shower' || !!state.showerMode;
+  return designerWorld() === 'shower';
 }
 function showShowerTools(on) {
   const el = $('showerTools');
@@ -6376,7 +6734,15 @@ async function showerCalc() {
     $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Shower · ${q.shape || cfg.shape} · ${q.operation || ''} · ${q.widthMm || 0}×${q.heightMm || 0}`;
     if ($('livePreview')) $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
     const selSh = state.lines[state.selectedLine];
-    if (res.svg && selSh && isShowerCartLine(selSh)) {
+    const drawn = {
+      product: (selSh && isShowerCartLine(selSh) && (selSh.product || selSh.productId)) || 'shower_partition',
+      productType: 'shower_partition',
+      system: 'shower',
+      width: q.widthMm || cfg.widthMm,
+      height: q.heightMm || cfg.heightMm,
+    };
+    state._previewKey = lineIdentityKey(drawn);
+    if (res.svg && selSh && isShowerCartLine(selSh) && lineIdentityKey(selSh) === state._previewKey) {
       stampLinePreviewSvg(selSh, res.svg);
       markLivePreviewLine(selSh);
     } else {
@@ -6415,11 +6781,12 @@ async function showerAdd() {
     description: `Shower · ${q.shape || 'straight'} · ${q.operation || ''} · ${q.widthMm}×${q.heightMm} mm · ${q.glassLabel || ''} · ₹${q.sellingPerUnit}/${String(q.saleUnit || 'sqft').toUpperCase()}`,
     options: { shower: cfg, showerQuote: q, productType: 'shower_partition', locationName: currentLocationName() || null },
     shower: cfg,
-    preview: (res && res.svg) ? { svg: res.svg } : undefined,
   };
   stampLineAmount(shLine);
   stampItemSnapshot(shLine, true);
-  state.lines.push(ensureLineId(shLine));
+  const addedSh = ensureLineId(shLine);
+  if (res && res.svg) stampLinePreviewSvg(addedSh, res.svg);
+  state.lines.push(addedSh);
   delete state.lines[state.lines.length - 1].sectionSeries;
   delete state.lines[state.lines.length - 1].trackCount;
   state.selectedLine = state.lines.length - 1;
@@ -6429,9 +6796,7 @@ async function showerAdd() {
   renderCart(); scheduleSave(); toast('Shower added to cart');
 }
 function isVentMode() {
-  const p = selectedProductMeta();
-  const ln = state.lines[state.selectedLine];
-  return productWorldOf(p, ln) === 'ventilator' || !!state.ventMode;
+  return designerWorld() === 'ventilator';
 }
 function showVentTools(on) {
   const el = $('ventTools');
@@ -6487,7 +6852,8 @@ function ventConfig() {
     fanDiameterMm: ($('vtFanDia') && +$('vtFanDia').value) || 200,
     hingesPerDoor: ($('vtHinges') && +$('vtHinges').value) || 2,
     hingeCount: ($('vtHinges') && +$('vtHinges').value) || 2,
-    colour: ($('vtColour') && $('vtColour').value) || 'matt_black',
+    colour: ($('lineColour') && $('lineColour').value) || ($('vtColour') && $('vtColour').value) || 'white',
+    frameMaterial: ($('lineFrameMaterial') && $('lineFrameMaterial').value) || 'aluminium',
     handle: !!( !$('vtHandle') || $('vtHandle').checked ),
     handleName: ($('vtHandleName') && $('vtHandleName').value.trim()) || 'D-type',
     saleUnit: ($('vtSaleUnit') && $('vtSaleUnit').value) || 'sqft',
@@ -6570,7 +6936,15 @@ async function ventCalc() {
     $('previewLabel').textContent = `${designSerialLabel(state.selectedLine, state.lines[state.selectedLine])} · Ventilator · ${q.mode || cfg.mode} · ${q.widthMm || 0}×${q.heightMm || 0}`;
     if ($('livePreview')) $('livePreview').innerHTML = res.svg || '<span class="muted">No preview</span>';
     const selVent = state.lines[state.selectedLine];
-    if (res.svg && selVent && isVentCartLine(selVent)) {
+    const drawn = {
+      product: (selVent && isVentCartLine(selVent) && (selVent.product || selVent.productId)) || 'bathroom_ventilator',
+      productType: 'bathroom_ventilator',
+      system: 'ventilator',
+      width: q.widthMm || cfg.widthMm,
+      height: q.heightMm || cfg.heightMm,
+    };
+    state._previewKey = lineIdentityKey(drawn);
+    if (res.svg && selVent && isVentCartLine(selVent) && lineIdentityKey(selVent) === state._previewKey) {
       stampLinePreviewSvg(selVent, res.svg);
       markLivePreviewLine(selVent);
     } else {
@@ -6601,17 +6975,19 @@ async function ventAdd() {
     displayName: (p && p.displayName) || 'Bathroom ventilator',
     width: q.widthMm, height: q.heightMm, qty,
     saleUnit: q.saleUnit, sellingRate: q.sellingPerUnit,
-    colour: q.colour || cfg.colour,
+    colour: q.colour || cfg.colour || ($('lineColour') && $('lineColour').value) || 'white',
+    frameMaterial: cfg.frameMaterial || ($('lineFrameMaterial') && $('lineFrameMaterial').value) || 'aluminium',
     glass: cfg.glassId || cfg.glassLabel,
     locationName: currentLocationName() || null,
     positionName: currentLocationName() || null,
     description: `Bathroom ventilator · ${q.widthMm}×${q.heightMm} mm · ${q.glassLabel || ''} · ₹${q.sellingPerUnit}/${String(q.saleUnit || 'sqft').toUpperCase()}`,
     options: { ventilator: cfg, ventilatorQuote: q, productType: 'bathroom_ventilator', locationName: currentLocationName() || null },
     ventilator: cfg,
-    preview: (res && res.svg) ? { svg: res.svg } : undefined,
   };
   stampItemSnapshot(ventLine, true);
-  state.lines.push(ensureLineId(ventLine));
+  const addedVent = ensureLineId(ventLine);
+  if (res && res.svg) stampLinePreviewSvg(addedVent, res.svg);
+  state.lines.push(addedVent);
   delete state.lines[state.lines.length - 1].sectionSeries;
   delete state.lines[state.lines.length - 1].trackCount;
   state.selectedLine = state.lines.length - 1;
@@ -6999,7 +7375,7 @@ function stampSelectedDraftAmount() {
     if (id === 'lineProduct') { applyProductSystem(); loadCartGlassOptions(); loadCartColourOptions(); }
     if (['lineW','lineH','lineQty','lineSaleUnit','lineSellRate'].includes(id)) stampSelectedDraftAmount();
     if (isRailingMode() || isShowerMode() || isVentMode()) {
-      if (['lineW','lineH','lineProduct'].includes(id)) refreshPreview();
+      if (['lineW','lineH','lineProduct','lineFrameMaterial','lineColour'].includes(id)) refreshPreview();
       return;
     }
     scheduleLivePrice();
@@ -7016,18 +7392,24 @@ function stampSelectedDraftAmount() {
       stampItemSnapshot(ln, false);
     }
     if (ln && id === 'lineProduct') {
-      ln.product = $('lineProduct').value;
-      ln.productId = ln.product;
       const p = selectedProductMeta();
-      if (p) {
-        ln.displayName = p.displayName || ln.displayName;
-        ln.category = p.category || ln.category;
-        ln.productType = p.productType || ln.productType;
+      const newWorld = productWorldOf(p, null);
+      const oldWorld = productWorldOf(null, ln);
+      if (oldWorld !== newWorld) {
+        invalidatePdfCache();
+      } else {
+        ln.product = $('lineProduct').value;
+        ln.productId = ln.product;
+        if (p) {
+          ln.displayName = p.displayName || ln.displayName;
+          ln.category = p.category || ln.category;
+          ln.productType = p.productType || ln.productType;
+        }
+        stampItemSnapshot(ln, true);
       }
-      stampItemSnapshot(ln, true);
     }
     if (isRailingMode() || isShowerMode() || isVentMode()) {
-      if (['lineW','lineH','lineProduct','lineSeries','lineFrameMaterial'].includes(id)) refreshPreview();
+      if (['lineW','lineH','lineProduct','lineSeries','lineFrameMaterial','lineColour'].includes(id)) refreshPreview();
       if (id === 'cartCustomer') maybeAskCustomerMemory();
       return;
     }
@@ -7046,6 +7428,10 @@ function applyFrameMaterialUi(opts) {
   const upvc = String(fm).toLowerCase() === 'upvc';
   const box = $('wrapUpvcReinf');
   if (box) box.style.display = upvc ? '' : 'none';
+  if ($('lineColourLabel')) {
+    $('lineColourLabel').textContent = upvc ? 'Colour' : 'Colour / Powder-coat';
+  }
+  fillColourSelect((opts && (opts.keepColour || opts.skipColourDefault)) ? ($('lineColour') && $('lineColour').value) : null);
   if (upvc) {
     if ($('lineReinfPresent') && !$('lineReinfPresent').value) $('lineReinfPresent').value = 'yes';
     if ($('lineReinfMaterial') && !$('lineReinfMaterial').value) $('lineReinfMaterial').value = 'gi';
@@ -7053,6 +7439,13 @@ function applyFrameMaterialUi(opts) {
       const col = $('lineColour');
       if (col && (!col.value || col.value === 'black_texture')) col.value = 'white';
     }
+    if ($('lineHandle') && (!$('lineHandle').value || $('lineHandle').value === 'premium')) {
+      /* keep user pick; default name for quote */
+    }
+    if ($('lineHandleName') && !$('lineHandleName').value) $('lineHandleName').placeholder = 'e.g. uPVC Espag handle';
+    if ($('wrapTrack')) $('wrapTrack').style.display = '';
+  } else if ($('lineHandleName')) {
+    $('lineHandleName').placeholder = 'name (e.g. Ozone lever)';
   }
 }
 if ($('lineMesh')) {
@@ -7170,12 +7563,16 @@ $('btnNewFromDash').onclick = $('btnNewProj').onclick = async () => {
   if ($('projCustName')) $('projCustName').value='';
   if ($('projMobile')) $('projMobile').value='';
   ['projCustAddress','projCustGst','projQuoteNo','projDescription','projTerms'].forEach(id => { if ($(id)) $(id).value=''; });
+  state.packageQuotes = [emptyPkgQuote()];
+  state.packageQuoteIndex = 0;
+  state.masterJobId = null;
   $('cartTotal').textContent='₹ —'; renderCart();
   refreshSetupSummary();
   state._previewLineId = null;
   invalidatePdfCache();
   persistCartSession();
   setView('setup'); scheduleLivePrice();
+  renderPackageQuotes();
 };
 if ($('btnSaveSetup')) $('btnSaveSetup').onclick = async () => {
   try {
@@ -7219,6 +7616,172 @@ if ($('btnSetupToCart')) $('btnSetupToCart').onclick = async () => {
 };
 if ($('btnSetupLoadList')) $('btnSetupLoadList').onclick = loadSetupList;
 if ($('btnEditSetup')) $('btnEditSetup').onclick = () => setView('setup');
+if ($('btnSetupMaster')) $('btnSetupMaster').onclick = () => setView('master');
+if ($('btnPkgAddQuote')) $('btnPkgAddQuote').onclick = () => {
+  const list = ensurePkgQuotes();
+  if (list.length >= 20) { toast('Maximum 20 quotes on one project'); return; }
+  list.push(emptyPkgQuote());
+  state.packageQuoteIndex = list.length - 1;
+  renderPackageQuotes();
+};
+
+function mlFmtDate(iso){
+  if (!iso) return '—';
+  try { return String(iso).slice(0,10); } catch(_) { return '—'; }
+}
+function renderMasterLedger(wrap){
+  const body = $('mlBody');
+  const matchesEl = $('mlMatches');
+  if (matchesEl) {
+    const hits = (wrap && wrap.matches) || [];
+    if (hits.length > 1) {
+      matchesEl.innerHTML = `<table><thead><tr><th>Customer</th><th>Mobile</th><th>Quotes</th><th>Value</th><th>Balance</th><th></th></tr></thead><tbody>${
+        hits.map(h => `<tr>
+          <td>${esc(h.customer||h.name||'—')}<div class="muted" style="font-size:.72rem">${esc(h.projectId||'')}</div></td>
+          <td>${esc(h.customerMobile||'')}</td>
+          <td>${h.quoteCount||0}</td>
+          <td>${money(h.projectValue)}</td>
+          <td>${money(h.balance)}</td>
+          <td><button class="btn ghost sm" type="button" data-ml-open="${esc(h.projectId)}">Open</button></td>
+        </tr>`).join('')
+      }</tbody></table>`;
+      matchesEl.querySelectorAll('[data-ml-open]').forEach(b => {
+        b.onclick = () => loadMasterLedger({ projectId: b.dataset.mlOpen });
+      });
+    } else {
+      matchesEl.innerHTML = '';
+    }
+  }
+  if (!body) return;
+  const led = wrap && wrap.ledger;
+  if (!led) {
+    body.innerHTML = wrap && wrap.needQuery
+      ? '<p class="muted">Search a mobile, name, or quote number — or open This project.</p>'
+      : '<p class="muted">No matching job. Check the number / name, or save the project first.</p>';
+    return;
+  }
+  const t = led.totals || {};
+  const quotes = led.quotes || [];
+  const adv = led.advances || [];
+  const quoteOpts = quotes.map(q => {
+    const label = (q.kind==='weos'?'WEOS · ':'Deal · ') + (q.quotationId || q.id || 'quote') + ' · ' + money(q.projectValue);
+    return `<option value="${esc(q.id)}">${esc(label)}</option>`;
+  }).join('');
+  body.innerHTML = `
+    <p style="margin:0 0 .55rem"><strong>${esc(led.customer||led.name||'Job')}</strong>
+      <span class="muted"> · ${esc(led.customerMobile||'')} · ${esc(led.customerAddress||'')}</span></p>
+    <div class="row" style="gap:.7rem;flex-wrap:wrap;margin-bottom:.65rem">
+      <div class="kpi"><label class="l">Quotes total</label><div class="big" style="font-size:1.05rem">${money(t.totalTaxable)}</div></div>
+      <div class="kpi"><label class="l">GST</label><div class="big" style="font-size:1.05rem">${money(t.gstAmount != null ? t.gstAmount : t.totalGst)}</div></div>
+      <div class="kpi"><label class="l">Project value</label><div class="big" style="font-size:1.05rem">${money(t.projectValue)}</div></div>
+      <div class="kpi"><label class="l">Total advance</label><div class="big" style="font-size:1.05rem">${money(t.totalAdvances)}</div></div>
+      <div class="kpi"><label class="l">Balance</label><div class="big" style="font-size:1.05rem">${money(t.balance)}</div></div>
+    </div>
+    <strong style="font-size:.88rem">Quotes</strong>
+    <div style="overflow:auto;margin:.35rem 0 .8rem"><table><thead><tr><th>Quote</th><th>Kind</th><th>Taxable</th><th>GST</th><th>Value</th></tr></thead><tbody>${
+      quotes.length ? quotes.map(q => `<tr>
+        <td>${esc(q.quotationId||q.id||'—')}${q.items&&q.items.length?`<div class="muted" style="font-size:.72rem">${q.items.map(it=>esc((it.categoryLabel||it.category||'')+' '+(it.qty||'')+(it.size?(' · '+it.size):'')+' · '+money(it.amount))).join('<br/>')}</div>`:''}</td>
+        <td>${q.kind==='weos'?'WEOS quote':'Package'}</td>
+        <td>${money(q.totalTaxable)}</td>
+        <td>${money(q.gstAmount)}</td>
+        <td>${money(q.projectValue)}</td>
+      </tr>`).join('') : '<tr><td colspan="5" class="muted">No quotes on this job yet</td></tr>'
+    }</tbody></table></div>
+    <strong style="font-size:.88rem">Record advance</strong>
+    <p class="muted" style="margin:.15rem 0 .4rem;font-size:.75rem">Select the quote this payment is against. Previous advances stay; balance = project value − all advances.</p>
+    <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.55rem">
+      <div class="grow"><label class="l">Against quote</label><select id="mlAdvQuote" style="min-width:180px"><option value="">Select quote</option>${quoteOpts}</select></div>
+      <div><label class="l">Amount ₹</label><input id="mlAdvAmt" type="number" min="0" step="0.01" style="width:110px"/></div>
+      <div><label class="l">Mode</label>
+        <select id="mlAdvMode" style="width:110px">
+          <option value="cash">Cash</option><option value="upi">UPI</option><option value="neft">NEFT</option>
+          <option value="rtgs">RTGS</option><option value="cheque">Cheque</option><option value="card">Card</option><option value="other">Other</option>
+        </select>
+      </div>
+      <div><label class="l">Date</label><input id="mlAdvDate" type="date" style="width:140px"/></div>
+      <div class="grow"><label class="l">Ref / note</label><input id="mlAdvRef" placeholder="cheque / UTR / note"/></div>
+      <button class="btn sm" id="btnMlAdvAdd" type="button">Add advance</button>
+    </div>
+    <strong style="font-size:.88rem">Transactions</strong>
+    <div style="overflow:auto;margin:.35rem 0">${
+      adv.length ? `<table><thead><tr><th>Date</th><th>Quote</th><th>Amount</th><th>Running advance</th><th>Balance</th><th>Mode</th><th>Ref</th></tr></thead><tbody>${
+        adv.map(a => `<tr>
+          <td>${esc(mlFmtDate(a.paidAt||a.createdAt))}</td>
+          <td>${esc(a.quoteId||'—')}</td>
+          <td>${money(a.amount)}</td>
+          <td>${money(a.runningAdvance)}</td>
+          <td>${money(a.balanceAfter)}</td>
+          <td>${esc(a.paymentMode||'')}</td>
+          <td>${esc(a.reference||a.note||'')}</td>
+        </tr>`).join('')
+      }</tbody></table>` : '<p class="muted" style="font-size:.8rem">No advances on this job yet</p>'
+    }</div>`;
+  if ($('mlAdvDate') && !$('mlAdvDate').value) {
+    try { $('mlAdvDate').value = new Date().toISOString().slice(0,10); } catch(_){}
+  }
+  const pid = led.projectId || state.projectId;
+  if ($('btnMlAdvAdd')) $('btnMlAdvAdd').onclick = async () => {
+    const qid = ($('mlAdvQuote') && $('mlAdvQuote').value) || '';
+    const amount = +(($('mlAdvAmt') && $('mlAdvAmt').value) || 0);
+    if (!qid) { toast('Select which quote this advance is against'); return; }
+    if (!(amount > 0)) { toast('Enter advance amount'); return; }
+    if (!pid) { toast('Save the project first'); return; }
+    try {
+      const qs = withGstQuery({});
+      await api('/api/projects/'+encodeURIComponent(pid)+'/master-advances?'+qs.toString(), {
+        method:'POST',
+        body: {
+          amount,
+          quoteId: qid,
+          paymentMode: ($('mlAdvMode') && $('mlAdvMode').value) || 'cash',
+          paidAt: ($('mlAdvDate') && $('mlAdvDate').value) || null,
+          reference: ($('mlAdvRef') && $('mlAdvRef').value) || '',
+        },
+      });
+      if ($('mlAdvAmt')) $('mlAdvAmt').value = '';
+      if ($('mlAdvRef')) $('mlAdvRef').value = '';
+      toast('Advance saved');
+      await loadMasterLedger({ projectId: pid });
+    } catch (e) { if ($('mlErr')) $('mlErr').textContent = e.message; toast(e.message); }
+  };
+}
+async function loadMasterLedger(opts){
+  const o = opts || {};
+  if ($('mlErr')) $('mlErr').textContent = '';
+  const qs = withGstQuery({});
+  if (o.projectId) qs.set('projectId', o.projectId);
+  if (o.q) qs.set('q', o.q);
+  try {
+    const wrap = await api('/api/ledger/master?'+qs.toString());
+    renderMasterLedger(wrap);
+    const led = wrap && wrap.ledger;
+    if (led && led.projectId && led.projectId !== state.projectId) {
+      // Keep search results isolated; do not silently swap the open cart.
+    }
+  } catch (e) {
+    if ($('mlErr')) $('mlErr').textContent = e.message;
+    if ($('mlBody')) $('mlBody').innerHTML = '';
+  }
+}
+function initMasterLedger(){
+  if ($('mlSearch') && !$('mlSearch')._bound) {
+    $('mlSearch')._bound = true;
+    $('mlSearch').addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); if ($('btnMlSearch')) $('btnMlSearch').click(); }
+    });
+  }
+  if (state.projectId) loadMasterLedger({ projectId: state.projectId });
+  else if ($('mlBody')) $('mlBody').innerHTML = '<p class="muted">Search a customer, or open a saved project first.</p>';
+}
+if ($('btnMlSearch')) $('btnMlSearch').onclick = () => {
+  const q = ($('mlSearch') && $('mlSearch').value.trim()) || '';
+  if (!q) { toast('Enter mobile, name, or quote number'); return; }
+  loadMasterLedger({ q });
+};
+if ($('btnMlThisJob')) $('btnMlThisJob').onclick = () => {
+  if (!state.projectId) { toast('Save or open a project first'); return; }
+  loadMasterLedger({ projectId: state.projectId });
+};
 state._custPdfCache = { key: '', url: '', blob: null };
 function _exportFingerprint(kind) {
   try {

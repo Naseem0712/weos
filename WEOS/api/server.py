@@ -240,6 +240,9 @@ class ProjectCreate(BaseModel):
     terms: str | None = None
     quotationId: str | None = None
     companyGst: str | None = None
+    packageQuotes: list[Any] | None = None
+    masterJobId: str | None = None
+    quoteKind: str | None = None
 
 
 class ProjectUpdate(BaseModel):
@@ -256,6 +259,9 @@ class ProjectUpdate(BaseModel):
     terms: str | None = None
     quotationId: str | None = None
     companyGst: str | None = None
+    packageQuotes: list[Any] | None = None
+    masterJobId: str | None = None
+    quoteKind: str | None = None
 
 
 class ProjectCalculateOpts(BaseModel):
@@ -1551,6 +1557,9 @@ def api_create_project(body: ProjectCreate) -> dict[str, Any]:
         _val = getattr(body, _fld, None)
         if _val is not None:
             doc[_fld] = _val
+    from WEOS.factory.package_quote import apply_package_fields
+
+    apply_package_fields(doc, body.model_dump(exclude_none=True))
     return save_project(doc, action="create")
 
 
@@ -1585,7 +1594,145 @@ def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
         _val = getattr(body, _fld, None)
         if _val is not None:
             doc[_fld] = _val
+    dumped = body.model_dump(exclude_unset=True)
+    from WEOS.factory.package_quote import apply_package_fields
+
+    apply_package_fields(doc, dumped)
     return save_project(doc, action="update")
+
+
+@app.get("/api/ledger/master")
+def api_master_ledger_search(
+    q: str | None = Query(None),
+    projectId: str | None = Query(None),
+    gst: str | None = Query(None),
+) -> dict[str, Any]:
+    from WEOS.factory.master_ledger import build_master_ledger
+
+    try:
+        return build_master_ledger(q=q, project_id=projectId, company_gst=gst)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/projects/{project_id}/master-ledger")
+def api_project_master_ledger(project_id: str, gst: str | None = Query(None)) -> dict[str, Any]:
+    from WEOS.factory.master_ledger import build_master_ledger
+
+    try:
+        return build_master_ledger(project_id=project_id, company_gst=gst)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/package-quotes/{quote_id}/file")
+async def api_package_quote_file(
+    project_id: str,
+    quote_id: str,
+    file: UploadFile = File(...),
+    gst: str | None = Query(None),
+) -> dict[str, Any]:
+    from WEOS.factory.master_ledger import build_master_ledger
+    from WEOS.factory.package_quote import normalize_package_quotes
+    from WEOS.factory.project_store import load_project, save_project
+
+    try:
+        load_project(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if gst:
+        wrap = build_master_ledger(project_id=project_id, company_gst=gst)
+        if not wrap.get("ledger"):
+            raise HTTPException(status_code=403, detail="Project is not in this company workspace")
+    qid = str(quote_id or "").strip()
+    if not qid:
+        raise HTTPException(status_code=400, detail="Quote id required")
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(raw) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 8 MB)")
+    fname = str(file.filename or "quote").strip() or "quote"
+    key = f"package_quote_file:{project_id}:{qid}"
+    stored = False
+    try:
+        from WEOS.db.durable_store import put_blob
+
+        stored = bool(
+            put_blob(
+                key,
+                "package_quote_file",
+                raw,
+                content_type=file.content_type or "application/octet-stream",
+                filename=fname,
+            )
+        )
+    except Exception:
+        stored = False
+    if not stored:
+        from WEOS.paths import data_dir
+
+        dest = data_dir() / "package_quotes" / project_id
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / f"{qid}.bin").write_bytes(raw)
+        (dest / f"{qid}.name.txt").write_text(fname, encoding="utf-8")
+    doc = load_project(project_id)
+    quotes = normalize_package_quotes(doc.get("packageQuotes") or [])
+    hit = False
+    for pq in quotes:
+        if str(pq.get("id")) == qid:
+            pq["attachmentName"] = fname
+            pq["attachmentKey"] = key
+            hit = True
+    if hit:
+        doc["packageQuotes"] = quotes
+        save_project(doc, bump_version=False, action="package_quote_file")
+    return {
+        "ok": True,
+        "quoteId": qid,
+        "filename": fname,
+        "url": f"/api/projects/{project_id}/package-quotes/{qid}/file",
+    }
+
+
+@app.get("/api/projects/{project_id}/package-quotes/{quote_id}/file")
+def api_get_package_quote_file(project_id: str, quote_id: str) -> Response:
+    from WEOS.factory.project_store import load_project
+
+    try:
+        load_project(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    qid = str(quote_id or "").strip()
+    key = f"package_quote_file:{project_id}:{qid}"
+    raw = None
+    ctype = "application/octet-stream"
+    fname = "quote"
+    try:
+        from WEOS.db.durable_store import get_blob
+
+        raw, ctype, fname = get_blob(key)
+    except Exception:
+        raw = None
+    if raw is None:
+        from WEOS.paths import data_dir
+
+        p = data_dir() / "package_quotes" / project_id / f"{qid}.bin"
+        if p.is_file():
+            raw = p.read_bytes()
+            np = data_dir() / "package_quotes" / project_id / f"{qid}.name.txt"
+            if np.is_file():
+                fname = np.read_text(encoding="utf-8").strip() or fname
+    if raw is None:
+        raise HTTPException(status_code=404, detail="No file attached")
+    headers = {"Content-Disposition": f'inline; filename="{fname}"'}
+    return Response(content=raw, media_type=ctype or "application/octet-stream", headers=headers)
 
 
 @app.delete("/api/projects/{project_id}")
@@ -2779,6 +2926,57 @@ def api_delete_customer_advance(customer: str, advance_id: int) -> dict[str, Any
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/master-advances")
+def api_master_advance(project_id: str, body: AdvanceBody, gst: str | None = Query(None)) -> dict[str, Any]:
+    """Record an advance against one quote on this Master Ledger job only."""
+    from WEOS.factory.ledger_store import add_advance
+    from WEOS.factory.master_ledger import build_master_ledger
+
+    qid = str(body.quoteId or "").strip()
+    if not qid:
+        raise HTTPException(status_code=400, detail="Select which quote this advance is against")
+    try:
+        wrap = build_master_ledger(project_id=project_id, company_gst=gst)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    led = wrap.get("ledger") or {}
+    quotes = led.get("quotes") or []
+    row = next((q for q in quotes if str(q.get("id")) == qid), None)
+    if row is None:
+        raise HTTPException(status_code=400, detail="Quote is not on this Master Ledger job")
+    customer = (led.get("customer") or body.customerName or "").strip()
+    if not customer:
+        raise HTTPException(status_code=400, detail="Customer name required")
+    payload = body.model_dump(exclude_none=True)
+    payload["projectId"] = str(row.get("projectId") or project_id)
+    payload["quoteId"] = qid
+    payload["customerName"] = customer
+    try:
+        created = add_advance(customer, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    pid = str(created.get("projectId") or payload.get("projectId") or "").strip()
+    entry_type = str(created.get("entryType") or "advance").strip().lower()
+    if pid and entry_type not in ("refund", "reversal", "return"):
+        try:
+            from WEOS.factory.ledger_store import CONFIRMED_STATUSES
+            from WEOS.factory.project_store import load_project, set_project_status
+
+            doc = load_project(pid)
+            st = str(doc.get("status") or "").strip().lower()
+            if st not in CONFIRMED_STATUSES and st not in {"rejected", "cancelled", "canceled"}:
+                set_project_status(pid, "approved")
+                created["projectStatus"] = "approved"
+        except Exception:
+            _log.debug("master advance approve skipped for %s", pid, exc_info=True)
+    created["ledger"] = build_master_ledger(project_id=project_id, company_gst=gst).get("ledger")
+    return created
 
 
 @app.get("/api/customers/{customer}/ledger.html")
