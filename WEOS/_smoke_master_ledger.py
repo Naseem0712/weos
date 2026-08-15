@@ -160,6 +160,32 @@ def main() -> None:
     att_row = next(q for q in led_m["quotes"] if q["id"] == "pq_att")
     _ok(len(att_row.get("attachments") or []) == 2, "master ledger quote row keeps PDF + photos")
 
+    from WEOS.factory.master_ledger import customer_group_key, same_customer
+    from WEOS.factory.ledger_store import _quote_parts, _status_live, is_any_quote_id
+
+    sibling = {
+        "projectId": "PRJ-SMOKE-ISO-A2",
+        "masterJobId": "PRJ-SMOKE-ISO-A2",
+        "customer": "ALPHA",
+        "customerMobile": "+91 98765 43210",
+        "quotationId": "Q-A2",
+        "packageQuotes": [
+            {"id": "pq_sib", "gstMode": "off", "items": [{"category": "window", "amount": 25000}]}
+        ],
+        "name": "Site A2",
+    }
+    _ok(same_customer(a, sibling), "same mobile digits = same customer even if name spelling differs")
+    _ok(not same_customer(a, b), "different mobile is a different customer")
+    _ok(customer_group_key(a) == customer_group_key(sibling), "group key follows last 10 mobile digits")
+    combined = ledger_from_docs([a, sibling])
+    ids_c = {q["id"] for q in combined["quotes"]}
+    _ok("pq_a" in ids_c and "pq_sib" in ids_c, f"combined customer ledger has both quotes {ids_c}")
+    _ok(combined["totals"]["projectValue"] == 158000, f"grand total 133000+25000=158000 got {combined['totals']['projectValue']}")
+    _ok(is_any_quote_id("any") and is_any_quote_id("ALL") and not is_any_quote_id("pq_a"), "Any quote id")
+    parts = _quote_parts({"totalTaxable": 123285.80, "totalGst": 22191.44, "totalGrand": 145477.24})
+    _ok(parts["totalGrand"] == 145477.24, "quote parts keep GST-inclusive grand")
+    _ok(_status_live("approved") and _status_live("draft") and not _status_live("rejected"), "live statuses")
+
     print("SMOKE_MASTER_LEDGER_OK")
 
 

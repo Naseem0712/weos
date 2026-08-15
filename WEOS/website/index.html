@@ -322,7 +322,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
     <section id="view-master" class="grid hidden">
       <div class="panel">
         <strong>Master Ledger</strong>
-        <p class="muted" style="margin:.2rem 0 .7rem;font-size:.82rem">Search by mobile, name, or quote number. Shows this job’s WEOS quotes and outside quotes, GST, advances, running and closing balance only — never another project. Add a finalized outside quote onto a running job here.</p>
+        <p class="muted" style="margin:.2rem 0 .7rem;font-size:.82rem">Search by mobile, name, or quote number. Same number = this customer’s <strong>all quotes</strong> (WEOS + outside) and one grand total. Any advance reduces this customer’s total balance.</p>
         <div class="row" style="align-items:flex-end;gap:.5rem;flex-wrap:wrap">
           <div class="grow"><label class="l">Search</label><input id="mlSearch" placeholder="mobile / name / quote number"/></div>
           <button class="btn" id="btnMlSearch" type="button">Search</button>
@@ -1418,10 +1418,10 @@ button.pill{border:0;font:inherit;cursor:pointer}
           <div class="err" id="cpErr" style="margin-top:.4rem"></div>
           <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
           <strong style="font-size:.9rem">Account / Ledger</strong>
-          <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">Taxable / billed = latest commercial total per quote number for <strong>Approved</strong> quotes only (drafts and testing quotes do not inflate turnover). With GST adds 18%. Balance = taxable − advances (record a refund if an advance was returned).</p>
+          <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">Grand total = <strong>all quotes</strong> on this customer (with GST), not one quote only. Year turnover on the dashboard is all <strong>Approved</strong> projects. Balance = grand total − advances. Select <strong>Any</strong> to record an advance against this customer’s full balance.</p>
           <div id="cpLedgerKpis" class="row" style="gap:.7rem;flex-wrap:wrap;margin-bottom:.6rem">
             <div class="kpi"><label class="l">Taxable (ex-GST)</label><div class="big" style="font-size:1.05rem" id="cpTotTaxable">₹ —</div></div>
-            <div class="kpi"><label class="l">With GST</label><div class="big" style="font-size:1.05rem" id="cpTotGrand">₹ —</div></div>
+            <div class="kpi"><label class="l">Grand total</label><div class="big" style="font-size:1.05rem" id="cpTotGrand">₹ —</div></div>
             <div class="kpi"><label class="l">Total advance</label><div class="big" style="font-size:1.05rem" id="cpTotAdv">₹ —</div></div>
             <div class="kpi"><label class="l">Balance</label><div class="big" style="font-size:1.05rem" id="cpTotBal">₹ —</div></div>
           </div>
@@ -1440,7 +1440,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
             </div>
             <div><label class="l">Date</label><input id="cpAdvDate" type="date" style="width:140px"/></div>
             <div class="grow"><label class="l">Ref / note</label><input id="cpAdvRef" placeholder="cheque no / UTR / note"/></div>
-            <div><label class="l">Project</label><select id="cpAdvProject" style="min-width:140px"><option value="">— any —</option></select></div>
+            <div><label class="l">Project</label><select id="cpAdvProject" style="min-width:140px"><option value="">— Any (all quotes) —</option></select></div>
             <label class="muted" style="font-size:.78rem;display:flex;align-items:center;gap:.35rem;margin:0 0 .15rem">
               <input id="cpAdvApprove" type="checkbox" checked style="width:auto"/> Mark quote approved
             </label>
@@ -7793,8 +7793,8 @@ function renderMasterLedger(wrap){
   const quotes = led.quotes || [];
   const adv = led.advances || [];
   const pid = led.projectId || state.projectId;
-  const quoteOpts = quotes.map(q => {
-    const label = (q.kind==='weos'?'WEOS · ':'Outside · ') + (q.quotationId || q.id || 'quote') + ' · ' + money(q.projectValue);
+  const quoteOpts = `<option value="any">Any — this customer’s total balance</option>` + quotes.map(q => {
+    const label = (q.kind==='weos'?'WEOS · ':'Outside · ') + (q.quotationId || q.id || 'quote') + (q.projectId?(' · '+q.projectId):'') + ' · ' + money(q.projectValue);
     return `<option value="${esc(q.id)}">${esc(label)}</option>`;
   }).join('');
   const catOpts = PKG_CATS.map(([id,lb]) => `<option value="${id}">${lb}</option>`).join('');
@@ -7823,11 +7823,11 @@ function renderMasterLedger(wrap){
       <div class="kpi"><label class="l">Taxable</label><div class="big" style="font-size:1.05rem">${money(t.totalTaxable)}</div></div>
       <div class="kpi"><label class="l">GST</label><div class="big" style="font-size:1.05rem">${money(t.gstAmount != null ? t.gstAmount : t.totalGst)}</div></div>
     </div>
-    <strong style="font-size:.88rem">Quotes on this project</strong>
-    <p class="muted" style="margin:.15rem 0 .35rem;font-size:.75rem">WEOS Window Cart quotes and outside finalized quotes both count in project value.</p>
+    <strong style="font-size:.88rem">Quotes on this customer</strong>
+    <p class="muted" style="margin:.15rem 0 .35rem;font-size:.75rem">Every WEOS and outside quote on this mobile / name. Grand total below is the sum of all of them.</p>
     <div style="overflow:auto;margin:.35rem 0 .8rem"><table><thead><tr><th>Quote</th><th>Kind</th><th>Taxable</th><th>GST</th><th>Value</th><th>PDF / photos</th></tr></thead><tbody>${
       quotes.length ? quotes.map(q => `<tr>
-        <td>${esc(q.quotationId||q.id||'—')}${q.items&&q.items.length?`<div class="muted" style="font-size:.72rem">${q.items.map(it=>esc((it.categoryLabel||it.category||'')+' '+(it.qty||'')+(it.size?(' · '+it.size):'')+' · '+money(it.amount))).join('<br/>')}</div>`:''}</td>
+        <td>${esc(q.quotationId||q.id||'—')}${q.projectId?`<div class="muted" style="font-size:.72rem">${esc(q.projectId)}</div>`:''}${q.items&&q.items.length?`<div class="muted" style="font-size:.72rem">${q.items.map(it=>esc((it.categoryLabel||it.category||'')+' '+(it.qty||'')+(it.size?(' · '+it.size):'')+' · '+money(it.amount))).join('<br/>')}</div>`:''}</td>
         <td>${q.kind==='weos'?'WEOS quote':'Outside quote'}</td>
         <td>${money(q.totalTaxable)}</td>
         <td>${money(q.gstAmount)}</td>
@@ -7860,9 +7860,9 @@ function renderMasterLedger(wrap){
       <button class="btn ghost sm" id="btnMlOutsideSetup" type="button">Open in Project Setup</button>
     </div>
     <strong style="font-size:.88rem">Record advance</strong>
-    <p class="muted" style="margin:.15rem 0 .4rem;font-size:.75rem">Select the quote this payment is against. Running balance updates after each advance. Closing balance = project value − all advances.</p>
+    <p class="muted" style="margin:.15rem 0 .4rem;font-size:.75rem">Pick a quote, or <strong>Any</strong> if this customer paid against the full balance. Any advance reduces all quotes’ total remaining. Closing = grand total − all advances.</p>
     <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.55rem">
-      <div class="grow"><label class="l">Against quote</label><select id="mlAdvQuote" style="min-width:180px"><option value="">Select quote</option>${quoteOpts}</select></div>
+      <div class="grow"><label class="l">Against quote</label><select id="mlAdvQuote" style="min-width:180px"><option value="">Select quote or Any</option>${quoteOpts}</select></div>
       <div><label class="l">Amount ₹</label><input id="mlAdvAmt" type="number" min="0" step="0.01" style="width:110px"/></div>
       <div><label class="l">Mode</label>
         <select id="mlAdvMode" style="width:110px">
@@ -7942,7 +7942,7 @@ function renderMasterLedger(wrap){
   if ($('btnMlAdvAdd')) $('btnMlAdvAdd').onclick = async () => {
     const qid = ($('mlAdvQuote') && $('mlAdvQuote').value) || '';
     const amount = +(($('mlAdvAmt') && $('mlAdvAmt').value) || 0);
-    if (!qid) { toast('Select which quote this advance is against'); return; }
+    if (!qid) { toast('Select a quote, or Any for this customer’s total balance'); return; }
     if (!(amount > 0)) { toast('Enter advance amount'); return; }
     if (!pid) { toast('Save the project first'); return; }
     try {
@@ -10030,22 +10030,22 @@ async function loadCustomerLedger(name, quotesFallback) {
   const sel = $('cpAdvProject');
   if (sel) {
     const quotes = quotesFallback || [];
-    sel.innerHTML = '<option value="">— any —</option>' + quotes.map(q =>
+    sel.innerHTML = '<option value="">— Any (all quotes) —</option>' + quotes.map(q =>
       `<option value="${esc(q.projectId)}" data-ver="${q.version||1}" data-qid="${esc(q.quotationId||'')}">${esc(q.projectId)} · ${esc(q.name||'')} · v${q.version||1}${q.quotationId?(' · '+esc(q.quotationId)):''}</option>`
     ).join('');
   }
   try {
-    const led = await api('/api/customers/'+encodeURIComponent(name)+'/ledger');
+    const led = await api('/api/customers/'+encodeURIComponent(name)+'/ledger'+gstQ);
     const t = led.totals || {};
     const taxable = t.totalTaxable != null ? t.totalTaxable : (t.value != null ? t.value : t.billed);
     if ($('cpTotTaxable')) $('cpTotTaxable').textContent = money(taxable);
     if ($('cpTotBilled')) $('cpTotBilled').textContent = money(taxable);
     if ($('cpTotGrand')) $('cpTotGrand').textContent = money(t.totalGrand);
     if ($('cpTotAdv')) $('cpTotAdv').textContent = money(t.totalAdvances != null ? t.totalAdvances : t.advances);
-    if ($('cpTotBal')) $('cpTotBal').textContent = money(t.balance);
+    if ($('cpTotBal')) $('cpTotBal').textContent = money(t.balanceWithGst != null ? t.balanceWithGst : t.balance);
     renderAdvances(led.advances || []);
     if (sel && (led.projects||[]).length) {
-      sel.innerHTML = '<option value="">— any —</option>' + (led.projects||[]).map(q =>
+      sel.innerHTML = '<option value="">— Any (all quotes) —</option>' + (led.projects||[]).map(q =>
         `<option value="${esc(q.projectId)}" data-ver="${q.version||1}" data-qid="${esc(q.quotationId||'')}">${esc(q.projectId)} · ${esc(q.name||'')} · v${q.version||1}${q.quotationId?(' · '+esc(q.quotationId)):''}</option>`
       ).join('');
     }
@@ -10132,7 +10132,7 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
         paidAt: ($('cpAdvDate') && $('cpAdvDate').value) || null,
         reference: ($('cpAdvRef') && $('cpAdvRef').value) || '',
         projectId: (sel && sel.value) || null,
-        quoteId: (opt && opt.dataset && opt.dataset.qid) || null,
+        quoteId: (sel && sel.value) ? ((opt && opt.dataset && opt.dataset.qid) || null) : 'any',
         quoteVersion: (opt && opt.dataset && opt.dataset.ver) ? +opt.dataset.ver : null,
         customerName: name,
       },
@@ -10203,10 +10203,11 @@ function renderQuotePackBlock(q, pack) {
 }
 async function renderCustomerQuotes(quotes) {
   if (!quotes.length) { $('cpQuotes').innerHTML = '<p class="muted">No quotes yet for this customer</p>'; return; }
-  const billed = quotes.reduce((s,q) => {
-    // Prefer latest live row total for display roll-up note (versions listed separately).
-    return s + (q.grandTotal != null ? +q.grandTotal : 0);
-  }, 0);
+    const billed = quotes.reduce((s,q) => {
+      const g = (q.totalGrand != null && q.totalGrand !== '') ? +q.totalGrand
+        : (q.grandTotal != null ? +q.grandTotal : 0);
+      return s + (Number.isFinite(g) ? g : 0);
+    }, 0);
   const gst = state.companyGst || savedCompanyGst() || '';
   const packs = {};
   await Promise.all((quotes||[]).filter(q => isQuoteApprovedStatus(q.status) && q.projectId).map(async q => {
@@ -10214,7 +10215,7 @@ async function renderCustomerQuotes(quotes) {
       packs[q.projectId] = await api('/api/projects/'+q.projectId+'/pack'+(gst?('?gst='+encodeURIComponent(gst)):''));
     } catch(_) { packs[q.projectId] = {updates:[], documents:[], photos:[]}; }
   }));
-  $('cpQuotes').innerHTML = `<p class="muted" style="font-size:.78rem;margin:0 0 .5rem">All quote versions listed. Live row total: <strong>${money(billed)}</strong> — year turnover / billed uses <strong>Approved</strong> quotes only (latest per quotation number).</p>` + quotes.map(q => {
+  $('cpQuotes').innerHTML = `<p class="muted" style="font-size:.78rem;margin:0 0 .5rem">All quotes listed. Grand total of these quotes: <strong>${money(billed)}</strong> — dashboard year turnover uses <strong>Approved</strong> projects only.</p>` + quotes.map(q => {
     const versions = (q.versions||[]).map(v =>
       `<span class="chip">v${v.version} ${v.grandTotal!=null?money(v.grandTotal):''} <a href="${API_BASE}/api/projects/${q.projectId}/customer-pdf" target="_blank" title="Print current">🖨</a></span>`
     ).join(' ');
@@ -10224,7 +10225,7 @@ async function renderCustomerQuotes(quotes) {
       <div class="row" style="justify-content:space-between;align-items:center">
         <div>
           <strong>${esc(q.name||q.projectId)}</strong>
-          <div class="muted" style="font-size:.74rem">${q.projectId} · ${esc(q.quotationId||'—')} · v${q.version||1} · ${(q.status||'')} · ${money(q.grandTotal)}</div>
+          <div class="muted" style="font-size:.74rem">${q.projectId} · ${esc(q.quotationId||'—')} · v${q.version||1} · ${(q.status||'')} · ${money(q.totalGrand != null ? q.totalGrand : q.grandTotal)}</div>
           <div class="muted" style="font-size:.72rem">Created ${fmtDate(q.createdAt)}${q.updatedAt&&q.updatedAt!==q.createdAt?(' · Updated '+fmtDate(q.updatedAt)):''}</div>
         </div>
         <div class="actions-inline">

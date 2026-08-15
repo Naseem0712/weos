@@ -34,16 +34,12 @@ RUNNING_STATUSES = frozenset(
     {"active", "draft", "confirmed", "accepted", "finalized", "ordered", "order", "won"}
 )
 
-TOTALS_BASIS = "latest_per_quotation_number"
+TOTALS_BASIS = "all_quotes_grand_total"
 DEFAULT_GST_PERCENT = 18.0
 TOTALS_NOTE = (
-    "Taxable / billed = sum of latest quote commercial totals per quotation number "
-    "for Approved (or confirmed/won) quotes only — drafts, testing, rejected and cancelled "
-    "quotes are excluded. Versions are retained as history. "
-    "With GST = taxable + GST@18% (same split as customer quote PDF). "
-    "Billed / balance use taxable so advances match quote line totals; "
-    "balanceWithGst = totalGrand − advances (refunds are negative advances). "
-    "Year totals use the current calendar year of the live approved quote."
+    "Grand total = every live quote on this customer (with GST), not one quote only. "
+    "Year turnover = all Approved projects this calendar year. "
+    "Balance = grand total − advances. Any advance reduces this customer’s full balance."
 )
 REFUND_ENTRY_TYPES = frozenset({"refund", "reversal", "return"})
 
@@ -140,6 +136,13 @@ def _slug(name: str) -> str:
     return s or "customer"
 
 
+ANY_QUOTE_IDS = frozenset({"any", "all", "*", "customer"})
+
+
+def is_any_quote_id(quote_id: Any) -> bool:
+    return str(quote_id or "").strip().lower() in ANY_QUOTE_IDS
+
+
 def customer_key(customer: str) -> str:
     return _slug(customer)
 
@@ -217,6 +220,53 @@ def list_advances_for_projects(project_ids: list[str] | tuple[str, ...] | None) 
             .all()
         )
         return [r.to_dict() for r in rows]
+
+
+def list_advances_for_account(
+    *,
+    names: list[str] | tuple[str, ...] | None = None,
+    project_ids: list[str] | tuple[str, ...] | None = None,
+) -> list[dict[str, Any]]:
+    """All advances that belong to this customer account.
+
+    Includes project-tagged rows plus untagged / Any advances under any name
+    spelling used on those jobs (ADITYA JI vs Aditya ji).
+    """
+    by_id: dict[int, dict[str, Any]] = {}
+    pids = [str(x).strip() for x in (project_ids or []) if str(x).strip()]
+    for row in list_advances_for_projects(pids):
+        if row.get("id") is not None:
+            by_id[int(row["id"])] = row
+    keys = {customer_key(n) for n in (names or []) if str(n or "").strip()}
+    if not keys:
+        return list(by_id.values())
+    try:
+        _ensure_ready()
+    except RuntimeError:
+        return list(by_id.values())
+    from sqlalchemy import select
+
+    from WEOS.db.models import CustomerAdvance
+
+    pid_set = set(pids)
+    with session_scope() as s:
+        rows = (
+            s.execute(
+                select(CustomerAdvance)
+                .where(CustomerAdvance.customer_key.in_(list(keys)))
+                .order_by(CustomerAdvance.paid_at.asc(), CustomerAdvance.id.asc())
+            )
+            .scalars()
+            .all()
+        )
+        for r in rows:
+            data = r.to_dict()
+            pid = str(data.get("projectId") or "").strip()
+            if pid and pid not in pid_set and not is_any_quote_id(data.get("quoteId")):
+                continue
+            if data.get("id") is not None:
+                by_id[int(data["id"])] = data
+    return list(by_id.values())
 
 
 def list_advances_for_quote_ids(quote_ids: list[str] | tuple[str, ...] | None) -> list[dict[str, Any]]:
@@ -349,6 +399,24 @@ def _latest_per_quotation(quotes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(best.values())
 
 
+def _quote_parts(q: Mapping[str, Any]) -> dict[str, float]:
+    grand = _money(q.get("totalGrand"))
+    taxable = _money(q.get("totalTaxable") if q.get("totalTaxable") is not None else q.get("grandTotal"))
+    gst_amt = _money(q.get("totalGst"))
+    if grand > 0:
+        if taxable <= 0:
+            taxable = grand
+        if gst_amt <= 0 and grand > taxable:
+            gst_amt = round(grand - taxable, 2)
+        return {"totalTaxable": round(taxable, 2), "totalGst": round(gst_amt, 2), "totalGrand": round(grand, 2)}
+    return quote_money_parts(taxable)
+
+
+def _status_live(status: Any) -> bool:
+    st = str(status or "draft").strip().lower() or "draft"
+    return st not in {"rejected", "cancelled", "canceled", "archived", "unused"}
+
+
 def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, Any]:
     """Full account view: profile, projects, advances, totals, balance."""
     from WEOS.factory.customer_store import customer_quotes, load_customer_profile
@@ -360,7 +428,7 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
     account = customer_quotes(cust, company_gst=company_gst)
     profile = account.get("profile") or load_customer_profile(cust)
     quotes = list(account.get("quotes") or [])
-    live = _latest_per_quotation(quotes)
+    live = [q for q in quotes if _status_live(q.get("status"))]
     billed_live = [q for q in live if status_counts_toward_turnover(q.get("status"))]
 
     projects = []
@@ -372,12 +440,13 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
     year_grand = 0.0
     calendar_year = datetime.now(timezone.utc).year
     by_pid: dict[str, dict[str, Any]] = {}
-    for q in billed_live:
-        amt = _money(q.get("grandTotal"))
-        parts = quote_money_parts(amt)
+    for q in live:
+        parts = _quote_parts(q)
         total_taxable += parts["totalTaxable"]
         total_gst += parts["totalGst"]
         total_grand += parts["totalGrand"]
+    for q in billed_live:
+        parts = _quote_parts(q)
         ysrc = str(q.get("updatedAt") or q.get("createdAt") or "")
         try:
             y = int(ysrc[:4]) if len(ysrc) >= 4 else 0
@@ -388,9 +457,9 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
             year_gst += parts["totalGst"]
             year_grand += parts["totalGrand"]
     for q in live:
-        amt = _money(q.get("grandTotal"))
-        parts = quote_money_parts(amt)
+        parts = _quote_parts(q)
         counts = status_counts_toward_turnover(q.get("status"))
+        amt = _money(q.get("grandTotal"))
         row = {
             "projectId": q.get("projectId"),
             "name": q.get("name"),
@@ -444,7 +513,14 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
 
     advances: list[dict[str, Any]] = []
     try:
-        advances = list_advances(cust)
+        names = [cust]
+        for q in quotes:
+            n = str(q.get("customer") or "").strip()
+            if n:
+                names.append(n)
+        pids = [str(q.get("projectId") or "").strip() for q in quotes if q.get("projectId")]
+        advances = list_advances_for_account(names=names, project_ids=pids)
+        advances.sort(key=lambda a: (str(a.get("paidAt") or ""), int(a.get("id") or 0)), reverse=True)
     except RuntimeError:
         advances = []
     except Exception:
@@ -489,14 +565,14 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
     year_taxable = round(year_taxable, 2)
     year_gst = round(year_gst, 2)
     year_grand = round(year_grand, 2)
-    # Billed / balance stay on taxable (commercial) so advances match quote line totals.
-    balance = round(total_taxable - total_advances, 2)
+    # Balance is GST-inclusive grand of all quotes minus advances (Any or against a quote).
     balance_with_gst = round(total_grand - total_advances, 2)
+    balance = balance_with_gst
     as_of = datetime.now(timezone.utc).isoformat()
 
     totals = {
-        "billed": total_taxable,
-        "value": total_taxable,
+        "billed": total_grand,
+        "value": total_grand,
         "totalTaxable": total_taxable,
         "totalGst": total_gst,
         "totalGrand": total_grand,

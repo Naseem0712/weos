@@ -27,12 +27,9 @@ _log = logging.getLogger("weos.company_workspace")
 
 # Documented ledger / account total rule (also returned in API payloads):
 TOTALS_RULE = (
-    "Account taxable / billed = sum of latest quote commercial totals per quotation number "
-    "for Approved (or confirmed/won) quotes only. Drafts, testing quotes, rejected and cancelled "
-    "quotes do not count toward turnover. Each version is retained as history. "
-    "With GST = taxable + GST@18% (customer quote PDF parity). "
-    "Balance = taxable − advances (refunds are negative advances); "
-    "balanceWithGst = totalGrand − advances."
+    "Grand total = all live quotes on a customer (with GST). "
+    "Year turnover = every Approved project this calendar year. "
+    "Balance = grand total − advances. Any advance reduces that customer’s full balance."
 )
 
 
@@ -111,6 +108,7 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
     year_gst = 0.0
     year_grand = 0.0
     calendar_year = datetime.now(timezone.utc).year
+    seen_pids: set[str] = set()
 
     for c in customers_raw:
         name = str(c.get("name") or "").strip()
@@ -141,6 +139,10 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
                 "projects": quotes,
             }
         t = led.get("totals") or {}
+        pids = [str(p.get("projectId") or "") for p in (led.get("projects") or quotes) if p.get("projectId")]
+        already = bool(pids) and all(pid in seen_pids for pid in pids)
+        for pid in pids:
+            seen_pids.add(pid)
         taxable = float(t.get("totalTaxable") if t.get("totalTaxable") is not None else t.get("billed") or 0)
         gst_amt = float(t.get("totalGst") or 0)
         grand = float(t.get("totalGrand") or 0)
@@ -151,15 +153,16 @@ def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
         adv = float(t.get("advances") or t.get("totalAdvances") or 0)
         bal = float(t.get("balance") or 0)
         bal_gst = float(t.get("balanceWithGst") if t.get("balanceWithGst") is not None else (grand - adv))
-        total_taxable += taxable
-        total_gst += gst_amt
-        total_grand += grand
-        total_advances += adv
-        total_balance += bal
-        total_balance_gst += bal_gst
-        year_taxable += float(t.get("yearTaxable") or 0)
-        year_gst += float(t.get("yearGst") or 0)
-        year_grand += float(t.get("yearGrand") or 0)
+        if not already:
+            total_taxable += taxable
+            total_gst += gst_amt
+            total_grand += grand
+            total_advances += adv
+            total_balance += bal
+            total_balance_gst += bal_gst
+            year_taxable += float(t.get("yearTaxable") or 0)
+            year_gst += float(t.get("yearGst") or 0)
+            year_grand += float(t.get("yearGrand") or 0)
         customer_rows.append(
             {
                 "name": name,

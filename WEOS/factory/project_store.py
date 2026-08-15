@@ -810,11 +810,7 @@ def empty_project(*, name: str = "Untitled Project", customer: str = "") -> dict
 
 
 def dashboard_stats() -> dict[str, Any]:
-    from WEOS.factory.ledger_store import (
-        _latest_per_quotation,
-        quote_money_parts,
-        status_counts_toward_turnover,
-    )
+    from WEOS.factory.ledger_store import status_counts_toward_turnover
 
     projects = list_projects(include_archived=False)
     archived = list_projects(status="archived", include_archived=True)
@@ -826,16 +822,20 @@ def dashboard_stats() -> dict[str, Any]:
     todays = [p for p in projects if str(p.get("updatedAt", "")).startswith(today)]
     year_taxable = 0.0
     year_grand = 0.0
-    live = _latest_per_quotation(projects)
-    for p in live:
+    seen: set[str] = set()
+    for p in projects:
+        pid = str(p.get("projectId") or "").strip()
+        if pid and pid in seen:
+            continue
+        if pid:
+            seen.add(pid)
         if not status_counts_toward_turnover(p.get("status")):
             continue
         stamp = str(p.get("updatedAt") or p.get("createdAt") or "")
         if not stamp.startswith(str(year)):
             continue
-        parts = quote_money_parts(p.get("grandTotal") or p.get("totalTaxable") or 0)
-        year_taxable += parts["totalTaxable"]
-        year_grand += parts["totalGrand"]
+        year_taxable += float(p.get("totalTaxable") or 0)
+        year_grand += float(p.get("totalGrand") or 0)
     return {
         "activeProjects": len(active),
         "draftQuotations": len(drafts) + len([p for p in with_quote if p.get("status") == "draft"]),
@@ -847,5 +847,5 @@ def dashboard_stats() -> dict[str, Any]:
         "yearGrand": round(year_grand, 2),
         "yearGst": round(year_grand - year_taxable, 2),
         "year": year,
-        "yearBasis": "approved_latest_per_quotation_number",
+        "yearBasis": "all_approved_projects",
     }

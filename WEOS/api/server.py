@@ -2965,8 +2965,8 @@ def api_master_advance(project_id: str, body: AdvanceBody, gst: str | None = Que
     from WEOS.factory.master_ledger import build_master_ledger
 
     qid = str(body.quoteId or "").strip()
-    if not qid:
-        raise HTTPException(status_code=400, detail="Select which quote this advance is against")
+    from WEOS.factory.ledger_store import is_any_quote_id
+
     try:
         wrap = build_master_ledger(project_id=project_id, company_gst=gst)
     except FileNotFoundError as exc:
@@ -2975,15 +2975,18 @@ def api_master_advance(project_id: str, body: AdvanceBody, gst: str | None = Que
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     led = wrap.get("ledger") or {}
     quotes = led.get("quotes") or []
-    row = next((q for q in quotes if str(q.get("id")) == qid), None)
-    if row is None:
-        raise HTTPException(status_code=400, detail="Quote is not on this Master Ledger job")
+    any_quote = is_any_quote_id(qid)
+    if not qid:
+        raise HTTPException(status_code=400, detail="Select which quote this advance is against, or Any")
+    row = None if any_quote else next((q for q in quotes if str(q.get("id")) == qid), None)
+    if not any_quote and row is None:
+        raise HTTPException(status_code=400, detail="Quote is not on this customer ledger")
     customer = (led.get("customer") or body.customerName or "").strip()
     if not customer:
         raise HTTPException(status_code=400, detail="Customer name required")
     payload = body.model_dump(exclude_none=True)
-    payload["projectId"] = str(row.get("projectId") or project_id)
-    payload["quoteId"] = qid
+    payload["projectId"] = str((row or {}).get("projectId") or project_id)
+    payload["quoteId"] = "any" if any_quote else qid
     payload["customerName"] = customer
     try:
         created = add_advance(customer, payload)
@@ -2991,20 +2994,6 @@ def api_master_advance(project_id: str, body: AdvanceBody, gst: str | None = Que
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    pid = str(created.get("projectId") or payload.get("projectId") or "").strip()
-    entry_type = str(created.get("entryType") or "advance").strip().lower()
-    if pid and entry_type not in ("refund", "reversal", "return"):
-        try:
-            from WEOS.factory.ledger_store import CONFIRMED_STATUSES
-            from WEOS.factory.project_store import load_project, set_project_status
-
-            doc = load_project(pid)
-            st = str(doc.get("status") or "").strip().lower()
-            if st not in CONFIRMED_STATUSES and st not in {"rejected", "cancelled", "canceled"}:
-                set_project_status(pid, "approved")
-                created["projectStatus"] = "approved"
-        except Exception:
-            _log.debug("master advance approve skipped for %s", pid, exc_info=True)
     created["ledger"] = build_master_ledger(project_id=project_id, company_gst=gst).get("ledger")
     return created
 

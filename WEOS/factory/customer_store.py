@@ -413,12 +413,57 @@ def customer_quotes(customer: str, *, company_gst: str | None = None) -> dict[st
                 "lineCount": row.get("lineCount"),
                 "quotationId": row.get("quotationId"),
                 "grandTotal": row.get("grandTotal"),
+                "totalTaxable": row.get("totalTaxable"),
+                "totalGst": row.get("totalGst"),
+                "totalGrand": row.get("totalGrand"),
                 "companyGst": row.get("companyGst"),
                 "versions": versions,
                 "versionCount": len(versions) + 1,
             }
         )
     quotes.sort(key=lambda q: str(q.get("updatedAt") or ""), reverse=True)
+    # Same mobile on another job (different name spelling) still belongs on this account.
+    if quotes:
+        mobiles = {
+            re.sub(r"\D", "", str(q.get("customerMobile") or ""))
+            for q in quotes
+        }
+        mobiles.discard("")
+        have = {str(q.get("projectId") or "") for q in quotes}
+        if any(len(m) >= 7 for m in mobiles):
+            for row in rows:
+                pid = str(row.get("projectId") or "")
+                if not pid or pid in have:
+                    continue
+                mob = re.sub(r"\D", "", str(row.get("customerMobile") or ""))
+                if not mob or len(mob) < 7:
+                    continue
+                if not any(m in mob or mob in m for m in mobiles if len(m) >= 7):
+                    continue
+                versions = _project_versions(pid)
+                quotes.append(
+                    {
+                        "projectId": pid,
+                        "name": row.get("name"),
+                        "customer": row.get("customer"),
+                        "customerMobile": row.get("customerMobile"),
+                        "status": row.get("status"),
+                        "version": row.get("version"),
+                        "createdAt": row.get("createdAt"),
+                        "updatedAt": row.get("updatedAt"),
+                        "lineCount": row.get("lineCount"),
+                        "quotationId": row.get("quotationId"),
+                        "grandTotal": row.get("grandTotal"),
+                        "totalTaxable": row.get("totalTaxable"),
+                        "totalGst": row.get("totalGst"),
+                        "totalGrand": row.get("totalGrand"),
+                        "companyGst": row.get("companyGst"),
+                        "versions": versions,
+                        "versionCount": len(versions) + 1,
+                    }
+                )
+                have.add(pid)
+            quotes.sort(key=lambda q: str(q.get("updatedAt") or ""), reverse=True)
     return {
         "customer": cust,
         "profile": profile,
