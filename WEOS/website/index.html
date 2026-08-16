@@ -241,7 +241,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
       <div class="panel" id="dashLocked">
         <strong>Company login required</strong>
         <p class="muted" style="margin:.35rem 0 .7rem">Log in with GSTIN / name / mobile and PIN. After logout this dashboard stays empty until you log in again.</p>
-        <button class="btn" id="dashGoLogin" type="button">Go to Company login</button>
+        <button class="btn" id="dashGoLogin" type="button" onclick="goCompanyLogin(event)">Go to Company login</button>
       </div>
       <div id="dashLive" class="hidden">
         <div class="grid cards" id="dashCards"></div>
@@ -2194,7 +2194,29 @@ const state = {
   quoteDiscount: { mode: 'off', percent: 0, amount: 0, note: '' },
 };
 const $ = (id) => document.getElementById(id);
-const toast = (m) => { const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2200); };
+const toast = (m) => {
+  const t = $('toast');
+  if (!t) { console.warn(m); return; }
+  t.textContent = m;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+};
+function goCompanyLogin(ev) {
+  if (ev && ev.preventDefault) ev.preventDefault();
+  const company = document.getElementById('view-company');
+  const dash = document.getElementById('view-dashboard');
+  if (dash) dash.classList.add('hidden');
+  if (company) company.classList.remove('hidden');
+  document.querySelectorAll('.navbtn').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-view') === 'company');
+  });
+  const title = document.getElementById('title');
+  const sub = document.getElementById('subtitle');
+  if (title) title.textContent = 'Company Setup';
+  if (sub) sub.textContent = 'GST workspace login — customers, projects, quotes & ledgers';
+  if (typeof setView === 'function') setView('company');
+}
+window.goCompanyLogin = goCompanyLogin;
 
 /** Persist active seller GST so refresh / minimize does not log out the workspace. */
 const WEOS_GST_KEY = 'weos.activeCompanyGst';
@@ -2387,8 +2409,11 @@ async function restoreCompanyWorkspace() {
 /** Same-origin when UI is served by WEOS; otherwise hit local API (file:// / Live Server). */
 const API_BASE = (() => {
   if (location.protocol === 'file:') return 'http://127.0.0.1:8000';
-  if (['5500','5501','5173','3000','8080'].includes(location.port)) return 'http://127.0.0.1:8000';
-  return '';
+  const p = String(location.port || '');
+  // Same origin when this page is served by WEOS itself (prod HTTPS or :8000).
+  if (!p || p === '80' || p === '443' || p === '8000') return '';
+  // Live Server / Cursor preview / Vite — API is the local WEOS process.
+  return 'http://127.0.0.1:8000';
 })();
 
 function withGstQuery(qs) {
@@ -2483,6 +2508,7 @@ function setView(v) {
   if (v==='templates') initTemplates();
   if (v==='engines') initEngines();
 }
+window.setView = setView;
 
 document.querySelectorAll('.navbtn').forEach(b => b.onclick = () => setView(b.dataset.view));
 $('burger').onclick = () => $('side').classList.toggle('open');
@@ -2840,7 +2866,6 @@ async function loadProjects() {
     $('projBody').innerHTML += `<tr><td colspan="8"><button class="btn ghost sm" type="button" id="projMore">Load more (${data.total||0} total)</button></td></tr>`;
     const more = $('projMore');
     if (more) more.onclick = () => loadProjectsMore(data.offset + (data.projects||[]).length);
-  }
   }
   $('projBody').querySelectorAll('[data-o]').forEach(b => b.onclick = async () => { await openProject(b.dataset.o); setView('cart'); });
   $('projBody').querySelectorAll('[data-outside]').forEach(b => b.onclick = async () => { await goAddOutsideQuote(b.dataset.outside); });
@@ -11481,16 +11506,22 @@ async function pingEngine(){
     pill.style.color = '#fff';
   }
   try {
-    const h = await api('/api/admin/health', { timeoutMs: 8000 });
+    let h = null;
+    try {
+      h = await api('/api/admin/health', { timeoutMs: 8000 });
+    } catch (_) {
+      h = await api('/health', { timeoutMs: 8000 });
+    }
     const checks = h.checks || {};
     const db = checks.database || {};
     const dbOk = ['READY','CONNECTED','ok'].includes(db.status);
     const backend = db.backend || db.dialect || '';
-    if (h.status === 'ok' || dbOk) {
+    const ok = h.status === 'ok' || h.ok === true || dbOk;
+    if (ok) {
       pill.textContent = '● Engine connected' + (backend ? ` (${backend})` : '');
       pill.style.background = '#166534';
       pill.style.color = '#fff';
-      pill.title = 'Backend healthy' + (backend ? ` · ${backend}` : '') + (h.status !== 'ok' ? ' · some subsystems degraded' : '') + ' — click to recheck';
+      pill.title = 'Backend healthy' + (backend ? ` · ${backend}` : '') + ' — click to recheck';
     } else {
       pill.textContent = '● Backend offline · Retry';
       pill.style.background = '#b91c1c';
