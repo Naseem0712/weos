@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 from io import BytesIO
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from openpyxl import Workbook
 
@@ -141,6 +144,56 @@ def main() -> None:
     advs = list_advances_for_account(names=["Demo ji"])
     _ok(len(advs) >= 2, f"ledger advances {len(advs)}")
     _ok(all(a.get("id") for a in advs), "each advance has id so slip can be generated later")
+
+    again = commit_imported_project(
+        pack,
+        customer="Demo ji",
+        customer_mobile="9999999999",
+        project_id=saved["project"]["projectId"],
+        import_advances=True,
+    )
+    _ok(again.get("skippedCount") == 2, f"re-import skips both stages got skipped={again.get('skippedCount')} added={again.get('addedCount')} {again}")
+    _ok(again.get("addedCount") == 0, f"re-import adds none got {again.get('addedCount')}")
+    _ok(again.get("quoteCount") == 2, f"re-import must not double quotes got {again.get('quoteCount')}")
+    _ok(again.get("advanceSkipped") == 2, f"re-import skips advances got {again.get('advanceSkipped')} added={again.get('advanceCount')}")
+    doc2 = load_project(saved["project"]["projectId"])
+    _ok(len(doc2.get("packageQuotes") or []) == 2, f"still 2 quotes after re-import got {len(doc2.get('packageQuotes') or [])}")
+
+    extra = {
+        "quotes": (pack.get("quotes") or [])
+        + [
+            {
+                "note": "ACP cladding extra sheet",
+                "sheetName": "ACP - extra",
+                "gstMode": "exclude",
+                "gstPercent": 18,
+                "items": [{"category": "other", "amount": 50000, "unit": "sft", "note": "ACP new sheet"}],
+            }
+        ],
+        "advances": [],
+        "sources": ["demo-extra.xlsx"],
+        "customerHint": {"name": "Demo ji"},
+    }
+    third = commit_imported_project(
+        extra,
+        customer="Demo ji",
+        customer_mobile="9999999999",
+        project_id=saved["project"]["projectId"],
+        import_advances=False,
+    )
+    _ok(third.get("addedCount") == 1, f"new sheet added got added={third.get('addedCount')} skipped={third.get('skippedCount')}")
+    _ok(third.get("skippedCount") == 2, f"old sheets skipped got {third.get('skippedCount')}")
+    _ok(third.get("quoteCount") == 3, f"3 quotes after new sheet got {third.get('quoteCount')}")
+
+    twins = [
+        {"id": "pq_dup_a", "note": "29MM luxury", "sheetName": "29MM luxury", "items": [{"category": "window", "amount": 46000, "note": "SR sliding"}]},
+        {"id": "pq_dup_b", "note": "29MM luxury", "sheetName": "29MM luxury", "items": [{"category": "window", "amount": 46000, "note": "SR sliding"}]},
+        {"id": "pq_ok", "note": "Grills", "sheetName": "Grills", "items": [{"category": "grill", "amount": 12000, "note": "GF grill"}]},
+    ]
+    from WEOS.factory.package_quote import collapse_duplicate_package_quotes, normalize_package_quotes
+
+    collapsed = collapse_duplicate_package_quotes(normalize_package_quotes(twins))
+    _ok(len(collapsed) == 2, f"collapse duplicate stages to 2 got {len(collapsed)}")
 
     print("ALL OK")
 

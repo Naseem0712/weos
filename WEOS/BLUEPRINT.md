@@ -16,7 +16,7 @@ It is **not** only a CAD drawer. The product is:
 2. **Projects / quotes** with versions, PDF, QR scan.
 3. **Money:** taxable / GST / grand, advances, balance, FY turnover.
 4. **Manufacture:** BOM, glass, hardware, cut-list, weight, factory PDF.
-5. **Learning / memory** (formulas, suggestions) — separate from live quotes.
+5. **Learning / memory** (formulas, suggestions) — separate from live quotes. This is a **foundation**, not a live LLM agent. See `WEOS/AI_BLUEPRINT.md`.
 
 **One company = one GSTIN.** Login identity is GSTIN **or** registered name **or** mobile, plus PIN. Same customer mobile inside one company is one client.
 
@@ -448,6 +448,7 @@ python WEOS/_smoke_company_ledger.py
 | `ARCHITECTURE.md` | Older V2 API/product-library overview |
 | `DEPLOY.md` | Railway / `DATABASE_URL` |
 | `WEOS/BLUEPRINT.md` | **This file** — company isolation, FY, capacity, tests |
+| `WEOS/AI_BLUEPRINT.md` | Intelligence layer: AI orchestrates, engines calculate; current vs target |
 
 ---
 

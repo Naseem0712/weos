@@ -7,8 +7,10 @@ GST mode (include / exclude / off). Project value is the sum of quote
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 MAX_QUOTES = 40
 MAX_ITEMS = 120
@@ -74,6 +76,63 @@ def _slug_id(value: Any, prefix: str) -> str:
     import secrets
 
     return prefix + secrets.token_hex(4)
+
+
+def _norm_key(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+
+def quote_stage_key(raw: Mapping[str, Any] | None) -> str:
+    """Stable sheet/stage identity — not the shared PI / quote number."""
+    if not isinstance(raw, Mapping):
+        return ""
+    sheet = _norm_key(raw.get("sheetName") or raw.get("sourceSheet"))
+    sheet = re.sub(r"\s*-\s*35\s*mm.*$", "", sheet).strip(" -")
+    note = _norm_key(raw.get("note") or raw.get("title") or raw.get("stageKey"))
+    note = re.sub(r"\s*-\s*35\s*mm.*$", "", note).strip(" -")
+    key = sheet or note
+    if key and key not in {"to", "-", "—"}:
+        return key[:80]
+    notes = [_norm_key(it.get("note")) for it in (raw.get("items") or [])[:4] if isinstance(it, Mapping)]
+    return "|".join(n for n in notes if n)[:80]
+
+
+def quote_fingerprint(raw: Mapping[str, Any] | None) -> str:
+    """Content hash of a package quote (items + totals + stage). Same Excel twice → same hash."""
+    if not isinstance(raw, Mapping):
+        return ""
+    rows: list[list[Any]] = []
+    for it in raw.get("items") or []:
+        if not isinstance(it, Mapping):
+            continue
+        rows.append(
+            [
+                _norm_key(it.get("category")),
+                round(float(it.get("qty") or 0), 2),
+                _norm_key(it.get("size")),
+                _norm_key(it.get("unit")),
+                round(float(it.get("rate") or 0), 2),
+                round(float(it.get("amount") or 0), 2),
+                _norm_key(it.get("note")),
+            ]
+        )
+    rows.sort(key=lambda r: (r[6], r[5], r[0]))
+    payload = {
+        "stage": quote_stage_key(raw),
+        "items": rows,
+        "gst": round(float(raw.get("gstAmount") or 0), 2),
+        "value": round(float(raw.get("projectValue") or raw.get("totalGrand") or 0), 2),
+    }
+    blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:20]
+
+
+def _copy_quote_identity(dst: dict[str, Any], src: Mapping[str, Any]) -> None:
+    for key in ("sheetName", "sourceFile", "sourceFileSha256", "sourceSheet"):
+        if src.get(key) and not dst.get(key):
+            dst[key] = src.get(key)
+    dst["stageKey"] = quote_stage_key(dst) or quote_stage_key(src)
+    dst["importFingerprint"] = quote_fingerprint(dst)
 
 
 def attachment_kind(filename: Any, hint: Any = None) -> str:
@@ -399,7 +458,7 @@ def normalize_package_quote(
         attachment_key=str(raw.get("attachmentKey") or "").strip() or None,
     )
     first = next((a for a in atts if a.get("kind") == "quote_pdf"), atts[0] if atts else None)
-    return {
+    out = {
         "id": qid[:24],
         "index": index,
         "quotationId": quote_no,
@@ -410,6 +469,130 @@ def normalize_package_quote(
         "attachmentKey": (first or {}).get("key") or (str(raw.get("attachmentKey") or "").strip() or None),
         **split,
     }
+    if raw.get("sheetName") or raw.get("sourceSheet"):
+        out["sheetName"] = str(raw.get("sheetName") or raw.get("sourceSheet") or "").strip() or None
+    if raw.get("sourceFile"):
+        out["sourceFile"] = str(raw.get("sourceFile")).strip() or None
+    if raw.get("sourceFileSha256"):
+        out["sourceFileSha256"] = str(raw.get("sourceFileSha256")).strip() or None
+    _copy_quote_identity(out, raw)
+    return out
+
+
+def collapse_duplicate_package_quotes(quotes: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
+    """Drop exact duplicate stages (same fingerprint) and same-sheet copies.
+
+    Shared PI / quote numbers (e.g. 24/25AB291 on every sheet) are ignored —
+    identity is the sheet/stage plus line items, not the quote number.
+    """
+    if not quotes:
+        return []
+    kept: list[dict[str, Any]] = []
+    seen_fp: set[str] = set()
+    by_stage: dict[str, int] = {}
+    for row in quotes:
+        q = dict(row) if isinstance(row, Mapping) else None
+        if not q:
+            continue
+        fp = str(q.get("importFingerprint") or quote_fingerprint(q) or "")
+        sk = str(q.get("stageKey") or quote_stage_key(q) or "")
+        if fp and fp in seen_fp:
+            continue
+        if sk and sk in by_stage:
+            prev = kept[by_stage[sk]]
+            prev_n = len(prev.get("items") or [])
+            new_n = len(q.get("items") or [])
+            prev_val = _money(prev.get("projectValue") or prev.get("totalGrand"))
+            new_val = _money(q.get("projectValue") or q.get("totalGrand"))
+            # Same stage already on the job: keep the richer copy, never both.
+            if new_n > prev_n or (new_n == prev_n and abs(new_val - prev_val) > 0.05 and new_val > 0):
+                atts = list(prev.get("attachments") or [])
+                qid = prev.get("id")
+                kept[by_stage[sk]] = q
+                kept[by_stage[sk]]["id"] = qid
+                if atts and not q.get("attachments"):
+                    kept[by_stage[sk]]["attachments"] = atts
+            continue
+        if fp:
+            seen_fp.add(fp)
+        if sk:
+            by_stage[sk] = len(kept)
+        kept.append(q)
+    for i, q in enumerate(kept):
+        q["index"] = i
+    return kept[:MAX_QUOTES]
+
+
+def merge_package_quotes(
+    existing: Sequence[Mapping[str, Any]] | None,
+    incoming: Sequence[Mapping[str, Any]] | None,
+    *,
+    project_id: str | None = None,
+) -> dict[str, Any]:
+    """Append only new sheets; update changed sheets; skip exact duplicates."""
+    base = collapse_duplicate_package_quotes(
+        normalize_package_quotes(list(existing or []), project_id=project_id)
+        if existing
+        else []
+    )
+    added: list[str] = []
+    skipped: list[str] = []
+    updated: list[str] = []
+    by_fp = {str(q.get("importFingerprint") or quote_fingerprint(q)): q for q in base}
+    by_stage = {str(q.get("stageKey") or quote_stage_key(q)): q for q in base if quote_stage_key(q)}
+    for row in incoming or []:
+        inc = normalize_package_quote(
+            row if isinstance(row, Mapping) else None,
+            index=len(base),
+            project_id=project_id,
+        )
+        if not inc:
+            continue
+        fp = str(inc.get("importFingerprint") or quote_fingerprint(inc))
+        sk = str(inc.get("stageKey") or quote_stage_key(inc))
+        label = inc.get("note") or inc.get("sheetName") or inc.get("quotationId") or inc["id"]
+        if fp and fp in by_fp:
+            skipped.append(str(label))
+            continue
+        hit = by_stage.get(sk) if sk else None
+        if hit is not None:
+            keep_id = hit.get("id")
+            keep_atts = list(hit.get("attachments") or [])
+            hit.clear()
+            hit.update(inc)
+            hit["id"] = keep_id
+            if keep_atts and not hit.get("attachments"):
+                hit["attachments"] = keep_atts
+            elif keep_atts:
+                seen = {a.get("id") for a in (hit.get("attachments") or []) if isinstance(a, dict)}
+                extra = [a for a in keep_atts if isinstance(a, dict) and a.get("id") not in seen]
+                hit["attachments"] = list(hit.get("attachments") or []) + extra
+            hit["importFingerprint"] = quote_fingerprint(hit)
+            hit["stageKey"] = quote_stage_key(hit)
+            by_fp[str(hit.get("importFingerprint"))] = hit
+            updated.append(str(label))
+            continue
+        if len(base) >= MAX_QUOTES:
+            skipped.append(f"{label} (max {MAX_QUOTES} quotes)")
+            continue
+        base.append(inc)
+        if fp:
+            by_fp[fp] = inc
+        if sk:
+            by_stage[sk] = inc
+        added.append(str(label))
+    for i, q in enumerate(base):
+        q["index"] = i
+    return {
+        "quotes": base,
+        "added": added,
+        "skipped": skipped,
+        "updated": updated,
+        "addedCount": len(added),
+        "skippedCount": len(skipped),
+        "updatedCount": len(updated),
+        "quoteCount": len(base),
+    }
 
 
 def normalize_package_quotes(raw: Any, *, project_id: str | None = None) -> list[dict[str, Any]]:
@@ -417,7 +600,7 @@ def normalize_package_quotes(raw: Any, *, project_id: str | None = None) -> list
         return []
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for i, row in enumerate(raw[:MAX_QUOTES]):
+    for i, row in enumerate(raw[: MAX_QUOTES * 3]):
         q = normalize_package_quote(
             row if isinstance(row, Mapping) else None,
             index=i,
@@ -429,9 +612,7 @@ def normalize_package_quotes(raw: Any, *, project_id: str | None = None) -> list
             q["id"] = _slug_id(None, "pq")
         seen.add(q["id"])
         out.append(q)
-    for i, q in enumerate(out):
-        q["index"] = i
-    return out
+    return collapse_duplicate_package_quotes(out)
 
 
 def package_money_for_doc(doc: Mapping[str, Any] | None) -> dict[str, Any]:

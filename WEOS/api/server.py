@@ -1708,13 +1708,18 @@ def api_append_package_quote(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     quotes = list(doc.get("packageQuotes") or [])
-    if len(quotes) >= MAX_QUOTES:
-        raise HTTPException(status_code=400, detail=f"Maximum {MAX_QUOTES} outside quotes on one project")
     incoming = body.model_dump(exclude_none=True)
     q = normalize_package_quote(incoming, index=len(quotes), project_id=project_id)
     if not q:
         raise HTTPException(status_code=400, detail="Enter at least one item amount")
-    quotes.append(q)
+    from WEOS.factory.package_quote import merge_package_quotes
+
+    merged = merge_package_quotes(quotes, [q], project_id=project_id)
+    if merged.get("skippedCount") and not merged.get("addedCount") and not merged.get("updatedCount"):
+        raise HTTPException(status_code=409, detail="This outside quote is already on the project — not added again")
+    quotes = merged.get("quotes") or quotes
+    if len(quotes) > MAX_QUOTES:
+        raise HTTPException(status_code=400, detail=f"Maximum {MAX_QUOTES} outside quotes on one project")
     apply_package_fields(doc, {"packageQuotes": quotes, "masterJobId": doc.get("masterJobId") or project_id})
     saved = save_project(doc, action="package_quote_add")
     wrap: dict[str, Any] = {}
@@ -2577,7 +2582,7 @@ async def api_projects_import_pack(
     gst: str = Form(""),
 ) -> dict[str, Any]:
     """Preview or save a multi-stage Excel/PDF job as one project + account."""
-    from WEOS.factory.project_import import commit_imported_project, merge_previews, parse_upload
+    from WEOS.factory.project_import import commit_imported_project, merge_previews, parse_upload, plan_import_merge
 
     packs: list[dict[str, Any]] = []
     errors: list[str] = []
@@ -2599,6 +2604,20 @@ async def api_projects_import_pack(
         raise HTTPException(status_code=400, detail="; ".join(errors) or "Could not read the file")
     preview = merge_previews(*packs)
     preview["parseWarnings"] = errors
+    pid = (projectId or "").strip()
+    if pid:
+        from WEOS.factory.project_store import load_project
+
+        try:
+            existing_doc = load_project(pid)
+            preview["merge"] = plan_import_merge(
+                existing_doc.get("packageQuotes") or [],
+                preview.get("quotes") or [],
+                project_id=pid,
+            )
+            preview["merge"].pop("quotes", None)
+        except FileNotFoundError:
+            preview["merge"] = None
     do_commit = str(commit or "").strip().lower() in {"1", "true", "yes", "on"}
     if not do_commit:
         preview["ok"] = True
@@ -2624,11 +2643,21 @@ async def api_projects_import_pack(
     saved["preview"] = {
         "quoteCount": preview.get("quoteCount"),
         "advanceCount": preview.get("advanceCount"),
-        "projectValue": preview.get("projectValue"),
+        "projectValue": saved.get("projectValue") or preview.get("projectValue"),
         "advanceTotal": preview.get("advanceTotal"),
         "balance": preview.get("balance"),
         "stages": preview.get("stages"),
         "parseWarnings": errors,
+        "merge": {
+            "added": saved.get("added") or [],
+            "skipped": saved.get("skipped") or [],
+            "updated": saved.get("updated") or [],
+            "addedCount": saved.get("addedCount") or 0,
+            "skippedCount": saved.get("skippedCount") or 0,
+            "updatedCount": saved.get("updatedCount") or 0,
+            "quoteCountAfter": saved.get("quoteCount"),
+        },
+        "advanceSkipped": saved.get("advanceSkipped") or 0,
     }
     saved["committed"] = True
     return saved

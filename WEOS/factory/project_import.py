@@ -7,12 +7,13 @@ customer name / mobile / address; extracted lines stay editable after save.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
-from WEOS.factory.package_quote import normalize_package_quotes
+from WEOS.factory.package_quote import merge_package_quotes, normalize_package_quotes
 
 _log = logging.getLogger("weos.project_import")
 
@@ -511,7 +512,7 @@ def parse_excel_bytes(data: bytes, filename: str = "project.xlsx") -> dict[str, 
         pending = q
     if pending:
         quotes.append(pending)
-    return _pack(quotes, advances, customer, sources=[filename])
+    return _pack(quotes, advances, customer, sources=[filename], file_sha256=_file_sha256(data))
 
 
 def parse_pdf_bytes(data: bytes, filename: str = "project.pdf") -> dict[str, Any]:
@@ -576,7 +577,7 @@ def parse_pdf_bytes(data: bytes, filename: str = "project.pdf") -> dict[str, Any
         pending = q
     if pending:
         quotes.append(pending)
-    return _pack(quotes, advances, customer, sources=[filename])
+    return _pack(quotes, advances, customer, sources=[filename], file_sha256=_file_sha256(data))
 
 
 def _absorb_quote(pending: dict[str, Any], nxt: dict[str, Any]) -> None:
@@ -590,15 +591,22 @@ def _absorb_quote(pending: dict[str, Any], nxt: dict[str, Any]) -> None:
         pending["quotationId"] = nxt["quotationId"]
 
 
+def _file_sha256(data: bytes) -> str:
+    return hashlib.sha256(data or b"").hexdigest()
+
+
 def _pack(
     quotes: list[dict[str, Any]],
     advances: list[dict[str, Any]],
     customer: dict[str, str],
     *,
     sources: list[str],
+    file_sha256: str | None = None,
 ) -> dict[str, Any]:
-    norm = normalize_package_quotes(
-        [
+    src_name = (sources or [None])[0]
+    payload = []
+    for i, q in enumerate(quotes):
+        payload.append(
             {
                 "id": f"pq_imp_{i+1}",
                 "quotationId": q.get("quotationId") if str(q.get("quotationId") or "").strip() not in {"", "-", "—"} else None,
@@ -609,10 +617,12 @@ def _pack(
                 "projectValue": q.get("projectValue"),
                 "totalGrand": q.get("totalGrand"),
                 "items": q.get("items") or [],
+                "sheetName": q.get("sheetName"),
+                "sourceFile": q.get("sourceFile") or src_name,
+                "sourceFileSha256": q.get("sourceFileSha256") or file_sha256,
             }
-            for i, q in enumerate(quotes)
-        ]
-    )
+        )
+    norm = normalize_package_quotes(payload)
     adv_total = round(sum(_money(a.get("amount")) for a in advances), 2)
     value = round(sum(_money(q.get("projectValue") or q.get("totalGrand")) for q in norm), 2)
     return {
@@ -629,7 +639,17 @@ def _pack(
         "projectValue": value,
         "balance": round(value - adv_total, 2),
         "sources": sources,
-        "stages": [{"title": q.get("note") or q.get("quotationId"), "items": len(q.get("items") or []), "value": q.get("projectValue")} for q in norm],
+        "fileSha256": file_sha256,
+        "stages": [
+            {
+                "title": q.get("note") or q.get("sheetName") or q.get("quotationId"),
+                "sheetName": q.get("sheetName"),
+                "items": len(q.get("items") or []),
+                "value": q.get("projectValue"),
+                "fingerprint": q.get("importFingerprint"),
+            }
+            for q in norm
+        ],
     }
 
 
@@ -674,12 +694,16 @@ def merge_previews(*packs: Mapping[str, Any]) -> dict[str, Any]:
                 "projectValue": q.get("projectValue"),
                 "totalGrand": q.get("totalGrand"),
                 "items": q.get("items") or [],
+                "sheetName": q.get("sheetName"),
+                "sourceFile": q.get("sourceFile"),
+                "sourceFileSha256": q.get("sourceFileSha256"),
             }
             for q in quotes
         ],
         advances,
         customer,
         sources=sources,
+        file_sha256=next((str(p.get("fileSha256") or "") for p in preferred if p.get("fileSha256")), None) or None,
     )
 
 
@@ -690,6 +714,51 @@ def parse_upload(filename: str, data: bytes) -> dict[str, Any]:
     if name.endswith(".pdf"):
         return parse_pdf_bytes(data, filename)
     raise ValueError("Upload an Excel (.xlsx) or PDF of the project")
+
+
+def _advance_is_duplicate(existing: list[Mapping[str, Any]], incoming: Mapping[str, Any]) -> bool:
+    try:
+        amt = round(float(incoming.get("amount") or 0), 2)
+    except (TypeError, ValueError):
+        return False
+    paid = str(incoming.get("paidAt") or "")[:10]
+    purpose = re.sub(
+        r"\s+",
+        " ",
+        str(incoming.get("purpose") or incoming.get("reference") or incoming.get("note") or "").strip().lower(),
+    )
+    mode = str(incoming.get("paymentMode") or "").strip().lower()
+    for a in existing:
+        try:
+            if abs(float(a.get("amount") or 0) - amt) > 0.51:
+                continue
+        except (TypeError, ValueError):
+            continue
+        a_paid = str(a.get("paidAt") or a.get("paid_at") or "")[:10]
+        a_purp = re.sub(r"\s+", " ", str(a.get("reference") or a.get("note") or "").strip().lower())
+        a_mode = str(a.get("paymentMode") or a.get("payment_mode") or "").strip().lower()
+        if paid and a_paid and paid != a_paid:
+            continue
+        if purpose and a_purp and purpose != a_purp:
+            continue
+        if mode and a_mode and mode not in {a_mode, "other"} and a_mode not in {mode, "other"} and paid:
+            continue
+        return True
+    return False
+
+
+def plan_import_merge(existing_quotes: list[Any] | None, incoming_quotes: list[Any] | None, *, project_id: str | None = None) -> dict[str, Any]:
+    merged = merge_package_quotes(existing_quotes or [], incoming_quotes or [], project_id=project_id)
+    return {
+        "added": merged.get("added") or [],
+        "skipped": merged.get("skipped") or [],
+        "updated": merged.get("updated") or [],
+        "addedCount": merged.get("addedCount") or 0,
+        "skippedCount": merged.get("skippedCount") or 0,
+        "updatedCount": merged.get("updatedCount") or 0,
+        "quoteCountAfter": merged.get("quoteCount") or 0,
+        "quotes": merged.get("quotes") or [],
+    }
 
 
 def commit_imported_project(
@@ -707,7 +776,7 @@ def commit_imported_project(
 ) -> dict[str, Any]:
     """Save extracted stages onto a WEOS project and optional customer ledger."""
     from WEOS.factory.customer_store import save_customer_profile
-    from WEOS.factory.ledger_store import add_advance
+    from WEOS.factory.ledger_store import add_advance, list_advances_for_projects
     from WEOS.factory.project_store import empty_project, load_project, save_project
 
     name = (customer or (preview.get("customerHint") or {}).get("name") or "").strip()
@@ -726,22 +795,25 @@ def commit_imported_project(
     }
     save_customer_profile(name, {k: v for k, v in profile.items() if v})
 
+    existing: list[Any] = []
     if project_id:
         doc = load_project(str(project_id).strip())
         existing = list(doc.get("packageQuotes") or [])
-        quotes = existing + quotes
     else:
         doc = empty_project(name=project_name or f"{name} project", customer=name)
+    merged = merge_package_quotes(existing, quotes, project_id=str(doc.get("projectId") or project_id or "") or None)
+    if not merged.get("quotes") and not existing:
+        raise ValueError("No quote stages found in the file — check Excel/PDF and try again")
     doc["customer"] = name
     doc["customerMobile"] = (customer_mobile or "").strip() or doc.get("customerMobile")
     doc["customerAddress"] = (customer_address or profile.get("address") or "") or doc.get("customerAddress")
     doc["customerGst"] = (customer_gst or "").strip() or doc.get("customerGst")
     if company_gst:
         doc["companyGst"] = company_gst
-    first_qid = quotation_id or next((q.get("quotationId") for q in quotes if q.get("quotationId")), None)
+    first_qid = quotation_id or next((q.get("quotationId") for q in (merged.get("quotes") or quotes) if q.get("quotationId")), None)
     if first_qid and not doc.get("quotationId"):
         doc["quotationId"] = str(first_qid)
-    doc["packageQuotes"] = quotes
+    doc["packageQuotes"] = merged.get("quotes") or existing
     doc["quoteKind"] = "package" if not (doc.get("lines") or []) else "mixed"
     log = list(doc.get("revisionLog") or [])
     log.append(
@@ -749,20 +821,39 @@ def commit_imported_project(
             "at": _now(),
             "action": "import_project_files",
             "sources": list(preview.get("sources") or []),
-            "quoteCount": len(quotes),
+            "quoteCount": len(doc.get("packageQuotes") or []),
+            "addedCount": merged.get("addedCount") or 0,
+            "skippedCount": merged.get("skippedCount") or 0,
+            "updatedCount": merged.get("updatedCount") or 0,
             "advanceCount": len(preview.get("advances") or []),
         }
     )
     doc["revisionLog"] = log[-80:]
+    prev_meta = doc.get("importMeta") if isinstance(doc.get("importMeta"), dict) else {}
+    hashes = list(prev_meta.get("fileHashes") or [])
+    sha = str(preview.get("fileSha256") or "").strip()
+    if sha and sha not in hashes:
+        hashes.append(sha)
     doc["importMeta"] = {
         "at": _now(),
-        "sources": list(preview.get("sources") or []),
+        "sources": list(dict.fromkeys(list(prev_meta.get("sources") or []) + list(preview.get("sources") or []))),
         "stages": preview.get("stages") or [],
+        "fileHashes": hashes[-12:],
+        "lastMerge": {
+            "added": merged.get("added") or [],
+            "skipped": merged.get("skipped") or [],
+            "updated": merged.get("updated") or [],
+        },
     }
     saved = save_project(doc, bump_version=True, action="import_project_files")
     imported_adv = []
+    skipped_adv = 0
     if import_advances:
+        existing_adv = list_advances_for_projects([str(saved.get("projectId") or "")])
         for a in preview.get("advances") or []:
+            if _advance_is_duplicate(existing_adv + imported_adv, a):
+                skipped_adv += 1
+                continue
             try:
                 row = add_advance(
                     name,
@@ -775,11 +866,13 @@ def commit_imported_project(
                         "projectId": saved.get("projectId"),
                         "quoteId": "any",
                         "customerName": name,
+                        "companyGst": company_gst,
                     },
                 )
                 imported_adv.append(row)
             except Exception:
                 _log.exception("import advance skipped")
+    value = round(sum(_money(q.get("projectValue") or q.get("totalGrand")) for q in (saved.get("packageQuotes") or [])), 2)
     return {
         "ok": True,
         "project": {
@@ -791,7 +884,14 @@ def commit_imported_project(
         "customer": name,
         "quoteCount": len(saved.get("packageQuotes") or []),
         "advanceCount": len(imported_adv),
-        "projectValue": preview.get("projectValue"),
+        "advanceSkipped": skipped_adv,
+        "addedCount": merged.get("addedCount") or 0,
+        "skippedCount": merged.get("skippedCount") or 0,
+        "updatedCount": merged.get("updatedCount") or 0,
+        "added": merged.get("added") or [],
+        "skipped": merged.get("skipped") or [],
+        "updated": merged.get("updated") or [],
+        "projectValue": value,
         "advanceTotal": preview.get("advanceTotal"),
         "balance": preview.get("balance"),
     }

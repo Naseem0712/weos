@@ -316,7 +316,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
         <p class="muted" id="setupQuoteHint" style="margin:-.35rem 0 .55rem;font-size:.75rem">Same mobile = same client. New project = new quote number. Old project = same quote number; add text (e.g. /A2 or site note) for the new quote on that running job.</p>
         <hr style="border:none;border-top:1px solid var(--line);margin:1.1rem 0 .7rem"/>
         <strong style="font-size:.92rem">Import a running job (Excel / PDF)</strong>
-        <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">Upload the same project’s quote PDF and/or Excel (multiple stages, each with its own rates). Fill <strong>customer name, mobile, address</strong> above first. Preview, then save — stages become editable outside quotes, advances go to the account. Revision history stays internal (not on customer PDF or QR scan). Advance slips are optional; generate any saved slip later.</p>
+        <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">Upload the same project’s quote PDF and/or Excel (all sheets are read). Fill <strong>customer name, mobile, address</strong> above first. Preview, then save. If this Excel was already imported, WEOS skips those stages and only adds <strong>new sheets</strong> or updates changed amounts — it will not double project value. Advances already on this job are also skipped. After save the editor row clears; open the project from Saved setups to edit details.</p>
         <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.45rem">
           <div class="grow"><label class="l">Project files</label><input id="setupImportFiles" type="file" accept=".xlsx,.xls,.xlsm,.pdf,application/pdf" multiple/></div>
           <label class="muted" style="font-size:.78rem;display:flex;align-items:center;gap:.35rem;margin:0 0 .15rem">
@@ -4696,6 +4696,28 @@ const PKG_UNITS = {
 function _pkgId(prefix){ return prefix + Math.random().toString(36).slice(2,10); }
 function emptyPkgItem(){ return { id:_pkgId('pi'), category:'window', qty:'', size:'', unit:'sft', amount:'', note:'', rate:'' }; }
 function emptyPkgQuote(){ return { id:_pkgId('pq'), quotationId:'', gstMode:'exclude', gstPercent:18, items:[emptyPkgItem()], note:'', attachmentName:'', attachments:[] }; }
+function resetPkgEditorToNewQuote(){
+  const list = ensurePkgQuotes();
+  const last = list[list.length - 1];
+  const empty = last && !(last.items || []).some(it => Number(it.amount) > 0)
+    && !String(last.quotationId || '').trim()
+    && !String(last.note || '').trim();
+  if (!empty) {
+    if (list.length >= 40) {
+      state.packageQuoteIndex = Math.max(0, list.length - 1);
+      renderPackageQuotes();
+      return;
+    }
+    list.push(emptyPkgQuote());
+  }
+  state.packageQuoteIndex = list.length - 1;
+  persistCartSession();
+  renderPackageQuotes();
+}
+function clearSetupImportFiles(){
+  const inp = $('setupImportFiles');
+  if (inp) inp.value = '';
+}
 function emptyQuoteDiscount(){ return { mode:'off', percent:0, amount:0, note:'' }; }
 function adoptQuoteDiscount(doc){
   const d = (doc && doc.quoteDiscount) || {};
@@ -4906,6 +4928,10 @@ function adoptPackageQuotes(doc){
         note: it.note || '',
         rate: it.rate == null ? '' : it.rate,
       })) : [emptyPkgItem()],
+      sheetName: q.sheetName || '',
+      stageKey: q.stageKey || '',
+      importFingerprint: q.importFingerprint || '',
+      sourceFile: q.sourceFile || '',
     })) : [emptyPkgQuote()];
     if (state.packageQuoteIndex >= state.packageQuotes.length) state.packageQuoteIndex = 0;
     renderPackageQuotes();
@@ -4924,6 +4950,10 @@ function packageQuotesPayload(){
     attachmentName: q.attachmentName || undefined,
     attachmentKey: q.attachmentKey || undefined,
     attachments: q.attachments || [],
+    sheetName: q.sheetName || undefined,
+    stageKey: q.stageKey || undefined,
+    importFingerprint: q.importFingerprint || undefined,
+    sourceFile: q.sourceFile || undefined,
     items: (q.items || []).map((it, n) => ({
       id: it.id, category: it.category, qty: it.qty === '' ? undefined : Number(it.qty),
       size: (it.size || '').trim() || undefined, unit: it.unit || 'pcs',
@@ -8143,6 +8173,7 @@ if ($('btnSaveSetup')) $('btnSaveSetup').onclick = async () => {
   try {
     syncProjectCustomer();
     await saveProject(false);
+    resetPkgEditorToNewQuote();
     // Same customer APIs as Customers tab — no orphan records.
     await upsertCustomerFromSetup();
     if ($('setupErr')) $('setupErr').textContent = '';
@@ -8198,7 +8229,8 @@ function setupImportFormData(commit){
   fd.append('projectName', (($('cartName') && $('cartName').value) || '').trim());
   fd.append('quotationId', (($('projQuoteNo') && $('projQuoteNo').value) || '').trim());
   const pick = $('setupProjectPick') && $('setupProjectPick').value;
-  if (commit && pick && pick !== 'new') fd.append('projectId', pick);
+  const pid = (pick && pick !== 'new') ? pick : (state.projectId || '');
+  if (pid) fd.append('projectId', pid);
   fd.append('commit', commit ? 'true' : 'false');
   fd.append('importAdvances', ($('setupImportAdvances') && $('setupImportAdvances').checked) ? 'true' : 'false');
   if (state.companyGst) fd.append('gst', state.companyGst);
@@ -8209,11 +8241,19 @@ function renderSetupImportPreview(p){
   if (!p) { box.innerHTML = ''; return; }
   const stages = p.stages || [];
   const adv = p.advances || [];
+  const m = p.merge || {};
+  const mergeLine = (m.addedCount != null || m.skippedCount != null) ? `<div style="margin-top:.35rem"><strong>On this project:</strong> add ${m.addedCount||0} · skip ${m.skippedCount||0} duplicate(s) · update ${m.updatedCount||0}${m.quoteCountAfter!=null?(' · after save: '+(m.quoteCountAfter)+' quote(s)'):''}</div>` : '';
+  const skipNames = (m.skipped||[]).slice(0,6).map(s => esc(s)).join(', ');
+  const addNames = (m.added||[]).slice(0,8).map(s => esc(s)).join(', ');
   box.innerHTML = `<div style="border:1px solid var(--line);border-radius:10px;padding:.65rem .75rem;background:#fff">
-    <div><strong>${stages.length}</strong> stage quote(s) · value ${money(p.projectValue)} · <strong>${adv.length}</strong> advance(s) ${money(p.advanceTotal)} · balance ${money(p.balance)}</div>
+    <div><strong>${stages.length}</strong> stage quote(s) in file · value ${money(p.projectValue)} · <strong>${adv.length}</strong> advance(s) ${money(p.advanceTotal)} · balance ${money(p.balance)}</div>
     ${p.customerHint && (p.customerHint.name || p.customerHint.address) ? `<div class="muted" style="margin-top:.25rem">File customer: ${esc(p.customerHint.name||'')} ${esc(p.customerHint.address||'')}</div>` : ''}
-    <div style="margin-top:.4rem">${stages.map(s => `• ${esc(s.title||'Stage')} — ${s.items||0} items — ${money(s.value)}`).join('<br/>') || 'No quote stages found'}</div>
+    ${mergeLine}
+    ${addNames ? `<div class="muted" style="margin-top:.2rem">Will add: ${addNames}${(m.added||[]).length>8?'…':''}</div>` : ''}
+    ${skipNames ? `<div class="muted" style="margin-top:.2rem">Already on project (skipped): ${skipNames}${(m.skipped||[]).length>6?'…':''}</div>` : ''}
+    <div style="margin-top:.4rem">${stages.map(s => `• ${esc(s.title||s.sheetName||'Stage')} — ${s.items||0} items — ${money(s.value)}`).join('<br/>') || 'No quote stages found'}</div>
     ${adv.length ? `<div style="margin-top:.4rem">${adv.slice(0,8).map(a => `• ${esc(a.purpose||a.note||a.paymentMode||'Advance')} — ${money(a.amount)}${a.paidAt?(' · '+esc(String(a.paidAt).slice(0,10))):''}`).join('<br/>')}${adv.length>8?('<br/>… +'+(adv.length-8)+' more'):''}</div>` : ''}
+    ${p.advanceSkipped ? `<div class="muted" style="margin-top:.25rem">${p.advanceSkipped} advance(s) already on this job — not added again</div>` : ''}
     ${(p.parseWarnings||[]).length ? `<div class="err" style="margin-top:.35rem">${esc((p.parseWarnings||[]).join('; '))}</div>` : ''}
   </div>`;
 }
@@ -8250,9 +8290,19 @@ if ($('btnSetupImportSave')) $('btnSetupImportSave').onclick = async () => {
     const pid = saved && saved.project && saved.project.projectId;
     if (!pid) throw new Error('Import saved but no project id returned');
     await openProject(pid);
+    resetPkgEditorToNewQuote();
+    clearSetupImportFiles();
     renderSetupImportPreview(saved.preview || saved);
     if ($('setupErr')) $('setupErr').textContent = '';
-    toast('Project saved — ' + (saved.quoteCount||0) + ' stage(s), ' + (saved.advanceCount||0) + ' advance(s). Edit anytime.');
+    const added = saved.addedCount || 0;
+    const skipped = saved.skippedCount || 0;
+    const updated = saved.updatedCount || 0;
+    const advSkip = saved.advanceSkipped || 0;
+    toast('Saved — added ' + added + ', skipped ' + skipped + ' duplicate(s), updated ' + updated
+      + (advSkip ? (', ' + advSkip + ' advance(s) already on job') : '')
+      + '. Open Edit to see details.');
+    await loadSetupList();
+    await refreshExportSetupSelect();
     if (state.companyGst) refreshCompanyHub(state.companyGst);
   } catch(e) { if ($('setupErr')) $('setupErr').textContent = e.message; toast(e.message); }
 };
