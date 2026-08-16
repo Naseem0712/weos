@@ -333,3 +333,138 @@ def query_customers(gst: str, *, q: str | None = None, limit: int | None = PAGE_
 def all_project_rows(gst: str) -> list[dict[str, Any]]:
     """Compact rows for dashboard math (index only — never another company's files)."""
     return list(_ensure(gst).get("projects") or [])
+
+
+def hub_customer_rows(
+    gst: str,
+    *,
+    q: str | None = None,
+    fy: str | None = "current",
+    limit: int = 80,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Customers with project / advance / balance columns for the company hub table."""
+    g = _norm_gst(gst)
+    packed = query_customers(g, q=q, limit=None, offset=0)
+    customers = list(packed.get("items") or [])
+    projects = all_project_rows(g)
+    want_fy = str(fy or "current").strip().lower()
+    this_fy = current_fy()
+    if want_fy in {"current", "this", ""}:
+        want_fy = this_fy
+    filtered = []
+    for p in projects:
+        if _norm_gst(p.get("companyGst") or g) != g:
+            continue
+        if want_fy not in {"all", "*", "any"} and str(p.get("fy") or "") != want_fy:
+            continue
+        if str(p.get("status") or "") == "archived":
+            continue
+        filtered.append(p)
+
+    pids = [str(p.get("projectId") or "") for p in filtered if p.get("projectId")]
+    adv_by_pid: dict[str, float] = {pid: 0.0 for pid in pids}
+    try:
+        from WEOS.factory.ledger_store import list_advances_for_projects
+
+        for a in list_advances_for_projects(pids):
+            pid = str(a.get("projectId") or "")
+            if not pid:
+                continue
+            try:
+                amt = float(a.get("amount") or 0)
+            except (TypeError, ValueError):
+                amt = 0.0
+            adv_by_pid[pid] = round(adv_by_pid.get(pid, 0.0) + amt, 2)
+    except Exception:
+        _log.debug("hub advances skipped", exc_info=True)
+
+    by_key: dict[str, dict[str, Any]] = {}
+    for c in customers:
+        name = str(c.get("name") or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        by_key[key] = {
+            "name": name,
+            "slug": c.get("slug") or "",
+            "phone": c.get("phone") or "",
+            "email": c.get("email") or "",
+            "gstNo": c.get("gstNo") or "",
+            "companyGst": g,
+            "projectCount": 0,
+            "quoteVersionCount": 0,
+            "totalTaxable": 0.0,
+            "totalGst": 0.0,
+            "totalGrand": 0.0,
+            "totalAdvances": 0.0,
+            "balance": 0.0,
+            "balanceWithGst": 0.0,
+            "ledgerUrl": f"/api/customers/{name}/ledger",
+            "ledgerPdfUrl": f"/api/customers/{name}/ledger.pdf",
+            "updatedAt": c.get("updatedAt"),
+        }
+
+    for p in filtered:
+        name = str(p.get("customer") or "").strip() or "Walk-in"
+        key = name.lower()
+        row = by_key.get(key)
+        if row is None:
+            row = {
+                "name": name,
+                "slug": "",
+                "phone": p.get("customerMobile") or "",
+                "email": "",
+                "gstNo": "",
+                "companyGst": g,
+                "projectCount": 0,
+                "quoteVersionCount": 0,
+                "totalTaxable": 0.0,
+                "totalGst": 0.0,
+                "totalGrand": 0.0,
+                "totalAdvances": 0.0,
+                "balance": 0.0,
+                "balanceWithGst": 0.0,
+                "ledgerUrl": f"/api/customers/{name}/ledger",
+                "ledgerPdfUrl": f"/api/customers/{name}/ledger.pdf",
+                "updatedAt": p.get("updatedAt"),
+            }
+            by_key[key] = row
+        if p.get("customerMobile") and not row.get("phone"):
+            row["phone"] = p.get("customerMobile")
+        row["projectCount"] = int(row.get("projectCount") or 0) + 1
+        row["quoteVersionCount"] = int(row.get("quoteVersionCount") or 0) + max(1, int(p.get("version") or 1))
+        taxable = _money(p.get("totalTaxable") if p.get("totalTaxable") is not None else p.get("grandTotal"))
+        gst_amt = _money(p.get("totalGst"))
+        grand = _money(p.get("totalGrand") if p.get("totalGrand") is not None else (taxable + gst_amt))
+        row["totalTaxable"] = round(float(row["totalTaxable"]) + taxable, 2)
+        row["totalGst"] = round(float(row["totalGst"]) + gst_amt, 2)
+        row["totalGrand"] = round(float(row["totalGrand"]) + grand, 2)
+        pid = str(p.get("projectId") or "")
+        row["totalAdvances"] = round(float(row["totalAdvances"]) + float(adv_by_pid.get(pid, 0.0)), 2)
+        if p.get("updatedAt") and (not row.get("updatedAt") or str(p.get("updatedAt")) > str(row.get("updatedAt"))):
+            row["updatedAt"] = p.get("updatedAt")
+
+    rows = []
+    for row in by_key.values():
+        grand = float(row.get("totalGrand") or 0)
+        adv = float(row.get("totalAdvances") or 0)
+        bal = round(grand - adv, 2)
+        row["balance"] = bal
+        row["balanceWithGst"] = bal
+        rows.append(row)
+    rows.sort(key=lambda r: str(r.get("updatedAt") or ""), reverse=True)
+    total = len(rows)
+    off = max(0, int(offset or 0))
+    lim = max(0, min(int(limit or PAGE_DEFAULT), PAGE_MAX))
+    page = rows[off : off + lim] if lim else rows
+    return {
+        "items": page,
+        "customers": page,
+        "total": total,
+        "count": total,
+        "fy": want_fy if want_fy not in {"all", "*", "any"} else "all",
+        "limit": lim if lim else total,
+        "offset": off,
+        "hasMore": (off + len(page)) < total,
+    }

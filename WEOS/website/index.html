@@ -246,6 +246,18 @@ button.pill{border:0;font:inherit;cursor:pointer}
       <div id="dashLive" class="hidden">
         <div class="grid cards" id="dashCards"></div>
         <div class="panel" id="dashGrowth" style="margin-top:.2rem"></div>
+        <div class="two" style="margin-top:.7rem">
+          <div class="panel">
+            <strong>FY tenure — orders by month</strong>
+            <p class="muted" style="margin:.2rem 0 .55rem;font-size:.75rem">Indian FY Apr–Mar. Quotes with advances count as approved orders.</p>
+            <div id="dashTenureChart" style="min-height:180px"></div>
+          </div>
+          <div class="panel">
+            <strong>Approved / advance-backed</strong>
+            <p class="muted" style="margin:.2rem 0 .55rem;font-size:.75rem" id="dashApprovedNote">Status approved, or any advance already received.</p>
+            <div id="dashApprovedList" style="max-height:280px;overflow:auto"></div>
+          </div>
+        </div>
         <div class="two">
           <div class="panel">
             <div class="row" style="justify-content:space-between;margin-bottom:.6rem">
@@ -2722,6 +2734,8 @@ async function loadDashboard() {
     const qs = withGstQuery({});
     const d = await api('/api/dashboard?' + qs.toString(), { timeoutMs: 20000 });
     renderDashboardGrowth(d);
+    renderTenureChart(d && d.tenure);
+    renderApprovedList(d && d.approved);
     renderFollowupQueue(d && d.followUps);
     renderRecentProjectRows(d.recentProjects || []);
     if (body) body.dataset.loaded = '1';
@@ -2768,8 +2782,51 @@ function renderDashboardGrowth(d) {
   }
   if ($('dashGrowth')) {
     const fy = o.fy ? (' This FY ' + o.fy + (o.lastFy ? (' vs last FY ' + o.lastFy) : '') + '.') : '';
-    $('dashGrowth').innerHTML = `<p class="muted" style="margin:0;font-size:.8rem">Month vs last month · year vs last financial year.${fy} Green = growth, copper = less. Closed years stay stored — open them from Company hub. Collection = advances. Order clear = fully paid jobs.</p>`;
+    $('dashGrowth').innerHTML = `<p class="muted" style="margin:0;font-size:.8rem">Month vs last month · year vs last financial year.${fy} Green = growth, copper = less. Quotes with advances count as approved orders. Collection = advances. Order clear = fully paid jobs.</p>`;
   }
+}
+function renderTenureChart(tenure) {
+  const box = $('dashTenureChart'); if (!box) return;
+  const months = (tenure && tenure.months) || [];
+  if (!months.length) { box.innerHTML = '<p class="muted">No FY tenure data yet</p>'; return; }
+  const max = Math.max(1, ...months.map(m => Math.max(Number(m.ordersAmount)||0, Number(m.collectionAmount)||0)));
+  const W = 560, H = 170, padL = 28, padB = 28, padT = 12, padR = 8;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const n = months.length;
+  const gap = 4;
+  const slot = innerW / n;
+  const barW = Math.max(4, (slot - gap) / 2);
+  const bars = months.map((m, i) => {
+    const x0 = padL + i * slot + gap/2;
+    const oh = Math.round(((Number(m.ordersAmount)||0) / max) * innerH);
+    const ch = Math.round(((Number(m.collectionAmount)||0) / max) * innerH);
+    const yO = padT + innerH - oh;
+    const yC = padT + innerH - ch;
+    const label = esc(String(m.label||'').slice(0,6));
+    return `<rect x="${x0}" y="${yO}" width="${barW}" height="${oh}" fill="#0a5a48" rx="2"><title>${esc(m.label)} orders ${money(m.ordersAmount)} (${m.ordersCount||0})</title></rect>
+      <rect x="${x0+barW+1}" y="${yC}" width="${barW}" height="${ch}" fill="#c4a35a" rx="2"><title>${esc(m.label)} collection ${money(m.collectionAmount)} (${m.collectionCount||0})</title></rect>
+      <text x="${x0+barW}" y="${H-8}" text-anchor="middle" font-size="9" fill="#6b7280">${label}</text>`;
+  }).join('');
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="FY tenure chart">${bars}
+    <text x="${padL}" y="12" font-size="10" fill="#0a5a48">Orders</text>
+    <text x="${padL+52}" y="12" font-size="10" fill="#c4a35a">Collection</text>
+  </svg>
+  <p class="muted" style="margin:.35rem 0 0;font-size:.72rem">${esc((tenure && tenure.note) || '')} · FY ${esc((tenure && tenure.fy) || '')}</p>`;
+}
+function renderApprovedList(approved) {
+  const box = $('dashApprovedList'); if (!box) return;
+  const items = (approved && approved.items) || [];
+  if ($('dashApprovedNote')) $('dashApprovedNote').textContent = (approved && approved.note) || 'Approved or advance-backed jobs this FY.';
+  if (!items.length) { box.innerHTML = '<p class="muted">No approved / advance-backed quotes in this FY yet</p>'; return; }
+  box.innerHTML = `<table><thead><tr><th>Date</th><th>Customer</th><th>Quote</th><th>Amount</th><th>Why</th></tr></thead><tbody>${
+    items.map(r => `<tr>
+      <td>${esc(r.orderDate || '—')}</td>
+      <td>${esc(r.customer||'')}<div class="muted" style="font-size:.7rem">${esc(r.name||'')}</div></td>
+      <td>${esc(r.quotationId||r.projectId||'')}</td>
+      <td>${money(r.amount)}${r.advance?('<div class="muted" style="font-size:.7rem">adv '+money(r.advance)+'</div>'):''}</td>
+      <td><span class="pill">${esc(r.reason||r.effectiveStatus||'')}</span></td>
+    </tr>`).join('')
+  }</tbody></table>`;
 }
 function renderFollowupQueue(fu) {
   const box = $('dashFollowup');
@@ -10503,12 +10560,16 @@ async function loadHubCustomers() {
   $('hubCustBody').innerHTML = '<tr><td colspan="6" class="muted">Loading…</td></tr>';
   try {
     const qs = withGstQuery({ limit: '80' });
+    qs.set('fy', ($('hubFy') && $('hubFy').value) || 'current');
     const data = await api('/api/customers?' + qs.toString());
     const rows = data.customers || [];
     $('hubCustBody').innerHTML = rows.map(c => `
       <tr>
         <td><strong>${esc(c.name)}</strong><div class="muted" style="font-size:.72rem">${esc(c.phone||c.gstNo||'')}</div></td>
-        <td>—</td><td>—</td><td>—</td><td>—</td>
+        <td>${c.projectCount != null ? c.projectCount : 0}</td>
+        <td>${c.quoteVersionCount != null ? c.quoteVersionCount : 0}</td>
+        <td>${money(c.totalAdvances)}</td>
+        <td>${money(c.balance != null ? c.balance : c.balanceWithGst)}<div class="muted" style="font-size:.7rem">w/GST ${money(c.totalGrand)}</div></td>
         <td style="white-space:nowrap">
           <button class="btn ghost sm" data-hub-cust="${esc(c.name)}" type="button">Open</button>
           <button class="btn sm" data-hub-quote="${esc(c.name)}" type="button">New quote</button>
@@ -10523,9 +10584,12 @@ async function loadHubCustomers() {
     if ($('hubAccBody')) {
       $('hubAccBody').innerHTML = rows.map(c => `
         <tr>
-          <td>${esc(c.name)}</td><td>—</td><td>—</td><td>—</td>
+          <td>${esc(c.name)}</td>
+          <td>${money(c.totalTaxable)}<div class="muted" style="font-size:.7rem">w/GST ${money(c.totalGrand)}</div></td>
+          <td>${money(c.totalAdvances)}</td>
+          <td>${money(c.balance != null ? c.balance : c.balanceWithGst)}</td>
           <td><button class="btn ghost sm" type="button" data-hub-cust="${esc(c.name)}">Open ledger</button></td>
-        </tr>`).join('') || '<tr><td colspan="5" class="muted">Open a customer to fetch ledger</td></tr>';
+        </tr>`).join('') || '<tr><td colspan="5" class="muted">No accounts yet</td></tr>';
       $('hubAccBody').querySelectorAll('[data-hub-cust]').forEach(b => b.onclick = () => {
         state.selectedCustomer = b.dataset.hubCust;
         setView('customers');

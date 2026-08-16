@@ -3159,21 +3159,41 @@ def api_get_company_signature() -> Response:
 # ── Customer profiles + accounts ─────────────────────────────────────────────
 
 @app.get("/api/customers")
-def api_list_customers(request: Request, q: str | None = None, gst: str | None = None) -> dict[str, Any]:
-    """All customers (profiles ∪ rate books ∪ project bill-tos). Optional ``q`` = name or mobile."""
+def api_list_customers(
+    request: Request,
+    q: str | None = None,
+    gst: str | None = None,
+    fy: str | None = None,
+    limit: int = 80,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Company hub customers with projects / advances / balance (not dashes)."""
     from WEOS.factory.company_workspace import require_company_gst
     from WEOS.factory.customer_store import find_customers
 
     g = require_company_gst(request, gst)
     if (q or "").strip():
         merged = find_customers(q or "", company_gst=g or None)
-        return {"customers": merged[:80], "count": len(merged), "query": q, "hasMore": len(merged) > 80}
-    from WEOS.factory.company_index import query_customers
+        from WEOS.factory.company_index import hub_customer_rows
 
-    packed = query_customers(g, q=q, limit=80, offset=0)
+        enriched = hub_customer_rows(g, q=q, fy=fy or "all", limit=80, offset=0)
+        by_name = {str(c.get("name") or "").strip().lower(): c for c in (enriched.get("items") or [])}
+        out = []
+        for c in merged[:80]:
+            name = str(c.get("name") or "").strip()
+            hit = by_name.get(name.lower()) or {}
+            out.append({**c, **{k: hit[k] for k in (
+                "projectCount", "quoteVersionCount", "totalTaxable", "totalGst", "totalGrand",
+                "totalAdvances", "balance", "balanceWithGst", "ledgerUrl", "ledgerPdfUrl",
+            ) if k in hit}})
+        return {"customers": out, "count": len(out), "query": q, "hasMore": len(merged) > 80}
+    from WEOS.factory.company_index import hub_customer_rows
+
+    packed = hub_customer_rows(g, q=None, fy=fy or "current", limit=limit or 80, offset=offset or 0)
     return {
         "customers": packed.get("items") or [],
         "count": packed.get("total") or 0,
+        "fy": packed.get("fy"),
         "hasMore": bool(packed.get("hasMore")),
         "lazy": True,
     }

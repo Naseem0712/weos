@@ -872,6 +872,18 @@ def commit_imported_project(
                 imported_adv.append(row)
             except Exception:
                 _log.exception("import advance skipped")
+    # Any imported advance means this job is already an order — keep it on the approved list / FY tenure.
+    if imported_adv:
+        try:
+            from WEOS.factory.ledger_store import CONFIRMED_STATUSES
+            from WEOS.factory.project_store import load_project, set_project_status
+
+            live = load_project(str(saved.get("projectId") or ""))
+            st = str(live.get("status") or "").strip().lower()
+            if st not in CONFIRMED_STATUSES and st not in {"rejected", "cancelled", "canceled", "archived"}:
+                saved = set_project_status(str(saved.get("projectId")), "approved") or saved
+        except Exception:
+            _log.debug("import approve-status stamp skipped", exc_info=True)
     value = round(sum(_money(q.get("projectValue") or q.get("totalGrand")) for q in (saved.get("packageQuotes") or [])), 2)
     return {
         "ok": True,
