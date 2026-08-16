@@ -21,6 +21,7 @@ from WEOS.factory.company_store import (
     iter_company_docs,
     load_company,
     load_company_by_gst,
+    gst_for_session_token,
     mint_pin_reset_token,
     mint_workspace_session,
     normalise_gstin,
@@ -190,8 +191,32 @@ def open_workspace(
     }
 
 
-def logout_workspace(*, gst_no: str | None = None, session_token: str | None = None) -> dict[str, Any]:
+def require_company_gst(request: Any, gst: str | None = None) -> str:
+    """GST of the logged-in workspace. Query GST alone is never enough."""
+    from fastapi import HTTPException
+
+    token = ""
+    if request is not None:
+        try:
+            token = str(request.headers.get("X-WEOS-Session") or "").strip()
+        except Exception:
+            token = ""
+    session_gst = gst_for_session_token(token) if token else None
+    if not session_gst:
+        raise HTTPException(status_code=401, detail="Log in to a company workspace first.")
+    q = normalise_gstin(gst) if gst else ""
+    if q and q != session_gst:
+        raise HTTPException(
+            status_code=401,
+            detail="Log in with GST / name / mobile and the 4-digit PIN.",
+        )
+    return session_gst
+
+
+def logout_workspace(gst_no: str | None = None, session_token: str | None = None) -> dict[str, Any]:
     gst = normalise_gstin(gst_no or "")
+    if not gst and session_token:
+        gst = gst_for_session_token(session_token) or ""
     if gst:
         revoke_workspace_session(gst, session_token)
         clear_active_gst(gst)
@@ -238,13 +263,120 @@ def confirm_pin_reset(token: str, new_pin: str) -> dict[str, Any]:
     return {"ok": True, "gstNo": gst, "sessionToken": session, "companyName": row.get("companyName")}
 
 
-def build_workspace_summary(gst_no: str | None = None) -> dict[str, Any]:
-    """Customers / projects / accounts for a company GST workspace."""
+def build_workspace_summary(gst_no: str | None = None, *, lists: bool = False) -> dict[str, Any]:
+    """KPI hub for one GST. Lists are empty until a tab is opened (lazy fetch)."""
     gst = normalise_gstin(gst_no) if gst_no else normalise_gstin((load_company() or {}).get("gstNo") or "")
     if not gst:
-        # Fall back to active / legacy company if any.
         active = load_company()
         gst = normalise_gstin(active.get("gstNo") or "")
+
+    from WEOS.factory.company_index import all_project_rows, query_customers, query_projects
+    from WEOS.factory.fy import current_fy
+    from WEOS.factory.ledger_store import CONFIRMED_STATUSES, status_counts_toward_turnover
+
+    this_fy = current_fy()
+    rows = [p for p in all_project_rows(gst) if normalise_gstin(p.get("companyGst") or gst) == gst]
+    hot = [p for p in rows if str(p.get("fy") or "") == this_fy and str(p.get("status") or "") != "archived"]
+    projects_running = len(hot)
+    orders_confirmed = sum(1 for p in hot if status_counts_toward_turnover(p.get("status")))
+    total_taxable = round(sum(float(p.get("totalTaxable") or 0) for p in hot), 2)
+    total_gst_amt = round(sum(float(p.get("totalGst") or 0) for p in hot), 2)
+    total_grand = round(sum(float(p.get("totalGrand") or 0) for p in hot), 2)
+    year_taxable = round(
+        sum(float(p.get("totalTaxable") or 0) for p in hot if status_counts_toward_turnover(p.get("status"))),
+        2,
+    )
+    year_gst_amt = round(
+        sum(float(p.get("totalGst") or 0) for p in hot if status_counts_toward_turnover(p.get("status"))),
+        2,
+    )
+    year_grand = round(
+        sum(float(p.get("totalGrand") or 0) for p in hot if status_counts_toward_turnover(p.get("status"))),
+        2,
+    )
+    pids = [str(p.get("projectId") or "") for p in rows if p.get("projectId")]
+    total_advances = 0.0
+    try:
+        from WEOS.factory.ledger_store import sum_advances_for_company
+
+        total_advances = float(sum_advances_for_company(gst, project_ids=pids) or 0)
+    except Exception:
+        try:
+            from WEOS.factory.ledger_store import list_advances_for_projects
+
+            total_advances = round(sum(float(a.get("amount") or 0) for a in list_advances_for_projects(pids)), 2)
+        except Exception:
+            total_advances = 0.0
+    balance_gst = round(total_grand - total_advances, 2)
+    cust_pack = query_customers(gst, limit=40 if lists else 0)
+    proj_pack = query_projects(gst, fy="current", limit=40 if lists else 0)
+    customer_rows = list(cust_pack.get("items") or []) if lists else []
+    project_rows = list(proj_pack.get("items") or []) if lists else []
+
+    dashboard = {
+        "projectsRunning": projects_running,
+        "ordersConfirmed": orders_confirmed,
+        "totalAdvances": round(total_advances, 2),
+        "yearValueGenerated": year_taxable,
+        "yearTaxable": year_taxable,
+        "yearGst": year_gst_amt,
+        "yearGrand": year_grand,
+        "totalTaxable": total_taxable,
+        "totalGst": total_gst_amt,
+        "totalGrand": total_grand,
+        "balanceOutstanding": balance_gst,
+        "balanceWithGst": balance_gst,
+        "yearBasis": "financial",
+        "fy": this_fy,
+        "year": int(str(this_fy).split("-", 1)[0]),
+        "lazy": True,
+        "ordersConfirmedDefinition": (
+            "Orders confirmed = projects/quotes with status in "
+            f"{sorted(CONFIRMED_STATUSES)}."
+        ),
+        "projectsRunningDefinition": "Projects running = this financial year's non-archived jobs.",
+        "yearValueDefinition": (
+            "FY turnover = approved/confirmed jobs in the current financial year (1 Apr–31 Mar). "
+            "Closed years stay stored and are fetched only when you open that year."
+        ),
+        "balanceDefinition": "Balance with GST = this-FY grand total − advances on this company's jobs.",
+    }
+    return {
+        "customers": customer_rows,
+        "customerCount": int(cust_pack.get("total") or 0),
+        "projects": project_rows,
+        "projectCount": int(proj_pack.get("total") or 0),
+        "accounts": customer_rows,
+        "accountCount": int(cust_pack.get("total") or 0),
+        "dashboard": dashboard,
+        "fy": this_fy,
+        "availableFy": proj_pack.get("availableFy") or [],
+        "lazy": True,
+        "totals": {
+            "billed": total_taxable,
+            "totalTaxable": total_taxable,
+            "totalGst": total_gst_amt,
+            "totalGrand": total_grand,
+            "advances": round(total_advances, 2),
+            "totalAdvances": round(total_advances, 2),
+            "balance": balance_gst,
+            "balanceWithGst": balance_gst,
+            "quoteVersions": 0,
+            "yearValue": year_taxable,
+            "yearTaxable": year_taxable,
+            "yearGst": year_gst_amt,
+            "yearGrand": year_grand,
+            "ordersConfirmed": orders_confirmed,
+            "projectsRunning": projects_running,
+            "currency": "INR",
+            "basis": "company_index_current_fy",
+            "turnoverStatuses": "approved+confirmed/won",
+            "note": TOTALS_RULE,
+        },
+    }
+
+
+def _migrate_legacy_into(gst: str) -> None:
 
     from WEOS.factory.customer_store import customer_quotes, list_customer_profiles
     from WEOS.factory.ledger_store import build_ledger, quote_money_parts

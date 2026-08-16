@@ -85,7 +85,14 @@ h1{font-family:var(--serif);font-size:clamp(1.5rem,2.5vw,2rem);margin:0;letter-s
   animation:rise .35s ease both}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .card .k{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
-.card .v{font-family:var(--serif);font-size:1.7rem;margin-top:.35rem}
+.card .v{font-size:1.28rem;font-weight:700;margin-top:.2rem;letter-spacing:-.02em}
+.card .v2{font-size:.95rem;margin-top:.35rem;line-height:1.35}
+.growth-up{color:#0a5a48;font-weight:600}
+.growth-down{color:#9a3412;font-weight:600}
+.fu-row{border:1px solid var(--line);border-radius:10px;padding:.55rem .7rem;margin:.4rem 0;background:#fff}
+.fu-row.high{border-left:4px solid #b45324}
+.fu-row.medium{border-left:4px solid #c4a35a}
+.fu-row.later{border-left:4px solid #94a3b8}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:1rem;box-shadow:var(--shadow)}
 .row{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
 .grow{flex:1;min-width:140px}
@@ -177,7 +184,8 @@ button.pill{border:0;font:inherit;cursor:pointer}
 .pkg-tabs{display:flex;flex-wrap:wrap;gap:.3rem;margin:.35rem 0 .45rem}
 .pkg-tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:.18rem .65rem;font-size:.75rem;cursor:pointer}
 .pkg-tabs button.active{background:var(--green);color:#fff;border-color:var(--green)}
-.pkg-item{display:grid;grid-template-columns:minmax(7.5rem,1.1fr) 4.5rem minmax(6rem,1fr) 4.8rem minmax(6.5rem,1fr) auto;gap:.35rem;align-items:end;margin-bottom:.35rem}
+.pkg-item{display:grid;grid-template-columns:minmax(7.5rem,1.1fr) 4.5rem minmax(6rem,1fr) 4.8rem 5.5rem minmax(6.5rem,1fr) auto;gap:.35rem;align-items:end;margin-bottom:.35rem}
+.pkg-item .pkg-note{grid-column:1/-1}
 @media(max-width:820px){.pkg-item{grid-template-columns:1fr 1fr}}
 .pkg-gst{display:flex;flex-wrap:wrap;gap:.55rem 1rem;align-items:center;margin:.4rem 0}
 .stream-item{border-bottom:1px solid var(--line);padding:.45rem 0;font-size:.84rem}
@@ -230,22 +238,28 @@ button.pill{border:0;font:inherit;cursor:pointer}
 
     <!-- DASHBOARD -->
     <section id="view-dashboard" class="grid">
-      <div class="grid cards" id="dashCards"></div>
-      <div class="two">
-        <div class="panel">
-          <div class="row" style="justify-content:space-between;margin-bottom:.6rem">
-            <strong>Recent Projects</strong>
-            <button class="btn sm" id="btnNewFromDash">New Project</button>
+      <div class="panel" id="dashLocked">
+        <strong>Company login required</strong>
+        <p class="muted" style="margin:.35rem 0 .7rem">Log in with GSTIN / name / mobile and PIN. After logout this dashboard stays empty until you log in again.</p>
+        <button class="btn" id="dashGoLogin" type="button">Go to Company login</button>
+      </div>
+      <div id="dashLive" class="hidden">
+        <div class="grid cards" id="dashCards"></div>
+        <div class="panel" id="dashGrowth" style="margin-top:.2rem"></div>
+        <div class="two">
+          <div class="panel">
+            <div class="row" style="justify-content:space-between;margin-bottom:.6rem">
+              <strong>Follow-up</strong>
+              <span class="muted" style="font-size:.75rem">High 10–15d · Medium 5–10d · then by date. WhatsApp / Call is recorded.</span>
+            </div>
+            <div id="dashFollowup"></div>
           </div>
-          <div style="overflow:auto"><table><thead><tr><th>ID</th><th>Name</th><th>Customer</th><th>Lines</th><th>Total</th><th>Tenure</th><th>Status</th></tr></thead><tbody id="recentBody"></tbody></table></div>
-        </div>
-        <div class="agent" id="agentPanel">
-          <h3><span class="dot" id="agentDot"></span>Quote Learning Agent</h3>
-          <p class="muted" id="agentBlurb" style="margin:0">Watching your quotes…</p>
-          <p id="agentMsg" style="margin:.55rem 0 .2rem;font-size:.95rem">Open Window Cart, set a selling rate, and Calculate — I’ll remember patterns for this customer.</p>
-          <ul id="agentTips"></ul>
-          <div class="row" style="margin-top:.75rem">
-            <button class="btn sm" id="btnAgentRefresh" style="background:#1a4a3a;border-color:#2a6b55">Refresh insights</button>
+          <div class="panel">
+            <div class="row" style="justify-content:space-between;margin-bottom:.6rem">
+              <strong>Recent Projects</strong>
+              <button class="btn sm" id="btnNewFromDash">New Project</button>
+            </div>
+            <div style="overflow:auto"><table><thead><tr><th>ID</th><th>Name</th><th>Customer</th><th>Lines</th><th>Total</th><th>Tenure</th><th>Status</th></tr></thead><tbody id="recentBody"></tbody></table></div>
           </div>
         </div>
       </div>
@@ -300,6 +314,18 @@ button.pill{border:0;font:inherit;cursor:pointer}
           <div class="grow"><label class="l">Quote number (one per project — add text for a new version)</label><input id="projQuoteNo" placeholder="saves as this project’s quote number"/></div>
         </div>
         <p class="muted" id="setupQuoteHint" style="margin:-.35rem 0 .55rem;font-size:.75rem">Same mobile = same client. New project = new quote number. Old project = same quote number; add text (e.g. /A2 or site note) for the new quote on that running job.</p>
+        <hr style="border:none;border-top:1px solid var(--line);margin:1.1rem 0 .7rem"/>
+        <strong style="font-size:.92rem">Import a running job (Excel / PDF)</strong>
+        <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">Upload the same project’s quote PDF and/or Excel (multiple stages, each with its own rates). Fill <strong>customer name, mobile, address</strong> above first. Preview, then save — stages become editable outside quotes, advances go to the account. Revision history stays internal (not on customer PDF or QR scan). Advance slips are optional; generate any saved slip later.</p>
+        <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.45rem">
+          <div class="grow"><label class="l">Project files</label><input id="setupImportFiles" type="file" accept=".xlsx,.xls,.xlsm,.pdf,application/pdf" multiple/></div>
+          <label class="muted" style="font-size:.78rem;display:flex;align-items:center;gap:.35rem;margin:0 0 .15rem">
+            <input id="setupImportAdvances" type="checkbox" checked style="width:auto"/> Import advances into account
+          </label>
+          <button class="btn sm" id="btnSetupImportPreview" type="button">Preview files</button>
+          <button class="btn" id="btnSetupImportSave" type="button">Save into this project</button>
+        </div>
+        <div id="setupImportPreview" class="muted" style="font-size:.78rem;margin:0 0 .55rem"></div>
         <div class="row" style="margin-bottom:.6rem;flex-wrap:wrap;gap:.5rem .7rem">
           <div class="grow" style="flex-basis:100%"><label class="l">Quote description (prints on quote)</label><textarea id="projDescription" rows="2" placeholder="Optional note that prints on the customer quotation" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
           <div class="grow" style="flex-basis:100%"><label class="l">Terms &amp; Conditions override (optional — defaults from Company Setup)</label><textarea id="projTerms" rows="3" placeholder="Leave blank to use the company default terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
@@ -1450,15 +1476,19 @@ button.pill{border:0;font:inherit;cursor:pointer}
               </select>
             </div>
             <div><label class="l">Date</label><input id="cpAdvDate" type="date" style="width:140px"/></div>
+            <div class="grow"><label class="l">Purpose / name</label><input id="cpAdvPurpose" placeholder="who paid / purpose"/></div>
             <div class="grow"><label class="l">Ref / note</label><input id="cpAdvRef" placeholder="cheque no / UTR / note"/></div>
             <div><label class="l">Project</label><select id="cpAdvProject" style="min-width:140px"><option value="">— Any (all quotes) —</option></select></div>
             <label class="muted" style="font-size:.78rem;display:flex;align-items:center;gap:.35rem;margin:0 0 .15rem">
               <input id="cpAdvApprove" type="checkbox" checked style="width:auto"/> Mark quote approved
             </label>
+            <label class="muted" style="font-size:.78rem;display:flex;align-items:center;gap:.35rem;margin:0 0 .15rem">
+              <input id="cpAdvSlipNow" type="checkbox" style="width:auto"/> Also generate slip
+            </label>
             <button class="btn sm" id="btnCpAdvAdd" type="button">Add advance</button>
             <button class="btn ghost sm" id="btnCpRefund" type="button">Record refund</button>
           </div>
-          <p class="muted" style="margin:0 0 .45rem;font-size:.75rem">After saving an advance, generate the slip from the table: <strong>Slip PDF</strong> · <strong>Print</strong> · <strong>Excel</strong> (stamp/signature if uploaded).</p>
+          <p class="muted" style="margin:0 0 .45rem;font-size:.75rem">Add the advance first. Slip is optional — generate <strong>Slip PDF</strong> · <strong>Print</strong> · <strong>Excel</strong> anytime from the table (stamp/signature if uploaded).</p>
           <div id="cpAdvances" style="margin-bottom:.8rem"></div>
           <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
           <strong style="font-size:.9rem">Quotes &amp; versions <span class="muted" id="cpQuoteCount" style="font-weight:400;font-size:.8rem"></span></strong>
@@ -1510,11 +1540,16 @@ button.pill{border:0;font:inherit;cursor:pointer}
           <div class="kpi"><label class="l">Customers</label><div class="big" style="font-size:1.05rem" id="hubCustCount">—</div></div>
         </div>
         <p class="muted" id="coHubRule" style="font-size:.75rem;margin:0 0 .6rem"></p>
-        <div class="tabs" id="hubTabs" style="margin-bottom:.5rem">
-          <button class="tab active" data-hubtab="customers" type="button">Customers</button>
-          <button class="tab" data-hubtab="projects" type="button">Projects</button>
-          <button class="tab" data-hubtab="quotes" type="button">Quotes</button>
-          <button class="tab" data-hubtab="accounts" type="button">Accounts / Ledgers</button>
+        <div class="row" style="justify-content:space-between;align-items:flex-end;margin-bottom:.45rem">
+          <div class="tabs" id="hubTabs" style="margin-bottom:0">
+            <button class="tab active" data-hubtab="customers" type="button">Customers</button>
+            <button class="tab" data-hubtab="projects" type="button">Projects</button>
+            <button class="tab" data-hubtab="quotes" type="button">Quotes</button>
+            <button class="tab" data-hubtab="accounts" type="button">Accounts / Ledgers</button>
+          </div>
+          <div style="min-width:190px"><label class="l">Financial year</label>
+            <select id="hubFy"><option value="current">This FY (hot)</option><option value="all">All years (fetch)</option></select>
+          </div>
         </div>
         <div id="hub-customers" style="overflow:auto">
           <table><thead><tr><th>Customer</th><th>Projects</th><th>Quote versions</th><th>Advance</th><th>Balance</th><th></th></tr></thead><tbody id="hubCustBody"></tbody></table>
@@ -2183,20 +2218,48 @@ function savedSessionToken() {
     return (sessionStorage.getItem(WEOS_SESSION_KEY) || localStorage.getItem(WEOS_SESSION_KEY) || '').trim();
   } catch (_) { return ''; }
 }
-function clearWorkspaceSession() {
+function isCompanyLoggedIn() {
+  return !!(state.workspaceRestored && savedSessionToken() && (state.companyGst || savedCompanyGst()));
+}
+function wipeLoggedOutUi() {
   state.companyGst = null;
   state.workspace = null;
   state.workspaceRestored = false;
+  state.projectId = null;
+  state.selectedCustomer = null;
+  state.packageQuotes = [];
+  state.masterJobId = null;
+  state.company = null;
   try {
     localStorage.removeItem(WEOS_GST_KEY);
     sessionStorage.removeItem(WEOS_GST_KEY);
     localStorage.removeItem(WEOS_SESSION_KEY);
     sessionStorage.removeItem(WEOS_SESSION_KEY);
+    localStorage.removeItem('weos.cart.v1');
+    sessionStorage.removeItem('weos.cart.v1');
   } catch (_) {}
+  const tbodyIds = ['recentBody','projBody','setupListBody','hubCustBody','hubProjBody','hubAccBody','hubQuoteBody'];
+  tbodyIds.forEach(id => { const el = $(id); if (el) el.innerHTML = ''; });
+  ['dashCards','dashGrowth','dashFollowup','mlBody','mlMatches','cpQuotes','cpAdvances','custList'].forEach(id => {
+    const el = $(id); if (el) el.innerHTML = '';
+  });
   if ($('coHubPanel')) $('coHubPanel').classList.add('hidden');
-  if ($('coGstStatus')) $('coGstStatus').textContent = 'Logged out';
+  if ($('dashLocked')) $('dashLocked').classList.remove('hidden');
+  if ($('dashLive')) $('dashLive').classList.add('hidden');
+  ['coName','coGst','coAddress','coWebsite','coPhone','coEmail','coTagline','coStateCode','coPan','coBank','coTerms','coGstLoginName','coGstLoginEmail'].forEach(id => {
+    if ($(id)) $(id).value = '';
+  });
   if ($('coGstPin')) $('coGstPin').value = '';
-  updateWorkspacePill();
+  if ($('coGstStatus')) $('coGstStatus').textContent = 'Logged out — company data is hidden until login';
+  if ($('coHubTitle')) $('coHubTitle').textContent = 'Company hub';
+  if ($('coHubSub')) $('coHubSub').textContent = '';
+  ['hubCustCount','hubProjRunning','hubOrdersConfirmed','hubAdv','hubYearTaxable','hubYearGrand','hubTotTaxable','hubTotGrand','hubBal'].forEach(id => {
+    if ($(id)) $(id).textContent = '—';
+  });
+  if (typeof updateWorkspacePill === 'function') updateWorkspacePill();
+}
+function clearWorkspaceSession() {
+  wipeLoggedOutUi();
 }
 function updateWorkspacePill() {
   const el = $('wsPill');
@@ -2211,7 +2274,7 @@ function updateWorkspacePill() {
   }
 }
 function requireCompanyLogin() {
-  if (state.workspaceRestored && savedCompanyGst() && savedSessionToken()) return true;
+  if (isCompanyLoggedIn()) return true;
   toast('Log in with GST / name / mobile and PIN first');
   setView('company');
   return false;
@@ -2297,12 +2360,9 @@ async function applyWorkspacePayload(ws) {
   }
   if (typeof renderCompanyHub === 'function') renderCompanyHub(ws);
   if ($('coGstStatus')) $('coGstStatus').textContent = 'Workspace open · GSTIN ' + ws.gstNo;
-  // Rehydrate lists from Postgres-backed APIs.
-  try { await loadCustomerList(); } catch (_) {}
-  try { if (typeof loadProjects === 'function') await loadProjects(); } catch (_) {}
-  try { if (typeof loadSetupList === 'function') await loadSetupList(); } catch (_) {}
-  try { if (typeof loadDashboard === 'function') await loadDashboard(); } catch (_) {}
+  // Do not prefetch every quote/payment/customer on login — fetch the open view only.
   if (typeof updatePdfLinks === 'function') updatePdfLinks();
+  try { if (typeof loadHubCustomers === 'function') loadHubCustomers(); } catch (_) {}
 }
 async function restoreCompanyWorkspace() {
   const gst = savedCompanyGst();
@@ -2379,13 +2439,17 @@ async function api(path, opts={}) {
 }
 
 function setView(v) {
+  const needLogin = ['dashboard','setup','master','projects','customers','cart'];
+  if (needLogin.indexOf(v) >= 0 && !isCompanyLoggedIn()) {
+    v = 'company';
+  }
   state.view = v;
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view===v));
   ['dashboard','setup','master','projects','cart','library','product','admin','customers','company','scan','learning','formulas','templates','engines'].forEach(id => {
     const el = $('view-'+id); if (el) el.classList.toggle('hidden', id!==v);
   });
   const titles = {
-    dashboard:['Dashboard','Active work across factory & quotations'],
+    dashboard:['Dashboard','This month vs last · this year vs last · follow-up queue'],
     setup:['Project Setup','Customer, brand, quote text — once per project, editable anytime'],
     master:['Master Ledger','Package quotes, advances, GST and balance — one job only'],
     projects:['Saved Projects','Search, filter, duplicate, archive — versions kept'],
@@ -2605,67 +2669,121 @@ function renderRecentProjectRows(projects) {
 }
 
 async function loadDashboard() {
+  const locked = $('dashLocked');
+  const live = $('dashLive');
+  if (!isCompanyLoggedIn()) {
+    if (locked) locked.classList.remove('hidden');
+    if (live) live.classList.add('hidden');
+    return;
+  }
+  if (locked) locked.classList.add('hidden');
+  if (live) live.classList.remove('hidden');
   const body = $('recentBody');
   if (body && !body.dataset.loaded) {
-    body.innerHTML = '<tr><td colspan="7" class="muted">Loading projects…</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="muted">Loading…</td></tr>';
   }
-  let projects = [];
-  let loadErr = null;
   try {
-    const qs = withGstQuery({ sort: 'updatedAt', order: 'desc' });
-    const data = await api('/api/projects?' + qs.toString(), { timeoutMs: 12000 });
-    projects = data.projects || [];
+    const qs = withGstQuery({});
+    const d = await api('/api/dashboard?' + qs.toString(), { timeoutMs: 20000 });
+    renderDashboardGrowth(d);
+    renderFollowupQueue(d && d.followUps);
+    renderRecentProjectRows(d.recentProjects || []);
+    if (body) body.dataset.loaded = '1';
   } catch (e) {
-    loadErr = e;
-    const wsRows = (state.workspace && (state.workspace.projects || [])) || [];
-    if (wsRows.length) projects = wsRows;
-  }
-  if (!projects.length && loadErr) {
+    if (/log in|401/i.test(String(e.message || ''))) {
+      wipeLoggedOutUi();
+      setView('company');
+      return;
+    }
     if (body) {
-      body.innerHTML = `<tr><td colspan="7" class="muted">Could not load projects (${esc(loadErr.message || loadErr)}). <button type="button" class="btn ghost sm" id="dashRetry">Retry</button></td></tr>`;
+      body.innerHTML = `<tr><td colspan="7" class="muted">Could not load dashboard (${esc(e.message || e)}). <button type="button" class="btn ghost sm" id="dashRetry">Retry</button></td></tr>`;
       const r = $('dashRetry'); if (r) r.onclick = () => loadDashboard();
     }
-  } else {
-    if (body) body.dataset.loaded = '1';
-    renderRecentProjectRows(projects);
   }
-  const active = projects.filter(p => (p.status || 'active') === 'active').length;
-  const drafts = projects.filter(p => p.status === 'draft').length;
-  if ($('dashCards')) {
-    const wsDash0 = (state.workspace && state.workspace.dashboard) || {};
-    const wsTot0 = (state.workspace && state.workspace.totals) || {};
-    $('dashCards').innerHTML = [
-      ['Active Projects', active],
-      ['Draft Quotations', drafts],
-      ["Today's Orders", '—'],
-      ['Material Required', '—'],
-      ['Production Queued', projects.filter(p => p.quotationId).length],
-      ['Archived', '—'],
-      ['Year turnover (ex-GST)', money(wsDash0.yearTaxable ?? wsTot0.yearTaxable)],
-      ['Year turnover (w/ GST)', money(wsDash0.yearGrand ?? wsTot0.yearGrand)],
-    ].map(([k,v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
-  }
-  api('/api/dashboard', { timeoutMs: 8000 }).then(d => {
-    if (!d || !$('dashCards')) return;
-  const wsDash = (state.workspace && state.workspace.dashboard) || {};
-  const wsTot = (state.workspace && state.workspace.totals) || {};
-  const yearTax = wsDash.yearTaxable ?? wsTot.yearTaxable ?? wsDash.yearValueGenerated ?? d.yearTaxable;
-  const yearGrand = wsDash.yearGrand ?? wsTot.yearGrand ?? d.yearGrand;
+}
+function growthLine(label, block) {
+  const b = block || {};
+  const up = b.growth;
+  const less = b.less;
+  const cls = up ? 'growth-up' : (less ? 'growth-down' : '');
+  const word = up ? 'growth' : (less ? 'less' : 'same');
+  const pct = (b.percent == null ? 0 : b.percent);
+  const sign = pct > 0 ? '+' : '';
+  const countBit = b.count != null ? `<span class="muted" style="font-size:.85rem"> · ${b.count} jobs</span>` : '';
+  return `<div class="card"><div class="k">${label}</div><div class="v">${money(b.amount)}${countBit}</div><div class="v2 ${cls}">${sign}${pct}% ${word} · ${money(b.change)}</div></div>`;
+}
+function renderDashboardGrowth(d) {
+  const o = d || {};
+  const om = (o.orders && o.orders.month) || {};
+  const oy = (o.orders && o.orders.year) || {};
+  const cm = (o.collection && o.collection.month) || {};
+  const cy = (o.collection && o.collection.year) || {};
+  const xm = (o.orderClear && o.orderClear.month) || {};
+  const xy = (o.orderClear && o.orderClear.year) || {};
   if ($('dashCards')) {
     $('dashCards').innerHTML = [
-      ['Active Projects', d.activeProjects],
-      ['Draft Quotations', d.draftQuotations],
-      ["Today's Orders", d.todaysOrders],
-      ['Material Required', (d.materialRequiredKg||0)+' kg'],
-      ['Production Queued', d.productionStatus?.queued||0],
-      ['Archived', d.productionStatus?.archived||0],
-      ['Year turnover (ex-GST)', money(yearTax)],
-      ['Year turnover (w/ GST)', money(yearGrand)],
-    ].map(([k,v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+      growthLine('This month — orders passed', om),
+      growthLine('This year — orders passed', oy),
+      growthLine('This month — collection', cm),
+      growthLine('This year — collection', cy),
+      growthLine('This month — order clear', xm),
+      growthLine('This year — order clear', xy),
+    ].join('');
   }
-    if ((!projects.length) && (d.recentProjects || []).length) renderRecentProjectRows(d.recentProjects);
-  }).catch(() => {});
-  refreshAgent().catch(() => {});
+  if ($('dashGrowth')) {
+    const fy = o.fy ? (' This FY ' + o.fy + (o.lastFy ? (' vs last FY ' + o.lastFy) : '') + '.') : '';
+    $('dashGrowth').innerHTML = `<p class="muted" style="margin:0;font-size:.8rem">Month vs last month · year vs last financial year.${fy} Green = growth, copper = less. Closed years stay stored — open them from Company hub. Collection = advances. Order clear = fully paid jobs.</p>`;
+  }
+}
+function renderFollowupQueue(fu) {
+  const box = $('dashFollowup');
+  if (!box) return;
+  const data = fu || {};
+  const groups = [
+    ['High priority · 10–15 days (and older)', data.high || [], 'high'],
+    ['Medium · 5–10 days', data.medium || [], 'medium'],
+    ['By date · newer than 5 days', data.later || [], 'later'],
+  ];
+  const html = groups.map(([title, rows, cls]) => {
+    if (!rows.length) return `<p class="muted" style="font-size:.78rem">${esc(title)} — none</p>`;
+    return `<strong style="font-size:.8rem">${esc(title)}</strong>` + rows.map(r => {
+      const last = r.lastFollowUpAt
+        ? ('Last follow-up ' + String(r.lastFollowUpAt).slice(0, 10) + (r.lastFollowUpAgo != null ? (' · ' + r.lastFollowUpAgo + 'd ago') : ''))
+        : 'No follow-up yet';
+      const wa = r.whatsappUrl
+        ? `<a class="btn sm" href="${esc(r.whatsappUrl)}" target="_blank" rel="noopener" data-fu="${esc(r.projectId)}" data-fu-ch="whatsapp">WhatsApp</a>`
+        : '';
+      const call = r.callUrl
+        ? `<a class="btn ghost sm" href="${esc(r.callUrl)}" data-fu="${esc(r.projectId)}" data-fu-ch="call">Call</a>`
+        : '<span class="muted" style="font-size:.75rem">No mobile</span>';
+      return `<div class="fu-row ${cls}">
+        <div><strong>${esc(r.customer || 'Customer')}</strong> · ${esc(r.quotationId || r.projectId || '')} · ${r.ageDays}d
+          <div class="muted" style="font-size:.72rem">${esc(r.name || '')} · ${money(r.amount)} · ${esc(last)}</div>
+        </div>
+        <div class="row" style="margin-top:.35rem;gap:.35rem">${wa}${call}
+          <button class="btn ghost sm" type="button" data-fu-open="${esc(r.projectId)}">Open</button>
+        </div>
+      </div>`;
+    }).join('');
+  }).join('');
+  box.innerHTML = html || '<p class="muted">No pending quotes to follow up</p>';
+  box.querySelectorAll('[data-fu]').forEach(a => {
+    a.addEventListener('click', () => recordFollowupClick(a.dataset.fu, a.dataset.fuCh));
+  });
+  box.querySelectorAll('[data-fu-open]').forEach(b => {
+    b.onclick = async () => { await openProject(b.dataset.fuOpen); setView('setup'); };
+  });
+}
+async function recordFollowupClick(projectId, channel) {
+  if (!projectId) return;
+  try {
+    await api('/api/projects/' + encodeURIComponent(projectId) + '/follow-up', {
+      method: 'POST',
+      body: { channel: channel || 'call' },
+    });
+    toast('Follow-up recorded · ' + (channel || 'call'));
+    loadDashboard();
+  } catch (e) { toast(e.message); }
 }
 
 async function refreshAgent() {
@@ -2691,7 +2809,7 @@ async function loadProjects() {
   const q = ($('projSearch') && $('projSearch').value.trim()) || '';
   const status = ($('projStatus') && $('projStatus').value) || '';
   const sort = ($('projSort') && $('projSort').value) || 'updatedAt';
-  const qs = withGstQuery({sort, order:'desc'});
+  const qs = withGstQuery({sort, order:'desc', fy: ($('hubFy') && $('hubFy').value) || 'current', limit: '50', offset: '0'});
   if (q) qs.set('q', q);
   if (status) qs.set('status', status);
   let data;
@@ -2717,7 +2835,13 @@ async function loadProjects() {
         <button class="btn ghost sm" data-a="${p.projectId}">${p.status==='archived'?'Restore':'Archive'}</button>
         ${p.status==='archived'?'':`<button class="btn ghost sm" data-del="${p.projectId}" data-del-label="${esc((p.quotationId||p.projectId)+' / '+(p.customer||p.name||''))}">Delete</button>`}
       </td>
-    </tr>`).join('') || '<tr><td colspan="8" class="muted">None</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="8" class="muted">None this financial year</td></tr>';
+  if (data.hasMore) {
+    $('projBody').innerHTML += `<tr><td colspan="8"><button class="btn ghost sm" type="button" id="projMore">Load more (${data.total||0} total)</button></td></tr>`;
+    const more = $('projMore');
+    if (more) more.onclick = () => loadProjectsMore(data.offset + (data.projects||[]).length);
+  }
+  }
   $('projBody').querySelectorAll('[data-o]').forEach(b => b.onclick = async () => { await openProject(b.dataset.o); setView('cart'); });
   $('projBody').querySelectorAll('[data-outside]').forEach(b => b.onclick = async () => { await goAddOutsideQuote(b.dataset.outside); });
   $('projBody').querySelectorAll('[data-d]').forEach(b => b.onclick = async () => { await api('/api/projects/'+b.dataset.d+'/duplicate',{method:'POST'}); toast('Duplicated'); loadProjects(); });
@@ -2736,6 +2860,39 @@ async function loadProjects() {
       if (state.companyGst) refreshCompanyHub(state.companyGst);
     } catch(e) { toast(e.message); }
   });
+}
+async function loadProjectsMore(offset) {
+  const q = ($('projSearch') && $('projSearch').value.trim()) || '';
+  const status = ($('projStatus') && $('projStatus').value) || '';
+  const sort = ($('projSort') && $('projSort').value) || 'updatedAt';
+  const qs = withGstQuery({sort, order:'desc'});
+  qs.set('fy', ($('hubFy') && $('hubFy').value) || 'current');
+  qs.set('limit', '50');
+  qs.set('offset', String(offset || 0));
+  if (q) qs.set('q', q);
+  if (status) qs.set('status', status);
+  try {
+    const data = await api('/api/projects?'+qs.toString());
+    const moreRow = $('projMore') && $('projMore').closest('tr');
+    if (moreRow) moreRow.remove();
+    const extra = (data.projects||[]).map(p => `
+    <tr>
+      <td>${p.projectId}</td><td>${p.name||''}</td><td>${p.customer||''}</td>
+      <td>${p.lineCount||0}</td><td>v${p.version||0}</td>
+      <td>${projectTotalDisplay(p)}</td>
+      <td>${esc(p.tenure || formatTenure(p.updatedAt || p.createdAt))}</td>
+      <td class="actions-inline">
+        <button class="btn ghost sm" data-o="${p.projectId}">Open</button>
+      </td>
+    </tr>`).join('');
+    if ($('projBody')) $('projBody').insertAdjacentHTML('beforeend', extra);
+    if (data.hasMore && $('projBody')) {
+      $('projBody').insertAdjacentHTML('beforeend', `<tr><td colspan="8"><button class="btn ghost sm" type="button" id="projMore">Load more</button></td></tr>`);
+      const more = $('projMore');
+      if (more) more.onclick = () => loadProjectsMore((offset||0) + (data.projects||[]).length);
+    }
+    $('projBody').querySelectorAll('[data-o]').forEach(b => b.onclick = async () => { await openProject(b.dataset.o); setView('cart'); });
+  } catch (e) { toast(e.message); }
 }
 
 async function loadProducts() {
@@ -4507,12 +4664,12 @@ const PKG_CATS = [
   ['pergola','Pergola'],['other','Other'],
 ];
 const PKG_UNITS = {
-  window:['pcs'], casement:['pcs'], ventilator:['pcs'], louver:['pcs'],
-  railing:['rft','sft','pcs'], iron_fabrication:['kg','sft'],
-  gate:['pcs','sft'], grill:['pcs','sft'], pergola:['sft','pcs'], other:['pcs','sft','kg','rft'],
+  window:['pcs','sft','rft'], casement:['pcs','sft'], ventilator:['pcs','sft'], louver:['pcs','sft'],
+  railing:['rft','sft','pcs'], iron_fabrication:['kg','sft','pcs'],
+  gate:['pcs','sft'], grill:['pcs','sft','rft'], pergola:['sft','pcs'], other:['pcs','sft','kg','rft'],
 };
 function _pkgId(prefix){ return prefix + Math.random().toString(36).slice(2,10); }
-function emptyPkgItem(){ return { id:_pkgId('pi'), category:'window', qty:'', size:'', unit:'pcs', amount:'' }; }
+function emptyPkgItem(){ return { id:_pkgId('pi'), category:'window', qty:'', size:'', unit:'sft', amount:'', note:'', rate:'' }; }
 function emptyPkgQuote(){ return { id:_pkgId('pq'), quotationId:'', gstMode:'exclude', gstPercent:18, items:[emptyPkgItem()], note:'', attachmentName:'', attachments:[] }; }
 function emptyQuoteDiscount(){ return { mode:'off', percent:0, amount:0, note:'' }; }
 function adoptQuoteDiscount(doc){
@@ -4686,7 +4843,16 @@ function pkgGstSplit(itemsTotal, mode, percent){
 function pkgQuoteTotals(q){
   const items = (q && q.items) || [];
   const sum = items.reduce((s,it)=>s+(Number(it.amount)||0),0);
-  return pkgGstSplit(sum, q && q.gstMode, q && q.gstPercent);
+  const t = pkgGstSplit(sum, q && q.gstMode, q && q.gstPercent);
+  const lockedGst = q && q.gstAmount != null && q.gstAmount !== '' && Number(q.gstAmount) >= 0;
+  const lockedVal = q && q.projectValue != null && q.projectValue !== '' && Number(q.projectValue) > 0;
+  if (lockedGst && Math.abs(Number(q.gstAmount) - t.gstAmount) > 0.5) {
+    t.gstAmount = Number(q.gstAmount);
+    t.projectValue = lockedVal ? Number(q.projectValue) : Math.round((t.totalTaxable + t.gstAmount)*100)/100;
+  } else if (lockedVal && Math.abs(Number(q.projectValue) - t.projectValue) > 0.5) {
+    t.projectValue = Number(q.projectValue);
+  }
+  return t;
 }
 function adoptPackageQuotes(doc){
   if (!doc || typeof doc !== 'object') return;
@@ -4698,11 +4864,23 @@ function adoptPackageQuotes(doc){
       quotationId: q.quotationId || '',
       gstMode: q.gstMode || 'exclude',
       gstPercent: q.gstPercent == null ? 18 : q.gstPercent,
+      gstAmount: q.gstAmount,
+      projectValue: q.projectValue,
+      totalGrand: q.totalGrand,
       note: q.note || '',
       attachmentName: q.attachmentName || '',
       attachmentKey: q.attachmentKey || '',
       attachments: Array.isArray(q.attachments) ? q.attachments : [],
-      items: (q.items && q.items.length) ? q.items : [emptyPkgItem()],
+      items: (q.items && q.items.length) ? q.items.map(it => ({
+        id: it.id || _pkgId('pi'),
+        category: it.category || 'other',
+        qty: it.qty == null ? '' : it.qty,
+        size: it.size || '',
+        unit: it.unit || 'pcs',
+        amount: it.amount == null ? '' : it.amount,
+        note: it.note || '',
+        rate: it.rate == null ? '' : it.rate,
+      })) : [emptyPkgItem()],
     })) : [emptyPkgQuote()];
     if (state.packageQuoteIndex >= state.packageQuotes.length) state.packageQuoteIndex = 0;
     renderPackageQuotes();
@@ -4714,6 +4892,9 @@ function packageQuotesPayload(){
     quotationId: (q.quotationId || '').trim() || undefined,
     gstMode: q.gstMode || 'exclude',
     gstPercent: q.gstMode === 'off' ? 0 : (Number(q.gstPercent)||18),
+    gstAmount: q.gstAmount == null || q.gstAmount === '' ? undefined : Number(q.gstAmount),
+    projectValue: q.projectValue == null || q.projectValue === '' ? undefined : Number(q.projectValue),
+    totalGrand: q.totalGrand == null || q.totalGrand === '' ? undefined : Number(q.totalGrand),
     note: (q.note || '').trim() || undefined,
     attachmentName: q.attachmentName || undefined,
     attachmentKey: q.attachmentKey || undefined,
@@ -4721,7 +4902,9 @@ function packageQuotesPayload(){
     items: (q.items || []).map((it, n) => ({
       id: it.id, category: it.category, qty: it.qty === '' ? undefined : Number(it.qty),
       size: (it.size || '').trim() || undefined, unit: it.unit || 'pcs',
-      amount: Number(it.amount)||0, note: (it.note || '').trim() || undefined, sort: n,
+      amount: Number(it.amount)||0, note: (it.note || '').trim() || undefined,
+      rate: it.rate === '' || it.rate == null ? undefined : Number(it.rate),
+      sort: n,
     })),
     index: i,
   })).filter(q => (q.items || []).some(it => Number(it.amount) > 0));
@@ -4821,8 +5004,10 @@ function renderPackageQuotes(){
         <div><label class="l">Qty</label><input data-pkg="qty" type="number" min="0" step="0.01" value="${esc(it.qty)}" placeholder="opt."/></div>
         <div><label class="l">Size</label><input data-pkg="size" value="${esc(it.size||'')}" placeholder="optional"/></div>
         <div><label class="l">Unit</label><select data-pkg="unit">${units.map(u=>`<option value="${u}"${it.unit===u?' selected':''}>${u}</option>`).join('')}</select></div>
+        <div><label class="l">Rate ₹</label><input data-pkg="rate" type="number" min="0" step="0.01" value="${esc(it.rate==null?'':it.rate)}" placeholder="opt."/></div>
         <div><label class="l">Amount ₹</label><input data-pkg="amount" type="number" min="0" step="0.01" value="${esc(it.amount)}"/></div>
         <button class="btn ghost sm" type="button" data-pkg-del="${i}" title="Remove">✕</button>
+        <div class="pkg-note"><label class="l">Description</label><input data-pkg="note" value="${esc(it.note||'')}" placeholder="location / product description"/></div>
       </div>`;
     }).join('')}</div>
     <button class="btn ghost sm" id="btnPkgAddItem" type="button">Add item</button>
@@ -4866,6 +5051,11 @@ function renderPackageQuotes(){
         const cur = ensurePkgQuotes()[state.packageQuoteIndex];
         const it = cur.items[idx]; if (!it) return;
         it[inp.dataset.pkg] = inp.value;
+        if (['amount','qty','rate'].includes(inp.dataset.pkg)) {
+          cur.gstAmount = undefined;
+          cur.projectValue = undefined;
+          cur.totalGrand = undefined;
+        }
         if (inp.dataset.pkg === 'category') {
           const units = unitsFor(it.category);
           if (units.indexOf(it.unit) < 0) it.unit = units[0];
@@ -7967,6 +8157,80 @@ if ($('btnSetupToCart')) $('btnSetupToCart').onclick = async () => {
 if ($('btnSetupLoadList')) $('btnSetupLoadList').onclick = loadSetupList;
 if ($('btnEditSetup')) $('btnEditSetup').onclick = () => setView('setup');
 if ($('btnSetupMaster')) $('btnSetupMaster').onclick = () => setView('master');
+
+function setupImportFormData(commit){
+  const inp = $('setupImportFiles');
+  const files = inp && inp.files ? Array.from(inp.files) : [];
+  if (!files.length) throw new Error('Choose the Excel and/or PDF of this project');
+  const fd = new FormData();
+  files.forEach(f => fd.append('files', f));
+  const name = (($('projCustName') && $('projCustName').value.trim())
+    || ($('cartCustomer') && $('cartCustomer').value.trim()) || '').trim();
+  fd.append('customer', name);
+  fd.append('customerMobile', (($('projMobile') && $('projMobile').value) || '').trim());
+  fd.append('customerAddress', (($('projCustAddress') && $('projCustAddress').value) || '').trim());
+  fd.append('customerGst', (($('projCustGst') && $('projCustGst').value) || '').trim());
+  fd.append('projectName', (($('cartName') && $('cartName').value) || '').trim());
+  fd.append('quotationId', (($('projQuoteNo') && $('projQuoteNo').value) || '').trim());
+  const pick = $('setupProjectPick') && $('setupProjectPick').value;
+  if (commit && pick && pick !== 'new') fd.append('projectId', pick);
+  fd.append('commit', commit ? 'true' : 'false');
+  fd.append('importAdvances', ($('setupImportAdvances') && $('setupImportAdvances').checked) ? 'true' : 'false');
+  if (state.companyGst) fd.append('gst', state.companyGst);
+  return fd;
+}
+function renderSetupImportPreview(p){
+  const box = $('setupImportPreview'); if (!box) return;
+  if (!p) { box.innerHTML = ''; return; }
+  const stages = p.stages || [];
+  const adv = p.advances || [];
+  box.innerHTML = `<div style="border:1px solid var(--line);border-radius:10px;padding:.65rem .75rem;background:#fff">
+    <div><strong>${stages.length}</strong> stage quote(s) · value ${money(p.projectValue)} · <strong>${adv.length}</strong> advance(s) ${money(p.advanceTotal)} · balance ${money(p.balance)}</div>
+    ${p.customerHint && (p.customerHint.name || p.customerHint.address) ? `<div class="muted" style="margin-top:.25rem">File customer: ${esc(p.customerHint.name||'')} ${esc(p.customerHint.address||'')}</div>` : ''}
+    <div style="margin-top:.4rem">${stages.map(s => `• ${esc(s.title||'Stage')} — ${s.items||0} items — ${money(s.value)}`).join('<br/>') || 'No quote stages found'}</div>
+    ${adv.length ? `<div style="margin-top:.4rem">${adv.slice(0,8).map(a => `• ${esc(a.purpose||a.note||a.paymentMode||'Advance')} — ${money(a.amount)}${a.paidAt?(' · '+esc(String(a.paidAt).slice(0,10))):''}`).join('<br/>')}${adv.length>8?('<br/>… +'+(adv.length-8)+' more'):''}</div>` : ''}
+    ${(p.parseWarnings||[]).length ? `<div class="err" style="margin-top:.35rem">${esc((p.parseWarnings||[]).join('; '))}</div>` : ''}
+  </div>`;
+}
+async function previewSetupImport(){
+  const fd = setupImportFormData(false);
+  const box = $('setupImportPreview');
+  if (box) box.textContent = 'Reading files…';
+  const p = await api('/api/projects/import-pack', { method:'POST', body: fd, timeoutMs: 90000 });
+  state._importPreview = p;
+  if (p && p.customerHint) {
+    if ($('projCustName') && !$('projCustName').value.trim() && p.customerHint.name) $('projCustName').value = p.customerHint.name;
+    if ($('projCustAddress') && !$('projCustAddress').value.trim() && p.customerHint.address) $('projCustAddress').value = p.customerHint.address;
+    if ($('cartCustomer') && !$('cartCustomer').value.trim() && p.customerHint.name) $('cartCustomer').value = p.customerHint.name;
+  }
+  renderSetupImportPreview(p);
+  toast((p.quoteCount||0) + ' stage(s), ' + (p.advanceCount||0) + ' advance(s) ready');
+  return p;
+}
+if ($('btnSetupImportPreview')) $('btnSetupImportPreview').onclick = async () => {
+  try { await previewSetupImport(); } catch(e) { if ($('setupErr')) $('setupErr').textContent = e.message; toast(e.message); }
+};
+if ($('btnSetupImportSave')) $('btnSetupImportSave').onclick = async () => {
+  try {
+    const name = (($('projCustName') && $('projCustName').value.trim())
+      || ($('cartCustomer') && $('cartCustomer').value.trim()) || '').trim();
+    if (!name) { toast('Enter customer name first so project + account can be saved'); return; }
+    if (!(($('projMobile') && $('projMobile').value.trim()) || '').trim()) {
+      toast('Enter customer mobile — same mobile is this client');
+      return;
+    }
+    const fd = setupImportFormData(true);
+    if ($('setupImportPreview')) $('setupImportPreview').textContent = 'Saving project and account…';
+    const saved = await api('/api/projects/import-pack', { method:'POST', body: fd, timeoutMs: 90000 });
+    const pid = saved && saved.project && saved.project.projectId;
+    if (!pid) throw new Error('Import saved but no project id returned');
+    await openProject(pid);
+    renderSetupImportPreview(saved.preview || saved);
+    if ($('setupErr')) $('setupErr').textContent = '';
+    toast('Project saved — ' + (saved.quoteCount||0) + ' stage(s), ' + (saved.advanceCount||0) + ' advance(s). Edit anytime.');
+    if (state.companyGst) refreshCompanyHub(state.companyGst);
+  } catch(e) { if ($('setupErr')) $('setupErr').textContent = e.message; toast(e.message); }
+};
 async function goAddOutsideQuote(projectId){
   if (projectId && String(projectId) !== String(state.projectId || '')) {
     await openProject(projectId);
@@ -7975,7 +8239,7 @@ async function goAddOutsideQuote(projectId){
   const last = list[list.length - 1];
   const empty = last && !(last.items || []).some(it => Number(it.amount) > 0) && !String(last.quotationId || '').trim();
   if (!empty) {
-    if (list.length >= 20) { toast('Maximum 20 quotes on one project'); return; }
+    if (list.length >= 40) { toast('Maximum 40 quotes on one project'); return; }
     list.push(emptyPkgQuote());
   }
   state.packageQuoteIndex = list.length - 1;
@@ -7991,7 +8255,7 @@ if ($('btnCartOutsideQuote')) $('btnCartOutsideQuote').onclick = () => {
 };
 if ($('btnPkgAddQuote')) $('btnPkgAddQuote').onclick = () => {
   const list = ensurePkgQuotes();
-  if (list.length >= 20) { toast('Maximum 20 quotes on one project'); return; }
+  if (list.length >= 40) { toast('Maximum 40 quotes on one project'); return; }
   list.push(emptyPkgQuote());
   state.packageQuoteIndex = list.length - 1;
   renderPackageQuotes();
@@ -8166,13 +8430,18 @@ function renderMasterLedger(wrap){
         </select>
       </div>
       <div><label class="l">Date</label><input id="mlAdvDate" type="date" style="width:140px"/></div>
+      <div class="grow"><label class="l">Purpose / name</label><input id="mlAdvPurpose" placeholder="who paid / purpose"/></div>
       <div class="grow"><label class="l">Ref / note</label><input id="mlAdvRef" placeholder="cheque / UTR / note"/></div>
       <button class="btn sm" id="btnMlAdvAdd" type="button">Add advance</button>
     </div>
+    <p class="muted" style="margin:0 0 .4rem;font-size:.75rem">Slip is optional — generate anytime from the table.</p>
     <strong style="font-size:.88rem">Transactions</strong>
     <div style="overflow:auto;margin:.35rem 0">${
-      adv.length ? `<table><thead><tr><th>Date</th><th>Quote</th><th>Amount</th><th>Running advance</th><th>Running balance</th><th>Mode</th><th>Ref</th></tr></thead><tbody>${
-        adv.map(a => `<tr>
+      adv.length ? `<table><thead><tr><th>Date</th><th>Quote</th><th>Amount</th><th>Running advance</th><th>Running balance</th><th>Mode</th><th>Ref</th><th>Slip</th></tr></thead><tbody>${
+        adv.map(a => {
+          const cname = encodeURIComponent(a.customerName || led.customer || '');
+          const slip = (a.id && cname) ? (API_BASE + '/api/customers/' + cname + '/advances/' + a.id + '/slip') : '';
+          return `<tr>
           <td>${esc(mlFmtDate(a.paidAt||a.createdAt))}</td>
           <td>${esc(a.quoteId||'—')}</td>
           <td>${money(a.amount)}</td>
@@ -8180,7 +8449,9 @@ function renderMasterLedger(wrap){
           <td>${money(a.balanceAfter)}</td>
           <td>${esc(a.paymentMode||'')}</td>
           <td>${esc(a.reference||a.note||'')}</td>
-        </tr>`).join('')
+          <td style="white-space:nowrap">${slip ? `<a class="btn ghost sm" href="${slip}.pdf" target="_blank">Slip PDF</a>` : '—'}</td>
+        </tr>`;
+        }).join('')
       }</tbody></table>` : '<p class="muted" style="font-size:.8rem">No advances on this job yet</p>'
     }</div>`;
   if ($('mlAdvDate') && !$('mlAdvDate').value) {
@@ -8283,11 +8554,13 @@ function renderMasterLedger(wrap){
           paymentMode: ($('mlAdvMode') && $('mlAdvMode').value) || 'cash',
           paidAt: ($('mlAdvDate') && $('mlAdvDate').value) || null,
           reference: ($('mlAdvRef') && $('mlAdvRef').value) || '',
+          note: ($('mlAdvPurpose') && $('mlAdvPurpose').value) || undefined,
         },
       });
       if ($('mlAdvAmt')) $('mlAdvAmt').value = '';
       if ($('mlAdvRef')) $('mlAdvRef').value = '';
-      toast('Advance saved — project and client totals updated');
+      if ($('mlAdvPurpose')) $('mlAdvPurpose').value = '';
+      toast('Advance saved — generate a slip from the table anytime');
       await loadMasterLedger({ projectId: advPid });
     } catch (e) { if ($('mlErr')) $('mlErr').textContent = e.message; toast(e.message); }
   };
@@ -9813,14 +10086,19 @@ if ($('btnMemLookup')) $('btnMemLookup').onclick = async () => {
 
 /* ── Company Setup + GST workspace hub ─────────────────────────────────────── */
 async function initCompany() {
-  // Prefer saved GST workspace (session stick) over bare /api/company.
   const saved = savedCompanyGst();
-  if (saved) {
+  if (saved && savedSessionToken()) {
     const ws = await restoreCompanyWorkspace();
     if (ws) return;
   }
   try {
     const c = await api('/api/company');
+    if (!c || c.loggedIn === false || !c.gstNo) {
+      state.company = null;
+      updateDeletePinHint(null);
+      renderCompanyPreview();
+      return;
+    }
     state.company = c;
     if (c.gstNo) {
       persistCompanyGst(c.gstNo);
@@ -10064,6 +10342,7 @@ async function logoutCompanyWorkspace() {
 }
 if ($('btnCoGstLogout')) $('btnCoGstLogout').onclick = () => logoutCompanyWorkspace();
 if ($('btnHubLogout')) $('btnHubLogout').onclick = () => logoutCompanyWorkspace();
+if ($('dashGoLogin')) $('dashGoLogin').onclick = () => setView('company');
 if ($('btnCoGstForgot')) $('btnCoGstForgot').onclick = async () => {
   if ($('coGstErr')) $('coGstErr').textContent = '';
   const ident = (($('coGstLogin') && $('coGstLogin').value) || ($('coEmail') && $('coEmail').value) || '').trim();
@@ -10086,8 +10365,80 @@ if ($('hubTabs')) $('hubTabs').querySelectorAll('[data-hubtab]').forEach(btn => 
       if (el) el.classList.toggle('hidden', btn.dataset.hubtab !== k);
     });
     if (btn.dataset.hubtab === 'quotes') loadHubQuotes();
+    if (btn.dataset.hubtab === 'projects') loadHubProjects();
+    if (btn.dataset.hubtab === 'customers' || btn.dataset.hubtab === 'accounts') loadHubCustomers();
   };
 });
+if ($('hubFy')) $('hubFy').onchange = () => {
+  const active = $('hubTabs') && $('hubTabs').querySelector('.tab.active');
+  const tab = (active && active.dataset.hubtab) || 'customers';
+  if (tab === 'projects') loadHubProjects();
+  else if (tab === 'quotes') loadHubQuotes();
+  else loadHubCustomers();
+};
+async function loadHubCustomers() {
+  if (!$('hubCustBody')) return;
+  $('hubCustBody').innerHTML = '<tr><td colspan="6" class="muted">Loading…</td></tr>';
+  try {
+    const qs = withGstQuery({ limit: '80' });
+    const data = await api('/api/customers?' + qs.toString());
+    const rows = data.customers || [];
+    $('hubCustBody').innerHTML = rows.map(c => `
+      <tr>
+        <td><strong>${esc(c.name)}</strong><div class="muted" style="font-size:.72rem">${esc(c.phone||c.gstNo||'')}</div></td>
+        <td>—</td><td>—</td><td>—</td><td>—</td>
+        <td style="white-space:nowrap">
+          <button class="btn ghost sm" data-hub-cust="${esc(c.name)}" type="button">Open</button>
+          <button class="btn sm" data-hub-quote="${esc(c.name)}" type="button">New quote</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="6" class="muted">No customers this year</td></tr>';
+    $('hubCustBody').querySelectorAll('[data-hub-cust]').forEach(b => b.onclick = () => {
+      state.selectedCustomer = b.dataset.hubCust;
+      setView('customers');
+      openCustomer(b.dataset.hubCust);
+    });
+    $('hubCustBody').querySelectorAll('[data-hub-quote]').forEach(b => b.onclick = () => hubNewQuoteForCustomer(b.dataset.hubQuote));
+    if ($('hubAccBody')) {
+      $('hubAccBody').innerHTML = rows.map(c => `
+        <tr>
+          <td>${esc(c.name)}</td><td>—</td><td>—</td><td>—</td>
+          <td><button class="btn ghost sm" type="button" data-hub-cust="${esc(c.name)}">Open ledger</button></td>
+        </tr>`).join('') || '<tr><td colspan="5" class="muted">Open a customer to fetch ledger</td></tr>';
+      $('hubAccBody').querySelectorAll('[data-hub-cust]').forEach(b => b.onclick = () => {
+        state.selectedCustomer = b.dataset.hubCust;
+        setView('customers');
+        openCustomer(b.dataset.hubCust);
+      });
+    }
+  } catch (e) {
+    $('hubCustBody').innerHTML = '<tr><td colspan="6" class="muted">'+esc(e.message)+'</td></tr>';
+  }
+}
+async function loadHubProjects() {
+  if (!$('hubProjBody')) return;
+  $('hubProjBody').innerHTML = '<tr><td colspan="6" class="muted">Loading…</td></tr>';
+  try {
+    const qs = withGstQuery({ sort: 'updatedAt', order: 'desc' });
+    qs.set('fy', ($('hubFy') && $('hubFy').value) || 'current');
+    qs.set('limit', '50');
+    const data = await api('/api/projects?' + qs.toString());
+    const rows = data.projects || [];
+    $('hubProjBody').innerHTML = rows.map(p => `
+      <tr>
+        <td>${esc(p.projectId)}<div class="muted" style="font-size:.72rem">${esc(p.name||'')}</div></td>
+        <td>${esc(p.customer||'')}</td>
+        <td>${esc(p.quotationId||'—')}</td>
+        <td>v${p.version||1}</td>
+        <td>${p.totalGrand!=null?money(p.totalGrand):(p.grandTotal!=null?money(p.grandTotal):'—')}</td>
+        <td><button class="btn ghost sm" data-hub-open="${esc(p.projectId)}" type="button">Open</button></td>
+      </tr>`).join('') || '<tr><td colspan="6" class="muted">None in this financial year</td></tr>';
+    $('hubProjBody').querySelectorAll('[data-hub-open]').forEach(b => b.onclick = async () => {
+      await openProject(b.dataset.hubOpen); setView('cart');
+    });
+  } catch (e) {
+    $('hubProjBody').innerHTML = '<tr><td colspan="6" class="muted">'+esc(e.message)+'</td></tr>';
+  }
+}
 async function loadHubQuotes() {
   const gst = state.companyGst || savedCompanyGst() || (($('coGstLogin')&&$('coGstLogin').value)||'');
   const filter = ($('hubQuoteFilter') && $('hubQuoteFilter').value) || 'all';
@@ -10498,6 +10849,7 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
         paymentMode: ($('cpAdvMode') && $('cpAdvMode').value) || 'cash',
         paidAt: ($('cpAdvDate') && $('cpAdvDate').value) || null,
         reference: ($('cpAdvRef') && $('cpAdvRef').value) || '',
+        note: ($('cpAdvPurpose') && $('cpAdvPurpose').value) || undefined,
         projectId: (sel && sel.value) || null,
         quoteId: (sel && sel.value) ? ((opt && opt.dataset && opt.dataset.qid) || null) : 'any',
         quoteVersion: (opt && opt.dataset && opt.dataset.ver) ? +opt.dataset.ver : null,
@@ -10506,13 +10858,15 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
     });
     if ($('cpAdvAmt')) $('cpAdvAmt').value = '';
     if ($('cpAdvRef')) $('cpAdvRef').value = '';
+    if ($('cpAdvPurpose')) $('cpAdvPurpose').value = '';
     const advId = created && (created.id || (created.advance && created.advance.id));
-    if (advId) {
+    const wantSlip = $('cpAdvSlipNow') && $('cpAdvSlipNow').checked;
+    if (advId && wantSlip) {
       const slip = API_BASE + '/api/customers/' + encodeURIComponent(name) + '/advances/' + advId + '/slip.pdf';
-      toast('Advance saved — open Slip PDF from the table (or this link)');
+      toast('Advance saved — slip opened. You can generate it again from the table anytime.');
       try { window.open(slip, '_blank'); } catch(_) {}
     } else {
-      toast('Advance saved — use Slip PDF / Print / Excel on the row');
+      toast('Advance saved — generate Slip PDF / Print / Excel from the table anytime');
     }
     await loadCustomerLedger(name);
     if (state.companyGst) refreshCompanyHub(state.companyGst);

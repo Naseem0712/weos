@@ -449,6 +449,7 @@ class CustomerAdvance(Base):
     quote_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     entry_type: Mapped[str | None] = mapped_column(String(20), default="advance")
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    company_gst: Mapped[str | None] = mapped_column(String(40), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
@@ -466,6 +467,7 @@ class CustomerAdvance(Base):
             "quoteVersion": self.quote_version,
             "entryType": self.entry_type or ("refund" if (self.amount or 0) < 0 else "advance"),
             "paidAt": _iso(self.paid_at),
+            "companyGst": self.company_gst or "",
             "createdAt": _iso(self.created_at),
             "updatedAt": _iso(self.updated_at),
         }

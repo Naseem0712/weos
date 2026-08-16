@@ -397,6 +397,7 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
 
     status = str(doc.get("status") or "draft").strip().lower() or "draft"
     products = _customer_safe_products(list(doc.get("lines") or []), doc=doc)
+    # Never expose revisionLog / importMeta / undo stacks on the public scan page.
     from WEOS.factory.customer_line_view import totals_by_type
     from WEOS.factory.ledger_store import CONFIRMED_STATUSES
     from WEOS.factory.project_pack import public_pack_payload

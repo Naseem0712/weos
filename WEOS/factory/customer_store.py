@@ -178,6 +178,12 @@ def save_customer_profile(customer: str, payload: Mapping[str, Any]) -> dict[str
     profile_path(name).write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     ok = _db_put(doc)
     doc["persisted"] = ok
+    try:
+        from WEOS.factory.company_index import upsert_customer
+
+        upsert_customer(doc.get("companyGst") or "", doc)
+    except Exception:
+        pass
     # Keep the mobile-keyed Customer row in sync when phone is present.
     phone = (doc.get("phone") or "").strip()
     if phone:

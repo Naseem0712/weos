@@ -14,7 +14,7 @@ import sys
 from collections.abc import Mapping
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -406,24 +406,9 @@ class CompanyBody(BaseModel):
     clearLoginPin: bool = False
 
 
-class CompanyWorkspaceOpenBody(BaseModel):
-    gstNo: str | None = None
-    login: str | None = None
-    pin: str | None = None
-    sessionToken: str | None = None
-    companyName: str | None = None
-    address: str | None = None
-    website: str | None = None
-    phone: str | None = None
-    email: str | None = None
-    tagline: str | None = None
-    state: str | None = None
-    stateCode: str | None = None
-    pan: str | None = None
-    bankDetails: str | None = None
-    cin: str | None = None
-    terms: str | None = None
-    create: bool = True
+class FollowUpBody(BaseModel):
+    channel: str
+    note: str | None = None
 
 
 class CustomerProfileBody(BaseModel):
@@ -1073,8 +1058,12 @@ def api_version() -> dict[str, Any]:
 
 
 @app.get("/api/dashboard")
-def api_dashboard() -> dict[str, Any]:
-    return dashboard_stats()
+def api_dashboard(request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_dashboard import company_dashboard
+    from WEOS.factory.company_workspace import require_company_gst
+
+    g = require_company_gst(request, gst)
+    return company_dashboard(g)
 
 
 @app.get("/api/products")
@@ -1549,22 +1538,39 @@ def _observe_calculation(response: dict[str, Any]) -> None:
 
 @app.get("/api/projects")
 def api_list_projects(
+    request: Request,
     q: str | None = None,
     status: str | None = None,
     sort: str = "updatedAt",
     order: str = "desc",
     gst: str | None = None,
+    fy: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> dict[str, Any]:
+    from WEOS.factory.company_index import query_projects
+    from WEOS.factory.company_workspace import require_company_gst
+
+    g = require_company_gst(request, gst)
+    packed = query_projects(
+        g,
+        q=q,
+        status=status,
+        fy=fy or "current",
+        include_archived=status == "archived",
+        sort=sort,
+        order=order,
+        limit=limit,
+        offset=offset,
+    )
     return {
-        "projects": list_projects(
-            q=q,
-            status=status,
-            sort=sort,
-            order=order,
-            include_archived=status == "archived",
-            company_gst=gst,
-            include_unscoped=True,
-        )
+        "projects": packed.get("items") or [],
+        "total": packed.get("total") or 0,
+        "fy": packed.get("fy"),
+        "availableFy": packed.get("availableFy") or [],
+        "limit": packed.get("limit"),
+        "offset": packed.get("offset") or 0,
+        "hasMore": bool(packed.get("hasMore")),
     }
 
 
@@ -1587,11 +1593,39 @@ def api_create_project(body: ProjectCreate) -> dict[str, Any]:
 
 
 @app.get("/api/projects/{project_id}")
-def api_get_project(project_id: str) -> dict[str, Any]:
+def api_get_project(project_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory.project_store import _belongs_to_company
+
+    g = require_company_gst(request, gst)
     try:
-        return load_project(project_id)
+        doc = load_project(project_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not _belongs_to_company(doc, g, include_unscoped=False):
+        raise HTTPException(status_code=404, detail="Project not found")
+    return doc
+
+
+@app.post("/api/projects/{project_id}/follow-up")
+def api_project_follow_up(
+    project_id: str,
+    body: FollowUpBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_dashboard import record_follow_up
+    from WEOS.factory.company_workspace import require_company_gst
+
+    g = require_company_gst(request, gst)
+    try:
+        return record_follow_up(project_id, channel=body.channel, company_gst=g)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.put("/api/projects/{project_id}")
@@ -2528,6 +2562,78 @@ async def api_project_import(project_id: str, file: UploadFile = File(...)) -> d
     return await api_projects_import(file=file, projectId=project_id)
 
 
+@app.post("/api/projects/import-pack")
+async def api_projects_import_pack(
+    files: list[UploadFile] = File(...),
+    customer: str = Form(""),
+    customerMobile: str = Form(""),
+    customerAddress: str = Form(""),
+    customerGst: str = Form(""),
+    projectName: str = Form(""),
+    quotationId: str = Form(""),
+    projectId: str = Form(""),
+    commit: str = Form("false"),
+    importAdvances: str = Form("true"),
+    gst: str = Form(""),
+) -> dict[str, Any]:
+    """Preview or save a multi-stage Excel/PDF job as one project + account."""
+    from WEOS.factory.project_import import commit_imported_project, merge_previews, parse_upload
+
+    packs: list[dict[str, Any]] = []
+    errors: list[str] = []
+    if not files:
+        raise HTTPException(status_code=400, detail="Upload an Excel or PDF of the project")
+    for up in files[:6]:
+        raw = await up.read()
+        fname = str(up.filename or "project").strip() or "project"
+        if not raw:
+            errors.append(f"{fname}: empty file")
+            continue
+        if len(raw) > 25 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail=f"{fname} is too large (max 25 MB)")
+        try:
+            packs.append(parse_upload(fname, raw))
+        except Exception as exc:
+            errors.append(f"{fname}: {exc}")
+    if not packs:
+        raise HTTPException(status_code=400, detail="; ".join(errors) or "Could not read the file")
+    preview = merge_previews(*packs)
+    preview["parseWarnings"] = errors
+    do_commit = str(commit or "").strip().lower() in {"1", "true", "yes", "on"}
+    if not do_commit:
+        preview["ok"] = True
+        preview["committed"] = False
+        return preview
+    try:
+        saved = commit_imported_project(
+            preview,
+            customer=customer,
+            customer_mobile=customerMobile or None,
+            customer_address=customerAddress or None,
+            customer_gst=customerGst or None,
+            project_name=projectName or None,
+            quotation_id=quotationId or None,
+            project_id=(projectId or "").strip() or None,
+            company_gst=(gst or "").strip() or None,
+            import_advances=str(importAdvances or "true").strip().lower() not in {"0", "false", "no", "off"},
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    saved["preview"] = {
+        "quoteCount": preview.get("quoteCount"),
+        "advanceCount": preview.get("advanceCount"),
+        "projectValue": preview.get("projectValue"),
+        "advanceTotal": preview.get("advanceTotal"),
+        "balance": preview.get("balance"),
+        "stages": preview.get("stages"),
+        "parseWarnings": errors,
+    }
+    saved["committed"] = True
+    return saved
+
+
 # ── Product Library admin + Formula Builder ──────────────────────────────────
 
 @app.get("/api/admin/meta")
@@ -2669,10 +2775,15 @@ def api_save_customer_rate(body: CustomerRateBody) -> dict[str, Any]:
 # ── Company Setup / GST workspace ────────────────────────────────────────────
 
 @app.get("/api/company")
-def api_get_company() -> dict[str, Any]:
-    from WEOS.factory.company_store import load_company, public_company_profile
+def api_get_company(request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_store import load_company_by_gst, public_company_profile
+    from WEOS.factory.company_workspace import require_company_gst
 
-    return public_company_profile(load_company())
+    try:
+        g = require_company_gst(request, gst)
+    except HTTPException:
+        return {"ok": False, "loggedIn": False, "companyName": "", "gstNo": ""}
+    return public_company_profile(load_company_by_gst(g) or {})
 
 
 @app.put("/api/company")
@@ -2810,16 +2921,16 @@ class CompanyQuotesBulkBody(BaseModel):
 
 
 @app.get("/api/company/quotes")
-def api_company_quotes(gst: str | None = None, filter: str | None = Query("all")) -> dict[str, Any]:
+def api_company_quotes(
+    request: Request,
+    gst: str | None = None,
+    filter: str | None = Query("all"),
+) -> dict[str, Any]:
     """List quotes/projects for the logged-in company GST (unused / duplicates / drafts)."""
     from WEOS.factory.company_quotes import list_company_quotes
-    from WEOS.factory.company_store import get_active_gst, load_company, normalise_gstin
+    from WEOS.factory.company_workspace import require_company_gst
 
-    g = normalise_gstin(gst) if gst else (get_active_gst() or "")
-    if not g:
-        g = normalise_gstin((load_company() or {}).get("gstNo") or "")
-    if not g:
-        raise HTTPException(status_code=400, detail="Open a company workspace with GSTIN first.")
+    g = require_company_gst(request, gst)
     try:
         return list_company_quotes(g, filter_key=filter)
     except ValueError as exc:
@@ -2829,20 +2940,17 @@ def api_company_quotes(gst: str | None = None, filter: str | None = Query("all")
 @app.delete("/api/company/quotes/{project_id}")
 def api_company_delete_quote(
     project_id: str,
+    request: Request,
     gst: str | None = None,
     hard: bool = Query(True),
     pin: str | None = None,
     confirm: str | None = None,
 ) -> dict[str, Any]:
-    """Delete a quote/project from Postgres, scoped to the open company GST. PIN required."""
+    """Delete a quote/project from Postgres, scoped to the logged-in company GST. PIN required."""
     from WEOS.factory.company_quotes import delete_company_quote, require_delete_confirm
-    from WEOS.factory.company_store import get_active_gst, load_company, normalise_gstin
+    from WEOS.factory.company_workspace import require_company_gst
 
-    g = normalise_gstin(gst) if gst else (get_active_gst() or "")
-    if not g:
-        g = normalise_gstin((load_company() or {}).get("gstNo") or "")
-    if not g:
-        raise HTTPException(status_code=400, detail="Open a company workspace with GSTIN first.")
+    g = require_company_gst(request, gst)
     try:
         require_delete_confirm(project_id, company_gst=g, pin=pin, confirm=confirm)
         return delete_company_quote(project_id, company_gst=g, hard=hard)
@@ -2855,9 +2963,10 @@ def api_company_delete_quote(
 
 
 @app.post("/api/company/quotes/{project_id}/delete")
-def api_company_delete_quote_post(project_id: str, body: QuoteDeleteBody) -> dict[str, Any]:
+def api_company_delete_quote_post(project_id: str, body: QuoteDeleteBody, request: Request) -> dict[str, Any]:
     return api_company_delete_quote(
         project_id,
+        request,
         gst=body.gstNo,
         hard=body.hard,
         pin=body.pin,
@@ -2866,16 +2975,12 @@ def api_company_delete_quote_post(project_id: str, body: QuoteDeleteBody) -> dic
 
 
 @app.post("/api/company/quotes/bulk-delete")
-def api_company_bulk_delete_quotes(body: CompanyQuotesBulkBody) -> dict[str, Any]:
+def api_company_bulk_delete_quotes(body: CompanyQuotesBulkBody, request: Request) -> dict[str, Any]:
     """Bulk-delete unused / old-draft / duplicate extras for this GST only. PIN required."""
     from WEOS.factory.company_quotes import bulk_delete_unused, require_bulk_delete_confirm
-    from WEOS.factory.company_store import get_active_gst, load_company, normalise_gstin
+    from WEOS.factory.company_workspace import require_company_gst
 
-    g = normalise_gstin(body.gstNo) if body.gstNo else (get_active_gst() or "")
-    if not g:
-        g = normalise_gstin((load_company() or {}).get("gstNo") or "")
-    if not g:
-        raise HTTPException(status_code=400, detail="Open a company workspace with GSTIN first.")
+    g = require_company_gst(request, body.gstNo)
     fk = (body.filter or "unused").strip().lower()
     if fk in ("all", "*", ""):
         raise HTTPException(status_code=400, detail="Bulk delete requires filter=unused, old_draft, or duplicate.")
@@ -2914,27 +3019,11 @@ def api_company_workspace(
     session: str | None = None,
 ) -> dict[str, Any]:
     """Return the open (or specified) company workspace hub payload."""
-    from WEOS.factory.company_store import (
-        company_has_login_pin,
-        get_active_gst,
-        load_company,
-        load_company_by_gst,
-        normalise_gstin,
-        public_company_profile,
-        verify_workspace_session,
-    )
-    from WEOS.factory.company_workspace import TOTALS_RULE, build_workspace_summary
+    from WEOS.factory.company_store import load_company_by_gst, public_company_profile
+    from WEOS.factory.company_workspace import TOTALS_RULE, build_workspace_summary, require_company_gst
 
-    g = normalise_gstin(gst) if gst else (get_active_gst() or "")
-    if not g:
-        company = load_company()
-        g = normalise_gstin(company.get("gstNo") or "")
-    if not g:
-        raise HTTPException(status_code=400, detail="Log in to a company workspace first.")
-    token = (session or request.headers.get("X-WEOS-Session") or "").strip()
-    if company_has_login_pin(g) and not verify_workspace_session(g, token):
-        raise HTTPException(status_code=401, detail="Log in with GST / name / mobile and the 4-digit PIN.")
-    company = load_company_by_gst(g) or load_company()
+    g = require_company_gst(request, gst)
+    company = load_company_by_gst(g) or {}
     summary = build_workspace_summary(g)
     return {
         "ok": True,
@@ -3017,35 +3106,24 @@ def api_get_company_signature() -> Response:
 # ── Customer profiles + accounts ─────────────────────────────────────────────
 
 @app.get("/api/customers")
-def api_list_customers(q: str | None = None, gst: str | None = None) -> dict[str, Any]:
+def api_list_customers(request: Request, q: str | None = None, gst: str | None = None) -> dict[str, Any]:
     """All customers (profiles ∪ rate books ∪ project bill-tos). Optional ``q`` = name or mobile."""
-    from WEOS.factory.company_store import get_active_gst, normalise_gstin
-    from WEOS.factory.customer_rates import list_customers_with_rates
-    from WEOS.factory.customer_store import find_customers, list_customer_profiles
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory.customer_store import find_customers
 
-    g = normalise_gstin(gst) if gst else (get_active_gst() or "")
+    g = require_company_gst(request, gst)
     if (q or "").strip():
         merged = find_customers(q or "", company_gst=g or None)
-        return {"customers": merged, "count": len(merged), "query": q}
-    profiles = list_customer_profiles(company_gst=g or None, include_unscoped=bool(g))
-    # When no GST filter, keep legacy unscoped list behaviour.
-    if not g:
-        profiles = list_customer_profiles()
-    seen = {str(p.get("name", "")).strip().lower() for p in profiles}
-    merged = list(profiles)
-    for r in list_customers_with_rates():
-        nm = str(r.get("customer") or "").strip()
-        if nm and nm.lower() not in seen:
-            merged.append({"name": nm, "slug": nm.lower().replace(" ", "_"), "rateCount": r.get("rateCount")})
-            seen.add(nm.lower())
-    # Also merge find_customers project-only rows when GST workspace is open.
-    if g:
-        for c in find_customers("", company_gst=g):
-            nm = str(c.get("name") or "").strip()
-            if nm and nm.lower() not in seen:
-                merged.append(c)
-                seen.add(nm.lower())
-    return {"customers": merged, "count": len(merged)}
+        return {"customers": merged[:80], "count": len(merged), "query": q, "hasMore": len(merged) > 80}
+    from WEOS.factory.company_index import query_customers
+
+    packed = query_customers(g, q=q, limit=80, offset=0)
+    return {
+        "customers": packed.get("items") or [],
+        "count": packed.get("total") or 0,
+        "hasMore": bool(packed.get("hasMore")),
+        "lazy": True,
+    }
 
 
 @app.get("/api/customers/{customer}/profile")
@@ -3067,27 +3145,34 @@ def api_save_customer_profile(customer: str, body: CustomerProfileBody) -> dict[
 
 
 @app.get("/api/customers/{customer}/quotes")
-def api_customer_quotes(customer: str) -> dict[str, Any]:
+def api_customer_quotes(customer: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
     from WEOS.factory.customer_store import customer_quotes
 
-    return customer_quotes(customer)
+    g = require_company_gst(request, gst)
+    return customer_quotes(customer, company_gst=g)
 
 
 @app.get("/api/customers/{customer}/ledger")
-def api_customer_ledger(customer: str) -> dict[str, Any]:
+def api_customer_ledger(customer: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
     from WEOS.factory.ledger_store import build_ledger
 
+    g = require_company_gst(request, gst)
     try:
-        return build_ledger(customer)
+        return build_ledger(customer, company_gst=g)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/customers/{customer}/advances")
-def api_add_customer_advance(customer: str, body: AdvanceBody) -> dict[str, Any]:
+def api_add_customer_advance(customer: str, body: AdvanceBody, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
     from WEOS.factory.ledger_store import add_advance
 
+    g = require_company_gst(request, gst)
     payload = body.model_dump(exclude_none=True)
+    payload["companyGst"] = g
     payload.setdefault("customerName", customer)
     try:
         created = add_advance(customer, payload)

@@ -655,6 +655,18 @@ def mint_workspace_session(gst: str) -> str:
     return token
 
 
+def gst_for_session_token(token: str | None) -> str | None:
+    """Resolve which GST workspace a session token belongs to."""
+    raw = str(token or "").strip()
+    if not raw:
+        return None
+    for doc in iter_company_docs():
+        g = normalise_gstin(doc.get("gstNo"))
+        if g and verify_workspace_session(g, raw):
+            return g
+    return None
+
+
 def verify_workspace_session(gst: str, token: str | None) -> bool:
     g = normalise_gstin(gst)
     raw = str(token or "").strip()

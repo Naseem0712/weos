@@ -145,7 +145,10 @@ def list_company_quotes(
     rows = list_projects(
         include_archived=include_archived,
         company_gst=gst,
-        include_unscoped=True,
+        include_unscoped=False,
+        fy="all",
+        use_index=True,
+        limit=None,
     )
     customers = [str(r.get("customer") or "").strip() for r in rows if r.get("customer")]
     adv_map = _advances_index(customers)

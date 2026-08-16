@@ -10,8 +10,8 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping
 
-MAX_QUOTES = 20
-MAX_ITEMS = 40
+MAX_QUOTES = 40
+MAX_ITEMS = 120
 MAX_ATTACHMENTS = 12
 
 CATEGORIES: tuple[tuple[str, str], ...] = (
@@ -31,17 +31,18 @@ _CAT_IDS = {c[0] for c in CATEGORIES}
 _CAT_LABEL = dict(CATEGORIES)
 
 UNITS_BY_CATEGORY: dict[str, tuple[str, ...]] = {
-    "window": ("pcs",),
-    "casement": ("pcs",),
-    "ventilator": ("pcs",),
-    "louver": ("pcs",),
+    "window": ("pcs", "sft", "rft"),
+    "casement": ("pcs", "sft"),
+    "ventilator": ("pcs", "sft"),
+    "louver": ("pcs", "sft"),
     "railing": ("rft", "sft", "pcs"),
-    "iron_fabrication": ("kg", "sft"),
+    "iron_fabrication": ("kg", "sft", "pcs"),
     "gate": ("pcs", "sft"),
-    "grill": ("pcs", "sft"),
+    "grill": ("pcs", "sft", "rft"),
     "pergola": ("sft", "pcs"),
     "other": ("pcs", "sft", "kg", "rft"),
 }
+KNOWN_UNITS = ("pcs", "sft", "rft", "kg", "mtr", "nos")
 
 GST_MODES = ("exclude", "include", "off")
 DEFAULT_GST_PERCENT = 18.0
@@ -330,14 +331,15 @@ def normalize_package_item(raw: Mapping[str, Any] | None, *, index: int = 0) -> 
     allowed_units = UNITS_BY_CATEGORY.get(cat) or ("pcs",)
     unit = str(raw.get("unit") or allowed_units[0]).strip().lower()
     if unit not in allowed_units:
-        unit = allowed_units[0]
+        unit = unit if unit in KNOWN_UNITS else allowed_units[0]
     item_id = str(raw.get("id") or "").strip() or _slug_id(None, "pi")
     qty = _qty(raw.get("qty") or raw.get("quantity") or raw.get("count"))
     size = str(raw.get("size") or raw.get("sizeText") or "").strip() or None
     note = str(raw.get("note") or raw.get("label") or "").strip() or None
+    rate = _money(raw.get("rate")) if raw.get("rate") not in (None, "") else None
     if amount <= 0 and not qty and not size and not note:
         return None
-    return {
+    out = {
         "id": item_id[:24],
         "category": cat,
         "categoryLabel": _CAT_LABEL.get(cat, "Other"),
@@ -348,6 +350,9 @@ def normalize_package_item(raw: Mapping[str, Any] | None, *, index: int = 0) -> 
         "note": note,
         "sort": index,
     }
+    if rate and rate > 0:
+        out["rate"] = rate
+    return out
 
 
 def normalize_package_quote(
@@ -374,6 +379,17 @@ def normalize_package_quote(
         gst_mode=str(raw.get("gstMode") or raw.get("gst") or "exclude"),
         gst_percent=raw.get("gstPercent") if raw.get("gstPercent") is not None else DEFAULT_GST_PERCENT,
     )
+    # Imported quotes keep the sheet's GST / grand when provided.
+    imp_gst = _money(raw.get("gstAmount")) if raw.get("gstAmount") not in (None, "") else None
+    imp_grand = _money(raw.get("projectValue") or raw.get("totalGrand")) if (
+        raw.get("projectValue") not in (None, "") or raw.get("totalGrand") not in (None, "")
+    ) else None
+    if imp_grand and imp_grand > 0:
+        split["projectValue"] = imp_grand
+        split["totalGrand"] = imp_grand
+        if imp_gst is not None:
+            split["gstAmount"] = imp_gst
+            split["totalTaxable"] = round(max(0.0, imp_grand - imp_gst), 2)
     quote_no = str(raw.get("quotationId") or raw.get("quoteNumber") or raw.get("quoteNo") or "").strip() or None
     atts = normalize_attachments(
         raw.get("attachments"),

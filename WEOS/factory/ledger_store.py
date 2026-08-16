@@ -103,6 +103,9 @@ def _ensure_advance_schema() -> None:
             conn.execute(
                 text("ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS entry_type VARCHAR(20)")
             )
+            conn.execute(
+                text("ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS company_gst VARCHAR(40)")
+            )
     except Exception:
         # SQLite < 3.35 / some drivers lack IF NOT EXISTS on ADD COLUMN — try bare add.
         try:
@@ -127,6 +130,18 @@ def _ensure_advance_schema() -> None:
             return
         with eng.begin() as conn:
             conn.execute(text("ALTER TABLE customer_advances ADD COLUMN entry_type VARCHAR(20)"))
+    except Exception:
+        pass
+    try:
+        from sqlalchemy import text
+
+        from WEOS.db.engine import get_engine
+
+        eng = get_engine()
+        if eng is None:
+            return
+        with eng.begin() as conn:
+            conn.execute(text("ALTER TABLE customer_advances ADD COLUMN company_gst VARCHAR(40)"))
     except Exception:
         pass
 
@@ -222,10 +237,34 @@ def list_advances_for_projects(project_ids: list[str] | tuple[str, ...] | None) 
         return [r.to_dict() for r in rows]
 
 
+def sum_advances_for_company(gst: str, *, project_ids: list[str] | tuple[str, ...] | None = None) -> float:
+    """SQL sum — never loads 10k payment rows into the app."""
+    ids = [str(x).strip() for x in (project_ids or []) if str(x).strip()]
+    g = str(gst or "").strip().upper()
+    if not ids and not g:
+        return 0.0
+    try:
+        _ensure_ready()
+    except RuntimeError:
+        return 0.0
+    from sqlalchemy import func, select
+
+    from WEOS.db.models import CustomerAdvance
+
+    with session_scope() as s:
+        q = select(func.coalesce(func.sum(CustomerAdvance.amount), 0.0))
+        if ids:
+            q = q.where(CustomerAdvance.project_id.in_(ids))
+        elif g:
+            q = q.where(CustomerAdvance.company_gst == g)
+        return round(float(s.execute(q).scalar() or 0), 2)
+
+
 def list_advances_for_account(
     *,
     names: list[str] | tuple[str, ...] | None = None,
     project_ids: list[str] | tuple[str, ...] | None = None,
+    company_gst: str | None = None,
 ) -> list[dict[str, Any]]:
     """All advances that belong to this customer account.
 
@@ -266,7 +305,18 @@ def list_advances_for_account(
                 continue
             if data.get("id") is not None:
                 by_id[int(data["id"])] = data
-    return list(by_id.values())
+    out = list(by_id.values())
+    g = str(company_gst or "").strip().upper()
+    if not g:
+        return out
+    pid_set = set(pids)
+    kept = []
+    for row in out:
+        rg = str(row.get("companyGst") or "").strip().upper()
+        if rg and rg != g:
+            continue
+        kept.append(row)
+    return kept
 
 
 def list_advances_for_quote_ids(quote_ids: list[str] | tuple[str, ...] | None) -> list[dict[str, Any]]:
@@ -341,6 +391,7 @@ def add_advance(customer: str, payload: Mapping[str, Any]) -> dict[str, Any]:
             quote_version=qver_i,
             entry_type=entry_type,
             paid_at=paid_at,
+            company_gst=(str(payload.get("companyGst") or payload.get("gstNo") or "").strip().upper() or None),
         )
         s.add(row)
         s.flush()
@@ -519,7 +570,7 @@ def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, 
             if n:
                 names.append(n)
         pids = [str(q.get("projectId") or "").strip() for q in quotes if q.get("projectId")]
-        advances = list_advances_for_account(names=names, project_ids=pids)
+        advances = list_advances_for_account(names=names, project_ids=pids, company_gst=company_gst)
         advances.sort(key=lambda a: (str(a.get("paidAt") or ""), int(a.get("id") or 0)), reverse=True)
     except RuntimeError:
         advances = []

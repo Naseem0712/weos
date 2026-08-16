@@ -248,6 +248,9 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
     doc["_undoStack"] = undo
     if bump_version:
         doc["_redoStack"] = []
+        log = list(doc.get("revisionLog") or [])
+        log.append({"at": now, "action": str(action or "save"), "version": ver})
+        doc["revisionLog"] = log[-80:]
 
     path = project_path(pid)
     if path.is_file() and bump_version:
@@ -275,6 +278,12 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
         except Exception:
             pass
     _append_history(pid, action, ver)
+    try:
+        from WEOS.factory.company_index import upsert_project
+
+        upsert_project(out)
+    except Exception:
+        _log.debug("company index upsert skipped for %s", pid, exc_info=True)
     try:
         from WEOS.factory.quote_share import _index_share_token
 
@@ -545,7 +554,30 @@ def list_projects(
     include_archived: bool = False,
     company_gst: str | None = None,
     include_unscoped: bool = False,
+    fy: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+    use_index: bool = True,
 ) -> list[dict[str, Any]]:
+    gst = _norm_company_gst(company_gst) if company_gst else ""
+    if use_index and gst and not include_unscoped:
+        try:
+            from WEOS.factory.company_index import query_projects
+
+            packed = query_projects(
+                gst,
+                q=q,
+                status=status,
+                fy=fy,
+                include_archived=include_archived or status == "archived",
+                sort=sort,
+                order=order,
+                limit=limit,
+                offset=offset,
+            )
+            return list(packed.get("items") or [])
+        except Exception:
+            _log.exception("company index list failed for %s — falling back to scan", gst)
     ensure_projects_dir()
     files = list(PROJECTS_DIR.glob("PRJ-*.json"))
     if include_archived or status == "archived":
@@ -623,6 +655,7 @@ def list_projects(
                 "masterJobId": d.get("masterJobId") or d.get("projectId", p.stem),
                 "quoteKind": d.get("quoteKind") or ("package" if pkg_quotes else "cart"),
                 "packageQuoteCount": len(pkg_quotes),
+                "lastFollowUpAt": d.get("lastFollowUpAt") or "",
             }
             if q:
                 blob = (
@@ -694,20 +727,38 @@ def restore_project(project_id: str) -> dict[str, Any]:
 
 def delete_project(project_id: str, *, hard: bool = False) -> dict[str, Any]:
     """Soft-delete = archive. hard=True removes active file after version keep."""
+    gst = ""
+    try:
+        prev = load_project(project_id)
+        gst = _norm_company_gst(prev.get("companyGst"))
+    except Exception:
+        prev = None
     if hard:
         path = project_path(project_id)
         if path.is_file():
-            # keep last snapshot
             snap = PROJECTS_DIR / "versions" / f"{project_id}_deleted.json"
             shutil.copy2(path, snap)
             path.unlink()
             _db_delete_project(project_id)
             _append_history(project_id, "delete", -1)
+            if gst:
+                try:
+                    from WEOS.factory.company_index import remove_project as _drop_idx
+
+                    _drop_idx(gst, project_id)
+                except Exception:
+                    pass
             return {"deleted": True, "projectId": project_id}
-        # DB-only hard delete
         if _db_get_project(project_id) is not None:
             _db_delete_project(project_id)
             _append_history(project_id, "delete", -1)
+            if gst:
+                try:
+                    from WEOS.factory.company_index import remove_project as _drop_idx
+
+                    _drop_idx(gst, project_id)
+                except Exception:
+                    pass
             return {"deleted": True, "projectId": project_id}
         raise FileNotFoundError(project_id)
     return archive_project(project_id)
