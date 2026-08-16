@@ -2823,6 +2823,30 @@ def api_save_company(body: CompanyBody) -> dict[str, Any]:
     return save_company(body.model_dump(exclude_none=True))
 
 
+class CompanyWorkspaceOpenBody(BaseModel):
+    """JSON body for POST /api/company/workspace/open (login or session restore)."""
+
+    model_config = {"extra": "allow"}
+
+    login: str | None = None
+    gstNo: str | None = None
+    pin: str | None = None
+    sessionToken: str | None = None
+    create: bool = True
+    companyName: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    website: str | None = None
+    tagline: str | None = None
+    state: str | None = None
+    stateCode: str | None = None
+    pan: str | None = None
+    bankDetails: str | None = None
+    cin: str | None = None
+    terms: str | None = None
+
+
 @app.post("/api/company/workspace/open")
 def api_company_workspace_open(body: CompanyWorkspaceOpenBody) -> dict[str, Any]:
     """Seller login: GST / company name / mobile + 4-digit PIN (or session)."""

@@ -1503,10 +1503,19 @@ button.pill{border:0;font:inherit;cursor:pointer}
         <strong>Company login</strong>
         <p class="muted" style="margin:.2rem 0 .7rem;font-size:.82rem">GSTIN, company name, or registered mobile + <strong>4-digit PIN</strong>. After login this company’s quotes, customers and advances load from the server. Log out before switching company on this device.</p>
         <div class="row" style="align-items:flex-end;gap:.5rem;flex-wrap:wrap">
-          <div class="grow"><label class="l">GSTIN / name / mobile</label><input id="coGstLogin" placeholder="GSTIN, company name, or mobile" style="text-transform:uppercase"/></div>
-          <div><label class="l">4-digit PIN</label><input id="coGstPin" type="password" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="••••" style="width:110px"/></div>
-          <div class="grow"><label class="l">Company name (first time)</label><input id="coGstLoginName" style="text-transform:uppercase" placeholder="new company only"/></div>
-          <div class="grow"><label class="l">Registered email (PIN reset)</label><input id="coGstLoginEmail" type="email" placeholder="company email"/></div>
+          <div class="grow" style="flex:1 1 280px;min-width:min(100%,280px)">
+            <label class="l">GSTIN / name / mobile</label>
+            <input id="coGstLogin" placeholder="15-char GSTIN, company name, or mobile" autocomplete="username" autocapitalize="characters" spellcheck="false" style="text-transform:uppercase;font-family:ui-monospace,Consolas,monospace;letter-spacing:.04em"/>
+            <div class="muted" id="coGstLoginHint" style="font-size:.72rem;margin-top:.2rem"></div>
+          </div>
+          <div style="flex:0 0 auto">
+            <label class="l">4-digit PIN</label>
+            <input id="coGstPin" type="password" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="••••" style="width:110px"/>
+          </div>
+        </div>
+        <div class="row" style="align-items:flex-end;gap:.5rem;flex-wrap:wrap;margin-top:.45rem">
+          <div class="grow"><label class="l">Company name (first time)</label><input id="coGstLoginName" style="text-transform:uppercase" placeholder="new company only" autocomplete="organization"/></div>
+          <div class="grow"><label class="l">Registered email (PIN reset)</label><input id="coGstLoginEmail" type="email" placeholder="company email" autocomplete="email"/></div>
           <button class="btn" id="btnCoGstOpen" type="button">Log in</button>
           <button class="btn ghost sm" id="btnCoGstForgot" type="button">Forgot PIN</button>
           <button class="btn ghost sm" id="btnCoGstLogout" type="button">Log out</button>
@@ -2272,6 +2281,7 @@ function wipeLoggedOutUi() {
     if ($(id)) $(id).value = '';
   });
   if ($('coGstPin')) $('coGstPin').value = '';
+  if ($('coGstErr')) $('coGstErr').textContent = '';
   if ($('coGstStatus')) $('coGstStatus').textContent = 'Logged out — company data is hidden until login';
   if ($('coHubTitle')) $('coHubTitle').textContent = 'Company hub';
   if ($('coHubSub')) $('coHubSub').textContent = '';
@@ -10376,12 +10386,24 @@ async function hubNewQuoteForCustomer(name) {
 }
 if ($('btnCoGstOpen')) $('btnCoGstOpen').onclick = async () => {
   if ($('coGstErr')) $('coGstErr').textContent = '';
-  const ident = (($('coGstLogin') && $('coGstLogin').value) || ($('coGst') && $('coGst').value) || '').trim();
+  const rawIdent = (($('coGstLogin') && $('coGstLogin').value) || ($('coGst') && $('coGst').value) || '').trim();
   const pin = (($('coGstPin') && $('coGstPin').value) || '').trim();
-  if (!ident) { if ($('coGstErr')) $('coGstErr').textContent = 'Enter GSTIN, company name, or mobile'; return; }
+  if (!rawIdent) { if ($('coGstErr')) $('coGstErr').textContent = 'Enter GSTIN, company name, or mobile'; return; }
   if (!/^\d{4}$/.test(pin)) { if ($('coGstErr')) $('coGstErr').textContent = 'Enter the 4-digit PIN'; return; }
+  // Keep full typed GSTIN — never drop the check digit. Compact only when it looks like a GSTIN.
+  const compact = rawIdent.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  const looksGst = /^\d{2}[A-Z0-9]{10,}$/i.test(compact);
+  if (looksGst && compact.length !== 15) {
+    if ($('coGstErr')) $('coGstErr').textContent = 'GSTIN must be exactly 15 characters (yours has ' + compact.length + '). Check the last digit.';
+    if ($('coGstLogin')) {
+      $('coGstLogin').value = compact;
+      try { $('coGstLogin').focus(); $('coGstLogin').setSelectionRange(compact.length, compact.length); } catch(_){}
+    }
+    return;
+  }
+  const ident = looksGst ? compact : rawIdent;
+  if ($('coGstLogin') && looksGst) $('coGstLogin').value = ident;
   try {
-    const looksGst = /^[0-9]{2}[A-Z0-9]{13}$/i.test(ident.replace(/\s/g,''));
     const body = {
       login: ident,
       gstNo: looksGst ? ident : undefined,
@@ -10392,18 +10414,41 @@ if ($('btnCoGstOpen')) $('btnCoGstOpen').onclick = async () => {
     };
     const ws = await api('/api/company/workspace/open', {method:'POST', body});
     if (ws && ws.needPick) {
-      if ($('coGstErr')) $('coGstErr').textContent = 'More than one company matched — use the full GSTIN';
+      if ($('coGstErr')) $('coGstErr').textContent = 'More than one company matched — use the full 15-character GSTIN';
       return;
     }
     await applyWorkspacePayload(ws);
     if ($('coGstPin')) $('coGstPin').value = '';
+    if ($('coGstErr')) $('coGstErr').textContent = '';
     toast(ws.created ? 'Company created — logged in' : (ws.enrolledPin ? 'PIN saved — logged in' : 'Logged in'));
     if ($('coGstStatus')) $('coGstStatus').textContent = (ws.created ? 'Created · ' : 'Opened · ') + 'GSTIN ' + ws.gstNo;
   } catch(e) {
+    // Keep what the user typed (including last GST check digit) after a failed login.
+    if ($('coGstLogin') && ident) $('coGstLogin').value = ident;
     if ($('coGstErr')) $('coGstErr').textContent = e.message;
     toast(e.message);
   }
 };
+function refreshCoGstLoginHint(){
+  const el = $('coGstLogin'); const hint = $('coGstLoginHint');
+  if (!el || !hint) return;
+  const compact = String(el.value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  if (!compact) { hint.textContent = ''; return; }
+  if (/^\d{2}[A-Za-z0-9]+$/.test(compact)) {
+    hint.textContent = compact.length + ' / 15 GSTIN characters' + (compact.length === 15 ? ' ✓' : (compact.length < 15 ? ' — keep typing' : ' — too long'));
+    hint.style.color = compact.length === 15 ? '#0a5a48' : 'var(--muted)';
+  } else {
+    hint.textContent = '';
+  }
+}
+if ($('coGstLogin')) {
+  $('coGstLogin').addEventListener('input', refreshCoGstLoginHint);
+  $('coGstLogin').addEventListener('blur', () => {
+    const compact = String($('coGstLogin').value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    if (/^\d{2}[A-Z0-9]{10,}$/i.test(compact)) $('coGstLogin').value = compact;
+    refreshCoGstLoginHint();
+  });
+}
 async function logoutCompanyWorkspace() {
   try {
     await api('/api/company/workspace/logout', {
@@ -10412,6 +10457,8 @@ async function logoutCompanyWorkspace() {
     });
   } catch (_) {}
   clearWorkspaceSession();
+  if ($('coGstErr')) $('coGstErr').textContent = '';
+  if ($('coGstPin')) $('coGstPin').value = '';
   toast('Logged out');
   setView('company');
 }
