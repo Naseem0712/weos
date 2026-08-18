@@ -864,7 +864,7 @@ def commit_imported_project(
                         "note": a.get("purpose") or a.get("note"),
                         "reference": a.get("reference") or a.get("purpose"),
                         "projectId": saved.get("projectId"),
-                        "quoteId": "any",
+                        "quoteId": saved.get("quotationId") or saved.get("projectId"),
                         "customerName": name,
                         "companyGst": company_gst,
                     },

@@ -37,9 +37,10 @@ RUNNING_STATUSES = frozenset(
 TOTALS_BASIS = "all_quotes_grand_total"
 DEFAULT_GST_PERCENT = 18.0
 TOTALS_NOTE = (
-    "Grand total = every live quote on this customer (with GST), not one quote only. "
+    "All projects: grand total = every live quote on this customer (with GST). "
     "Year turnover = all Approved projects this calendar year. "
-    "Balance = grand total − advances. Any advance reduces this customer’s full balance."
+    "Balance = grand total − advances. "
+    "Record an advance on a selected project then quote so that job’s balance stays separate."
 )
 REFUND_ENTRY_TYPES = frozenset({"refund", "reversal", "return"})
 
@@ -352,6 +353,11 @@ def add_advance(customer: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     name = (payload.get("customerName") or customer or "").strip()
     if not name:
         raise ValueError("Customer name required")
+    pid = str(payload.get("projectId") or "").strip()
+    qid = str(payload.get("quoteId") or "").strip()
+    allow_unscoped = bool(payload.get("allowUnscoped"))
+    if not allow_unscoped and (not pid or not qid or qid.lower() in ("any", "all")):
+        raise ValueError("Select the customer’s project, then the quote, before recording the advance")
     try:
         amount = float(payload.get("amount"))
     except (TypeError, ValueError) as exc:
@@ -466,6 +472,87 @@ def _quote_parts(q: Mapping[str, Any]) -> dict[str, float]:
 def _status_live(status: Any) -> bool:
     st = str(status or "draft").strip().lower() or "draft"
     return st not in {"rejected", "cancelled", "canceled", "archived", "unused"}
+
+
+def scope_ledger(
+    ledger: Mapping[str, Any],
+    *,
+    project_id: str | None = None,
+    quote_id: str | None = None,
+) -> dict[str, Any]:
+    """Filter an account ledger to one project and/or quote number.
+
+    Empty filters keep the full customer account (all projects / all quotes).
+    """
+    led = dict(ledger or {})
+    pid = str(project_id or "").strip()
+    qid = _norm_qid(quote_id)
+    if qid in {"ANY", "ALL"}:
+        qid = ""
+    projects = [p for p in (led.get("projects") or []) if isinstance(p, Mapping)]
+    advances = [a for a in (led.get("advances") or []) if isinstance(a, Mapping)]
+    if pid:
+        projects = [p for p in projects if str(p.get("projectId") or "") == pid]
+        advances = [a for a in advances if str(a.get("projectId") or "") == pid]
+    if qid:
+        projects = [
+            p
+            for p in projects
+            if _norm_qid(p.get("quotationId")) == qid
+            or (pid and str(p.get("projectId") or "") == pid and _norm_qid(p.get("quotationId")) == qid)
+        ]
+        scoped: list[dict[str, Any]] = []
+        for a in advances:
+            linked = a.get("linkedQuote") if isinstance(a.get("linkedQuote"), Mapping) else {}
+            aq = _norm_qid(a.get("quoteId") or linked.get("quotationId"))
+            if aq == qid or (not aq and pid and str(a.get("projectId") or "") == pid):
+                scoped.append(a)
+        advances = scoped
+    total_taxable = round(sum(_money(p.get("totalTaxable")) for p in projects), 2)
+    total_gst = round(sum(_money(p.get("totalGst")) for p in projects), 2)
+    total_grand = round(sum(_money(p.get("totalGrand") if p.get("totalGrand") is not None else p.get("grandTotal")) for p in projects), 2)
+    total_advances = round(sum(_money(a.get("amount")) for a in advances), 2)
+    balance = round(total_grand - total_advances, 2)
+    note = TOTALS_NOTE
+    if pid or qid:
+        bits = []
+        if projects:
+            bits.append(str(projects[0].get("name") or pid or qid))
+        if qid:
+            bits.append(qid)
+        label = " · ".join(x for x in bits if x) or (pid or qid)
+        note = (
+            f"This slip / ledger is for {label} only — not every project on this customer. "
+            "Balance = this project/quote grand total − advances recorded against it."
+        )
+    totals = dict(led.get("totals") or {})
+    totals.update(
+        {
+            "billed": total_grand,
+            "value": total_grand,
+            "totalTaxable": total_taxable,
+            "totalGst": total_gst,
+            "totalGrand": total_grand,
+            "totalAdvances": total_advances,
+            "advances": total_advances,
+            "balance": balance,
+            "balanceWithGst": balance,
+            "note": note,
+            "basis": "scoped_project_quote" if (pid or qid) else TOTALS_BASIS,
+        }
+    )
+    led["projects"] = projects
+    led["advances"] = advances
+    led["projectCount"] = len(projects)
+    led["advanceCount"] = len(advances)
+    led["totals"] = totals
+    led["totalTaxable"] = total_taxable
+    led["totalGst"] = total_gst
+    led["totalGrand"] = total_grand
+    led["totalAdvances"] = total_advances
+    led["balance"] = balance
+    led["scope"] = {"projectId": pid, "quoteId": qid or None}
+    return led
 
 
 def build_ledger(customer: str, *, company_gst: str | None = None) -> dict[str, Any]:

@@ -166,6 +166,7 @@ _FIELDS = (
     "bankDetails",
     "cin",
     "terms",
+    "pdfBrand",
 )
 
 
@@ -194,6 +195,7 @@ def _empty() -> dict[str, Any]:
         "bankDetails": "",
         "cin": "",
         "terms": "",
+        "pdfBrand": "",
         "logoPath": None,
         "logoUrl": None,
         "hasDeletePin": False,
@@ -548,6 +550,37 @@ def logo_data_url() -> str | None:
     return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
 
 
+PDF_BRANDS = ("marqt", "woodenmax", "allkraft")
+PDF_BRAND_LABELS = {
+    "marqt": "MAR-QT Style",
+    "woodenmax": "WoodenMax",
+    "allkraft": "AllKraft",
+}
+
+
+def resolve_pdf_brand(doc: Mapping[str, Any] | None = None, *, gst: str | None = None) -> str:
+    """Logged-in company's quote layout only — never a random other brand."""
+    if not isinstance(doc, Mapping) or not doc:
+        g = normalise_gstin(gst or "")
+        doc = (load_company_by_gst(g) if g else None) or load_company() or {}
+    raw = str(doc.get("pdfBrand") or doc.get("brand") or "").strip().lower().replace("-", "").replace(" ", "")
+    if raw == "mar-qt":
+        raw = "marqt"
+    if raw in PDF_BRANDS:
+        return raw
+    blob = " ".join(
+        str(doc.get(k) or "")
+        for k in ("companyName", "name", "tagline", "gstNo")
+    ).lower()
+    if "woodenmax" in blob or "wooden max" in blob:
+        return "woodenmax"
+    if "allkraft" in blob or "all kraft" in blob or "allukraft" in blob:
+        return "allkraft"
+    if "mar-qt" in blob or "marqt" in blob:
+        return "marqt"
+    return "marqt"
+
+
 def company_branding(gst: str | None = None) -> dict[str, Any]:
     """Branding dict for PDF templates. Company name in UPPERCASE for headers.
 
@@ -574,6 +607,7 @@ def company_branding(gst: str | None = None) -> dict[str, Any]:
         val = (doc.get(key) or "").strip()
         if val:
             branding[key] = val
+    branding["pdfBrand"] = resolve_pdf_brand(doc, gst=gst)
     lf = logo_file()
     if lf:
         branding["logoPath"] = str(lf)

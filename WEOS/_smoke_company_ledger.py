@@ -79,8 +79,26 @@ def main() -> int:
     save_project(doc2, action="smoke")
     set_project_status(doc2["projectId"], "approved")
 
-    a1 = ledger_store.add_advance(cust, {"amount": 40000, "paymentMode": "upi", "reference": "UTR1"})
-    a2 = ledger_store.add_advance(cust, {"amount": 25000, "paymentMode": "cheque", "reference": "CHQ99"})
+    a1 = ledger_store.add_advance(
+        cust,
+        {
+            "amount": 40000,
+            "paymentMode": "upi",
+            "reference": "UTR1",
+            "projectId": doc["projectId"],
+            "quoteId": doc.get("quotationId") or doc["projectId"],
+        },
+    )
+    a2 = ledger_store.add_advance(
+        cust,
+        {
+            "amount": 25000,
+            "paymentMode": "cheque",
+            "reference": "CHQ99",
+            "projectId": doc2["projectId"],
+            "quoteId": doc2.get("quotationId") or doc2["projectId"],
+        },
+    )
     if a1.get("paymentMode") != "upi":
         fails.append("advance payment mode not stored")
 
@@ -94,6 +112,19 @@ def main() -> int:
         fails.append(f"advances expected 65000 got {adv}")
     if abs(bal - 85000) > 0.01:
         fails.append(f"balance expected 85000 got {bal}")
+
+    scoped = ledger_store.scope_ledger(
+        led,
+        project_id=doc["projectId"],
+        quote_id=doc.get("quotationId") or doc["projectId"],
+    )
+    if abs(float((scoped.get("totals") or {}).get("advances") or 0) - 40000) > 0.01:
+        fails.append("scoped advances for quote 1 should be 40000")
+    try:
+        ledger_store.add_advance(cust, {"amount": 1, "paymentMode": "cash"})
+        fails.append("unscoped advance should be rejected")
+    except ValueError:
+        pass
 
     pdf = render_ledger_pdf(led, loaded)
     if not pdf.startswith(b"%PDF"):

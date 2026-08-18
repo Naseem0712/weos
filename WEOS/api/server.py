@@ -924,7 +924,7 @@ def _pdf_response(
         if branding:
             payload["branding"] = branding
             if branding.get("companyName") and not payload.get("brand"):
-                payload["brand"] = "allkraft"
+                payload["brand"] = branding.get("pdfBrand") or "marqt"
     except Exception:
         _log.debug("PDF company branding overlay skipped", exc_info=True)
     try:
@@ -3316,6 +3316,7 @@ def api_master_advance(project_id: str, body: AdvanceBody, gst: str | None = Que
     payload["projectId"] = str((row or {}).get("projectId") or project_id)
     payload["quoteId"] = "any" if any_quote else qid
     payload["customerName"] = customer
+    payload["allowUnscoped"] = True
     try:
         created = add_advance(customer, payload)
     except ValueError as exc:
@@ -3443,11 +3444,43 @@ def _find_advance(customer: str, advance_id: int) -> dict[str, Any]:
     raise FileNotFoundError(f"Advance {advance_id} not found")
 
 
+def _advance_share_payload(adv: dict[str, Any], ledger: Mapping[str, Any], request: Request) -> dict[str, Any]:
+    """Attach public scan token so the slip QR opens the customer account page."""
+    from WEOS.factory.project_store import load_project
+    from WEOS.factory.quote_share import ensure_project_share_token
+
+    out = dict(adv or {})
+    linked = out.get("linkedQuote") if isinstance(out.get("linkedQuote"), Mapping) else {}
+    pid = str(out.get("projectId") or linked.get("projectId") or "").strip()
+    if not pid:
+        for p in ledger.get("projects") or []:
+            if isinstance(p, Mapping) and str(p.get("projectId") or "").strip():
+                pid = str(p.get("projectId")).strip()
+                out.setdefault("projectName", p.get("name"))
+                out.setdefault("linkedQuote", p)
+                break
+    if pid:
+        try:
+            doc = load_project(pid)
+            tok = ensure_project_share_token(doc, persist=True)
+            out["projectId"] = pid
+            out["shareToken"] = tok
+            out["quoteShareToken"] = tok
+            out["quotationId"] = doc.get("quotationId") or out.get("quotationId")
+            if not out.get("projectName"):
+                out["projectName"] = doc.get("name")
+        except Exception:
+            _log.debug("advance slip share token skipped for %s", pid, exc_info=True)
+    out["publicBaseUrl"] = _public_base_url(request)
+    out["qrSuffix"] = "ledger"
+    return out
+
+
 @app.get("/api/customers/{customer}/advances/{advance_id}/slip.pdf")
-def api_advance_slip_pdf(customer: str, advance_id: int) -> Response:
+def api_advance_slip_pdf(customer: str, advance_id: int, request: Request) -> Response:
     from WEOS.factory.advance_slip_pdf import advance_slip_filename, render_advance_slip_pdf
     from WEOS.factory.company_store import company_branding, load_company, logo_file
-    from WEOS.factory.ledger_store import build_ledger
+    from WEOS.factory.ledger_store import build_ledger, scope_ledger
 
     try:
         adv = _find_advance(customer, advance_id)
@@ -3468,6 +3501,12 @@ def api_advance_slip_pdf(customer: str, advance_id: int) -> Response:
         if str(p.get("projectId") or "") and str(p.get("projectId")) == str(adv.get("projectId") or ""):
             adv = {**adv, "projectName": p.get("name"), "linkedQuote": p}
             break
+    adv = _advance_share_payload(adv, ledger, request)
+    ledger = scope_ledger(
+        ledger,
+        project_id=str(adv.get("projectId") or "") or None,
+        quote_id=str(adv.get("quoteId") or adv.get("quotationId") or "") or None,
+    )
     pdf = render_advance_slip_pdf(adv, company=co, ledger=ledger, customer=customer)
     fname = advance_slip_filename(customer, adv)
     return Response(
@@ -3481,7 +3520,7 @@ def api_advance_slip_pdf(customer: str, advance_id: int) -> Response:
 def api_advance_slip_xlsx(customer: str, advance_id: int) -> Response:
     from WEOS.factory.company_store import company_branding, load_company, logo_file
     from WEOS.factory.export_xlsx import export_advance_xlsx, safe_xlsx_name
-    from WEOS.factory.ledger_store import build_ledger
+    from WEOS.factory.ledger_store import build_ledger, scope_ledger
 
     try:
         adv = _find_advance(customer, advance_id)
@@ -3501,6 +3540,11 @@ def api_advance_slip_xlsx(customer: str, advance_id: int) -> Response:
         if str(p.get("projectId") or "") and str(p.get("projectId")) == str(adv.get("projectId") or ""):
             adv = {**adv, "projectName": p.get("name"), "linkedQuote": p}
             break
+    ledger = scope_ledger(
+        ledger,
+        project_id=str(adv.get("projectId") or "") or None,
+        quote_id=str(adv.get("quoteId") or adv.get("quotationId") or "") or None,
+    )
     raw = export_advance_xlsx(adv, company=co, ledger=ledger, customer=customer)
     fname = safe_xlsx_name(customer, "advance", str(advance_id))
     return Response(
@@ -3711,6 +3755,25 @@ def api_commercial_recommendations(product: str | None = None) -> dict[str, Any]
     from WEOS.learning.commercial_agent import product_recommendations
 
     return product_recommendations(product)
+
+
+@app.get("/api/quote/copy-suggestions")
+def api_quote_copy_suggestions(
+    request: Request,
+    product: str | None = None,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    """Standard terms + product description chips. Suggestions only — never auto-applied."""
+    from WEOS.factory.quote_copy import quote_copy_suggestions
+
+    g = gst
+    try:
+        from WEOS.factory.company_workspace import require_company_gst
+
+        g = require_company_gst(request, gst)
+    except Exception:
+        g = gst
+    return quote_copy_suggestions(product_id=product, gst=g)
 
 
 # ── Engineering Live Learning ────────────────────────────────────────────────

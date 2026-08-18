@@ -141,11 +141,31 @@ def render_advance_slip_pdf(
         c.drawString(M, y, f"Quote Ref: {quote_ref}")
         y -= 14
 
-    # Amount box
+    # Amount box (+ QR on the right so the customer can scan their account)
     y -= 8
+    qr_size = 64.0
+    qr_gap = 16.0
+    has_qr = bool(
+        _txt(advance.get("shareToken") or advance.get("quoteShareToken") or advance.get("quoteRef"))
+    )
+    box_w = W - 2 * M - ((qr_size + qr_gap) if has_qr else 0)
     c.setStrokeColorRGB(*primary)
     c.setFillColorRGB(0.96, 0.97, 0.99)
-    c.roundRect(M, y - 70, W - 2 * M, 78, 6, stroke=1, fill=1)
+    c.roundRect(M, y - 70, box_w, 78, 6, stroke=1, fill=1)
+    if has_qr:
+        try:
+            from WEOS.factory.pdf_qr import draw_quote_qr
+
+            draw_quote_qr(
+                c,
+                advance,
+                x=W - M - qr_size,
+                y=y - 64,
+                size=qr_size,
+                label="Scan your account",
+            )
+        except Exception:
+            pass
     c.setFillColorRGB(*primary)
     c.setFont("Helvetica-Bold", 11)
     c.drawString(M + 14, y - 18, "Advance amount")
@@ -158,13 +178,15 @@ def render_advance_slip_pdf(
     c.drawString(M + 14, y - 60, f"Payment mode: {mode}" + (f"   Ref: {ref}" if ref else ""))
     y -= 96
 
-    # Running balance
+    # Running balance — scoped to this project / quote when recorded that way
     bal = totals.get("balance")
     adv_tot = totals.get("advances")
     billed = totals.get("value", totals.get("billed"))
+    scope = ledger.get("scope") if isinstance(ledger.get("scope"), Mapping) else {}
+    scoped = bool(scope.get("projectId") or scope.get("quoteId"))
     c.setFont("Helvetica-Bold", 10)
     c.setFillColorRGB(0, 0, 0)
-    c.drawString(M, y, "Account summary (after this advance)")
+    c.drawString(M, y, "Account summary (this project / quote)" if scoped else "Account summary (after this advance)")
     y -= 14
     c.setFont("Helvetica", 9)
     if billed is not None:
@@ -176,7 +198,13 @@ def render_advance_slip_pdf(
     if bal is not None:
         c.setFont("Helvetica-Bold", 11)
         c.drawString(M + 8, y, f"Balance outstanding:  {_inr(bal)}")
-        y -= 18
+        y -= 16
+    if _txt(advance.get("shareToken") or advance.get("quoteShareToken")):
+        c.setFont("Helvetica", 8)
+        c.setFillColorRGB(0.35, 0.35, 0.35)
+        c.drawString(M, y, "Scan the QR to see project value, advances paid, and balance on your phone.")
+        c.setFillColorRGB(0, 0, 0)
+        y -= 16
 
     note = _txt(advance.get("note"))
     if note and note != ref:

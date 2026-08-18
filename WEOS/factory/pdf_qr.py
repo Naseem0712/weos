@@ -58,10 +58,16 @@ def quote_ref(payload: Mapping[str, Any]) -> str:
 
 
 def quote_url(payload: Mapping[str, Any]) -> str:
-    """Absolute (or relative fallback) URL that opens the quote when scanned."""
+    """Absolute (or relative fallback) URL that opens the quote when scanned.
+
+    Optional ``qrSuffix`` on the payload appends a path (e.g. ``ledger`` →
+    ``/q/{ref}/ledger``) so an advance slip can open the customer account.
+    """
     ref = _urlquote(quote_ref(payload), safe="")
+    extra = str(payload.get("qrSuffix") or "").strip().strip("/")
+    path = f"/q/{ref}" + (f"/{extra}" if extra else "")
     base = public_base_url(payload)
-    return f"{base}/q/{ref}" if base else f"/q/{ref}"
+    return f"{base}{path}" if base else path
 
 
 def qr_png(data: str) -> bytes | None:

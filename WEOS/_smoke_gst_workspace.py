@@ -87,7 +87,16 @@ def main() -> int:
     set_project_status(p2["projectId"], "approved")
 
     # Totals: live billed uses latest grand total (125000), not sum of versions.
-    add_advance(cust, {"amount": 25000, "paymentMode": "upi", "reference": "GST-SMOKE"})
+    add_advance(
+        cust,
+        {
+            "amount": 25000,
+            "paymentMode": "upi",
+            "reference": "GST-SMOKE",
+            "projectId": p2.get("projectId"),
+            "quoteId": p2.get("quotationId") or "QT-SMOKE-1",
+        },
+    )
     led = build_ledger(cust, company_gst=gst)
     billed = float((led.get("totals") or {}).get("billed") or 0)
     bal = float((led.get("totals") or {}).get("balance") or 0)

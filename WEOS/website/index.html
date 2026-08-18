@@ -35,7 +35,8 @@ a{color:inherit}
   background:#0f172a;border:1px solid #334155;box-shadow:0 8px 24px rgba(0,0,0,.22);display:none;
   align-items:center;justify-content:center;cursor:pointer;padding:7px}
 .weos-agent-fab img{width:100%;height:100%;object-fit:contain;border-radius:8px;display:block}
-.weos-agent-fab:hover{filter:brightness(1.08)}
+.weos-agent-fab:hover{filter:brightness(1.08);transform:translateY(-2px)}
+.weos-agent-fab:active{filter:brightness(.92);transform:scale(.96)}
 .setup-summary{display:flex;flex-wrap:wrap;gap:.5rem .75rem;align-items:center;margin-bottom:.65rem;
   padding:.55rem .7rem;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.7);font-size:.88rem}
 .rail-tools{margin:.45rem 0 .55rem;padding:.45rem .5rem;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.72)}
@@ -56,7 +57,9 @@ a{color:inherit}
 .rail-run{border:1px solid var(--line);border-radius:8px;padding:.4rem .45rem;margin-top:.35rem;background:#fff}
 .rail-run .rail-run-head{display:flex;align-items:center;justify-content:space-between;gap:.35rem;margin-bottom:.2rem}
 .rail-run .rail-div-chips{display:flex;flex-wrap:wrap;gap:.25rem;margin-top:.3rem}
-.rail-run .rail-div-chips button{border:1px solid var(--line);background:#f7faf8;border-radius:999px;padding:.12rem .5rem;font-size:.68rem;cursor:pointer;line-height:1.25}
+.rail-run .rail-div-chips button{border:1px solid var(--line);background:#f7faf8;border-radius:999px;padding:.12rem .5rem;font-size:.68rem;cursor:pointer;line-height:1.25;transition:background-color .15s ease,border-color .15s ease,transform .08s ease}
+.rail-run .rail-div-chips button:hover{border-color:var(--green);background:#e7f3ee}
+.rail-run .rail-div-chips button:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(10,90,72,.18)}
 .rail-run .rail-div-chips button.rec{border-color:var(--green);color:var(--green);font-weight:600}
 .rail-run .rail-div-chips button.over{border-color:#b45324;color:#8c1f18}
 .rail-run .rail-div-chips button.active{background:var(--green);color:#fff;border-color:var(--green)}
@@ -70,21 +73,32 @@ a{color:inherit}
 .rail-tools.collapsed .rt-body{display:none}
 .rail-tools .rt-panel{display:none;margin-top:.2rem;padding:.35rem .4rem;border:1px dashed var(--line);border-radius:8px;background:rgba(255,255,255,.55)}
 .rail-tools .rt-panel.active{display:block}
-.rail-tools .rt-steps button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:.15rem .55rem;font-size:.68rem;cursor:pointer}
+.rail-tools .rt-steps button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:.15rem .55rem;font-size:.68rem;cursor:pointer;transition:background-color .15s ease,transform .08s ease}
+.rail-tools .rt-steps button:hover{border-color:var(--green);background:#eef6f2}
+.rail-tools .rt-steps button:active{transform:scale(.96)}
 .rail-tools .rt-steps button.active{background:var(--green);color:#fff;border-color:var(--green)}
 .rail-tools .rt-steps button.done{border-color:var(--green);color:var(--green)}
-.navbtn{border:0;background:transparent;color:#1f2d28;font-weight:500;text-align:left;padding:.65rem .75rem;border-radius:10px;cursor:pointer;width:100%}
-.navbtn:hover{background:rgba(10,90,72,.10);color:#0a5a48}
+.navbtn{border:0;background:transparent;color:#1f2d28;font-weight:500;text-align:left;padding:.65rem .75rem;border-radius:10px;cursor:pointer;width:100%;transition:background-color .15s ease,color .15s ease,transform .08s ease,box-shadow .15s ease}
+.navbtn:hover{background:rgba(10,90,72,.12);color:#0a5a48}
+.navbtn:active{background:rgba(10,90,72,.26);transform:scale(.98);box-shadow:inset 0 2px 6px rgba(10,90,72,.18)}
 .navbtn.active{background:rgba(10,90,72,.16);color:#084a3b;font-weight:600}
+.navbtn.active:active{background:rgba(10,90,72,.28)}
 .main{min-width:0;padding:1rem 1.1rem 2.5rem}
 .top{display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap}
-.burger{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:.45rem .65rem;cursor:pointer}
+.burger{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:.45rem .65rem;cursor:pointer;transition:background-color .15s ease,transform .08s ease,box-shadow .15s ease}
+.burger:hover{background:#eef6f2;border-color:var(--green)}
+.burger:active{transform:scale(.96);box-shadow:inset 0 2px 6px rgba(0,0,0,.12)}
 .fold-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem;cursor:pointer;user-select:none}
 .fold-head .fold-btn{flex:0 0 auto}
 .fold-panel.folded > .fold-body{display:none}
 .tpl-pick{display:flex;flex-direction:column;gap:.35rem;max-height:220px;overflow:auto;margin:.35rem 0 .6rem}
-.tpl-pick button{text-align:left;border:1px solid var(--line);background:#fff;border-radius:8px;padding:.4rem .55rem;cursor:pointer;font-size:.8rem}
-.tpl-pick button.active{border-color:var(--green);background:rgba(10,90,72,.08)}
+.tpl-pick button{text-align:left;border:1px solid var(--line);background:#fff;border-radius:8px;padding:.4rem .55rem;cursor:pointer;font-size:.8rem;transition:background-color .15s ease,border-color .15s ease,transform .08s ease}
+.tpl-pick button:hover{border-color:var(--green);background:#f3faf6}
+.tpl-pick button:active{transform:scale(.98);background:#dceee6}
+.chip-row{display:flex;flex-wrap:wrap;gap:.3rem;margin:.3rem 0 .15rem}
+.chip-row button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:.15rem .55rem;font-size:.72rem;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:background-color .15s ease,border-color .15s ease,color .15s ease,transform .08s ease}
+.chip-row button:hover{border-color:var(--green);color:var(--green);background:#eef6f2}
+.chip-row button:active{transform:scale(.96);background:#dceee6;box-shadow:inset 0 1px 4px rgba(10,90,72,.18)}
 h1{font-family:var(--serif);font-size:clamp(1.5rem,2.5vw,2rem);margin:0;letter-spacing:-.02em}
 .sub{color:var(--muted);margin:.15rem 0 0;font-size:.92rem}
 .grid{display:grid;gap:1rem}
@@ -106,17 +120,32 @@ h1{font-family:var(--serif);font-size:clamp(1.5rem,2.5vw,2rem);margin:0;letter-s
 .grow{flex:1;min-width:140px}
 label.l{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 .25rem}
 input,select{width:100%;padding:.55rem .65rem;border:1px solid var(--line);border-radius:10px;background:#fff}
-.btn{border:0;border-radius:10px;padding:.55rem .85rem;background:var(--green);color:#f4faf7;font-weight:600;cursor:pointer}
-.btn:hover{background:var(--green2)}
+button,a.btn,label.btn{-webkit-tap-highlight-color:rgba(10,90,72,.2)}
+button:focus-visible,a.btn:focus-visible,label.btn:focus-visible,.navbtn:focus-visible,.tab:focus-visible,.burger:focus-visible{
+  outline:2px solid var(--green);outline-offset:2px}
+.btn,a.btn,label.btn{border:0;border-radius:10px;padding:.55rem .85rem;background:var(--green);color:#f4faf7;font-weight:600;cursor:pointer;
+  display:inline-block;text-decoration:none;transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease,transform .08s ease,filter .12s ease}
+.btn:hover,a.btn:hover,label.btn:hover{background:var(--green2);box-shadow:0 4px 12px rgba(10,90,72,.28);transform:translateY(-1px);filter:brightness(1.05)}
+.btn:active,a.btn:active,label.btn:active{background:#084a3b;transform:translateY(1px) scale(.97);box-shadow:inset 0 2px 6px rgba(0,0,0,.22);filter:brightness(.95)}
 .btn.sec{background:transparent;border:1px solid var(--copper);color:var(--copper)}
-.btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink);font-weight:500}
-.btn.sm{padding:.35rem .55rem;font-size:.82rem}
+.btn.sec:hover,a.btn.sec:hover{background:rgba(180,83,36,.12);color:var(--copper);box-shadow:0 4px 12px rgba(180,83,36,.16)}
+.btn.sec:active,a.btn.sec:active{background:rgba(180,83,36,.22);color:var(--copper)}
+.btn.ghost,a.btn.ghost,label.btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink);font-weight:500}
+.btn.ghost:hover,a.btn.ghost:hover,label.btn.ghost:hover{background:#eef6f2;border-color:var(--green);color:var(--green);box-shadow:0 3px 10px rgba(10,90,72,.12)}
+.btn.ghost:active,a.btn.ghost:active,label.btn.ghost:active{background:#dceee6;color:var(--green);box-shadow:inset 0 2px 5px rgba(10,90,72,.16)}
+.btn.sm,a.btn.sm,label.btn.sm{padding:.35rem .55rem;font-size:.82rem}
+button:disabled,.btn:disabled,a.btn[aria-disabled="true"]{opacity:.5;cursor:not-allowed;transform:none!important;box-shadow:none!important;filter:none!important}
+button:not(.btn):not(.navbtn):not(.tab):not(.weos-agent-fab):not(:disabled){transition:transform .08s ease,filter .12s ease,background-color .15s ease,border-color .15s ease,box-shadow .15s ease}
+button:not(.btn):not(.navbtn):not(.tab):not(.weos-agent-fab):not(:disabled):hover{filter:brightness(1.05)}
+button:not(.btn):not(.navbtn):not(.tab):not(.weos-agent-fab):not(:disabled):active{transform:scale(.97);filter:brightness(.93);box-shadow:inset 0 2px 5px rgba(0,0,0,.12)}
 table{width:100%;border-collapse:collapse;font-size:.9rem}
 th,td{text-align:left;padding:.55rem .4rem;border-bottom:1px solid var(--line);vertical-align:middle}
 th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
 .muted{color:var(--muted)}
 .pill{display:inline-block;padding:.15rem .45rem;border-radius:999px;background:#e7f3ee;color:var(--green);font-size:.72rem;font-weight:600}
-button.pill{border:0;font:inherit;cursor:pointer}
+button.pill{border:0;font:inherit;cursor:pointer;transition:transform .08s ease,filter .12s ease,box-shadow .15s ease}
+button.pill:hover{filter:brightness(1.08)}
+button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.16)}
 .pill.stub{background:#f3ebe2;color:var(--copper)}
 .preview{background:#d8dee6;border:1px solid var(--line);border-radius:12px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:auto;padding:.5rem}
 .preview svg,.preview img{max-width:100%;max-height:420px;width:auto;height:auto;display:block}
@@ -124,9 +153,29 @@ button.pill{border:0;font:inherit;cursor:pointer}
 .chip button{border:0;background:transparent;cursor:pointer;font-size:.85rem;line-height:1;padding:0;color:#666}
 .two{display:grid;grid-template-columns:1.1fr .9fr;gap:1rem}
 @media(max-width:1000px){.two{grid-template-columns:1fr}}
+#view-cart.grid{height:calc(100vh - 5.75rem);grid-template-rows:auto minmax(0,1fr);overflow:hidden;align-content:stretch}
+#view-cart > .two.cart-split{align-items:stretch;height:auto;min-height:0;overflow:hidden}
+#view-cart .cart-tools,#view-cart .cart-preview{min-height:0;overscroll-behavior:contain}
+#view-cart .cart-tools{overflow:auto}
+#view-cart .cart-preview{display:flex;flex-direction:column;overflow:hidden}
+#view-cart .cart-preview .rail-tools{flex:0 1 auto;max-height:42%;overflow:auto;overscroll-behavior:contain}
+#view-cart .cart-preview .preview{flex:1 1 auto;min-height:220px;overflow:auto;overscroll-behavior:contain}
+#view-cart .cart-preview .preview svg,#view-cart .cart-preview .preview img{max-height:none}
+#view-cart .cart-preview #wrapDesignPhoto,#view-cart .cart-preview #lineSpecs{flex:0 0 auto}
+.admin-split{align-items:stretch}
+.admin-split > div:first-child{min-height:0;display:flex;flex-direction:column}
+.admin-split .canvas-wrap{flex:1 1 auto;min-height:280px;max-height:calc(100vh - 12rem);overscroll-behavior:contain}
+@media(max-width:1000px){
+  #view-cart.grid{height:auto;overflow:visible;grid-template-rows:none}
+  #view-cart > .two.cart-split{height:auto;overflow:visible;min-height:0}
+  #view-cart .cart-tools{max-height:58vh}
+  #view-cart .cart-preview{max-height:72vh;overflow:auto}
+  #view-cart .cart-preview .rail-tools{max-height:none}
+}
 .prodgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.85rem}
 .prod{cursor:pointer;overflow:hidden;transition:transform .2s,box-shadow .2s}
 .prod:hover{transform:translateY(-3px);box-shadow:0 14px 36px rgba(20,20,16,.1)}
+.prod:active{transform:translateY(0) scale(.99);box-shadow:0 6px 16px rgba(20,20,16,.1)}
 .prod img,.prod .ph{width:100%;height:130px;object-fit:cover;background:#ddd;display:block}
 .err{color:#a11;font-size:.88rem}
 .toast{position:fixed;right:1rem;bottom:1rem;background:#12140f;color:#fff;padding:.7rem 1rem;border-radius:10px;z-index:50;opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none}
@@ -138,8 +187,12 @@ button.pill{border:0;font:inherit;cursor:pointer}
 @media(max-width:600px){.specs{grid-template-columns:1fr}th:nth-child(n+5),td:nth-child(n+5){display:none}}
 .optbox{background:#12140f;color:#cfe9dc;padding:.75rem;border-radius:10px;font-size:.75rem;overflow:auto;max-height:200px;white-space:pre-wrap}
 .tabs{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.75rem}
-.tab{border:1px solid var(--line);background:#fff;border-radius:8px;padding:.35rem .7rem;cursor:pointer;font-size:.82rem}
+.tab{border:1px solid var(--line);background:#fff;border-radius:8px;padding:.35rem .7rem;cursor:pointer;font-size:.82rem;transition:background-color .15s ease,border-color .15s ease,color .15s ease,transform .08s ease}
+.tab:hover{border-color:var(--green);color:var(--green);background:#eef6f2}
+.tab:active{transform:scale(.97);box-shadow:inset 0 2px 5px rgba(10,90,72,.16)}
 .tab.active{background:var(--green);color:#fff;border-color:var(--green)}
+.tab.active:hover{background:var(--green2);color:#fff}
+.tab.active:active{background:#084a3b;color:#fff}
 .canvas-wrap{position:relative;background:#d8d4c8;border:1px solid var(--line);border-radius:12px;height:520px;overflow:auto}
 .canvas-page{position:relative;width:595px;height:842px;margin:12px auto;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.12)}
 .block{position:absolute;border:1px dashed rgba(10,90,72,.45);background:rgba(10,90,72,.06);padding:4px 6px;font-size:.7rem;cursor:move;user-select:none;overflow:hidden}
@@ -305,10 +358,8 @@ button.pill{border:0;font:inherit;cursor:pointer}
         <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
           <div class="grow"><label class="l">Project name</label><input id="cartName" value="WEOS Project"/></div>
           <div><label class="l">PDF Brand</label>
-            <select id="pdfBrand">
-              <option value="marqt">MAR-QT Style</option>
-              <option value="woodenmax">WoodenMax</option>
-              <option value="allkraft">AllKraft</option>
+            <select id="pdfBrand" title="Uses the brand from Company Setup for this login">
+              <option value="marqt">Your company brand</option>
             </select>
           </div>
         </div>
@@ -346,8 +397,16 @@ button.pill{border:0;font:inherit;cursor:pointer}
         </div>
         <div id="setupImportPreview" class="muted" style="font-size:.78rem;margin:0 0 .55rem"></div>
         <div class="row" style="margin-bottom:.6rem;flex-wrap:wrap;gap:.5rem .7rem">
-          <div class="grow" style="flex-basis:100%"><label class="l">Quote description (prints on quote)</label><textarea id="projDescription" rows="2" placeholder="Optional note that prints on the customer quotation" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
-          <div class="grow" style="flex-basis:100%"><label class="l">Terms &amp; Conditions override (optional — defaults from Company Setup)</label><textarea id="projTerms" rows="3" placeholder="Leave blank to use the company default terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea></div>
+          <div class="grow" style="flex-basis:100%"><label class="l">Quote description (prints on quote)</label>
+            <textarea id="projDescription" rows="2" placeholder="Optional note that prints on the customer quotation — or tap a suggestion" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea>
+            <div class="chip-row" id="projDescChips"></div>
+            <button class="btn ghost sm" id="btnProjDescSuggest" type="button" style="margin-top:.25rem">AI suggest description</button>
+          </div>
+          <div class="grow" style="flex-basis:100%"><label class="l">Terms &amp; Conditions override (optional — defaults from Company Setup)</label>
+            <textarea id="projTerms" rows="3" placeholder="Leave blank to use the company default terms — or tap Regular / past-quote terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea>
+            <div class="chip-row" id="projTermsChips"></div>
+            <button class="btn ghost sm" id="btnProjTermsSuggest" type="button" style="margin-top:.25rem">AI suggest terms</button>
+          </div>
         </div>
         <hr style="border:none;border-top:1px solid var(--line);margin:1.1rem 0 .7rem"/>
         <strong style="font-size:.92rem">Outside / package quotes on this project</strong>
@@ -400,8 +459,8 @@ button.pill{border:0;font:inherit;cursor:pointer}
           <button class="btn ghost sm" id="btnMemoryDismiss" type="button" style="color:#cfe9dc;border-color:#2a6b55">No, start fresh</button>
         </div>
       </div>
-      <div class="two">
-        <div class="panel">
+      <div class="two cart-split">
+        <div class="panel cart-tools">
           <div class="setup-summary" id="setupSummaryBar">
             <span class="muted">Active setup</span>
             <strong id="setupSummaryText">No setup yet</strong>
@@ -581,7 +640,10 @@ button.pill{border:0;font:inherit;cursor:pointer}
                 <input id="lineHwBrand" type="text" placeholder="hardware brand" style="width:130px" title="Hardware brand printed on quote"/>
               </div>
             </div>
-            <div class="grow"><label class="l">Description</label><input id="lineDesc" placeholder="Customer-facing description"/></div>
+            <div class="grow"><label class="l">Description</label>
+              <input id="lineDesc" placeholder="Customer-facing description — AI can suggest"/>
+              <div class="chip-row" id="lineDescChips"></div>
+            </div>
           </div>
           <!-- Composable add-on: glass replacement (louvers / sheet) — not a product-type change -->
           <div id="addFeatureBox" style="margin-top:.55rem;padding:.55rem .65rem;border:1px dashed var(--line);border-radius:10px;background:rgba(0,0,0,.015)">
@@ -656,7 +718,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
             </div>
           </div>
           <div class="row" style="margin-top:.75rem">
-            <button class="btn" id="btnCalc" title="Price the whole cart, then download PDFs below">Calculate price</button>
+            <button class="btn" id="btnCalc" title="Price the cart, save the quote, then download PDFs below">Calculate price</button>
             <button class="btn ghost sm" id="btnAutosave" title="Save this project">Save</button>
             <button class="btn ghost sm" id="btnUndo" title="Undo last change">Undo</button>
             <button class="btn ghost sm" id="btnRedo" title="Redo">Redo</button>
@@ -676,7 +738,17 @@ button.pill{border:0;font:inherit;cursor:pointer}
             </div>
             <div style="display:flex;flex-direction:column;gap:.4rem;align-items:flex-end;min-width:min(100%,280px)">
               <div style="width:100%"><label class="l">Quote print setup (customer details on PDF)</label>
-                <select id="exportSetupSelect" title="Choose which project setup’s bill-to / terms print on the quote"></select>
+                <select id="exportSetupSelect" title="Choose which customer account’s bill-to / terms print on the quote"></select>
+              </div>
+              <button class="btn ghost sm" id="btnPrintCopyToggle" type="button" title="See what description and terms will print, then edit if needed">View / edit description &amp; terms</button>
+              <div id="printCopyPanel" class="hidden" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;padding:.55rem .65rem;background:#fff">
+                <p class="muted" style="margin:0 0 .45rem;font-size:.75rem">This is what the Quote PDF will print. Read it, edit if needed, then generate the PDF.</p>
+                <label class="l">Description</label>
+                <textarea id="printDescription" rows="2" placeholder="Optional note that prints on the customer quotation" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea>
+                <div class="chip-row" id="printDescChips"></div>
+                <label class="l" style="margin-top:.45rem">Terms</label>
+                <textarea id="printTerms" rows="3" placeholder="Leave blank to use company default terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit;margin-top:.2rem"></textarea>
+                <div class="chip-row" id="printTermsChips"></div>
               </div>
               <div class="actions-inline">
                 <a class="btn sm" id="linkCust" href="#" target="_blank" title="Customer quotation: branding, sizes, specs, pricing, GST, terms.">📄 Quote PDF</a>
@@ -690,7 +762,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
           <pre class="optbox" id="optBox">Optimization after Calculate</pre>
           <div class="err" id="cartErr"></div>
         </div>
-        <div class="panel">
+        <div class="panel cart-preview">
           <strong>Live Preview</strong>
           <p class="muted" id="previewLabel" style="margin:.25rem 0 .6rem">Select or add a line</p>
           <div id="railTools" class="rail-tools hidden">
@@ -1477,14 +1549,21 @@ button.pill{border:0;font:inherit;cursor:pointer}
           <div class="err" id="cpErr" style="margin-top:.4rem"></div>
           <hr style="border:none;border-top:1px solid var(--line);margin:1rem 0"/>
           <strong style="font-size:.9rem">Account / Ledger</strong>
-          <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">Grand total = <strong>all quotes</strong> on this customer (with GST), not one quote only. Year turnover on the dashboard is all <strong>Approved</strong> projects. Balance = grand total − advances. Select <strong>Any</strong> to record an advance against this customer’s full balance.</p>
+          <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">B2B customer pehle select karo, phir <strong>project</strong>, phir us project ki <strong>quote</strong>. Advance usi quote par save hota hai — Komal / Aditya / Naveen alag ledger. <strong>All projects</strong> is customer ka combined account dikhata hai (saari quotes + saare advances). Slip par value / advance / balance usi selected project–quote ke hote hain.</p>
           <div id="cpLedgerKpis" class="row" style="gap:.7rem;flex-wrap:wrap;margin-bottom:.6rem">
             <div class="kpi"><label class="l">Taxable (ex-GST)</label><div class="big" style="font-size:1.05rem" id="cpTotTaxable">₹ —</div></div>
             <div class="kpi"><label class="l">Grand total</label><div class="big" style="font-size:1.05rem" id="cpTotGrand">₹ —</div></div>
             <div class="kpi"><label class="l">Total advance</label><div class="big" style="font-size:1.05rem" id="cpTotAdv">₹ —</div></div>
             <div class="kpi"><label class="l">Balance</label><div class="big" style="font-size:1.05rem" id="cpTotBal">₹ —</div></div>
           </div>
+          <p class="muted" id="cpLedgerScopeNote" style="margin:0 0 .55rem;font-size:.75rem"></p>
           <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.55rem">
+            <div class="grow"><label class="l">1. Project</label>
+              <select id="cpAdvProject" style="min-width:180px"><option value="">— All projects —</option></select>
+            </div>
+            <div class="grow"><label class="l">2. Quote</label>
+              <select id="cpAdvQuote" style="min-width:180px"><option value="">— Select project first —</option></select>
+            </div>
             <div><label class="l">Advance ₹</label><input id="cpAdvAmt" type="number" min="0" step="0.01" style="width:110px"/></div>
             <div><label class="l">Mode</label>
               <select id="cpAdvMode" style="width:110px">
@@ -1500,7 +1579,6 @@ button.pill{border:0;font:inherit;cursor:pointer}
             <div><label class="l">Date</label><input id="cpAdvDate" type="date" style="width:140px"/></div>
             <div class="grow"><label class="l">Purpose / name</label><input id="cpAdvPurpose" placeholder="who paid / purpose"/></div>
             <div class="grow"><label class="l">Ref / note</label><input id="cpAdvRef" placeholder="cheque no / UTR / note"/></div>
-            <div><label class="l">Project</label><select id="cpAdvProject" style="min-width:140px"><option value="">— Any (all quotes) —</option></select></div>
             <label class="muted" style="font-size:.78rem;display:flex;align-items:center;gap:.35rem;margin:0 0 .15rem">
               <input id="cpAdvApprove" type="checkbox" checked style="width:auto"/> Mark quote approved
             </label>
@@ -1542,9 +1620,8 @@ button.pill{border:0;font:inherit;cursor:pointer}
         <div class="row" style="align-items:flex-end;gap:.5rem;flex-wrap:wrap;margin-top:.45rem">
           <div class="grow"><label class="l">Company name (first time)</label><input id="coGstLoginName" style="text-transform:uppercase" placeholder="new company only" autocomplete="organization"/></div>
           <div class="grow"><label class="l">Registered email (PIN reset)</label><input id="coGstLoginEmail" type="email" placeholder="company email" autocomplete="email"/></div>
-          <button class="btn" id="btnCoGstOpen" type="button">Log in</button>
+          <button class="btn" id="btnCoGstAuth" type="button">Log in</button>
           <button class="btn ghost sm" id="btnCoGstForgot" type="button">Forgot PIN</button>
-          <button class="btn ghost sm" id="btnCoGstLogout" type="button">Log out</button>
           <button class="btn ghost sm" id="btnCoGstRefresh" type="button">Refresh hub</button>
         </div>
         <div class="err" id="coGstErr" style="margin-top:.4rem"></div>
@@ -1629,6 +1706,13 @@ button.pill{border:0;font:inherit;cursor:pointer}
           <p class="muted" style="margin:.2rem 0 .8rem;font-size:.82rem">Saved once — auto-applied to every quote header &amp; branding. Company name prints in UPPERCASE. After save these fields clear; open this panel to edit again.</p>
           <div class="row">
             <div class="grow"><label class="l">Company name</label><input id="coName" style="text-transform:uppercase"/></div>
+            <div><label class="l">Quote PDF brand</label>
+              <select id="coPdfBrand" title="Only this layout is offered after login">
+                <option value="marqt">MAR-QT Style</option>
+                <option value="woodenmax">WoodenMax</option>
+                <option value="allkraft">AllKraft</option>
+              </select>
+            </div>
             <div class="grow"><label class="l">GST No</label><input id="coGst"/></div>
           </div>
           <div class="row" style="margin-top:.5rem">
@@ -1645,14 +1729,27 @@ button.pill{border:0;font:inherit;cursor:pointer}
           </div>
           <div class="row" style="margin-top:.5rem">
             <div class="grow"><label class="l">PAN</label><input id="coPan"/></div>
-            <div class="grow"><label class="l">Bank details (prints on quote)</label><input id="coBank" placeholder="Bank · A/c No · IFSC · Branch"/></div>
           </div>
+          <div class="row" style="margin-top:.5rem;flex-wrap:wrap;gap:.5rem .7rem">
+            <div class="grow"><label class="l">A/c name</label><input id="coBankAcName" type="text" inputmode="text" autocomplete="name" placeholder="account holder name"/></div>
+            <div class="grow"><label class="l">Bank name</label><input id="coBankName" type="text" inputmode="text" autocomplete="organization" placeholder="HDFC / SBI / ICICI"/></div>
+          </div>
+          <div class="row" style="margin-top:.5rem;flex-wrap:wrap;gap:.5rem .7rem">
+            <div class="grow"><label class="l">A/c no</label><input id="coBankAcNo" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="numbers only"/></div>
+            <div class="grow"><label class="l">IFSC code</label><input id="coBankIfsc" type="text" inputmode="text" autocapitalize="characters" spellcheck="false" maxlength="11" placeholder="HDFC0001234" style="text-transform:uppercase;letter-spacing:.04em"/></div>
+            <div class="grow"><label class="l">Branch</label><input id="coBankBranch" type="text" inputmode="text" placeholder="branch / city"/></div>
+          </div>
+          <p class="muted" style="margin:.25rem 0 0;font-size:.72rem">Prints on the quote under Bank Details, same layout as before.</p>
           <div class="row" style="margin-top:.5rem">
             <div class="grow"><label class="l">Login PIN (4 digits)</label><input id="coDeletePin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="Set or change PIN"/></div>
           </div>
           <p class="muted" id="coDeletePinHint" style="margin:.35rem 0 0;font-size:.75rem">4-digit PIN is required to log in on any system. Forgot PIN? use the registered email link above. To delete a project, type DELETE — PIN is not used for delete.</p>
           <div class="row" style="margin-top:.5rem">
-            <div class="grow" style="flex-basis:100%"><label class="l">Default Terms &amp; Conditions (prints on every quote unless overridden)</label><textarea id="coTerms" rows="5" placeholder="One term per line…" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem;font:inherit"></textarea></div>
+            <div class="grow" style="flex-basis:100%"><label class="l">Default Terms &amp; Conditions (prints on every quote unless overridden)</label>
+              <textarea id="coTerms" rows="5" placeholder="One term per line… or tap Regular terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem;font:inherit"></textarea>
+              <div class="chip-row" id="coTermsChips"></div>
+              <button class="btn ghost sm" id="btnCoTermsSuggest" type="button" style="margin-top:.25rem">AI suggest terms</button>
+            </div>
           </div>
           <div class="row" style="margin-top:.7rem;align-items:center">
             <button class="btn" id="btnCoSave">Save company</button>
@@ -2004,9 +2101,7 @@ button.pill{border:0;font:inherit;cursor:pointer}
         <div class="row" style="margin-bottom:.6rem">
           <div><label class="l">Brand</label>
             <select id="tplBrand">
-              <option value="marqt">MAR-QT Style</option>
-              <option value="woodenmax">WoodenMax</option>
-              <option value="allkraft">AllKraft</option>
+              <option value="marqt">Your company brand</option>
             </select>
           </div>
           <div><label class="l">Kind</label>
@@ -2346,7 +2441,7 @@ function wipeLoggedOutUi() {
   if ($('coHubPanel')) $('coHubPanel').classList.add('hidden');
   if ($('dashLocked')) $('dashLocked').classList.remove('hidden');
   if ($('dashLive')) $('dashLive').classList.add('hidden');
-  ['coName','coGst','coAddress','coWebsite','coPhone','coEmail','coTagline','coStateCode','coPan','coBank','coTerms','coGstLoginName','coGstLoginEmail'].forEach(id => {
+  ['coName','coGst','coAddress','coWebsite','coPhone','coEmail','coTagline','coStateCode','coPan','coBankAcName','coBankName','coBankAcNo','coBankIfsc','coBankBranch','coTerms','coGstLoginName','coGstLoginEmail'].forEach(id => {
     if ($(id)) $(id).value = '';
   });
   if ($('coGstPin')) $('coGstPin').value = '';
@@ -2362,6 +2457,7 @@ function wipeLoggedOutUi() {
     if ($(id)) $(id).textContent = '—';
   });
   if (typeof updateWorkspacePill === 'function') updateWorkspacePill();
+  if (typeof syncCompanyAuthButton === 'function') syncCompanyAuthButton();
 }
 function clearWorkspaceSession() {
   wipeLoggedOutUi();
@@ -2377,6 +2473,15 @@ function updateWorkspacePill() {
     el.textContent = 'Not logged in';
     el.title = 'Log in with GST / name / mobile + PIN';
   }
+  if (typeof syncCompanyAuthButton === 'function') syncCompanyAuthButton();
+}
+function syncCompanyAuthButton() {
+  const btn = $('btnCoGstAuth');
+  if (!btn) return;
+  const on = typeof isCompanyLoggedIn === 'function' && isCompanyLoggedIn();
+  btn.textContent = on ? 'Log out' : 'Log in';
+  btn.className = on ? 'btn ghost' : 'btn';
+  btn.dataset.mode = on ? 'logout' : 'login';
 }
 function requireCompanyLogin() {
   if (isCompanyLoggedIn()) return true;
@@ -2461,6 +2566,7 @@ async function applyWorkspacePayload(ws) {
     setFold('coSetupFold', configured);
   }
   if (typeof renderCompanyHub === 'function') renderCompanyHub(ws);
+  if (typeof applyCompanyPdfBrand === 'function') applyCompanyPdfBrand();
   if ($('coGstStatus')) $('coGstStatus').textContent = 'Workspace open · GSTIN ' + ws.gstNo;
   // Do not prefetch every quote/payment/customer on login — fetch the open view only.
   if (typeof updatePdfLinks === 'function') updatePdfLinks();
@@ -2623,7 +2729,7 @@ function setView(v) {
   $('subtitle').textContent = titles[v][1];
   $('side').classList.remove('open');
   if (v==='dashboard') loadDashboard();
-  if (v==='setup') { refreshSetupSummary(); loadSetupList(); renderPackageQuotes(); renderSetupDiscount(); lookupSetupClient(); }
+  if (v==='setup') { refreshSetupSummary(); loadSetupList(); renderPackageQuotes(); renderSetupDiscount(); lookupSetupClient(); refreshQuoteCopySuggestions(); }
   if (v==='master') initMasterLedger();
   if (v==='projects') loadProjects();
   if (v==='library') initAdmin();
@@ -4730,7 +4836,7 @@ function updatePdfLinks(){
     pill.textContent = 'No project';
   }
   if (!id) return;
-  const brand = ($('pdfBrand') && $('pdfBrand').value) || 'woodenmax';
+  const brand = ($('pdfBrand') && $('pdfBrand').value) || (typeof companyPdfBrand === 'function' && companyPdfBrand()) || 'marqt';
   const q = '?brand='+encodeURIComponent(brand);
   if ($('linkQuote')) $('linkQuote').href = `${API_BASE}/api/projects/${id}/quotation`;
   if ($('linkCust')) $('linkCust').href = `${API_BASE}/api/projects/${id}/customer-pdf`+q;
@@ -4740,15 +4846,20 @@ function updatePdfLinks(){
 }
 
 function refreshSetupSummary(){
+  const sel = $('exportSetupSelect');
+  const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+  const fromSelect = (opt && sel.value)
+    ? String(opt.textContent || '').replace(/\s*\(current\)\s*$/i, '').trim()
+    : '';
   const name = ($('cartName') && $('cartName').value.trim()) || '';
   const cust = ($('projCustName') && $('projCustName').value.trim())
     || ($('projMobile') && $('projMobile').value.trim()) || '';
-  const bits = [name, cust].filter(Boolean);
+  const bits = fromSelect ? [fromSelect] : [name, cust].filter(Boolean);
   const el = $('setupSummaryText');
   if (el) el.textContent = bits.length ? bits.join(' · ') : 'No setup yet — open Project Setup';
   if ($('projPill') && state.projectId) {
-    const label = bits[0] || state.projectId;
-    $('projPill').textContent = state.projectId + (bits.length ? ' · ' + label : '');
+    const label = cust || name || state.projectId;
+    $('projPill').textContent = state.projectId + (fromSelect ? ' · ' + fromSelect : (bits.length ? ' · ' + label : ''));
   }
 }
 
@@ -4791,6 +4902,7 @@ async function refreshExportSetupSelect(){
     }).join('');
     if (prev && projects.some(p => p.projectId === prev)) sel.value = prev;
     else if (state.projectId && projects.some(p => p.projectId === state.projectId)) sel.value = state.projectId;
+    refreshSetupSummary();
   } catch(e) {
     sel.innerHTML = `<option value="">${e.message}</option>`;
   }
@@ -4808,8 +4920,11 @@ async function applySetupFromProject(setupId){
   if ($('projQuoteNo')) $('projQuoteNo').value = doc.quotationId || '';
   if ($('projDescription')) $('projDescription').value = doc.description || '';
   if ($('projTerms')) $('projTerms').value = doc.terms || '';
-  // Only sync project name when applying the active project's own saved setup.
-  if (setupId === state.projectId && $('cartName')) $('cartName').value = doc.name || $('cartName').value;
+  syncPrintCopyTwins('proj');
+  // Print-setup customer is the account this quote belongs to — keep Active setup in sync.
+  if ($('cartName') && (doc.name || '').trim() && setupId === state.projectId) {
+    $('cartName').value = doc.name;
+  }
   syncProjectCustomer();
   refreshSetupSummary();
   if (state.projectId) {
@@ -5839,10 +5954,13 @@ async function calculate() {
       syncSelectedRailingLineFromTools();
     }
     await ensureProject();
+    // Persist bill-to / terms / descriptions first so calculate can observe them,
+    // then persist the priced quote so it can be reused and PDF'd later.
+    try { await saveProject(true); } catch (_) {}
     const t0 = performance.now();
     const calcBody = {
       optimize: true,
-      persist: false,
+      persist: true,
       lines: serializeCartLines(state.lines),
     };
     const qno = ($('projQuoteNo') && $('projQuoteNo').value.trim()) || '';
@@ -5852,7 +5970,6 @@ async function calculate() {
       state.projectId = result.projectId;
     }
     if (result.quotationId && $('projQuoteNo')) $('projQuoteNo').value = result.quotationId;
-    if (result.quoteNumberVersioned) toast('Quote number matched — saved as new version');
     const ms = Math.round(performance.now()-t0);
     state.lastResult = result;
     // Refresh labels/rates in place — never replace/shrink the local cart.
@@ -5902,7 +6019,10 @@ async function calculate() {
       ms
     }, null, 2);
     updatePdfLinks();
-    toast('Calculated in '+ms+' ms');
+    saveProject(true).catch(() => {});
+    toast(result.quoteNumberVersioned
+      ? 'Quote number matched — saved as a new version'
+      : 'Quote saved · priced in '+ms+' ms — reopen from Saved Projects or Quote PDF anytime');
     refreshAgent();
   } catch(e) { $('cartErr').textContent = e.message; }
 }
@@ -5936,11 +6056,10 @@ $('btnAddLine').onclick = () => {
     stampLinePreviewSvg(added, liveSvg);
   }
   state.lines.push(added);
-  state.selectedLine = state.lines.length-1;
-  markLivePreviewLine(added);
   invalidatePdfCache();
+  resetDraftPlacementAfterAdd();
   renderCart(); scheduleSave(); refreshPreview(); scheduleLivePrice();
-  toast('Line added');
+  toast('Line added — location cleared for the next design');
 };
 $('btnSaveRate').onclick = async () => {
   const draft = currentLineDraft();
@@ -7335,11 +7454,10 @@ async function railingAdd(){
   // Never inherit window series from the product dropdown onto a railing line.
   delete state.lines[state.lines.length - 1].sectionSeries;
   if ($('lineSeries')) $('lineSeries').value = '';
-  state.selectedLine = state.lines.length-1;
   state.railingMode = true;
-  markLivePreviewLine(state.lines[state.selectedLine]);
   invalidatePdfCache();
-  renderCart(); scheduleSave(); toast('Railing added to cart');
+  resetDraftPlacementAfterAdd();
+  renderCart(); scheduleSave(); toast('Railing added — location cleared for the next design');
 }
 
 function isShowerMode() {
@@ -7539,11 +7657,10 @@ async function showerAdd() {
   state.lines.push(addedSh);
   delete state.lines[state.lines.length - 1].sectionSeries;
   delete state.lines[state.lines.length - 1].trackCount;
-  state.selectedLine = state.lines.length - 1;
   state.showerMode = true;
-  markLivePreviewLine(state.lines[state.selectedLine]);
   invalidatePdfCache();
-  renderCart(); scheduleSave(); toast('Shower added to cart');
+  resetDraftPlacementAfterAdd();
+  renderCart(); scheduleSave(); toast('Shower added — location cleared for the next design');
 }
 function isVentMode() {
   return designerWorld() === 'ventilator';
@@ -7740,11 +7857,10 @@ async function ventAdd() {
   state.lines.push(addedVent);
   delete state.lines[state.lines.length - 1].sectionSeries;
   delete state.lines[state.lines.length - 1].trackCount;
-  state.selectedLine = state.lines.length - 1;
   state.ventMode = true;
-  markLivePreviewLine(state.lines[state.selectedLine]);
   invalidatePdfCache();
-  renderCart(); scheduleSave(); toast('Ventilator added to cart');
+  resetDraftPlacementAfterAdd();
+  renderCart(); scheduleSave(); toast('Ventilator added — location cleared for the next design');
 }
 function applyRailingModeFromProduct() {
   applyProductWorld();
@@ -8095,6 +8211,35 @@ if ($('lineLocation')) {
   $('lineLocation').addEventListener('input', () => { clearTimeout(state._locT); state._locT = setTimeout(applyLoc, 280); });
   $('lineLocation').addEventListener('change', applyLoc);
 }
+function resetDraftPlacementAfterAdd() {
+  // Keep product, sizes, colour, glass, and description/note for the next similar item.
+  // Clear one-off placement so the next opening is a new location (windows, doors, railings, etc.).
+  const keepDesc = ($('lineDesc') && $('lineDesc').value) || '';
+  state.selectedLine = null;
+  state._previewLineId = null;
+  state._previewKey = null;
+  if ($('lineLocation')) $('lineLocation').value = '';
+  if ($('lineDesc')) $('lineDesc').value = keepDesc;
+  if ($('partSide')) $('partSide').value = '';
+  if ($('partSize')) $('partSize').value = '';
+  if (typeof refreshDesignPhotoUi === 'function') refreshDesignPhotoUi();
+}
+
+function syncPrintCopyTwins(source) {
+  const projD = $('projDescription');
+  const projT = $('projTerms');
+  const printD = $('printDescription');
+  const printT = $('printTerms');
+  const fromPrint = source === 'print';
+  if (fromPrint) {
+    if (printD && projD) projD.value = printD.value;
+    if (printT && projT) projT.value = printT.value;
+  } else {
+    if (projD && printD && document.activeElement !== printD) printD.value = projD.value;
+    if (projT && printT && document.activeElement !== printT) printT.value = projT.value;
+  }
+}
+
 function stampSelectedDraftAmount() {
   const ln = state.lines[state.selectedLine];
   const draft = (typeof currentLineDraft === 'function') ? currentLineDraft() : null;
@@ -8132,7 +8277,10 @@ function stampSelectedDraftAmount() {
     if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','partSize','lineFrameMaterial'].includes(id)) refreshPreview();
   });
   el.addEventListener('change', () => {
-    if (id === 'lineProduct') { applyProductSystem(); loadCartGlassOptions(); loadCartColourOptions(); }
+    if (id === 'lineProduct') {
+      applyProductSystem(); loadCartGlassOptions(); loadCartColourOptions();
+      if (typeof suggestLineDescription === 'function') suggestLineDescription({ fillIfEmpty: true });
+    }
     if (id === 'lineFrameMaterial') applyFrameMaterialUi();
     if (['lineW','lineH','lineQty','lineSaleUnit','lineSellRate'].includes(id)) stampSelectedDraftAmount();
     const ln = state.lines[state.selectedLine];
@@ -8300,12 +8448,37 @@ if ($('setupProjectPick') && !$('setupProjectPick')._bound) {
 // New bill-to + quote-text fields persist via autosave (they print on the quote).
 ['projCustAddress','projCustGst','projQuoteNo','projDescription','projTerms','cartName'].forEach(id => {
   const el = $(id); if (!el) return;
-  el.addEventListener('input', () => { if (id === 'cartName') refreshSetupSummary(); });
+  el.addEventListener('input', () => {
+    if (id === 'cartName') refreshSetupSummary();
+    if (id === 'projDescription' || id === 'projTerms') syncPrintCopyTwins('proj');
+  });
   el.addEventListener('change', () => {
     refreshSetupSummary();
+    if (id === 'projDescription' || id === 'projTerms') syncPrintCopyTwins('proj');
     if (typeof scheduleSave === 'function') scheduleSave();
   });
 });
+['printDescription','printTerms'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('input', () => syncPrintCopyTwins('print'));
+  el.addEventListener('change', () => {
+    syncPrintCopyTwins('print');
+    if (typeof scheduleSave === 'function') scheduleSave();
+  });
+});
+if ($('btnPrintCopyToggle')) {
+  $('btnPrintCopyToggle').onclick = () => {
+    const pan = $('printCopyPanel');
+    if (!pan) return;
+    const open = pan.classList.contains('hidden');
+    pan.classList.toggle('hidden', !open);
+    $('btnPrintCopyToggle').textContent = open ? 'Hide description & terms' : 'View / edit description & terms';
+    if (open) {
+      syncPrintCopyTwins('proj');
+      if (typeof refreshQuoteCopySuggestions === 'function') refreshQuoteCopySuggestions();
+    }
+  };
+}
 if ($('projCustName')) {
   $('projCustName').addEventListener('blur', () => maybeAskCustomerMemory());
 }
@@ -8325,6 +8498,7 @@ function resetSetupFormForNew() {
   if ($('projCustName')) $('projCustName').value = '';
   if ($('projMobile')) $('projMobile').value = '';
   ['projCustAddress','projCustGst','projQuoteNo','projDescription','projTerms'].forEach(id => { if ($(id)) $(id).value = ''; });
+  if (typeof syncPrintCopyTwins === 'function') syncPrintCopyTwins('proj');
   if ($('setupProjectPick')) $('setupProjectPick').value = 'new';
   if ($('setupClientBox')) $('setupClientBox').innerHTML = '';
   if ($('setupErr')) $('setupErr').textContent = '';
@@ -8910,7 +9084,7 @@ async function openProjectPdf(kind) {
   await ensureProject();
   try { await ensureExportSetupApplied(); } catch (_) {}
   updatePdfLinks();
-  const brand = ($('pdfBrand') && $('pdfBrand').value) || 'woodenmax';
+  const brand = ($('pdfBrand') && $('pdfBrand').value) || (typeof companyPdfBrand === 'function' && companyPdfBrand()) || 'marqt';
   const body = _liveExportBody(brand);
   const res = await fetch(`${API_BASE}/api/projects/${state.projectId}/${kind}-pdf?brand=${encodeURIComponent(brand)}`, {
     method: 'POST',
@@ -8957,7 +9131,7 @@ if ($('linkCustXlsx')) $('linkCustXlsx').addEventListener('click', async (e) => 
     await ensureProject();
     try { await ensureExportSetupApplied(); } catch (_) {}
     updatePdfLinks();
-    const brand = ($('pdfBrand') && $('pdfBrand').value) || 'woodenmax';
+    const brand = ($('pdfBrand') && $('pdfBrand').value) || (typeof companyPdfBrand === 'function' && companyPdfBrand()) || 'marqt';
     const res = await fetch(`${API_BASE}/api/projects/${state.projectId}/customer.xlsx?brand=${encodeURIComponent(brand)}&drawings=thumb`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -8979,8 +9153,17 @@ if ($('linkCustXlsx')) $('linkCustXlsx').addEventListener('click', async (e) => 
   } catch(err) { toast(err.message || String(err)); }
 });
 if ($('exportSetupSelect')) {
-  $('exportSetupSelect').onchange = () => {
-    /* Selection is applied when Customer/Factory PDF is opened — avoids mutating mid-edit. */
+  $('exportSetupSelect').onchange = async () => {
+    const id = $('exportSetupSelect').value;
+    if (!id) return;
+    try {
+      await applySetupFromProject(id);
+      const who = ($('projCustName') && $('projCustName').value.trim())
+        || ($('projMobile') && $('projMobile').value.trim()) || 'selected account';
+      toast('Quote will print for ' + who);
+    } catch (e) {
+      toast((e && e.message) || String(e));
+    }
   };
 }
 $('btnRefreshProj').onclick = loadProjects;
@@ -10472,10 +10655,53 @@ async function initCompany() {
     if (c.gstNo && savedSessionToken()) await refreshCompanyHub(c.gstNo);
   } catch(e) { $('coErr').textContent = e.message; }
 }
+function parseBankDetails(raw) {
+  const out = { acName: '', bank: '', acNo: '', ifsc: '', branch: '' };
+  const s = String(raw || '').trim();
+  if (!s) return out;
+  const take = (re) => { const m = s.match(re); return m ? String(m[1] || '').trim() : ''; };
+  out.acName = take(/(?:A\/c\s*Name|Account\s*Name|^Name)\s*:\s*(.+)/im);
+  out.bank = take(/Bank(?:\s*Name)?\s*:\s*(.+)/im);
+  out.acNo = take(/(?:A\/c(?:\s*No\.?)?|Account(?:\s*No)?)\s*:\s*([0-9][0-9\s-]*)/im);
+  out.ifsc = take(/IFSC(?:\s*Code)?\s*:\s*([A-Za-z0-9]+)/im);
+  out.branch = take(/Branch\s*:\s*(.+)/im);
+  if (out.bank || out.acNo || out.ifsc || out.acName) return out;
+  const parts = s.split(/\s*[·|•]\s*/).map(x => x.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    out.bank = parts[0] || '';
+    out.acNo = (parts[1] || '').replace(/\D/g, '') || (parts[1] || '');
+    out.ifsc = (parts[2] || '').toUpperCase();
+    out.branch = parts[3] || '';
+  }
+  return out;
+}
+function composeBankDetails() {
+  const acName = ($('coBankAcName') && $('coBankAcName').value.trim()) || '';
+  const bank = ($('coBankName') && $('coBankName').value.trim()) || '';
+  const acNo = ($('coBankAcNo') && $('coBankAcNo').value.replace(/\D/g, '')) || '';
+  const ifsc = ($('coBankIfsc') && $('coBankIfsc').value.trim().toUpperCase()) || '';
+  const branch = ($('coBankBranch') && $('coBankBranch').value.trim()) || '';
+  const lines = [];
+  if (acName) lines.push('A/c Name: ' + acName);
+  if (bank) lines.push('Bank: ' + bank);
+  if (acNo) lines.push('A/c No: ' + acNo);
+  if (ifsc) lines.push('IFSC: ' + ifsc);
+  if (branch) lines.push('Branch: ' + branch);
+  return lines.join('\n');
+}
+function fillBankFields(raw) {
+  const b = parseBankDetails(raw);
+  if ($('coBankAcName')) $('coBankAcName').value = b.acName;
+  if ($('coBankName')) $('coBankName').value = b.bank;
+  if ($('coBankAcNo')) $('coBankAcNo').value = b.acNo;
+  if ($('coBankIfsc')) $('coBankIfsc').value = b.ifsc;
+  if ($('coBankBranch')) $('coBankBranch').value = b.branch;
+}
 function fillCompanyForm(c) {
   c = c || state.company || {};
   if ($('coName')) $('coName').value = c.companyName || '';
   if ($('coGst')) $('coGst').value = c.gstNo || '';
+  if ($('coPdfBrand')) $('coPdfBrand').value = (typeof companyPdfBrand === 'function' ? companyPdfBrand() : (c.pdfBrand || 'marqt'));
   if ($('coAddress')) $('coAddress').value = c.address || '';
   if ($('coWebsite')) $('coWebsite').value = c.website || '';
   if ($('coPhone')) $('coPhone').value = c.phone || '';
@@ -10483,13 +10709,38 @@ function fillCompanyForm(c) {
   if ($('coTagline')) $('coTagline').value = c.tagline || '';
   if ($('coStateCode')) $('coStateCode').value = c.stateCode || '';
   if ($('coPan')) $('coPan').value = c.pan || '';
-  if ($('coBank')) $('coBank').value = c.bankDetails || '';
+  fillBankFields(c.bankDetails || '');
   if ($('coTerms')) $('coTerms').value = c.terms || '';
   if (typeof updateDeletePinHint === 'function') updateDeletePinHint(c);
   renderCompanyPreview();
+  if (typeof applyCompanyPdfBrand === 'function') applyCompanyPdfBrand();
+}
+const PDF_BRAND_LABELS = { marqt: 'MAR-QT Style', woodenmax: 'WoodenMax', allkraft: 'AllKraft' };
+function companyPdfBrand() {
+  const c = (state.company || (state.workspace && state.workspace.company) || {});
+  const saved = String(c.pdfBrand || c.brand || '').toLowerCase().replace(/[\s-]/g, '');
+  if (PDF_BRAND_LABELS[saved]) return saved;
+  const blob = String((c.companyName || '') + ' ' + (c.tagline || '')).toLowerCase();
+  if (blob.indexOf('woodenmax') >= 0 || blob.indexOf('wooden max') >= 0) return 'woodenmax';
+  if (blob.indexOf('allkraft') >= 0 || blob.indexOf('allukraft') >= 0) return 'allkraft';
+  if (blob.indexOf('marqt') >= 0 || blob.indexOf('mar-qt') >= 0) return 'marqt';
+  if ($('coPdfBrand') && $('coPdfBrand').value && PDF_BRAND_LABELS[$('coPdfBrand').value]) return $('coPdfBrand').value;
+  return 'marqt';
+}
+function applyCompanyPdfBrand() {
+  const brand = companyPdfBrand();
+  const label = PDF_BRAND_LABELS[brand] || brand;
+  ['pdfBrand', 'tplBrand'].forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    el.innerHTML = `<option value="${brand}">${label}</option>`;
+    el.value = brand;
+  });
+  if ($('coPdfBrand') && !$('coPdfBrand').value) $('coPdfBrand').value = brand;
+  if (typeof updatePdfLinks === 'function') updatePdfLinks();
 }
 function clearCompanySetupFields() {
-  ['coName','coGst','coAddress','coWebsite','coPhone','coEmail','coTagline','coStateCode','coPan','coBank','coTerms','coDeletePin'].forEach(id => {
+  ['coName','coGst','coAddress','coWebsite','coPhone','coEmail','coTagline','coStateCode','coPan','coBankAcName','coBankName','coBankAcNo','coBankIfsc','coBankBranch','coTerms','coDeletePin'].forEach(id => {
     if ($(id)) $(id).value = '';
   });
   renderCompanyPreview();
@@ -10517,8 +10768,9 @@ if ($('btnCoSave')) $('btnCoSave').onclick = async () => {
       companyName: $('coName').value, gstNo: $('coGst').value, address: $('coAddress').value,
       website: $('coWebsite').value, phone: $('coPhone').value, email: $('coEmail').value,
       tagline: $('coTagline').value, stateCode: $('coStateCode').value, pan: $('coPan').value,
-      bankDetails: $('coBank').value,
+      bankDetails: composeBankDetails(),
       terms: ($('coTerms') && $('coTerms').value) || '',
+      pdfBrand: ($('coPdfBrand') && $('coPdfBrand').value) || '',
     };
     const pin = ($('coDeletePin') && $('coDeletePin').value) || '';
     if (pin.trim()) {
@@ -10535,8 +10787,75 @@ if ($('btnCoSave')) $('btnCoSave').onclick = async () => {
       ? 'Company saved locally only — set DATABASE_URL for durable storage'
       : 'Company saved — fields cleared. Open Company Setup to edit.');
     if (saved && saved.gstNo) await refreshCompanyHub(saved.gstNo);
+    if (typeof applyCompanyPdfBrand === 'function') applyCompanyPdfBrand();
   } catch(e) { $('coErr').textContent = e.message; }
 };
+if ($('coBankAcNo')) $('coBankAcNo').addEventListener('input', () => {
+  $('coBankAcNo').value = $('coBankAcNo').value.replace(/\D/g, '');
+});
+if ($('coBankIfsc')) $('coBankIfsc').addEventListener('input', () => {
+  $('coBankIfsc').value = $('coBankIfsc').value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 11);
+});
+function renderCopyChips(boxId, rows, targetId) {
+  const box = $(boxId); if (!box) return;
+  const list = (rows || []).slice(0, 8);
+  box.innerHTML = list.map((r, i) =>
+    `<button type="button" data-i="${i}" title="${esc((r.text||'').slice(0,240))}">${esc(r.label || r.source || 'Suggest')}</button>`
+  ).join('');
+  box.querySelectorAll('button[data-i]').forEach(b => {
+    b.onclick = () => {
+      const row = list[+b.dataset.i];
+      const el = $(targetId);
+      if (!el || !row) return;
+      el.value = row.text || '';
+      el.dispatchEvent(new Event('input'));
+      el.dispatchEvent(new Event('change'));
+      toast('Suggestion filled — read it, then generate the quote or edit');
+    };
+  });
+}
+async function refreshQuoteCopySuggestions(opts) {
+  const product = ($('lineProduct') && $('lineProduct').value) || state.selectedProduct || '';
+  try {
+    const qs = withGstQuery({ product: product || '' });
+    const data = await api('/api/quote/copy-suggestions?' + qs.toString());
+    state._copySuggest = data;
+    renderCopyChips('projTermsChips', data.terms, 'projTerms');
+    renderCopyChips('printTermsChips', data.terms, 'printTerms');
+    const descRows = [];
+    if (data.quoteDescription) descRows.push({ label: 'Quote cover', text: data.quoteDescription });
+    (data.descriptions || []).forEach(r => descRows.push(r));
+    renderCopyChips('projDescChips', descRows, 'projDescription');
+    renderCopyChips('printDescChips', descRows, 'printDescription');
+    renderCopyChips('coTermsChips', data.terms, 'coTerms');
+    renderCopyChips('lineDescChips', data.descriptions, 'lineDesc');
+    if (opts && opts.fillEmptyTerms && $('projTerms') && !$('projTerms').value.trim()) {
+      const company = (data.terms || []).find(t => t.source === 'company');
+      const std = (data.terms || []).find(t => t.source === 'standard');
+      if (company) $('projTerms').value = company.text;
+      else if (std) $('projTerms').value = std.text;
+      syncPrintCopyTwins('proj');
+    }
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+async function suggestLineDescription(opts) {
+  const data = await refreshQuoteCopySuggestions();
+  if (!data) return;
+  const el = $('lineDesc');
+  if (!el) return;
+  const fill = opts && opts.fillIfEmpty;
+  if (fill && el.value.trim()) return;
+  const first = (data.descriptions || [])[0];
+  if (first && first.text && (!el.value.trim() || !fill)) {
+    if (!el.value.trim()) el.value = first.text;
+  }
+}
+if ($('btnProjDescSuggest')) $('btnProjDescSuggest').onclick = () => refreshQuoteCopySuggestions().then(() => toast('Tap a chip — same pattern as your generated and uploaded quotes'));
+if ($('btnProjTermsSuggest')) $('btnProjTermsSuggest').onclick = () => refreshQuoteCopySuggestions({ fillEmptyTerms: true }).then(() => toast('Terms from your quotes / company / regular — tap a chip, then read'));
+if ($('btnCoTermsSuggest')) $('btnCoTermsSuggest').onclick = () => refreshQuoteCopySuggestions().then(() => toast('Tap Regular terms or a past-quote chip'));
 if ($('coLogoFile')) $('coLogoFile').onchange = async (ev) => {
   const f = ev.target.files[0]; if (!f) return;
   const fd = new FormData(); fd.append('file', f);
@@ -10677,7 +10996,11 @@ async function hubNewQuoteForCustomer(name) {
   await ensureProject();
   toast('New quote for ' + (name||'customer'));
 }
-if ($('btnCoGstOpen')) $('btnCoGstOpen').onclick = async () => {
+if ($('btnCoGstAuth')) $('btnCoGstAuth').onclick = async () => {
+  if ($('btnCoGstAuth').dataset.mode === 'logout') {
+    logoutCompanyWorkspace();
+    return;
+  }
   if ($('coGstErr')) $('coGstErr').textContent = '';
   const rawIdent = (($('coGstLogin') && $('coGstLogin').value) || ($('coGst') && $('coGst').value) || '').trim();
   const pin = (($('coGstPin') && $('coGstPin').value) || '').trim();
@@ -10755,7 +11078,6 @@ async function logoutCompanyWorkspace() {
   toast('Logged out');
   setView('company');
 }
-if ($('btnCoGstLogout')) $('btnCoGstLogout').onclick = () => logoutCompanyWorkspace();
 if ($('btnHubLogout')) $('btnHubLogout').onclick = () => logoutCompanyWorkspace();
 if ($('dashGoLogin')) $('dashGoLogin').onclick = () => setView('company');
 if ($('btnCoGstForgot')) $('btnCoGstForgot').onclick = async () => {
@@ -11167,35 +11489,132 @@ async function loadCustomerLedger(name, quotesFallback) {
   if ($('cpAdvDate') && !$('cpAdvDate').value) {
     try { $('cpAdvDate').value = new Date().toISOString().slice(0,10); } catch(_){}
   }
-  const sel = $('cpAdvProject');
-  if (sel) {
-    const quotes = quotesFallback || [];
-    sel.innerHTML = '<option value="">— Any (all quotes) —</option>' + quotes.map(q =>
-      `<option value="${esc(q.projectId)}" data-ver="${q.version||1}" data-qid="${esc(q.quotationId||'')}">${esc(q.projectId)} · ${esc(q.name||'')} · v${q.version||1}${q.quotationId?(' · '+esc(q.quotationId)):''}</option>`
-    ).join('');
-  }
+  const keepPid = ($('cpAdvProject') && $('cpAdvProject').value) || '';
+  const keepQid = ($('cpAdvQuote') && $('cpAdvQuote').value) || '';
   try {
     const led = await api('/api/customers/'+encodeURIComponent(name)+'/ledger'+gstQ);
-    const t = led.totals || {};
-    const taxable = t.totalTaxable != null ? t.totalTaxable : (t.value != null ? t.value : t.billed);
-    if ($('cpTotTaxable')) $('cpTotTaxable').textContent = money(taxable);
-    if ($('cpTotBilled')) $('cpTotBilled').textContent = money(taxable);
-    if ($('cpTotGrand')) $('cpTotGrand').textContent = money(t.totalGrand);
-    if ($('cpTotAdv')) $('cpTotAdv').textContent = money(t.totalAdvances != null ? t.totalAdvances : t.advances);
-    if ($('cpTotBal')) $('cpTotBal').textContent = money(t.balanceWithGst != null ? t.balanceWithGst : t.balance);
-    renderAdvances(led.advances || []);
-    if (sel && (led.projects||[]).length) {
-      sel.innerHTML = '<option value="">— Any (all quotes) —</option>' + (led.projects||[]).map(q =>
-        `<option value="${esc(q.projectId)}" data-ver="${q.version||1}" data-qid="${esc(q.quotationId||'')}">${esc(q.projectId)} · ${esc(q.name||'')} · v${q.version||1}${q.quotationId?(' · '+esc(q.quotationId)):''}</option>`
-      ).join('');
+    state._custLedger = led;
+    state._custQuotesFallback = quotesFallback || state._custQuotesFallback || [];
+    fillCustomerLedgerSelectors(led, state._custQuotesFallback);
+    if (keepPid && $('cpAdvProject') && Array.from($('cpAdvProject').options).some((o) => o.value === keepPid)) {
+      $('cpAdvProject').value = keepPid;
+      fillCustomerQuoteSelector();
     }
+    if (keepQid && $('cpAdvQuote') && Array.from($('cpAdvQuote').options).some((o) => o.value === keepQid)) {
+      $('cpAdvQuote').value = keepQid;
+    }
+    paintCustomerLedgerScope();
   } catch(e) {
+    state._custLedger = null;
     if ($('cpTotTaxable')) $('cpTotTaxable').textContent = '₹ —';
     if ($('cpTotBilled')) $('cpTotBilled').textContent = '₹ —';
     if ($('cpTotGrand')) $('cpTotGrand').textContent = '₹ —';
     if ($('cpAdvances')) $('cpAdvances').innerHTML = `<p class="muted" style="font-size:.8rem">${esc(e.message)}</p>`;
   }
 }
+function ledgerNormQid(v) {
+  return String(v || '').replace(/\s+/g, '').toUpperCase();
+}
+function ledgerProjectsGrouped(led, quotesFallback) {
+  const map = new Map();
+  const add = (p) => {
+    if (!p) return;
+    const id = String(p.projectId || '').trim();
+    if (!id) return;
+    if (!map.has(id)) map.set(id, { projectId: id, name: p.name || id, quotes: [] });
+    const g = map.get(id);
+    if (p.name) g.name = p.name;
+    const qid = String(p.quotationId || p.projectId || '');
+    if (!g.quotes.some((x) => ledgerNormQid(x.quotationId || x.projectId) === ledgerNormQid(qid))) {
+      g.quotes.push(p);
+    }
+  };
+  ((led && led.projects) || []).forEach(add);
+  (quotesFallback || state._custQuotesFallback || []).forEach(add);
+  return Array.from(map.values());
+}
+function fillCustomerLedgerSelectors(led, quotesFallback) {
+  const selP = $('cpAdvProject');
+  const grouped = ledgerProjectsGrouped(led, quotesFallback);
+  if (selP) {
+    const keep = selP.value;
+    selP.innerHTML = '<option value="">— All projects (this customer) —</option>' + grouped.map((g) =>
+      `<option value="${esc(g.projectId)}">${esc(g.name)} · ${esc(g.projectId)}</option>`
+    ).join('');
+    if (keep && grouped.some((g) => g.projectId === keep)) selP.value = keep;
+  }
+  fillCustomerQuoteSelector();
+}
+function fillCustomerQuoteSelector() {
+  const selP = $('cpAdvProject');
+  const selQ = $('cpAdvQuote');
+  if (!selQ) return;
+  const pid = (selP && selP.value) || '';
+  const grouped = ledgerProjectsGrouped(state._custLedger, state._custQuotesFallback);
+  const keep = selQ.value;
+  if (!pid) {
+    selQ.innerHTML = '<option value="">— Select a project first —</option>';
+    return;
+  }
+  const g = grouped.find((x) => x.projectId === pid);
+  const quotes = (g && g.quotes) || [];
+  selQ.innerHTML = '<option value="">— Select quote —</option>' + quotes.map((q) => {
+    const qid = q.quotationId || q.projectId || '';
+    return `<option value="${esc(qid)}" data-pid="${esc(q.projectId||pid)}" data-ver="${q.version||1}" data-qid="${esc(qid)}">${esc(qid)}${q.version?(' · v'+q.version):''}</option>`;
+  }).join('');
+  if (keep && quotes.some((q) => ledgerNormQid(q.quotationId || q.projectId) === ledgerNormQid(keep))) selQ.value = keep;
+  else if (quotes.length === 1) selQ.value = quotes[0].quotationId || quotes[0].projectId || '';
+}
+function filterLedgerClient(led, pid, qid) {
+  const nqid = ledgerNormQid(qid);
+  const projects = ((led && led.projects) || []).filter((p) => {
+    if (pid && String(p.projectId || '') !== pid) return false;
+    if (nqid && ledgerNormQid(p.quotationId) !== nqid && ledgerNormQid(p.projectId) !== nqid) return false;
+    return true;
+  });
+  const advances = ((led && led.advances) || []).filter((a) => {
+    if (pid && String(a.projectId || '') !== pid) return false;
+    if (nqid) {
+      const linked = a.linkedQuote || {};
+      const aq = ledgerNormQid(a.quoteId || linked.quotationId || '');
+      if (aq !== nqid) return false;
+    }
+    return true;
+  });
+  const taxable = projects.reduce((s, p) => s + Number(p.totalTaxable || 0), 0);
+  const grand = projects.reduce((s, p) => s + Number(p.totalGrand != null ? p.totalGrand : p.grandTotal || 0), 0);
+  const adv = advances.reduce((s, a) => s + Number(a.amount || 0), 0);
+  return {
+    projects,
+    advances,
+    totals: { totalTaxable: taxable, totalGrand: grand, totalAdvances: adv, advances: adv, balance: grand - adv, balanceWithGst: grand - adv },
+  };
+}
+function paintCustomerLedgerScope() {
+  const led = state._custLedger;
+  if (!led) return;
+  const pid = ($('cpAdvProject') && $('cpAdvProject').value) || '';
+  const qid = ($('cpAdvQuote') && $('cpAdvQuote').value) || '';
+  const scoped = filterLedgerClient(led, pid, qid);
+  const t = scoped.totals || {};
+  if ($('cpTotTaxable')) $('cpTotTaxable').textContent = money(t.totalTaxable);
+  if ($('cpTotBilled')) $('cpTotBilled').textContent = money(t.totalTaxable);
+  if ($('cpTotGrand')) $('cpTotGrand').textContent = money(t.totalGrand);
+  if ($('cpTotAdv')) $('cpTotAdv').textContent = money(t.totalAdvances != null ? t.totalAdvances : t.advances);
+  if ($('cpTotBal')) $('cpTotBal').textContent = money(t.balanceWithGst != null ? t.balanceWithGst : t.balance);
+  const note = $('cpLedgerScopeNote');
+  if (note) {
+    if (!pid) note.textContent = 'Showing this customer’s all projects and all quotes (combined). Pick a project, then a quote, to record an advance on that job only.';
+    else if (!qid) note.textContent = 'Project selected. Pick the quote number — advance / slip / balance will stay on that quote.';
+    else note.textContent = 'Advance, slip, value and balance apply to this project + quote only.';
+  }
+  renderAdvances(scoped.advances || []);
+}
+if ($('cpAdvProject')) $('cpAdvProject').onchange = () => {
+  fillCustomerQuoteSelector();
+  paintCustomerLedgerScope();
+};
+if ($('cpAdvQuote')) $('cpAdvQuote').onchange = () => paintCustomerLedgerScope();
 function renderAdvances(rows) {
   if (!$('cpAdvances')) return;
   if (!rows.length) {
@@ -11203,12 +11622,13 @@ function renderAdvances(rows) {
     return;
   }
   const cust = encodeURIComponent(state.selectedCustomer || '');
-  $('cpAdvances').innerHTML = `<table><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Quote / version</th><th>Ref / note</th><th>Slip</th><th></th></tr></thead><tbody>${
+  $('cpAdvances').innerHTML = `<table><thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>Project</th><th>Quote / version</th><th>Ref / note</th><th>Slip</th><th></th></tr></thead><tbody>${
     rows.map(a => {
       const linked = a.linkedQuote || {};
       const qid = a.quoteId || linked.quotationId || a.projectId || '—';
       const ver = a.quoteVersion != null ? a.quoteVersion : linked.version;
       const qLabel = (qid && qid !== '—') ? (esc(qid) + (ver != null ? (' · v'+ver) : '')) : '—';
+      const projName = linked.name || a.projectName || a.projectId || '—';
       const slipBase = API_BASE + '/api/customers/' + cust + '/advances/' + a.id + '/slip';
       const isRefund = String(a.entryType||'').toLowerCase()==='refund' || Number(a.amount||0) < 0;
       const rej = a.quoteRejected || ['rejected','cancelled','canceled'].includes(String(a.quoteStatus||'').toLowerCase());
@@ -11216,6 +11636,7 @@ function renderAdvances(rows) {
       <td>${esc((a.paidAt||'').slice(0,10)||'—')}</td>
       <td>${isRefund?'− ':''}${money(Math.abs(a.amount||0))}${isRefund?' <span class="muted">refund</span>':''}</td>
       <td>${esc((a.paymentMode||'').toUpperCase())}</td>
+      <td>${esc(projName)}</td>
       <td>${qLabel}${rej?' <span class="muted">· rejected</span>':''}</td>
       <td>${esc([a.reference,a.note].filter(Boolean).join(' · ')||'—')}</td>
       <td style="white-space:nowrap">
@@ -11261,9 +11682,17 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
   if (!name) { $('cpErr').textContent = 'Open or save a customer first'; return; }
   const amount = +(($('cpAdvAmt') && $('cpAdvAmt').value) || 0);
   if (!(amount > 0)) { toast('Enter advance amount'); return; }
+  const selP = $('cpAdvProject');
+  const selQ = $('cpAdvQuote');
+  const opt = selQ && selQ.selectedOptions && selQ.selectedOptions[0];
+  const projectId = (selP && selP.value) || '';
+  const quoteId = (selQ && selQ.value) || (opt && opt.dataset && opt.dataset.qid) || '';
+  if (!projectId || !quoteId) {
+    toast('Select project, then quote, then add the advance');
+    $('cpErr').textContent = 'Customer → project → quote required before advance';
+    return;
+  }
   try {
-    const sel = $('cpAdvProject');
-    const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
     const created = await api('/api/customers/'+encodeURIComponent(name)+'/advances', {
       method:'POST',
       body: {
@@ -11272,8 +11701,8 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
         paidAt: ($('cpAdvDate') && $('cpAdvDate').value) || null,
         reference: ($('cpAdvRef') && $('cpAdvRef').value) || '',
         note: ($('cpAdvPurpose') && $('cpAdvPurpose').value) || undefined,
-        projectId: (sel && sel.value) || null,
-        quoteId: (sel && sel.value) ? ((opt && opt.dataset && opt.dataset.qid) || null) : 'any',
+        projectId,
+        quoteId,
         quoteVersion: (opt && opt.dataset && opt.dataset.ver) ? +opt.dataset.ver : null,
         customerName: name,
       },
@@ -11296,13 +11725,17 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
 };
 if ($('btnCpRefund')) $('btnCpRefund').onclick = async () => {
   const name = state.selectedCustomer || ($('cpName') && $('cpName').value.trim()) || '';
-  const sel = $('cpAdvProject');
-  const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+  const selP = $('cpAdvProject');
+  const selQ = $('cpAdvQuote');
+  const opt = selQ && selQ.selectedOptions && selQ.selectedOptions[0];
+  const projectId = (selP && selP.value) || '';
+  const quoteId = (selQ && selQ.value) || (opt && opt.dataset && opt.dataset.qid) || '';
+  if (!projectId || !quoteId) { toast('Select project, then quote, then record the refund'); return; }
   try {
     const res = await recordQuoteRefund(
-      (sel && sel.value) || '',
+      projectId,
       name,
-      (opt && opt.dataset && opt.dataset.qid) || '',
+      quoteId,
       (opt && opt.dataset && opt.dataset.ver) ? +opt.dataset.ver : null,
     );
     if (!res) return;
