@@ -358,8 +358,8 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
         <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
           <div class="grow"><label class="l">Project name</label><input id="cartName" value="WEOS Project"/></div>
           <div><label class="l">PDF Brand</label>
-            <select id="pdfBrand" title="Uses the brand from Company Setup for this login">
-              <option value="marqt">Your company brand</option>
+            <select id="pdfBrand" title="Only the logged-in company from Company Setup">
+              <option value="">Login — your company</option>
             </select>
           </div>
         </div>
@@ -1706,11 +1706,9 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
           <p class="muted" style="margin:.2rem 0 .8rem;font-size:.82rem">Saved once — auto-applied to every quote header &amp; branding. Company name prints in UPPERCASE. After save these fields clear; open this panel to edit again.</p>
           <div class="row">
             <div class="grow"><label class="l">Company name</label><input id="coName" style="text-transform:uppercase"/></div>
-            <div><label class="l">Quote PDF brand</label>
-              <select id="coPdfBrand" title="Only this layout is offered after login">
-                <option value="marqt">MAR-QT Style</option>
-                <option value="woodenmax">WoodenMax</option>
-                <option value="allkraft">AllKraft</option>
+            <div><label class="l">PDF Brand</label>
+              <select id="coPdfBrand" title="Only the company that is logged in">
+                <option value="">Login — your company</option>
               </select>
             </div>
             <div class="grow"><label class="l">GST No</label><input id="coGst"/></div>
@@ -2099,9 +2097,9 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
           </div>
         </div>
         <div class="row" style="margin-bottom:.6rem">
-          <div><label class="l">Brand</label>
-            <select id="tplBrand">
-              <option value="marqt">Your company brand</option>
+          <div><label class="l">PDF Brand</label>
+            <select id="tplBrand" title="Only the logged-in company from Company Setup">
+              <option value="">Login — your company</option>
             </select>
           </div>
           <div><label class="l">Kind</label>
@@ -4836,7 +4834,7 @@ function updatePdfLinks(){
     pill.textContent = 'No project';
   }
   if (!id) return;
-  const brand = ($('pdfBrand') && $('pdfBrand').value) || (typeof companyPdfBrand === 'function' && companyPdfBrand()) || 'marqt';
+  const brand = (typeof activePdfBrand === 'function' && activePdfBrand()) || 'marqt';
   const q = '?brand='+encodeURIComponent(brand);
   if ($('linkQuote')) $('linkQuote').href = `${API_BASE}/api/projects/${id}/quotation`;
   if ($('linkCust')) $('linkCust').href = `${API_BASE}/api/projects/${id}/customer-pdf`+q;
@@ -9039,7 +9037,7 @@ function _exportFingerprint(kind) {
     return JSON.stringify({
       k: kind || 'customer',
       id: state.projectId || '',
-      brand: ($('pdfBrand') && $('pdfBrand').value) || '',
+      brand: (typeof activePdfBrand === 'function' && activePdfBrand()) || '',
       cust: ($('cartCustomer') && $('cartCustomer').value) || '',
       name: ($('cartName') && $('cartName').value) || '',
       bill: projectBillTo(),
@@ -9084,7 +9082,7 @@ async function openProjectPdf(kind) {
   await ensureProject();
   try { await ensureExportSetupApplied(); } catch (_) {}
   updatePdfLinks();
-  const brand = ($('pdfBrand') && $('pdfBrand').value) || (typeof companyPdfBrand === 'function' && companyPdfBrand()) || 'marqt';
+  const brand = (typeof activePdfBrand === 'function' && activePdfBrand()) || 'marqt';
   const body = _liveExportBody(brand);
   const res = await fetch(`${API_BASE}/api/projects/${state.projectId}/${kind}-pdf?brand=${encodeURIComponent(brand)}`, {
     method: 'POST',
@@ -9131,7 +9129,7 @@ if ($('linkCustXlsx')) $('linkCustXlsx').addEventListener('click', async (e) => 
     await ensureProject();
     try { await ensureExportSetupApplied(); } catch (_) {}
     updatePdfLinks();
-    const brand = ($('pdfBrand') && $('pdfBrand').value) || (typeof companyPdfBrand === 'function' && companyPdfBrand()) || 'marqt';
+    const brand = (typeof activePdfBrand === 'function' && activePdfBrand()) || 'marqt';
     const res = await fetch(`${API_BASE}/api/projects/${state.projectId}/customer.xlsx?brand=${encodeURIComponent(brand)}&drawings=thumb`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -9676,10 +9674,12 @@ async function loadTplCatalog() {
     try {
       const all = await api('/api/templates');
       const rows = all.templates || [];
-      calcBox.innerHTML = rows.map(t => `<button type="button" data-tid="${esc(t.id)}" data-brand="${esc(t.brand||'')}" data-kind="${esc(t.kind||'')}">${esc(t.name||t.id)}<div class="muted" style="font-size:.7rem">${esc(t.brand||'')} · ${esc(t.kind||'')}</div></button>`).join('')
-        || '<p class="muted">No calculator templates</p>';
+      const mine = (typeof companyPdfBrand === 'function' && companyPdfBrand()) || '';
+      const mineRows = mine ? rows.filter(t => String(t.brand || '').toLowerCase() === mine) : rows;
+      calcBox.innerHTML = mineRows.map(t => `<button type="button" data-tid="${esc(t.id)}" data-brand="${esc(t.brand||'')}" data-kind="${esc(t.kind||'')}">${esc(t.name||t.id)}<div class="muted" style="font-size:.7rem">${esc(companyPdfBrandLabel())} · ${esc(t.kind||'')}</div></button>`).join('')
+        || '<p class="muted">No calculator templates for this company</p>';
       calcBox.querySelectorAll('button[data-tid]').forEach(b => b.onclick = async () => {
-        if ($('tplBrand') && b.dataset.brand) $('tplBrand').value = b.dataset.brand;
+        if ($('tplBrand') && b.dataset.brand && (!mine || String(b.dataset.brand).toLowerCase() === mine)) $('tplBrand').value = b.dataset.brand;
         if ($('tplKind') && b.dataset.kind) $('tplKind').value = b.dataset.kind;
         await refreshTplList();
         $('tplSelect').value = b.dataset.tid;
@@ -9884,7 +9884,7 @@ $('btnTplPreview').onclick = async () => {
     const blob = await api('/api/templates/preview-pdf', {
       method: 'POST',
       body: {
-        brand: $('tplBrand').value,
+        brand: (typeof companyPdfBrand === 'function' && companyPdfBrand()) || $('tplBrand').value,
         kind: $('tplKind').value,
         templateId: state.template && state.template.id,
         template: state.template,
@@ -10701,7 +10701,6 @@ function fillCompanyForm(c) {
   c = c || state.company || {};
   if ($('coName')) $('coName').value = c.companyName || '';
   if ($('coGst')) $('coGst').value = c.gstNo || '';
-  if ($('coPdfBrand')) $('coPdfBrand').value = (typeof companyPdfBrand === 'function' ? companyPdfBrand() : (c.pdfBrand || 'marqt'));
   if ($('coAddress')) $('coAddress').value = c.address || '';
   if ($('coWebsite')) $('coWebsite').value = c.website || '';
   if ($('coPhone')) $('coPhone').value = c.phone || '';
@@ -10719,24 +10718,39 @@ const PDF_BRAND_LABELS = { marqt: 'MAR-QT Style', woodenmax: 'WoodenMax', allkra
 function companyPdfBrand() {
   const c = (state.company || (state.workspace && state.workspace.company) || {});
   const saved = String(c.pdfBrand || c.brand || '').toLowerCase().replace(/[\s-]/g, '');
+  if (saved === 'mar-qt') return 'marqt';
   if (PDF_BRAND_LABELS[saved]) return saved;
-  const blob = String((c.companyName || '') + ' ' + (c.tagline || '')).toLowerCase();
+  const blob = String(
+    (($('coName') && $('coName').value) || c.companyName || '') + ' ' +
+    (($('coTagline') && $('coTagline').value) || c.tagline || '')
+  ).toLowerCase();
   if (blob.indexOf('woodenmax') >= 0 || blob.indexOf('wooden max') >= 0) return 'woodenmax';
-  if (blob.indexOf('allkraft') >= 0 || blob.indexOf('allukraft') >= 0) return 'allkraft';
+  if (blob.indexOf('allkraft') >= 0 || blob.indexOf('allukraft') >= 0 || blob.indexOf('all kraft') >= 0) return 'allkraft';
   if (blob.indexOf('marqt') >= 0 || blob.indexOf('mar-qt') >= 0) return 'marqt';
-  if ($('coPdfBrand') && $('coPdfBrand').value && PDF_BRAND_LABELS[$('coPdfBrand').value]) return $('coPdfBrand').value;
   return 'marqt';
+}
+function companyPdfBrandLabel() {
+  const typed = ($('coName') && $('coName').value.trim()) || '';
+  const c = (state.company || (state.workspace && state.workspace.company) || {});
+  const name = typed || String(c.companyName || c.name || '').trim();
+  if (name) return name.toUpperCase();
+  const gst = (state.workspace && state.workspace.gstNo) || c.gstNo || '';
+  if (gst) return String(gst).toUpperCase();
+  return 'Login — your company';
+}
+function activePdfBrand() {
+  return companyPdfBrand();
 }
 function applyCompanyPdfBrand() {
   const brand = companyPdfBrand();
-  const label = PDF_BRAND_LABELS[brand] || brand;
-  ['pdfBrand', 'tplBrand'].forEach((id) => {
+  const label = companyPdfBrandLabel();
+  ['pdfBrand', 'tplBrand', 'coPdfBrand'].forEach((id) => {
     const el = $(id);
     if (!el) return;
-    el.innerHTML = `<option value="${brand}">${label}</option>`;
+    el.innerHTML = `<option value="${esc(brand)}">${esc(label)}</option>`;
     el.value = brand;
+    el.title = 'PDF uses only the logged-in company from Company Setup';
   });
-  if ($('coPdfBrand') && !$('coPdfBrand').value) $('coPdfBrand').value = brand;
   if (typeof updatePdfLinks === 'function') updatePdfLinks();
 }
 function clearCompanySetupFields() {
@@ -10759,7 +10773,10 @@ function renderCompanyPreview() {
   $('coPrevGst').textContent = gst ? ('GSTIN: '+gst) : '';
 }
 ['coName','coTagline','coAddress','coPhone','coEmail','coWebsite','coGst'].forEach(id => {
-  const el = $(id); if (el) el.addEventListener('input', renderCompanyPreview);
+  const el = $(id); if (el) el.addEventListener('input', () => {
+    renderCompanyPreview();
+    if (id === 'coName' || id === 'coTagline') applyCompanyPdfBrand();
+  });
 });
 if ($('btnCoSave')) $('btnCoSave').onclick = async () => {
   $('coErr').textContent = '';
@@ -10770,7 +10787,7 @@ if ($('btnCoSave')) $('btnCoSave').onclick = async () => {
       tagline: $('coTagline').value, stateCode: $('coStateCode').value, pan: $('coPan').value,
       bankDetails: composeBankDetails(),
       terms: ($('coTerms') && $('coTerms').value) || '',
-      pdfBrand: ($('coPdfBrand') && $('coPdfBrand').value) || '',
+      pdfBrand: (typeof companyPdfBrand === 'function' ? companyPdfBrand() : '') || '',
     };
     const pin = ($('coDeletePin') && $('coDeletePin').value) || '';
     if (pin.trim()) {
@@ -12380,6 +12397,7 @@ async function pingEngine(){
   updatePdfLinks();
   // Auto-restore company workspace only when a PIN session exists.
   try { await restoreCompanyWorkspace(); } catch (e) { console.warn(e); }
+  if (typeof applyCompanyPdfBrand === 'function') applyCompanyPdfBrand();
   updatePdfLinks();
   updateWorkspacePill();
   setView(state.workspaceRestored ? 'dashboard' : 'company');

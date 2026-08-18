@@ -923,8 +923,15 @@ def _pdf_response(
             }
         if branding:
             payload["branding"] = branding
-            if branding.get("companyName") and not payload.get("brand"):
-                payload["brand"] = branding.get("pdfBrand") or "marqt"
+            co_brand = str(branding.get("pdfBrand") or "").strip()
+            if co_brand:
+                payload["brand"] = co_brand
+                tid = str(payload.get("templateId") or template_id or "")
+                if tid and not tid.lower().startswith(co_brand.lower()):
+                    payload["templateId"] = None
+                    template_id = None
+            elif branding.get("companyName") and not payload.get("brand"):
+                payload["brand"] = "marqt"
     except Exception:
         _log.debug("PDF company branding overlay skipped", exc_info=True)
     try:
@@ -3596,8 +3603,18 @@ def _customer_xlsx_response(
             except Exception:
                 _log.exception("xlsx-flush save failed for %s", project_id)
     payload, co = prepare_customer_export_payload(doc)
-    if brand and not payload.get("brand"):
-        payload["brand"] = brand
+    try:
+        from WEOS.factory.company_store import company_branding
+
+        gst = str(doc.get("companyGst") or "").strip()
+        co_brand = str((company_branding(gst=gst or None) or {}).get("pdfBrand") or "").strip()
+        if co_brand:
+            payload["brand"] = co_brand
+        elif brand and not payload.get("brand"):
+            payload["brand"] = brand
+    except Exception:
+        if brand and not payload.get("brand"):
+            payload["brand"] = brand
     ledger = None
     cust = str(doc.get("customer") or payload.get("customer") or "").strip()
     if cust and cust != "—":
