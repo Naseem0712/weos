@@ -1,0 +1,27 @@
+code=0
+OK railing PDF + productType lock + installComponents smoke
+
+ot found. Known: {', '.join(known) or '(none)'}")
+FileNotFoundError: Product 'railing' not found. Known: 29mm_sliding, 35mm_sliding, acp_stub, casement_stub, fixed_stub, fluted_stub, folding_stub, louvers_stub, perforated_stub, pergola_stub, railings_stub, sections
+railing product-library materials failed for railing
+Traceback (most recent call last):
+  File "D:\Downloads\window cad model\WEOS\factory\project_engine.py", line 278, in _railing_line_result
+    product = load_product(product_id, strict=False)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Downloads\window cad model\WEOS\factory\product_loader.py", line 143, in load_product
+    pdir = product_dir(pid)
+           ^^^^^^^^^^^^^^^^
+  File "D:\Downloads\window cad model\WEOS\factory\product_loader.py", line 94, in product_dir
+    raise FileNotFoundError(f"Product '{product_id}' not found. Known: {', '.join(known) or '(none)'}")
+FileNotFoundError: Product 'railing' not found. Known: 29mm_sliding, 35mm_sliding, acp_stub, casement_stub, fixed_stub, fluted_stub, folding_stub, louvers_stub, perforated_stub, pergola_stub, railings_stub, sections
+railing product-library materials failed for railing
+Traceback (most recent call last):
+  File "D:\Downloads\window cad model\WEOS\factory\project_engine.py", line 278, in _railing_line_result
+    product = load_product(product_id, strict=False)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Downloads\window cad model\WEOS\factory\product_loader.py", line 143, in load_product
+    pdir = product_dir(pid)
+           ^^^^^^^^^^^^^^^^
+  File "D:\Downloads\window cad model\WEOS\factory\product_loader.py", line 94, in product_dir
+    raise FileNotFoundError(f"Product '{product_id}' not found. Known: {', '.join(known) or '(none)'}")
+FileNotFoundError: Product 'railing' not found. Known: 29mm_sliding, 35mm_sliding, acp_stub, casement_stub, fixed_stub, fluted_stub, folding_stub, louvers_stub, perforated_stub, pergola_stub, railings_stub, sections

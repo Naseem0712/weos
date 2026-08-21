@@ -1,0 +1,12 @@
+﻿AK AL AL-26/00001/A1
+WAE WAE WAE-26/00042/A1
+bump AK-26/00001/A2
+hs 8 geom True
+svg_ok 8019
+quote_pdf 731248
+quote_xlsx 5449
+ledger_pdf 2435
+advance_pdf 2712
+xlsx_ledger 5309
+xlsx_adv 5261
+OK

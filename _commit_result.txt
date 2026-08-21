@@ -1,0 +1,80 @@
+A  WEOS/_smoke_fold_louvers.py
+M  WEOS/api/server.py
+M  WEOS/factory/layout_options.py
+M  WEOS/factory/marqt_pdf.py
+A  WEOS/factory/panel_fills.py
+M  WEOS/factory/project_engine.py
+M  WEOS/factory/svg_export.py
+M  WEOS/website/index.html
+?? __sb.txt
+?? _agent_out.txt
+?? _push_result.txt
+?? _stage_check.txt
+[main 091bd4c] Lock cart/PDF by product type; add louvers as glass-replacement feature.
+ 8 files changed, 603 insertions(+), 9 deletions(-)
+ create mode 100644 WEOS/_smoke_fold_louvers.py
+ create mode 100644 WEOS/factory/panel_fills.py
+COMMIT_EXIT=0
+091bd4c303d8a2e9f2b6bb83a33c012e0b5af5d5
+## main...origin/main [ahead 1]
+?? __sb.txt
+?? _agent_out.txt
+?? _push_result.txt
+?? _stage_check.txt
+WEOS/_smoke_fold_louvers.py
+WEOS/api/server.py
+WEOS/factory/layout_options.py
+WEOS/factory/marqt_pdf.py
+WEOS/factory/panel_fills.py
+WEOS/factory/project_engine.py
+WEOS/factory/svg_export.py
+WEOS/website/index.html
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion
+   tion

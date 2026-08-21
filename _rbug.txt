@@ -1,0 +1,3 @@
+empty_cfg L=0.0 | svg=Railing length missing — enter length (mm or ft) in the designer | dim=NO_DIM
+typed_no_cfg qL=3000.0 rft=9.843 cfgL=3000.0 | Railing · straight · 1 panels · 32.0334 sft · side_mount · waste 0.0% | 3000 mm  ·  9.843 RFT
+with_cfg qL=3000.0 rft=9.843 | Railing · straight · 3 panels · 31.7751 sft · side_mount · waste 0.0% | 3000 mm  ·  9.843 RFT

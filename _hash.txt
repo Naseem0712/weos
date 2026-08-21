@@ -1,0 +1,118 @@
+5a69297 ﻿Fix catalogue window live preview falling back to placeholder.
+e6c8941 Add GSTIN company workspace login with quote-number versioning.
+9ed53cd Persist company/project setup to Postgres and add customer ledger.
+a447a5e Expand shared glass catalogue and complex louvers design.
+6f0c38a Add universal material weight engine as single source of truth.
+## main...origin/main
+ M WEOS/api/server.py
+ M WEOS/db/models.py
+ M WEOS/factory/company_workspace.py
+ M WEOS/factory/customer_store.py
+ M WEOS/factory/ledger_pdf.py
+ M WEOS/factory/ledger_store.py
+ M WEOS/factory/project_store.py
+ M WEOS/website/index.html
+ M knowledge_base/memories/formula/fx_acp_weight.json
+ M knowledge_base/memories/formula/fx_alu_section_weight.json
+ M knowledge_base/memories/formula/fx_alu_sheet_weight.json
+ M knowledge_base/memories/formula/fx_glass_dgu_weight.json
+ M knowledge_base/memories/formula/fx_glass_laminated_weight.json
+ M knowledge_base/memories/formula/fx_glass_weight.json
+ M knowledge_base/memories/formula/fx_glass_weight_waste.json
+ M knowledge_base/memories/formula/fx_sheet_generic_weight.json
+ M knowledge_base/memories/formula/fx_steel_weight.json
+ M knowledge_base/memories/relationships.json
+?? WEOS/_smoke_easy_railing.py
+?? WEOS/_smoke_gst_hub_persist.py
+?? __sb.txt
+?? _agent_out.txt
+?? _agent_report1.txt
+?? _commit_exit.txt
+?? _commit_msg.txt
+?? _commit_out.txt
+?? _commit_result.txt
+?? _commit_status_check.txt
+?? _do_commit_push.bat
+?? _final_status.txt
+?? _git_diff.txt
+?? _git_log.txt
+?? _git_out.txt
+?? _git_status.txt
+?? _hash.txt
+?? _hash2.txt
+?? _info.txt
+?? _out_diff.txt
+?? _out_log.txt
+?? _out_ok.txt
+?? _pdf_dbg.txt
+?? _pdf_dbg2.txt
+?? _push_exit.txt
+?? _push_out.txt
+?? _push_result.txt
+?? _py_git.txt
+?? _rbug.txt
+?? _repro_railing_1mm.py
+?? _repro_railing_quote_bugs.py
+?? _repro_railing_quote_bugs_out.txt
+?? _run_railing_tests.py
+?? _s1_exit.txt
+?? _s1_out.txt
+?? _s2_exit.txt
+?? _s2_out.txt
+?? _s3_exit.txt
+?? _s3_out.txt
+?? _s_easy_err.txt
+?? _s_easy_exit.txt
+?? _s_easy_out.txt
+?? _s_eng_diff.txt
+?? _s_extra_stat.txt
+?? _s_git_diffstat.txt
+?? _s_git_log.txt
+?? _s_git_sb.txt
+?? _s_git_short.txt
+?? _s_hub_out.txt
+?? _s_matches.txt
+?? _s_pdf_err.txt
+?? _s_pdf_exit.txt
+?? _s_pdf_out.txt
+?? _s_plan_extract.txt
+?? _s_stage_plan.txt
+?? _s_summary.txt
+?? _s_summary_ascii.txt
+?? _show_stat.txt
+?? _smoke_out.txt
+?? _smoke_pdf_code.txt
+?? _smoke_pdf_err.txt
+?? _smoke_pdf_result.txt
+?? _smoke_pdf_result2.txt
+?? _stage_check.txt
+?? _stage_check2.txt
+?? _test_out.txt
+?? _verify_customer_pdf_fix.pdf
+?? _verify_railing_quote_fix.py
+?? _verify_railing_quote_fix.txt
+?? _vfix_out.txt
+?? _vfix_out2.txt
+?? knowledge_base/memories/learning/learn_smoke_upgrade_3fb3c861.json
+?? knowledge_base/memories/learning/learn_smoke_upgrade_7e6a002f.json
+?? knowledge_base/memories/learning/learn_smoke_upgrade_e8fe5210.json
+?? knowledge_base/memories/learning/learn_smoke_upgrade_fae3f567.json
+5a69297 ﻿Fix catalogue window live preview falling back to placeholder.
+ WEOS/factory/product_loader.py                     |  94 ++++++++-
+ WEOS/factory/section_catalogue.py                  | 114 +++++++---
+ WEOS/products/25mm_eco_gulf/product.json           | 217 +++++++++++++++++++
+ WEOS/products/25mm_eco_gulf/rules/quotation.json   |   9 +
+ WEOS/products/27mm_high_end_domal/product.json     | 229 +++++++++++++++++++++
+ .../27mm_high_end_domal/rules/quotation.json       |   9 +
+ WEOS/products/29mm_premium_euro/product.json       | 207 +++++++++++++++++++
+ .../29mm_premium_euro/rules/quotation.json         |   9 +
+ WEOS/products/31mm_gulf_lux_slim/product.json      | 213 +++++++++++++++++++
+ .../31mm_gulf_lux_slim/rules/quotation.json        |   9 +
+ WEOS/products/32mm_dual_euro/product.json          | 183 ++++++++++++++++
+ WEOS/products/32mm_dual_euro/rules/quotation.json  |   9 +
+ WEOS/products/35mm_gulf_slim/product.json          | 131 ++++++++++++
+ WEOS/products/35mm_gulf_slim/rules/quotation.json  |   9 +
+ 14 files changed, 1402 insertions(+), 40 deletions(-)
+ WEOS/factory/company_workspace.py |  50 ++++++++
+ WEOS/website/index.html           | 234 +++++++++++++++++++++++++++++---------
+ 2 files changed, 232 insertions(+), 52 deletions(-)

@@ -1,0 +1,83 @@
+=== STATUS rc=0 ===
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   WEOS/_smoke_railing_pdf.py
+	modified:   WEOS/api/server.py
+	modified:   WEOS/factory/line_kind.py
+	modified:   WEOS/factory/live_pricing.py
+	modified:   WEOS/factory/marqt_pdf.py
+	modified:   WEOS/factory/product_admin.py
+	modified:   WEOS/factory/project_engine.py
+	modified:   WEOS/factory/railing_engine.py
+	modified:   WEOS/website/index.html
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	__sb.txt
+	_agent_out.txt
+	_commit_exit.txt
+	_commit_msg.txt
+	_commit_out.txt
+	_commit_result.txt
+	_final_status.txt
+	_git_diff.txt
+	_git_log.txt
+	_git_out.txt
+	_git_status.txt
+	_hash.txt
+	_hash2.txt
+	_info.txt
+	_out_diff.txt
+	_out_log.txt
+	_out_ok.txt
+	_push_exit.txt
+	_push_out.txt
+	_push_result.txt
+	_py_git.txt
+	_rbug.txt
+	_repro_railing_1mm.py
+	_repro_railing_quote_bugs.py
+	_repro_railing_quote_bugs_out.txt
+	_run_railing_tests.py
+	_s1_exit.txt
+	_s1_out.txt
+	_s2_exit.txt
+	_s2_out.txt
+	_s3_exit.txt
+	_s3_out.txt
+	_show_stat.txt
+	_smoke_out.txt
+	_smoke_pdf_code.txt
+	_smoke_pdf_err.txt
+	_smoke_pdf_result.txt
+	_stage_check.txt
+	_stage_check2.txt
+	_test_out.txt
+	_verify_railing_quote_fix.py
+	_verify_railing_quote_fix.txt
+	_vfix_out.txt
+
+no changes added to commit (use "git add" and/or "git commit -a")
+
+=== DIFF rc=0 ===
+ WEOS/_smoke_railing_pdf.py     | 110 +++++++++++++++++++++++++++++++
+ WEOS/api/server.py             |  26 +++++++-
+ WEOS/factory/line_kind.py      |  20 ++++--
+ WEOS/factory/live_pricing.py   |  13 ++++
+ WEOS/factory/marqt_pdf.py      |  19 ++++--
+ WEOS/factory/product_admin.py  |  13 ++++
+ WEOS/factory/project_engine.py |  33 ++++++++--
+ WEOS/factory/railing_engine.py |  74 ++++++++++++++++++---
+ WEOS/website/index.html        | 145 ++++++++++++++++++++++++++++++++++++++---
+ 9 files changed, 418 insertions(+), 35 deletions(-)
+
+=== LOG rc=0 ===
+ca9592e ï»¿Fix railing PDF collapsing to 1mm when cart width is not seeded into options.railing.
+9df8671 ï»¿Accept Length/ActualLength for railing RFT materials; add unit auto-fill + formula help.
+b20e333 Restore front-sash meeting miters; keep product-type lock and louvers.
+091bd4c Lock cart/PDF by product type; add louvers as glass-replacement feature.
+bdd615f Fix railing PDF printing as window; lock cart/PDF by product type.

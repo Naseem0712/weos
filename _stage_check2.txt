@@ -1,0 +1,9 @@
+﻿WEOS/_smoke_gst_workspace.py
+WEOS/api/server.py
+WEOS/db/quote_store.py
+WEOS/factory/company_store.py
+WEOS/factory/company_workspace.py
+WEOS/factory/customer_store.py
+WEOS/factory/ledger_store.py
+WEOS/factory/project_store.py
+WEOS/website/index.html

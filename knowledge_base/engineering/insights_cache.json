@@ -65,6 +65,7 @@
     }
   ],
   "formulasKnown": 9,
+  "formulasRecalled": 12,
   "status": "learning",
   "message": "Most common canvas config: 29mm_sliding|8mm_toughened|black_texture|premium|p2 (1×)",
   "safety": "Suggestions / pending only — production profiles never auto-modified."

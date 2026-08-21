@@ -1,0 +1,6 @@
+ca9592e221de971fe1975ab59f207ecb41b6154d
+n++Fix railing PDF collapsing to 1mm when cart width is not seeded into options.railing.
+Seed length/height from line width/height across calc/PDF/SVG, reject missing length in the UI, and stop drawing the 1mm stub.
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+

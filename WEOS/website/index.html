@@ -147,20 +147,30 @@ button.pill{border:0;font:inherit;cursor:pointer;transition:transform .08s ease,
 button.pill:hover{filter:brightness(1.08)}
 button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.16)}
 .pill.stub{background:#f3ebe2;color:var(--copper)}
-.preview{background:#d8dee6;border:1px solid var(--line);border-radius:12px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:auto;padding:.5rem}
-.preview svg,.preview img{max-width:100%;max-height:420px;width:auto;height:auto;display:block}
+.preview{background:#d8dee6;border:1px solid var(--line);border-radius:12px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:.5rem}
+.preview svg,.preview img{max-width:100%;max-height:100%;width:auto;height:auto;display:block;flex-shrink:0}
 .chip{display:inline-flex;align-items:center;gap:.3rem;background:#eef3ef;border:1px solid var(--line);border-radius:999px;padding:.15rem .55rem;font-size:.75rem}
 .chip button{border:0;background:transparent;cursor:pointer;font-size:.85rem;line-height:1;padding:0;color:#666}
 .two{display:grid;grid-template-columns:1.1fr .9fr;gap:1rem}
 @media(max-width:1000px){.two{grid-template-columns:1fr}}
 #view-cart.grid{height:calc(100vh - 5.75rem);grid-template-rows:auto minmax(0,1fr);overflow:hidden;align-content:stretch}
-#view-cart > .two.cart-split{align-items:stretch;height:auto;min-height:0;overflow:hidden}
+#view-cart > .two.cart-split{align-items:stretch;height:100%;min-height:0;overflow:hidden;grid-template-columns:minmax(0,.92fr) minmax(0,1.18fr)}
 #view-cart .cart-tools,#view-cart .cart-preview{min-height:0;overscroll-behavior:contain}
 #view-cart .cart-tools{overflow:auto}
 #view-cart .cart-preview{display:flex;flex-direction:column;overflow:hidden}
-#view-cart .cart-preview .rail-tools{flex:0 1 auto;max-height:42%;overflow:auto;overscroll-behavior:contain}
-#view-cart .cart-preview .preview{flex:1 1 auto;min-height:220px;overflow:auto;overscroll-behavior:contain}
-#view-cart .cart-preview .preview svg,#view-cart .cart-preview .preview img{max-height:none}
+#view-cart .cart-preview .preview-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.55rem;flex-wrap:wrap;flex:0 0 auto;margin-bottom:.45rem}
+#view-cart .cart-preview .preview-zoom{display:flex;align-items:center;gap:.28rem}
+#view-cart .cart-preview .preview{
+  flex:1 1 auto;min-height:0;height:clamp(520px,72vh,880px);
+  overflow:hidden;display:flex;align-items:center;justify-content:center;
+  padding:16px;overscroll-behavior:contain
+}
+#view-cart .cart-preview .preview.zoomed{
+  overflow:auto;align-items:flex-start;justify-content:center
+}
+#view-cart .cart-preview .preview svg,#view-cart .cart-preview .preview img{
+  max-width:none;max-height:none;width:auto;height:auto;display:block;flex-shrink:0
+}
 #view-cart .cart-preview #wrapDesignPhoto,#view-cart .cart-preview #lineSpecs{flex:0 0 auto}
 .admin-split{align-items:stretch}
 .admin-split > div:first-child{min-height:0;display:flex;flex-direction:column}
@@ -169,8 +179,8 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
   #view-cart.grid{height:auto;overflow:visible;grid-template-rows:none}
   #view-cart > .two.cart-split{height:auto;overflow:visible;min-height:0}
   #view-cart .cart-tools{max-height:58vh}
-  #view-cart .cart-preview{max-height:72vh;overflow:auto}
-  #view-cart .cart-preview .rail-tools{max-height:none}
+  #view-cart .cart-preview{max-height:none;overflow:visible}
+  #view-cart .cart-preview .preview{height:min(70vh,640px);min-height:360px}
 }
 .prodgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.85rem}
 .prod{cursor:pointer;overflow:hidden;transition:transform .2s,box-shadow .2s}
@@ -695,76 +705,7 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
             <p class="muted" style="margin:.35rem 0 0;font-size:.7rem">Hook for later: Pergola → Insert window (feature <code>window_in_pergola</code>) nests a window job in a bay without dumping window tools into the pergola toolbar.</p>
           </div>
           </div><!-- /#windowCartTools — hidden when product world is railing -->
-          <div class="livebox" id="livePriceBox">
-            <div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.06em">Live amount</div>
-            <div class="big" id="liveCost">₹ —</div>
-            <div class="muted" id="liveMeta">Pick product + size — cost updates instantly</div>
-            <div class="row2">
-              <div class="kpi grow"><label class="l">Sale unit</label>
-                <select id="lineSaleUnit">
-                  <option value="sqft">Per Sq.Ft.</option>
-                  <option value="sqm">Per Sq.M.</option>
-                  <option value="opening">Per Opening</option>
-                  <option value="rft">Per Running Ft</option>
-                </select>
-              </div>
-              <div class="kpi grow"><label class="l">Your selling rate</label><input id="lineSellRate" type="number" step="0.01" placeholder="e.g. 950"/></div>
-              <div class="kpi"><label class="l">Sell amount</label><div class="big" style="font-size:1.2rem" id="liveSell">₹ —</div></div>
-            </div>
-            <div class="row" style="margin-top:.55rem;align-items:center">
-              <div class="muted" id="liveMargin" style="flex:1"></div>
-              <button class="btn ghost sm" id="btnSaveRate" type="button">Save rate for customer</button>
-              <button class="btn" id="btnAddLine" type="button">Add to cart</button>
-            </div>
-          </div>
-          <div class="row" style="margin-top:.75rem">
-            <button class="btn" id="btnCalc" title="Price the cart, save the quote, then download PDFs below">Calculate price</button>
-            <button class="btn ghost sm" id="btnAutosave" title="Save this project">Save</button>
-            <button class="btn ghost sm" id="btnUndo" title="Undo last change">Undo</button>
-            <button class="btn ghost sm" id="btnRedo" title="Redo">Redo</button>
-            <label class="btn ghost sm" style="margin:0" title="Import lines from CSV/Excel">Import<input id="importFile" type="file" accept=".csv,.xlsx" hidden/></label>
-            <label class="btn ghost sm" style="margin:0" title="Import DETA windows section catalogue">Sections Excel<input id="sectionsFile" type="file" accept=".xlsx" hidden/></label>
-          </div>
-          <div style="overflow:auto;margin-top:.8rem">
-            <table>
-              <thead><tr><th>#</th><th>Product</th><th>Size</th><th>Qty</th><th>Options</th><th>Amount</th><th></th></tr></thead>
-              <tbody id="cartBody"></tbody>
-            </table>
-          </div>
-          <div class="row" style="margin-top:.8rem;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:.6rem">
-            <div>
-              <div class="muted" id="cartMeta">0 lines</div>
-              <div class="total" id="cartTotal">₹ —</div>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:.4rem;align-items:flex-end;min-width:min(100%,280px)">
-              <div style="width:100%"><label class="l">Quote print setup (customer details on PDF)</label>
-                <select id="exportSetupSelect" title="Choose which customer account’s bill-to / terms print on the quote"></select>
-              </div>
-              <button class="btn ghost sm" id="btnPrintCopyToggle" type="button" title="See what description and terms will print, then edit if needed">View / edit description &amp; terms</button>
-              <div id="printCopyPanel" class="hidden" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;padding:.55rem .65rem;background:#fff">
-                <p class="muted" style="margin:0 0 .45rem;font-size:.75rem">This is what the Quote PDF will print. Read it, edit if needed, then generate the PDF.</p>
-                <label class="l">Description</label>
-                <textarea id="printDescription" rows="2" placeholder="Optional note that prints on the customer quotation" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea>
-                <div class="chip-row" id="printDescChips"></div>
-                <label class="l" style="margin-top:.45rem">Terms</label>
-                <textarea id="printTerms" rows="3" placeholder="Leave blank to use company default terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit;margin-top:.2rem"></textarea>
-                <div class="chip-row" id="printTermsChips"></div>
-              </div>
-              <div class="actions-inline">
-                <a class="btn sm" id="linkCust" href="#" target="_blank" title="Customer quotation: branding, sizes, specs, pricing, GST, terms.">📄 Quote PDF</a>
-                <a class="btn ghost sm" id="linkCustPrint" href="#" target="_blank" title="Open quote PDF for printing">🖨 Print quote</a>
-                <a class="btn ghost sm" id="linkCustXlsx" href="#" title="Download quote as Excel">📊 Quote Excel</a>
-                <a class="btn sec sm" id="linkFact" href="#" target="_blank" title="Factory production sheet: panel schedule, glass sizes, hardware BOM, cut list, weights. No customer pricing.">🏭 Factory Sheet (PDF)</a>
-                <a class="btn ghost sm" id="linkQuote" href="#" target="_blank" title="Raw quotation data (JSON) — for integrations.">Quote data</a>
-              </div>
-            </div>
-          </div>
-          <pre class="optbox" id="optBox">Optimization after Calculate</pre>
-          <div class="err" id="cartErr"></div>
-        </div>
-        <div class="panel cart-preview">
-          <strong>Live Preview</strong>
-          <p class="muted" id="previewLabel" style="margin:.25rem 0 .6rem">Select or add a line</p>
+
           <div id="railTools" class="rail-tools hidden">
             <div class="rt-head">
               <strong style="font-size:.82rem">Railing · easy wizard</strong>
@@ -1312,6 +1253,86 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
               </div>
               <div id="ventBom" class="rt-bom"></div>
               <div class="err" id="ventErr" style="font-size:.75rem"></div>
+            </div>
+          </div>
+          <div class="livebox" id="livePriceBox">
+            <div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.06em">Live amount</div>
+            <div class="big" id="liveCost">₹ —</div>
+            <div class="muted" id="liveMeta">Pick product + size — cost updates instantly</div>
+            <div class="row2">
+              <div class="kpi grow"><label class="l">Sale unit</label>
+                <select id="lineSaleUnit">
+                  <option value="sqft">Per Sq.Ft.</option>
+                  <option value="sqm">Per Sq.M.</option>
+                  <option value="opening">Per Opening</option>
+                  <option value="rft">Per Running Ft</option>
+                </select>
+              </div>
+              <div class="kpi grow"><label class="l">Your selling rate</label><input id="lineSellRate" type="number" step="0.01" placeholder="e.g. 950"/></div>
+              <div class="kpi"><label class="l">Sell amount</label><div class="big" style="font-size:1.2rem" id="liveSell">₹ —</div></div>
+            </div>
+            <div class="row" style="margin-top:.55rem;align-items:center">
+              <div class="muted" id="liveMargin" style="flex:1"></div>
+              <button class="btn ghost sm" id="btnSaveRate" type="button">Save rate for customer</button>
+              <button class="btn" id="btnAddLine" type="button">Add to cart</button>
+            </div>
+          </div>
+          <div class="row" style="margin-top:.75rem">
+            <button class="btn" id="btnCalc" title="Price the cart, save the quote, then download PDFs below">Calculate price</button>
+            <button class="btn ghost sm" id="btnAutosave" title="Save this project">Save</button>
+            <button class="btn ghost sm" id="btnUndo" title="Undo last change">Undo</button>
+            <button class="btn ghost sm" id="btnRedo" title="Redo">Redo</button>
+            <label class="btn ghost sm" style="margin:0" title="Import lines from CSV/Excel">Import<input id="importFile" type="file" accept=".csv,.xlsx" hidden/></label>
+            <label class="btn ghost sm" style="margin:0" title="Import DETA windows section catalogue">Sections Excel<input id="sectionsFile" type="file" accept=".xlsx" hidden/></label>
+          </div>
+          <div style="overflow:auto;margin-top:.8rem">
+            <table>
+              <thead><tr><th>#</th><th>Product</th><th>Size</th><th>Qty</th><th>Options</th><th>Amount</th><th></th></tr></thead>
+              <tbody id="cartBody"></tbody>
+            </table>
+          </div>
+          <div class="row" style="margin-top:.8rem;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:.6rem">
+            <div>
+              <div class="muted" id="cartMeta">0 lines</div>
+              <div class="total" id="cartTotal">₹ —</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:.4rem;align-items:flex-end;min-width:min(100%,280px)">
+              <div style="width:100%"><label class="l">Quote print setup (customer details on PDF)</label>
+                <select id="exportSetupSelect" title="Choose which customer account’s bill-to / terms print on the quote"></select>
+              </div>
+              <button class="btn ghost sm" id="btnPrintCopyToggle" type="button" title="See what description and terms will print, then edit if needed">View / edit description &amp; terms</button>
+              <div id="printCopyPanel" class="hidden" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;padding:.55rem .65rem;background:#fff">
+                <p class="muted" style="margin:0 0 .45rem;font-size:.75rem">This is what the Quote PDF will print. Read it, edit if needed, then generate the PDF.</p>
+                <label class="l">Description</label>
+                <textarea id="printDescription" rows="2" placeholder="Optional note that prints on the customer quotation" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea>
+                <div class="chip-row" id="printDescChips"></div>
+                <label class="l" style="margin-top:.45rem">Terms</label>
+                <textarea id="printTerms" rows="3" placeholder="Leave blank to use company default terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit;margin-top:.2rem"></textarea>
+                <div class="chip-row" id="printTermsChips"></div>
+              </div>
+              <div class="actions-inline">
+                <a class="btn sm" id="linkCust" href="#" target="_blank" title="Customer quotation: branding, sizes, specs, pricing, GST, terms.">📄 Quote PDF</a>
+                <a class="btn ghost sm" id="linkCustPrint" href="#" target="_blank" title="Open quote PDF for printing">🖨 Print quote</a>
+                <a class="btn ghost sm" id="linkCustXlsx" href="#" title="Download quote as Excel">📊 Quote Excel</a>
+                <a class="btn sec sm" id="linkFact" href="#" target="_blank" title="Factory production sheet: panel schedule, glass sizes, hardware BOM, cut list, weights. No customer pricing.">🏭 Factory Sheet (PDF)</a>
+                <a class="btn ghost sm" id="linkQuote" href="#" target="_blank" title="Raw quotation data (JSON) — for integrations.">Quote data</a>
+              </div>
+            </div>
+          </div>
+          <pre class="optbox" id="optBox">Optimization after Calculate</pre>
+          <div class="err" id="cartErr"></div>
+        </div>
+        <div class="panel cart-preview">
+          <div class="preview-head">
+            <div>
+              <strong>Live Preview</strong>
+              <p class="muted" id="previewLabel" style="margin:.25rem 0 0">Select or add a line</p>
+            </div>
+            <div class="preview-zoom">
+              <button class="btn ghost sm" type="button" id="btnPrevFit" title="Fit the whole drawing in the canvas">Fit</button>
+              <button class="btn ghost sm" type="button" id="btnPrevZoomOut" title="Zoom out">−</button>
+              <span id="prevZoomLabel" class="muted" style="min-width:3.1rem;text-align:center;font-size:.78rem">Fit</span>
+              <button class="btn ghost sm" type="button" id="btnPrevZoomIn" title="Zoom in">+</button>
             </div>
           </div>
           <div class="preview" id="livePreview"><span class="muted">SVG / hero</span></div>
@@ -2793,6 +2814,90 @@ function captureLivePreviewSvg() {
   if (!box) return '';
   const svg = box.querySelector('svg');
   return svg ? svg.outerHTML : '';
+}
+function previewZoomValue() {
+  const z = Number(state.previewZoom);
+  return Number.isFinite(z) && z > 0 ? z : 1;
+}
+function _previewIntrinsicSize(el) {
+  if (!el) return { w: 0, h: 0 };
+  if (el.tagName && el.tagName.toLowerCase() === 'svg') {
+    const vb = el.viewBox && el.viewBox.baseVal;
+    if (vb && vb.width > 0 && vb.height > 0) return { w: vb.width, h: vb.height };
+    const aw = parseFloat(el.getAttribute('width'));
+    const ah = parseFloat(el.getAttribute('height'));
+    if (aw > 0 && ah > 0) return { w: aw, h: ah };
+    try {
+      const b = el.getBBox();
+      if (b && b.width > 0 && b.height > 0) return { w: b.width, h: b.height };
+    } catch (_) {}
+  }
+  const nw = Number(el.naturalWidth || el.width || 0);
+  const nh = Number(el.naturalHeight || el.height || 0);
+  return { w: nw, h: nh };
+}
+function applyPreviewFit() {
+  const box = $('livePreview');
+  if (!box) return;
+  if (box._fitRaf) cancelAnimationFrame(box._fitRaf);
+  box._fitRaf = requestAnimationFrame(() => {
+    const el = box.querySelector('svg') || box.querySelector('img');
+    const zoom = previewZoomValue();
+    const label = $('prevZoomLabel');
+    if (label) label.textContent = Math.abs(zoom - 1) < 0.02 ? 'Fit' : Math.round(zoom * 100) + '%';
+    const zoomed = zoom > 1.02;
+    box.classList.toggle('zoomed', zoomed);
+    if (!el) return;
+    const pad = 8;
+    const cw = Math.max(80, box.clientWidth - pad);
+    const ch = Math.max(80, box.clientHeight - pad);
+    const size = _previewIntrinsicSize(el);
+    if (!(size.w > 0 && size.h > 0 && cw > 0 && ch > 0)) return;
+    if (el.tagName && el.tagName.toLowerCase() === 'svg') {
+      el.removeAttribute('width');
+      el.removeAttribute('height');
+      el.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    }
+    const fit = Math.min(cw / size.w, ch / size.h);
+    const s = fit * zoom;
+    const pw = Math.max(1, size.w * s);
+    const ph = Math.max(1, size.h * s);
+    el.style.maxWidth = 'none';
+    el.style.maxHeight = 'none';
+    el.style.width = pw + 'px';
+    el.style.height = ph + 'px';
+    el.style.transform = '';
+    box.scrollTop = 0;
+    box.scrollLeft = 0;
+  });
+}
+function setPreviewZoom(next) {
+  const z = Math.max(0.5, Math.min(3, Math.round(Number(next) * 100) / 100));
+  state.previewZoom = z;
+  applyPreviewFit();
+}
+function initPreviewZoom() {
+  const box = $('livePreview');
+  if (!box) return;
+  if (!state.previewZoom) state.previewZoom = 1;
+  if ($('btnPrevFit')) $('btnPrevFit').onclick = () => setPreviewZoom(1);
+  if ($('btnPrevZoomIn')) $('btnPrevZoomIn').onclick = () => setPreviewZoom(previewZoomValue() * 1.25);
+  if ($('btnPrevZoomOut')) $('btnPrevZoomOut').onclick = () => {
+    const z = previewZoomValue() / 1.25;
+    setPreviewZoom(z < 1.05 ? 1 : z);
+  };
+  if (!box._zoomBound) {
+    box._zoomBound = true;
+    box.addEventListener('wheel', (ev) => {
+      if (!(ev.ctrlKey || ev.metaKey)) return;
+      ev.preventDefault();
+      setPreviewZoom(previewZoomValue() * (ev.deltaY < 0 ? 1.12 : 1 / 1.12));
+    }, { passive: false });
+    const obs = new MutationObserver(() => applyPreviewFit());
+    obs.observe(box, { childList: true, subtree: true });
+  }
+  applyPreviewFit();
+  window.addEventListener('resize', () => applyPreviewFit());
 }
 function lineIdentityKey(ln) {
   if (!ln || typeof ln !== 'object') return '';
@@ -5226,6 +5331,7 @@ function packageQuotesPayload(){
     projectValue: q.projectValue == null || q.projectValue === '' ? undefined : Number(q.projectValue),
     totalGrand: q.totalGrand == null || q.totalGrand === '' ? undefined : Number(q.totalGrand),
     note: (q.note || '').trim() || undefined,
+    description: (q.note || '').trim() || undefined,
     attachmentName: q.attachmentName || undefined,
     attachmentKey: q.attachmentKey || undefined,
     attachments: q.attachments || [],
@@ -5341,7 +5447,8 @@ function renderPackageQuotes(){
         <div><label class="l">Rate ₹</label><input data-pkg="rate" type="number" min="0" step="0.01" value="${esc(it.rate==null?'':it.rate)}" placeholder="opt."/></div>
         <div><label class="l">Amount ₹</label><input data-pkg="amount" type="number" min="0" step="0.01" value="${esc(it.amount)}"/></div>
         <button class="btn ghost sm" type="button" data-pkg-del="${i}" title="Remove">✕</button>
-        <div class="pkg-note"><label class="l">Description</label><input data-pkg="note" value="${esc(it.note||'')}" placeholder="location / product description"/></div>
+        <div class='pkg-attachments'>${(it.attachments || []).map(a => <img src='${a.url}' style='max-width:80px; margin-right:4px;' />}).join('')}</div>
+           <div class="pkg-note"><label class="l">Description</label><input data-pkg="note" value="${esc(it.note||'')}" placeholder="location / product description" /></div>
       </div>`;
     }).join('')}</div>
     <button class="btn ghost sm" id="btnPkgAddItem" type="button">Add item</button>
@@ -5384,7 +5491,10 @@ function renderPackageQuotes(){
       inp.addEventListener('input', () => {
         const cur = ensurePkgQuotes()[state.packageQuoteIndex];
         const it = cur.items[idx]; if (!it) return;
-        it[inp.dataset.pkg] = inp.value;
+        const newItem = { ...it };
+       newItem[inp.dataset.pkg] = inp.value;
+       cur.items[idx] = newItem;
+       it = newItem;
         if (['amount','qty','rate'].includes(inp.dataset.pkg)) {
           cur.gstAmount = undefined;
           cur.projectValue = undefined;
@@ -5877,7 +5987,7 @@ async function saveProject(silent) {
           lines: serializeCartLines(state.lines),
           packageQuotes: packageQuotesPayload(),
           masterJobId: state.masterJobId || undefined,
-          quoteKind: packageQuotesPayload().length ? ((state.lines||[]).length ? 'mixed' : 'package') : undefined,
+          quoteKind: 'package',
           quoteDiscount: state.quoteDiscount || emptyQuoteDiscount(),
           ...projectBillTo()
         };
@@ -12395,6 +12505,7 @@ async function pingEngine(){
   }
   const restoredCart = restoreCartSession();
   updatePdfLinks();
+  if (typeof initPreviewZoom === 'function') initPreviewZoom();
   // Auto-restore company workspace only when a PIN session exists.
   try { await restoreCompanyWorkspace(); } catch (e) { console.warn(e); }
   if (typeof applyCompanyPdfBrand === 'function') applyCompanyPdfBrand();

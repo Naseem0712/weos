@@ -1,0 +1,13 @@
+﻿commit b20e33323620698ad0932481b810cbeb2d3a523d
+Author: naseem <your-email@example.com>
+Date:   Tue Aug 11 20:49:22 2026 +0530
+
+    Restore front-sash meeting miters; keep product-type lock and louvers.
+    
+    Front overlapping sliding sash now draws 45┬░ miters at interlock corners (canvas+PDF); back sash stays square to avoid double lines. Packages railing PDF lock and glassΓåÆlouvers fill.
+    
+    Co-authored-by: Cursor <cursoragent@cursor.com>
+
+ WEOS/_smoke_front_miters.py     | 57 +++++++++++++++++++++++++++++++++++++++++
+ WEOS/factory/geometry_engine.py | 21 ++++++++-------
+ 2 files changed, 69 insertions(+), 9 deletions(-)

@@ -1,0 +1,7 @@
+﻿git : Everything up-to-date
+At C:\Users\nasim ahmad\AppData\Local\Temp\ps-script-a46abf07-6183-4ab1-83b9-9e4c7735b414.ps1:17 char:225
++ ... nal_status.txt; git rev-parse HEAD > _hash.txt; git push 2>&1 | Out-F ...
++                                                     ~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Everything up-to-date:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

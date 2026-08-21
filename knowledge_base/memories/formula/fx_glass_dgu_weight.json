@@ -19,7 +19,7 @@
   "description": "Insulated glass unit weight = pane area × sum of both glass leaves × glass density (air gap ≈ 0 kg).",
   "compatibleSeries": [],
   "compatibleProducts": [],
-  "approvalDate": "2026-08-08T16:54:57.108926+00:00",
+  "approvalDate": "2026-08-12T15:55:32.841054+00:00",
   "history": [
     {
       "formulaVersion": 1,
@@ -35,14 +35,74 @@
       "approved_at": "2026-08-08T16:54:57.108926+00:00",
       "approved_by": "system_default",
       "reason": "admin_approve"
+    },
+    {
+      "formulaVersion": 1,
+      "expression": "widthMm * heightMm / 1e6 * ((glass1Mm + glass2Mm) * densityKgPerM3 / 1000) * qty",
+      "variables": [
+        "widthMm",
+        "heightMm",
+        "glass1Mm",
+        "glass2Mm",
+        "densityKgPerM3",
+        "qty"
+      ],
+      "approved_at": "2026-08-11T20:10:53.174187+00:00",
+      "approved_by": "system_default",
+      "reason": "admin_approve"
+    },
+    {
+      "formulaVersion": 1,
+      "expression": "widthMm * heightMm / 1e6 * ((glass1Mm + glass2Mm) * densityKgPerM3 / 1000) * qty",
+      "variables": [
+        "widthMm",
+        "heightMm",
+        "glass1Mm",
+        "glass2Mm",
+        "densityKgPerM3",
+        "qty"
+      ],
+      "approved_at": "2026-08-11T20:12:57.789927+00:00",
+      "approved_by": "system_default",
+      "reason": "admin_approve"
+    },
+    {
+      "formulaVersion": 1,
+      "expression": "widthMm * heightMm / 1e6 * ((glass1Mm + glass2Mm) * densityKgPerM3 / 1000) * qty",
+      "variables": [
+        "widthMm",
+        "heightMm",
+        "glass1Mm",
+        "glass2Mm",
+        "densityKgPerM3",
+        "qty"
+      ],
+      "approved_at": "2026-08-12T15:51:09.545726+00:00",
+      "approved_by": "system_default",
+      "reason": "admin_approve"
+    },
+    {
+      "formulaVersion": 1,
+      "expression": "widthMm * heightMm / 1e6 * ((glass1Mm + glass2Mm) * densityKgPerM3 / 1000) * qty",
+      "variables": [
+        "widthMm",
+        "heightMm",
+        "glass1Mm",
+        "glass2Mm",
+        "densityKgPerM3",
+        "qty"
+      ],
+      "approved_at": "2026-08-12T15:55:32.841054+00:00",
+      "approved_by": "system_default",
+      "reason": "admin_approve"
     }
   ],
   "source": "baseline_engineering_default",
   "status": "approved",
   "revision": 1,
   "created_at": null,
-  "updated_at": "2026-08-08T16:54:57.108926+00:00",
-  "approved_at": "2026-08-08T16:54:57.108926+00:00",
+  "updated_at": "2026-08-12T15:55:32.838814+00:00",
+  "approved_at": "2026-08-12T15:55:32.838814+00:00",
   "approved_by": "system_default",
   "kb_version": null,
   "sourceKind": "baseline",

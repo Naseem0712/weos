@@ -1,0 +1,4 @@
+﻿DEFAULT 29mm_sliding
+35mm_sliding stub True synth True engine 29mm_sliding glass_keys ['densityKgPerM3', 'quantityFormula', 'thicknessMm'] has_hs False geom True
+35mm_gulf_slim stub True synth True engine 35mm_sliding glass_keys ['densityKgPerM3', 'quantityFormula', 'thicknessMm'] has_hs False geom True
+29mm_sliding stub False synth None engine None glass_keys ['bottomOverlap', 'densityKgPerM3', 'handleSideOverlap', 'interlockSideOverlap', 'quantityFormula', 'thicknessMm', 'topOverlap'] has_hs True geom True

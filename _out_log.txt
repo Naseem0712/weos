@@ -1,0 +1,5 @@
+ca9592e ???Fix railing PDF collapsing to 1mm when cart width is not seeded into options.railing.
+9df8671 ???Accept Length/ActualLength for railing RFT materials; add unit auto-fill + formula help.
+b20e333 Restore front-sash meeting miters; keep product-type lock and louvers.
+091bd4c Lock cart/PDF by product type; add louvers as glass-replacement feature.
+bdd615f Fix railing PDF printing as window; lock cart/PDF by product type.

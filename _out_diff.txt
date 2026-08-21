@@ -1,0 +1,10 @@
+ WEOS/_smoke_railing_pdf.py     | 110 +++++++++++++++++++++++++++++++
+ WEOS/api/server.py             |  26 +++++++-
+ WEOS/factory/line_kind.py      |  20 ++++--
+ WEOS/factory/live_pricing.py   |  13 ++++
+ WEOS/factory/marqt_pdf.py      |  19 ++++--
+ WEOS/factory/product_admin.py  |  13 ++++
+ WEOS/factory/project_engine.py |  33 ++++++++--
+ WEOS/factory/railing_engine.py |  74 ++++++++++++++++++---
+ WEOS/website/index.html        | 145 ++++++++++++++++++++++++++++++++++++++---
+ 9 files changed, 418 insertions(+), 35 deletions(-)

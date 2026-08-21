@@ -1,0 +1,14 @@
+﻿python : stub preview render failed for 35mm_gulf_slim: 'handleSideOverlap'
+At C:\Users\nasim ahmad\AppData\Local\Temp\ps-script-facb66f1-4c88-4af8-9ebd-3841bd0e68a6.ps1:112 char:37
++ cd "D:\Downloads\window cad model"; python -c @"
++                                     ~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (stub preview re...dleSideOverlap':String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+stub preview render failed for 35mm_sliding: 'handleSideOverlap'
+35mm_gulf_slim product 35mm_gulf_slim svg None preview None
+  model False
+  desc 35MM Gulf Slim Series display 35MM Gulf Slim Series
+35mm_sliding product 35mm_sliding svg None preview None
+  model False
+  desc 35mm Sliding Window display 35mm Sliding Window

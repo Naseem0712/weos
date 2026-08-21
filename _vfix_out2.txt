@@ -1,0 +1,8 @@
+﻿track '2 track top/bottom horizontle track 95.3╫31.2 mm'
+sash None
+interlock None
+meeting None
+designOptions []
+sections sample [{'id': '35mm_gulf_slim__2-track-top-bottom-horizontle-track', 'name': '2 track top/bottom horizontle track', 'usage': 'track_horizontal', 'usageLabel': 'Track ù horizontal', 'sectionDepthMm': 95.3, 'widthMm': 31.2, 'standardLength': None, 'weightKgPerMtrRaw': '1.65 kg/m', 'weightKgPerMtr': 1.65, 'heightLimit': None, 'heightLimitMm': None, 'wallThicknessMm': None, 'designNote': None, 'trackCount': 2.0, 'centerOpeningOnly': False}, {'id': '35mm_gulf_slim__2-track-left-right-verticale-track', 'name': '2 track left/right verticale track', 'usage': 'track_vertical', 'usageLabel': 'Track ù vertical', 'sectionDepthMm': 100.0, 'widthMm': 32.8, 'standardLength': None, 'weightKgPerMtrRaw': '1.230 kg/m', 'weightKgPerMtr': 1.23, 'heightLimit': None, 'heightLimitMm': None, 'wallThicknessMm': None, 'designNote': None, 'trackCount': 2.0, 'centerOpeningOnly': False}]
+opts {'glass': '5mm_clear', 'colour': None, 'handle': None, 'partitions': [], 'mesh': False, 'trackCount': 2.0, 'system': 'sliding', 'glassShutters': 2, 'meshShutters': 0, 'opening': 'center', 'sectionSeries': '35mm_gulf_slim'}
+opening center

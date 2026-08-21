@@ -1,0 +1,85 @@
+﻿OK: init_db {'ok': True, 'backend': 'sqlite', 'url': 'sqlite:///C:/Users/nasim ahmad/AppData/Local/Temp/weos_upgrade_smoke_93s72jfk/data/weos.db', 'initialised': True}
+OK: GST A lists unused quote
+OK: GST A does not list GST B quote
+OK: unused filter includes zero-value draft
+OK: approved+advance not unused
+OK: duplicate extra flagged for same quote number
+OK: GST scope blocks cross-company delete
+OK: GST B quote survives after A delete attempt
+OK: hard delete unused from server
+OK: unused quote gone from hub list
+OK: deleted project not loadable
+OK: bulk unused ok {'ok': True, 'gstNo': '27AAAAA0000A1Z5', 'filter': 'unused', 'deleted': [], 'deletedCount': 0, 'skipped': []}
+OK: bulk unused did not touch GST B
+OK: save_project minted shareToken
+OK: public record by token
+OK: scan shows company
+OK: scan quote number
+OK: scan approval status
+OK: scan taxable value
+OK: scan GST grand > taxable
+OK: scan advance count
+OK: scan advance amount
+OK: scan advance mode
+OK: scan advance date
+OK: scan running advance total
+OK: scan balance outstanding
+OK: scan products list
+OK: scan product fields
+OK: scan location
+OK: scan product amount got 14580.0
+OK: scan serial W1à got W1
+OK: scan type not coming soon
+OK: approved quote exposes pack
+OK: approved pack available
+OK: scan last updated
+OK: scan html contains 'alpha glass'
+OK: scan html contains 'gstin'
+OK: scan html contains 'approved'
+OK: scan html contains 'advance'
+OK: scan html contains 'balance'
+OK: scan html contains 'master bedroom'
+OK: scan html contains 'last updated'
+OK: scan html contains 'live'
+OK: token stable after re-read
+OK: scan html shows product amount
+OK: scan html download all button
+OK: draft amount recomputed got 10333.6
+OK: casement human type got Casement
+OK: no coming soon on draft type
+OK: draft location
+OK: draft not approved
+OK: draft pack not available
+OK: draft scan hides pack
+OK: pack blocked before approval
+OK: process update saved
+OK: process photo saved
+OK: challan saved
+OK: approved after status
+OK: pack available after approval
+OK: scan shows process update
+OK: scan shows photo
+OK: scan shows challan
+OK: approved html process updates
+OK: approved html update text
+OK: download all button after approval
+OK: approved html does not hide pack
+OK: all.pdf valid
+OK: customer quote sheet pdf
+OK: quote sheet not empty
+OK: ledger pdf valid
+OK: ledger pdf has content
+OK: ledger html title
+OK: ledger html totals grid
+OK: recalled >=3 formulas got 12
+OK: SG glass formula recalled
+OK: DG/DGU formula recalled
+OK: railing/steel formula recalled
+OK: unknown material not invented
+OK: mesh to 3-track suggestion keys={'missing_weights', 'missing_rates', 'glass_sizing', 'mesh_requires_3_track'}
+OK: missing rates suggestion keys={'missing_weights', 'missing_rates', 'glass_sizing', 'mesh_requires_3_track'}
+OK: engineering suggestions_only
+OK: review/approve safety copy
+OK: one-click queues pending, not applied
+OK: pending review message
+OK gst hub delete + live scan token + formula recall smoke passed

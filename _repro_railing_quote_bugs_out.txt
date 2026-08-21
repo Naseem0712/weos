@@ -1,0 +1,19 @@
+A straight 1 16.267 17
+items [('glass', 47.8, 200.0, 9560.0), ('bottomRail', 16.267, 180.0, 2928.06), ('wallConnector', 2, 0.0, 0.0)]
+cascade hw 0.0 glass 9559.94 prof 2928.06
+sell 767.7018 12488.0 direct 12488.0
+desc_after_calc Railing · staircase · 4958.15 mm · 4 panels · 12mm
+specs0 Railing · staircase · 4958.15 mm · 4 panels · 12mm
+specs1 Type = straight · Mount = side_mount
+price {'currency': 'INR', 'unitRate': 767.7018, 'unitTotal': 12488.0, 'subtotal': 12488.0, 'markupPercent': 0, 'gstPercent': 0, 'total': 12488.0, 'saleUnit': 'rft'}
+selling {'saleUnit': 'rft', 'saleUnitLabel': 'Per RFT', 'sellingRate': 767.7018, 'billableQty': 16.267, 'sellingAmount': 12488.0, 'qty': 1}
+manual_sell 639.95 10409.9 cascade_total 12488.0
+rft_x_rate 10410.07
+items_still [('glass', 9560.0), ('bottomRail', 2928.06), ('wallConnector', 0.0)]
+with_anchors_total 12488.0 without 12488.0 delta 0.0
+stale_pdf_shape staircase panel 4 cfg_shape straight
+stale_specs0 Railing · staircase · 4958.15 mm · 4 panels · 12mm
+stale_specs1 Type = staircase · Mount = side_mount
+forced_shape staircase panels 1 desc Railing · staircase · 3498.57 mm · 1 panels
+bump_anchors 12488.0 -> 12488.0 rates 767.7018
+recalc_after_bump 767.7018 12488.0 expected 12488.0

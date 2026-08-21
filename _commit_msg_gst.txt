@@ -1,0 +1,3 @@
+Persist GST company workspace across refresh with live hub KPIs and ledger PDF.
+
+Restore saved GSTIN from localStorage/sessionStorage, rehydrate hub lists from Postgres, add dashboard aggregates, mobile customer search, and improved ledger PDF sections.

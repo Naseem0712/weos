@@ -19,7 +19,7 @@
   "description": "ACP panel weight from area × thickness × panel weight factor (4 mm ≈ 5.6 kg/m²).",
   "compatibleSeries": [],
   "compatibleProducts": [],
-  "approvalDate": "2026-08-08T16:54:57.194242+00:00",
+  "approvalDate": "2026-08-12T15:55:32.934746+00:00",
   "history": [
     {
       "formulaVersion": 1,
@@ -35,14 +35,74 @@
       "approved_at": "2026-08-08T16:54:57.194242+00:00",
       "approved_by": "system_default",
       "reason": "admin_approve"
+    },
+    {
+      "formulaVersion": 1,
+      "expression": "widthMm * heightMm / 1e6 * thicknessMm * kgPerSqmPerMm * (1 + wastePercent/100) * qty",
+      "variables": [
+        "widthMm",
+        "heightMm",
+        "thicknessMm",
+        "kgPerSqmPerMm",
+        "wastePercent",
+        "qty"
+      ],
+      "approved_at": "2026-08-11T20:10:53.200040+00:00",
+      "approved_by": "system_default",
+      "reason": "admin_approve"
+    },
+    {
+      "formulaVersion": 1,
+      "expression": "widthMm * heightMm / 1e6 * thicknessMm * kgPerSqmPerMm * (1 + wastePercent/100) * qty",
+      "variables": [
+        "widthMm",
+        "heightMm",
+        "thicknessMm",
+        "kgPerSqmPerMm",
+        "wastePercent",
+        "qty"
+      ],
+      "approved_at": "2026-08-11T20:12:57.829293+00:00",
+      "approved_by": "system_default",
+      "reason": "admin_approve"
+    },
+    {
+      "formulaVersion": 1,
+      "expression": "widthMm * heightMm / 1e6 * thicknessMm * kgPerSqmPerMm * (1 + wastePercent/100) * qty",
+      "variables": [
+        "widthMm",
+        "heightMm",
+        "thicknessMm",
+        "kgPerSqmPerMm",
+        "wastePercent",
+        "qty"
+      ],
+      "approved_at": "2026-08-12T15:51:09.589437+00:00",
+      "approved_by": "system_default",
+      "reason": "admin_approve"
+    },
+    {
+      "formulaVersion": 1,
+      "expression": "widthMm * heightMm / 1e6 * thicknessMm * kgPerSqmPerMm * (1 + wastePercent/100) * qty",
+      "variables": [
+        "widthMm",
+        "heightMm",
+        "thicknessMm",
+        "kgPerSqmPerMm",
+        "wastePercent",
+        "qty"
+      ],
+      "approved_at": "2026-08-12T15:55:32.934746+00:00",
+      "approved_by": "system_default",
+      "reason": "admin_approve"
     }
   ],
   "source": "baseline_engineering_default",
   "status": "approved",
   "revision": 1,
   "created_at": null,
-  "updated_at": "2026-08-08T16:54:57.194242+00:00",
-  "approved_at": "2026-08-08T16:54:57.194242+00:00",
+  "updated_at": "2026-08-12T15:55:32.934746+00:00",
+  "approved_at": "2026-08-12T15:55:32.934746+00:00",
   "approved_by": "system_default",
   "kb_version": null,
   "sourceKind": "baseline",

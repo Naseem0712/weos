@@ -1,0 +1,5 @@
+﻿ WEOS/agent/suggestion_engine.py  |   83 +++
+ WEOS/factory/materials_engine.py |  180 ++++--
+ WEOS/factory/project_engine.py   |   98 ++-
+ WEOS/factory/weight_engine.py    | 1280 +++++++++++++++++++++++++++++++++++++-
+ 4 files changed, 1574 insertions(+), 67 deletions(-)

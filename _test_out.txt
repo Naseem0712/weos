@@ -1,0 +1,32 @@
+CMD C:\Users\nasim ahmad\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\python.exe _repro_railing_1mm.py
+exit=0
+STDOUT:
+empty_cfg L=0.0 | svg=Railing length missing — enter length (mm or ft) in the designer | dim=NO_DIM
+typed_no_cfg qL=3000.0 rft=9.843 cfgL=3000.0 | Railing · straight · 1 panels · 32.0334 sft · side_mount · waste 0.0% | 3000 mm  ·  9.843 RFT
+with_cfg qL=3000.0 rft=9.843 | Railing · straight · 3 panels · 31.7751 sft · side_mount · waste 0.0% | 3000 mm  ·  9.843 RFT
+
+STDERR:
+railing product-library materials failed for railing
+Traceback (most recent call last):
+  File "d:\Downloads\window cad model\WEOS\factory\project_engine.py", line 269, in _railing_line_result
+    product = load_product(product_id, strict=False)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\Downloads\window cad model\WEOS\factory\product_loader.py", line 143, in load_product
+    pdir = product_dir(pid)
+           ^^^^^^^^^^^^^^^^
+  File "d:\Downloads\window cad model\WEOS\factory\product_loader.py", line 94, in product_dir
+    raise FileNotFoundError(f"Product '{product_id}' not found. Known: {', '.join(known) or '(none)'}")
+FileNotFoundError: Product 'railing' not found. Known: 29mm_sliding, 35mm_sliding, acp_stub, casement_stub, fixed_stub, fluted_stub, folding_stub, louvers_stub, perforated_stub, pergola_stub, railings_stub, sections
+
+
+---
+CMD C:\Users\nasim ahmad\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\python.exe WEOS/_smoke_railing_pdf.py
+exit=1
+STDOUT:
+
+STDERR:
+Traceback (most recent call last):
+  File "d:\Downloads\window cad model\WEOS\_smoke_railing_pdf.py", line 6, in <module>
+    from WEOS.factory.marqt_pdf import _line_is_railing, _railing_cfg_and_quote, _spec_lines
+ModuleNotFoundError: No module named 'WEOS'
+

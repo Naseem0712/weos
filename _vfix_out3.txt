@@ -1,0 +1,5 @@
+﻿model_elev True
+usages Counter({'track_horizontal': 2, 'track_vertical': 2})
+sash sections []
+interlock []
+title 35MM Gulf Slim Series display 35MM Gulf Slim Series

@@ -1,0 +1,61 @@
+{
+  "proposal_id": "v2_update_aluminium_section_waste_default_9_20260813T202624_3658bb",
+  "kind": "formula",
+  "status": "pending_approval",
+  "created_at": "2026-08-13T20:26:24.885384+00:00",
+  "title": "Update aluminium section waste default → 9.5%",
+  "summary": "Observed cut waste avg 9.5% from optimize runs. Queues formula default change for admin review.",
+  "confidence": 0.65,
+  "source": {
+    "type": "engineering_live_learn",
+    "suggestionId": "refine_alu_waste",
+    "appliedBy": "smoke_upgrade"
+  },
+  "payload": {
+    "formulas": [
+      {
+        "id": "fx_alu_section_weight",
+        "key": "aluminium_section",
+        "name": "Aluminium section / profile weight",
+        "category": "weight",
+        "material": "aluminium_section",
+        "expression": "(lengthMm / 1000) * weightPerMeterKg * (1 + wastePercent/100) * qty",
+        "variables": [
+          "lengthMm",
+          "weightPerMeterKg",
+          "wastePercent",
+          "qty"
+        ],
+        "defaults": {
+          "wastePercent": 9.5,
+          "qty": 1
+        },
+        "unit": "kg",
+        "description": "Learned wastePercent=9.5 from engineering observations",
+        "source": "engineering_live_learn",
+        "status": "approved",
+        "recalled": true,
+        "evidence": {
+          "avgWastePercent": 9.5,
+          "samples": 1
+        }
+      }
+    ],
+    "refinementOf": "aluminium_section",
+    "note": "Learned wastePercent=9.5 from engineering observations",
+    "safety": "Pending admin review — does not modify production engines until approved into KB formulas library."
+  },
+  "edits": {},
+  "item_counts": {
+    "formulas": 1
+  },
+  "match_hints": [],
+  "notes": [
+    "Queued from Engineering Live Learning one-click apply.",
+    "Approve to write formulas library / KB version — production engines unchanged until Product Builder / manual sync."
+  ],
+  "safety": {
+    "auto_write_production": false,
+    "message": "Production data is never modified automatically. Approve publishes to the Knowledge Base only."
+  }
+}

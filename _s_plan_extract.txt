@@ -1,0 +1,43 @@
+PLAN_BYTES= 1788
+M WEOS/website/index.html
+CLEAN WEOS/factory/railing_engine.py
+M WEOS/factory/project_engine.py
+CLEAN WEOS/factory/live_pricing.py
+CLEAN WEOS/factory/marqt_pdf.py
+CLEAN WEOS/factory/product_admin.py
+M WEOS/api/server.py
+CLEAN WEOS/_smoke_railing_pdf.py
+?? WEOS/_smoke_easy_railing.py
+CLEAN WEOS/factory/svg_export.py
+CLEAN WEOS/factory/layout_options.py
+CLEAN WEOS/factory/geometry_engine.py
+CLEAN WEOS/_smoke_front_miters.py
+M WEOS/agent/suggestion_engine.py
+M WEOS/factory/materials_engine.py
+M WEOS/factory/weight_engine.py
+CLEAN WEOS/factory/line_kind.py
+DIFFSTAT
+WEOS/agent/suggestion_engine.py    |   83 +++
+ WEOS/api/server.py                 |  115 ++++
+ WEOS/factory/materials_engine.py   |  180 +++--
+ WEOS/factory/project_engine.py     |   98 ++-
+ WEOS/factory/weight_engine.py      | 1280 +++++++++++++++++++++++++++++++++++-
+ WEOS/learning/engineering_agent.py |    6 +-
+ WEOS/website/index.html            |   74 ++-
+ 7 files changed, 1761 insertions(+), 75 deletions(-)
+HEAD
+c63a8284234888a958dea2c1e2012173feff5dc6 Fix railing PDF label mismatch and BOM rates not reaching Total Amount.
+HEADSTAT
+c63a828 Fix railing PDF label mismatch and BOM rates not reaching Total Amount.
+ WEOS/_smoke_railing_pdf.py     | 112 ++++++
+ WEOS/api/server.py             |  26 +-
+ WEOS/factory/line_kind.py      |  20 +-
+ WEOS/factory/live_pricing.py   |  13 +
+ WEOS/factory/marqt_pdf.py      |  19 +-
+ WEOS/factory/product_admin.py  |  13 +
+ WEOS/factory/project_engine.py |  33 +-
+ WEOS/factory/railing_engine.py | 185 ++++++++--
+ WEOS/website/index.html        | 765 +++++++++++++++++++++++++++++------------
+ 9 files changed, 927 insertions(+), 259 deletions(-)
+BRANCH
+* main c63a828 [origin/main] Fix railing PDF label mismatch and BOM rates not reaching Total Amount.

@@ -1,0 +1,35 @@
+﻿OK: init_db {'ok': True, 'backend': 'sqlite', 'url': 'sqlite:///C:/Users/nasim ahmad/AppData/Local/Temp/weos_scan_pack_arydq6a_/data/weos.db', 'initialised': True}
+OK: serial W1 got W1
+OK: location Hall got Hall
+OK: type sliding got Sliding window
+OK: eco amount recomputed 17437.5
+OK: glass human 8 mm ╖ clear ╖ 8mm Clear Toughened
+OK: customer_line_amount eco
+OK: casement label Casement
+OK: no coming soon
+OK: no stub id
+OK: unapproved
+OK: pack hidden while draft
+OK: draft copy
+OK: all scan amounts >0 [{'serial': 'W1', 'location': 'Hall', 'locationName': 'Hall', 'positionName': 'Hall', 'type': 'Sliding window', 'size': '1500╫1200 mm', 'qty': 2, 'glass': '8 mm ╖ clear ╖ 8mm Clear Toughened', 'colour': 'white', 'amount': 17437.5}, {'serial': 'W2', 'location': 'ù', 'locationName': '', 'positionName': '', 'type': 'Casement', 'size': '1000╫1200 mm', 'qty': 1, 'glass': 'ù', 'colour': 'ù', 'amount': 10333.6}]
+OK: scan location passed
+OK: update blocked
+OK: approved flag
+OK: pack available
+OK: 1 update
+OK: 1 photo
+OK: 1 challan
+OK: scan shows timeline
+OK: download all button
+OK: no pending copy after approve
+OK: all.pdf
+OK: quote sheet pdf
+OK: not woodenmax
+OK: allukraft branding
+OK: no coming soon in sheet
+OK: location in sheet
+OK: ledger pdf
+OK: ledger title
+OK: ledger not woodenmax
+OK: ledger html cards
+OK scan amounts + ledger cards + quote branding + project pack

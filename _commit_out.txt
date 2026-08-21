@@ -1,0 +1,3 @@
+﻿[main b20e333] Restore front-sash meeting miters; keep product-type lock and louvers.
+ 2 files changed, 69 insertions(+), 9 deletions(-)
+ create mode 100644 WEOS/_smoke_front_miters.py

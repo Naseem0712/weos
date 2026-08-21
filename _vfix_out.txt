@@ -1,0 +1,22 @@
+﻿SPECS:
+  '29mm Sliding Window' len 19
+  'W = 2760 mm; H = 2380 mm' len 24
+  'Area = 70.71 Sq.Ft.' len 19
+  'Panels: S1 Sliding 1350╫2320; S2 Sliding 1350╫2320' len 50
+  'Weight = 187.424 kg' len 19
+  'Glazing = 5 mm' len 14
+  'Colour / Powder-coat = White' len 28
+  'Series = 35MM Gulf Slim Series' len 30
+  'Track / Outer = 2 track top/bottom horizontle track 95.3╫31.2 mm (using 2-track)' len 80
+  'Handle = Standard' len 17
+  'Section: 2 track top/bottom horizontle track ╖ (track_horizontal) ╖ 31.2╫95.3 mm' len 80
+  'Section: 2 track left/right verticale track ╖ (track_vertical) ╖ 32.8╫100.0 mm' len 78
+  'Section: 3 track top/bottom horizontle track ╖ (track_horizontal) ╖ 31.0╫145.2 mm' len 81
+  'Section: 3 track left/right verticale track ╖ (track_vertical) ╖ 32.8╫150.0 mm' len 78
+svg_len 8011
+rl_drawing (3726.0, 3783.5)
+png_len 336105
+sectionSpecs keys ['seriesId', 'seriesTitle', 'track', 'sash', 'interlock', 'meeting', 'wallThicknessMm', 'sections', 'designOptions']
+sectionDetails n 0
+layout {'system': 'sliding', 'trackCount': 2.0, 'glassCount': 2, 'meshCount': 0, 'panels': [{'id': 'S1', 'role': 'sliding', 'side': 'back', 'label': 'Sliding', 'track': 'back', 'depth': 2, 'pack': '', 'widthMm': 1350.0, 'heightMm': 2320.0, 'glassWidthMm': 1220.0, 'glassHeightMm': 2190.0, 'handle': True}, {'id': 'S2', 'role': 'sliding', 'side': 'front', 'label': 'Sliding', 'track': 'front', 'depth': 1, 'pack': '', 'widthMm': 1350.0, 'heightMm': 2320.0, 'glassWidthMm': 1285.0, 'glassHeightMm': 2190.0, 'handle': True}], 'sectionSizes': None}
+pdf_bytes 71583

@@ -1,0 +1,100 @@
+5a69297 ﻿Fix catalogue window live preview falling back to placeholder.
+e6c8941 Add GSTIN company workspace login with quote-number versioning.
+9ed53cd Persist company/project setup to Postgres and add customer ledger.
+a447a5e Expand shared glass catalogue and complex louvers design.
+6f0c38a Add universal material weight engine as single source of truth.
+c63a828 Fix railing PDF label mismatch and BOM rates not reaching Total Amount.
+ca9592e ﻿Fix railing PDF collapsing to 1mm when cart width is not seeded into options.railing.
+9df8671 ﻿Accept Length/ActualLength for railing RFT materials; add unit auto-fill + formula help.
+b20e333 Restore front-sash meeting miters; keep product-type lock and louvers.
+091bd4c Lock cart/PDF by product type; add louvers as glass-replacement feature.
+bdd615f Fix railing PDF printing as window; lock cart/PDF by product type.
+000a8ca Fix Fold & Sliding quote PDF to match canvas (4+4 leaves, specs, sections).
+ee8427f Add staircase glass geometry, nesting wastage, and full railing cost cascade.
+3a92092 Tighten sidebar to logo width, persist agent minimize, and split Project Setup from Window Cart.
+3e27200 Merge railing into shared live canvas with advanced multi-shape designs.
+822260e Render railing lines as railings (not windows); light sidebar + transparent logo.
+acc5f88 Replace WEOS logo and clean sidebar brand plate; remove pop-out styling.
+d72ca18 Improve WEOS logo presentation: contrast backing and overlap pop-out header.
+78bf49d Add railing type, series setup, product library persistence, WEOS logo, and PDF parity fixes.
+11339c9 Validate WEOS engineering smoke tests
+## main...origin/main
+ M knowledge_base/memories/formula/fx_acp_weight.json
+ M knowledge_base/memories/formula/fx_alu_section_weight.json
+ M knowledge_base/memories/formula/fx_alu_sheet_weight.json
+ M knowledge_base/memories/formula/fx_glass_dgu_weight.json
+ M knowledge_base/memories/formula/fx_glass_laminated_weight.json
+ M knowledge_base/memories/formula/fx_glass_weight.json
+ M knowledge_base/memories/formula/fx_glass_weight_waste.json
+ M knowledge_base/memories/formula/fx_sheet_generic_weight.json
+ M knowledge_base/memories/formula/fx_steel_weight.json
+ M knowledge_base/memories/relationships.json
+?? WEOS/_smoke_easy_railing.py
+?? __sb.txt
+?? _agent_out.txt
+?? _agent_report1.txt
+?? _commit_exit.txt
+?? _commit_msg.txt
+?? _commit_out.txt
+?? _commit_result.txt
+?? _commit_status_check.txt
+?? _final_status.txt
+?? _git_diff.txt
+?? _git_log.txt
+?? _git_out.txt
+?? _git_status.txt
+?? _hash.txt
+?? _hash2.txt
+?? _info.txt
+?? _out_diff.txt
+?? _out_log.txt
+?? _out_ok.txt
+?? _push_exit.txt
+?? _push_out.txt
+?? _push_result.txt
+?? _py_git.txt
+?? _rbug.txt
+?? _repro_railing_1mm.py
+?? _repro_railing_quote_bugs.py
+?? _repro_railing_quote_bugs_out.txt
+?? _run_railing_tests.py
+?? _s1_exit.txt
+?? _s1_out.txt
+?? _s2_exit.txt
+?? _s2_out.txt
+?? _s3_exit.txt
+?? _s3_out.txt
+?? _s_easy_err.txt
+?? _s_easy_exit.txt
+?? _s_easy_out.txt
+?? _s_eng_diff.txt
+?? _s_extra_stat.txt
+?? _s_git_diffstat.txt
+?? _s_git_log.txt
+?? _s_git_sb.txt
+?? _s_git_short.txt
+?? _s_matches.txt
+?? _s_pdf_err.txt
+?? _s_pdf_exit.txt
+?? _s_pdf_out.txt
+?? _s_plan_extract.txt
+?? _s_stage_plan.txt
+?? _s_summary.txt
+?? _s_summary_ascii.txt
+?? _show_stat.txt
+?? _smoke_out.txt
+?? _smoke_pdf_code.txt
+?? _smoke_pdf_err.txt
+?? _smoke_pdf_result.txt
+?? _smoke_pdf_result2.txt
+?? _stage_check.txt
+?? _stage_check2.txt
+?? _test_out.txt
+?? _verify_railing_quote_fix.py
+?? _verify_railing_quote_fix.txt
+?? _vfix_out.txt
+?? knowledge_base/memories/learning/learn_smoke_upgrade_3fb3c861.json
+?? knowledge_base/memories/learning/learn_smoke_upgrade_7e6a002f.json
+?? knowledge_base/memories/learning/learn_smoke_upgrade_e8fe5210.json
+?? knowledge_base/memories/learning/learn_smoke_upgrade_fae3f567.json
+5a6929727d6eba05b6356b78d2631c55933a4b93
