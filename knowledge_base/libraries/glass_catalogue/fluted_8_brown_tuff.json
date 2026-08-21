@@ -1,0 +1,26 @@
+{
+  "id": "fluted_8_brown_tuff",
+  "name": "8mm Fluted Brown Toughened",
+  "makeup": "single",
+  "thicknessMm": 8.0,
+  "overallMm": 8.0,
+  "glass1Mm": null,
+  "glass2Mm": null,
+  "airGapMm": null,
+  "pvbMm": null,
+  "layersMm": [
+    8.0
+  ],
+  "colour": "brown",
+  "brand": "",
+  "toughened": true,
+  "toughenedLabel": "Toughened",
+  "rate": null,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "8mm",
+  "display_label": "8 mm Toughened",
+  "specLine": "8mm · Brown · Toughened",
+  "status": "active",
+  "updatedAt": "2026-08-21T17:05:17.608640+00:00"
+}

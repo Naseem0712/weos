@@ -1,0 +1,26 @@
+{
+  "id": "fluted_8_grey_tuff",
+  "name": "8mm Fluted Grey Toughened",
+  "makeup": "single",
+  "thicknessMm": 8.0,
+  "overallMm": 8.0,
+  "glass1Mm": null,
+  "glass2Mm": null,
+  "airGapMm": null,
+  "pvbMm": null,
+  "layersMm": [
+    8.0
+  ],
+  "colour": "grey",
+  "brand": "",
+  "toughened": true,
+  "toughenedLabel": "Toughened",
+  "rate": null,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "8mm",
+  "display_label": "8 mm Toughened",
+  "specLine": "8mm · Grey · Toughened",
+  "status": "active",
+  "updatedAt": "2026-08-21T17:05:17.599100+00:00"
+}

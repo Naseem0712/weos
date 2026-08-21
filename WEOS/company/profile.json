@@ -12,10 +12,33 @@
   "bankDetails": "",
   "cin": "",
   "terms": "",
+  "pdfBrand": "",
   "logoPath": null,
   "logoUrl": null,
   "hasDeletePin": false,
   "hasLoginPin": false,
-  "updatedAt": "2026-08-16T16:24:28.877950+00:00",
-  "loginPinHash": "b61606024b722b5882cac57ead924b78bf54258a5f0453269f1db0475f92ca86"
+  "updatedAt": "2026-08-21T18:11:49.204378+00:00",
+  "loginPinHash": "b61606024b722b5882cac57ead924b78bf54258a5f0453269f1db0475f92ca86",
+  "loginSessions": [
+    {
+      "hash": "d0635eef8c02b58504c8cc1085327791d6b46e08b776c936652c74043f3d7053",
+      "createdAt": "2026-08-21T17:14:04.995765+00:00",
+      "expiresAt": "2026-09-20T17:14:04.995765+00:00"
+    },
+    {
+      "hash": "f0177a0ea08c35eeea24e084fe9ba2d59c182f17b2b5b01ff835c0737da1fdc8",
+      "createdAt": "2026-08-21T17:20:42.372108+00:00",
+      "expiresAt": "2026-09-20T17:20:42.372108+00:00"
+    },
+    {
+      "hash": "3807061df7069d06afde319a05d9f94b8434fceb501f8019f07472868b3278fb",
+      "createdAt": "2026-08-21T18:11:45.211734+00:00",
+      "expiresAt": "2026-09-20T18:11:45.211734+00:00"
+    },
+    {
+      "hash": "2275f4124bf958926d88b3bc3f4d2ab490f20e9060b291fc8695425dd4e0d85a",
+      "createdAt": "2026-08-21T18:11:49.155702+00:00",
+      "expiresAt": "2026-09-20T18:11:49.155702+00:00"
+    }
+  ]
 }

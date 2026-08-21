@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "seeded": [
+    "hw_handle_ss_handle",
+    "hw_roller_sliding_roller_twin",
+    "hw_lock_touch_lock",
+    "hw_hinge_hinge_4in",
+    "hw_floor_spring_floor_spring_80kg",
+    "hw_floor_spring_floor_spring_120kg",
+    "hw_floor_spring_floor_spring_150kg"
+  ],
+  "count": 7
+}

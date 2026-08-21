@@ -1,6 +1,13 @@
 {
   "ok": true,
-  "seeded": [],
+  "seeded": [
+    "fluted_5_clear_tuff",
+    "fluted_8_clear_tuff",
+    "fluted_5_grey_tuff",
+    "fluted_8_grey_tuff",
+    "fluted_5_brown_tuff",
+    "fluted_8_brown_tuff"
+  ],
   "skipped": [
     "5mm_clear",
     "5mm_clear_toughened",
@@ -34,16 +41,24 @@
     "dgu_10_12_10",
     "dgu_5_8_5"
   ],
-  "count": 0,
-  "libraryCount": 31,
+  "count": 6,
+  "libraryCount": 37,
   "productSync": {
     "ok": true,
     "updated": [
+      "25mm_eco_gulf",
+      "27mm_high_end_domal",
+      "29mm_premium_euro",
       "29mm_sliding",
+      "31mm_gulf_lux_slim",
+      "32mm_dual_euro",
+      "35mm_gulf_slim",
       "35mm_sliding",
+      "bathroom_ventilator",
       "casement_stub",
       "fixed_stub",
-      "folding_stub"
+      "folding_stub",
+      "shower_partition"
     ],
     "skipped": [
       "acp_stub",
@@ -53,6 +68,6 @@
       "pergola_stub",
       "railings_stub"
     ],
-    "optionCount": 31
+    "optionCount": 37
   }
 }
