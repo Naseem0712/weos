@@ -5447,7 +5447,7 @@ function renderPackageQuotes(){
         <div><label class="l">Rate ₹</label><input data-pkg="rate" type="number" min="0" step="0.01" value="${esc(it.rate==null?'':it.rate)}" placeholder="opt."/></div>
         <div><label class="l">Amount ₹</label><input data-pkg="amount" type="number" min="0" step="0.01" value="${esc(it.amount)}"/></div>
         <button class="btn ghost sm" type="button" data-pkg-del="${i}" title="Remove">✕</button>
-        <div class='pkg-attachments'>${(it.attachments || []).map(a => <img src='${a.url}' style='max-width:80px; margin-right:4px;' />}).join('')}</div>
+        <div class='pkg-attachments'>${(it.attachments || []).map(a => '<img src="' + esc(a.url || '') + '" style="max-width:80px; margin-right:4px;" />').join('')}</div>
            <div class="pkg-note"><label class="l">Description</label><input data-pkg="note" value="${esc(it.note||'')}" placeholder="location / product description" /></div>
       </div>`;
     }).join('')}</div>
@@ -5494,7 +5494,6 @@ function renderPackageQuotes(){
         const newItem = { ...it };
        newItem[inp.dataset.pkg] = inp.value;
        cur.items[idx] = newItem;
-       it = newItem;
         if (['amount','qty','rate'].includes(inp.dataset.pkg)) {
           cur.gstAmount = undefined;
           cur.projectValue = undefined;
