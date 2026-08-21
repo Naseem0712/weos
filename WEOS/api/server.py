@@ -20,7 +20,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from WEOS import TAGLINE, __version__
+from WEOS import TAGLINE, __version__, BUILD_REVISION
 from WEOS.api.calculate import build_api_response, get_product_detail, products_catalog
 from WEOS.factory.formula import (
     DEFAULT_QTY_FORMULA_BY_UNIT,
@@ -1053,6 +1053,7 @@ def api_version() -> dict[str, Any]:
         "name": "WEOS",
         "app": "WEOS",
         "version": __version__,
+        "buildRevision": BUILD_REVISION,
         "tagline": TAGLINE,
         "python": sys.version.split()[0],
         "platform": platform.platform(),

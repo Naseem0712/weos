@@ -7,4 +7,5 @@ API JSON is the product; CAD/DXF is optional factory export only.
 """
 
 __version__ = "2.0.0"
+BUILD_REVISION = "e32b628"
 TAGLINE = "Design • Calculate • Manufacture • Quote"
