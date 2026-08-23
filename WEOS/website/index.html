@@ -2957,12 +2957,64 @@ function _previewIntrinsicSize(el) {
   const nh = Number(el.naturalHeight || el.height || 0);
   return { w: nw, h: nh };
 }
+function _previewElementSignature(el) {
+  if (!el) return '';
+  const tag = (el.tagName || '').toLowerCase();
+  if (tag === 'svg') {
+    const title = el.querySelector('title');
+    return [
+      'svg',
+      el.getAttribute('data-model-system') || '',
+      el.getAttribute('viewBox') || '',
+      el.getAttribute('width') || '',
+      el.getAttribute('height') || '',
+      title ? title.textContent || '' : '',
+    ].join('|');
+  }
+  return ['img', el.getAttribute('src') || '', el.naturalWidth || '', el.naturalHeight || ''].join('|');
+}
+function normalizePreviewSvgViewport(svg) {
+  if (!svg || !svg.tagName || svg.tagName.toLowerCase() !== 'svg') return;
+  if (svg.dataset.previewViewport === 'normalized') return;
+  try {
+    const box = svg.getBBox();
+    if (!(box && box.width > 0 && box.height > 0)) return;
+    const vb = svg.viewBox && svg.viewBox.baseVal;
+    const old = (vb && vb.width > 0 && vb.height > 0)
+      ? { x: vb.x, y: vb.y, w: vb.width, h: vb.height }
+      : null;
+    const pad = Math.max(box.width, box.height) * 0.035;
+    let nx = box.x - pad;
+    let ny = box.y - pad;
+    let nw = box.width + pad * 2;
+    let nh = box.height + pad * 2;
+    if (old) {
+      const shrink = (nw * nh) / Math.max(old.w * old.h, 1);
+      const aspectOld = old.w / Math.max(old.h, 1);
+      const aspectNew = nw / Math.max(nh, 1);
+      // Only crop dead whitespace. Keep deliberately authored catalogue viewBoxes.
+      if (shrink > 0.96 || Math.abs(Math.log(aspectNew / Math.max(aspectOld, 0.01))) > 0.75) {
+        nx = old.x; ny = old.y; nw = old.w; nh = old.h;
+      }
+      svg.dataset.previewOriginalViewBox = `${old.x} ${old.y} ${old.w} ${old.h}`;
+    }
+    svg.setAttribute('viewBox', `${nx} ${ny} ${nw} ${nh}`);
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svg.dataset.previewViewport = 'normalized';
+  } catch (_) {}
+}
 function applyPreviewFit() {
   const box = $('livePreview');
   if (!box) return;
   if (box._fitRaf) cancelAnimationFrame(box._fitRaf);
   box._fitRaf = requestAnimationFrame(() => {
     const el = box.querySelector('svg') || box.querySelector('img');
+    const sig = _previewElementSignature(el);
+    if (sig && sig !== box._previewSig) {
+      box._previewSig = sig;
+      state.previewZoom = 1;
+    }
+    if (el && el.tagName && el.tagName.toLowerCase() === 'svg') normalizePreviewSvgViewport(el);
     const zoom = previewZoomValue();
     const label = $('prevZoomLabel');
     if (label) label.textContent = Math.abs(zoom - 1) < 0.02 ? 'Fit' : Math.round(zoom * 100) + '%';
@@ -3050,6 +3102,7 @@ function linePreviewIsValid(ln) {
 function markLivePreviewLine(ln, key) {
   state._previewLineId = (ln && (ln.lineId || ln.id)) || null;
   state._previewKey = key || (ln ? lineIdentityKey(ln) : null);
+  if (typeof applyPreviewFit === 'function') applyPreviewFit();
 }
 function invalidatePdfCache() {
   if (state._custPdfCache && state._custPdfCache.url) {
@@ -4869,7 +4922,10 @@ function renderRailingLineSpecs(q, cfg) {
 
 let _previewGen = 0;
 let _specialPreviewAt = 0;
-function markSpecialPreview() { _specialPreviewAt = Date.now(); }
+function markSpecialPreview() {
+  _specialPreviewAt = Date.now();
+  if (typeof applyPreviewFit === 'function') applyPreviewFit();
+}
 function specialPreviewFresh() { return (Date.now() - _specialPreviewAt) < 450; }
 
 async function refreshPreview() {
