@@ -364,6 +364,7 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
     """
     from WEOS.factory.line_kind import (
         is_louver_cart_line,
+        is_pergola_cart_line,
         is_railing_cart_line,
         is_shower_cart_line,
         is_ventilator_cart_line,
@@ -396,6 +397,7 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
         or is_shower_cart_line(line)
         or is_ventilator_cart_line(line)
         or is_louver_cart_line(line)
+        or is_pergola_cart_line(line)
     )
     if special:
         svg = _line_canvas_svg(line)

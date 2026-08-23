@@ -278,28 +278,86 @@ def _louver_line_result(line: Mapping[str, Any], *, include_preview: bool = True
     result["glass"] = []
     result["hardware"] = []
     result["trackRail"] = []
+    result["cutList"] = []
+    result["bom"] = []
     opts = dict(result.get("options") or {})
     opts["productType"] = "louvers"
     opts.pop("system", None)
     result["options"] = opts
-    if include_preview:
-        try:
-            from WEOS.factory.panel_fills import compute_louver_layout
+    try:
+        from WEOS.factory.panel_fills import compute_louver_layout
+        from WEOS.factory.special_schematics import louver_svg
 
-            w = float(frozen.get("width") or 0)
-            h = float(frozen.get("height") or 0)
-            fill = (frozen.get("panelFill") if isinstance(frozen.get("panelFill"), Mapping) else None) or {
-                "fillType": "louvers",
-                "louverMode": "uniform",
-                "bladeMm": 80,
-                "gapMm": 20,
-            }
-            layout = compute_louver_layout(x0=0, y0=0, x1=max(w, 1), y1=max(h, 1), fill=fill) if w and h else {}
-            result["layout"] = {"kind": "louver", "widthMm": w, "heightMm": h, **(layout or {})}
-            result["preview"] = frozen.get("preview") if isinstance(frozen.get("preview"), Mapping) else {"svg": None}
-        except Exception:
-            result["preview"] = {"svg": None}
+        w = float(frozen.get("width") or 0)
+        h = float(frozen.get("height") or 0)
+        fill = (frozen.get("panelFill") if isinstance(frozen.get("panelFill"), Mapping) else None) or {
+            "fillType": "louvers",
+            "louverMode": "uniform",
+            "bladeMm": 80,
+            "gapMm": 20,
+        }
+        layout = compute_louver_layout(x0=0, y0=0, x1=max(w, 1), y1=max(h, 1), fill=fill) if w and h else {}
+        result["layout"] = {"kind": "louver", "system": "louver", "widthMm": w, "heightMm": h, "trackCount": None, **(layout or {})}
+        svg = _special_line_preview_svg(result, include_preview=include_preview, builder=lambda: louver_svg(result))
+        result["preview"] = {"svg": svg, "pdfSvg": svg} if svg else {"svg": None}
+    except Exception:
+        result["layout"] = {"kind": "louver", "system": "louver", "trackCount": None}
+        result["preview"] = {"svg": None}
     result["note"] = "Louver product — not a window system"
+    return apply_selling_to_line_result(result, frozen)
+
+
+def _pergola_line_result(line: Mapping[str, Any], *, include_preview: bool = True) -> dict[str, Any]:
+    """Pergola product: catalogue-style drawing/specs. Never window sections."""
+    from WEOS.factory.live_pricing import apply_selling_to_line_result
+    from WEOS.factory.quote_item_snapshot import attach_snapshot, product_id_of
+
+    frozen = attach_snapshot(dict(line) if isinstance(line, Mapping) else {})
+    pid = product_id_of(frozen) or "pergola_stub"
+    try:
+        product = load_product(pid, strict=False)
+    except Exception:
+        product = {
+            "id": pid,
+            "displayName": frozen.get("displayName") or "Pergola",
+            "category": "Pergolas",
+            "quotation": {},
+            "_stub": True,
+        }
+    result = _stub_line_result(frozen, product)
+    result["product"] = pid
+    result["displayName"] = frozen.get("displayName") or product.get("displayName") or "Pergola"
+    result["category"] = frozen.get("category") or product.get("category") or "Pergolas"
+    result["productType"] = frozen.get("productType") or "pergolas"
+    result["status"] = "pergola"
+    result["glass"] = []
+    result["hardware"] = []
+    result["trackRail"] = []
+    result["cutList"] = []
+    result["bom"] = []
+    w = float(frozen.get("width") or 0)
+    h = float(frozen.get("height") or 0)
+    opts = dict(result.get("options") or {})
+    opts["productType"] = "pergolas"
+    opts.setdefault("pergola", {})
+    opts.pop("system", None)
+    result["options"] = opts
+    result["layout"] = {
+        "kind": "pergola",
+        "system": "pergola",
+        "widthMm": w,
+        "heightMm": h,
+        "depthMm": h,
+        "trackCount": None,
+    }
+    try:
+        from WEOS.factory.special_schematics import pergola_svg
+
+        svg = _special_line_preview_svg(result, include_preview=include_preview, builder=lambda: pergola_svg(result))
+        result["preview"] = {"svg": svg, "pdfSvg": svg} if svg else {"svg": None}
+    except Exception:
+        result["preview"] = {"svg": None}
+    result["note"] = "Pergola product — catalogue plan and material drawing"
     return apply_selling_to_line_result(result, frozen)
 
 
@@ -880,6 +938,12 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
         except Exception as exc:  # pragma: no cover
             _log.exception("louver line calc failed: %s", exc)
             return _error_line_result(line, f"louver calc failed: {exc}")
+    if world == "pergola":
+        try:
+            return _pergola_line_result(line, include_preview=include_preview)
+        except Exception as exc:  # pragma: no cover
+            _log.exception("pergola line calc failed: %s", exc)
+            return _error_line_result(line, f"pergola calc failed: {exc}")
     if not product_id:
         return _error_line_result(line, PRODUCT_UNAVAILABLE)
     if world in ("railing", "staircase_railing"):
@@ -914,6 +978,12 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
         except Exception as exc:  # pragma: no cover
             _log.exception("louver line calc failed: %s", exc)
             return _error_line_result(line, f"louver calc failed: {exc}")
+    if world == "pergola":
+        try:
+            return _pergola_line_result(line, include_preview=include_preview)
+        except Exception as exc:  # pragma: no cover
+            _log.exception("pergola line calc failed: %s", exc)
+            return _error_line_result(line, f"pergola calc failed: {exc}")
     if world == "ventilator":
         enriched = dict(line) if isinstance(line, Mapping) else {}
         enriched.setdefault("productType", "bathroom_ventilator")

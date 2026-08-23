@@ -568,10 +568,22 @@ def draw_model_elevation(
 
 def draw_line_model_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
     """Regenerate geometry for a cart line and draw it. Returns False if unavailable."""
-    from WEOS.factory.line_kind import is_louver_cart_line, is_railing_cart_line, is_shower_cart_line, is_ventilator_cart_line
+    from WEOS.factory.line_kind import (
+        is_louver_cart_line,
+        is_pergola_cart_line,
+        is_railing_cart_line,
+        is_shower_cart_line,
+        is_ventilator_cart_line,
+    )
 
     # Never regenerate window geometry for designer lines (ReportLab drawers handle them).
-    if is_railing_cart_line(line) or is_shower_cart_line(line) or is_ventilator_cart_line(line) or is_louver_cart_line(line):
+    if (
+        is_railing_cart_line(line)
+        or is_shower_cart_line(line)
+        or is_ventilator_cart_line(line)
+        or is_louver_cart_line(line)
+        or is_pergola_cart_line(line)
+    ):
         return False
     w = float(line.get("width") or 0)
     h = float(line.get("height") or 0)

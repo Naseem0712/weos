@@ -153,6 +153,10 @@ def is_staircase_product_type(product_type: Any) -> bool:
     return normalize_product_type(product_type) == "staircase_railing"
 
 
+def is_pergola_product_type(product_type: Any) -> bool:
+    return normalize_product_type(product_type) == "pergolas"
+
+
 def line_world(line: Mapping[str, Any] | None = None, *, product: Mapping[str, Any] | None = None) -> str:
     """Single cart-line world for calc / PDF / UI.
 
@@ -162,6 +166,8 @@ def line_world(line: Mapping[str, Any] | None = None, *, product: Mapping[str, A
         return "ventilator"
     if is_shower_cart_line(line):
         return "shower"
+    if is_pergola_cart_line(line):
+        return "pergola"
     if is_louver_cart_line(line):
         return "louver"
     if is_railing_cart_line(line):
@@ -190,6 +196,8 @@ def product_world(product_type: Any = None, *, category: Any = None, product_id:
         return "ventilator"
     if pt == "shower_partition":
         return "shower"
+    if pt == "pergolas":
+        return "pergola"
     if pt == "louvers":
         return "louver"
     cat = str(category or "").lower()
@@ -198,6 +206,8 @@ def product_world(product_type: Any = None, *, category: Any = None, product_id:
         return "ventilator"
     if "louver" in cat or "louvre" in cat or "louver" in pid or "louvre" in pid:
         return "louver"
+    if "pergola" in cat or "pergola" in pid:
+        return "pergola"
     if "stair" in cat and "rail" in cat:
         return "staircase_railing"
     if "rail" in cat:
@@ -234,7 +244,7 @@ def product_has_tracks(product_type: Any = None, *, system: Any = None, category
     Casement, railing, shower, pergola, ACP/HPL/louvers do not.
     """
     sys = str(system or "").strip().lower()
-    if sys in ("casement", "openable", "opening", "shower", "ventilator", "railing", "grid"):
+    if sys in ("casement", "openable", "opening", "shower", "ventilator", "railing", "pergola", "grid"):
         return False
     if sys in ("sliding", "telescopic", "synchron", "style", "bifold", "fold", "fold_sliding", "fold_and_sliding"):
         return True
@@ -275,6 +285,34 @@ def is_louver_cart_line(line: Mapping[str, Any] | None) -> bool:
         sp = str(snap.get("product_id") or "").lower()
         world = str((snap.get("profile_snapshot") or {}).get("world") or "").lower()
         if world == "louver" or "louver" in sc or "louvre" in sc or "louver" in sp:
+            return True
+    return False
+
+
+def is_pergola_cart_line(line: Mapping[str, Any] | None) -> bool:
+    """True when the product is a pergola catalogue/designer line."""
+    if not isinstance(line, Mapping):
+        return False
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    pt = normalize_product_type(
+        line.get("productType") or (opts.get("productType") if isinstance(opts, Mapping) else None)
+    )
+    if pt == "pergolas":
+        return True
+    if isinstance(opts, Mapping) and isinstance(opts.get("pergola"), Mapping):
+        return True
+    cat = str(line.get("category") or "").lower()
+    if "pergola" in cat:
+        return True
+    pid = str(line.get("product") or line.get("productId") or "").lower()
+    if "pergola" in pid:
+        return True
+    snap = line.get("itemSnapshot") or line.get("item_snapshot")
+    if isinstance(snap, Mapping):
+        sc = str(snap.get("category_snapshot") or "").lower()
+        sp = str(snap.get("product_id") or "").lower()
+        world = str((snap.get("profile_snapshot") or {}).get("world") or "").lower()
+        if world == "pergola" or "pergola" in sc or "pergola" in sp:
             return True
     return False
 

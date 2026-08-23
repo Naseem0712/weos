@@ -1206,6 +1206,7 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
     """Fast SVG preview for live cart — uses geometry engine only path via generate_job."""
     # Railing is not a window — never route it through generate_job.
     from WEOS.factory.line_kind import (
+        is_pergola_product_type,
         is_railing_product_type,
         is_shower_product_type,
         is_ventilator_product_type,
@@ -1216,6 +1217,7 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
     rail_cfg = getattr(body, "railing", None)
     shower_cfg = getattr(body, "shower", None)
     vent_cfg = getattr(body, "ventilator", None)
+    panel_fill = getattr(body, "panelFill", None)
     world = product_world(
         getattr(body, "productType", None),
         category=getattr(body, "category", None),
@@ -1338,17 +1340,56 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
         or "facade" in str(getattr(body, "category", "") or "").lower()
         or "facade" in prod
     ):
+        from WEOS.factory.special_schematics import louver_svg
+
         w = float(getattr(body, "width", 0) or 0)
         h = float(getattr(body, "height", 0) or 0)
-        return {
-            "svg": None,
-            "system": "louver",
+        cfg = {
+            "width": w,
+            "height": h,
             "productType": getattr(body, "productType", None) or "louvers",
+            "category": getattr(body, "category", None) or "Louvers",
+            "panelFill": panel_fill if isinstance(panel_fill, dict) else {"fillType": "louvers"},
+        }
+        return {
+            "svg": louver_svg(cfg),
+            "system": "louver",
+            "productType": "louvers",
             "specifications": {
                 "type": "Louvers",
-                "size": f"{w:g}×{h:g} mm" if w and h else "",
+                "size": f"{w:g} x {h:g} mm" if w and h else "",
+                "blade": "Aluminium louver blades",
             },
             "layout": {"system": "louver", "widthMm": w, "heightMm": h, "trackCount": None},
+            "sectionSpecs": {},
+        }
+    if (
+        world == "pergola"
+        or is_pergola_product_type(getattr(body, "productType", None))
+        or "pergola" in prod
+        or "pergola" in str(getattr(body, "category", "") or "").lower()
+    ):
+        from WEOS.factory.special_schematics import pergola_svg
+
+        w = float(getattr(body, "width", 0) or 0)
+        h = float(getattr(body, "height", 0) or 0)
+        cfg = {
+            "width": w,
+            "height": h,
+            "productType": "pergolas",
+            "category": "Pergolas",
+        }
+        return {
+            "svg": pergola_svg(cfg),
+            "system": "pergola",
+            "productType": "pergolas",
+            "specifications": {
+                "type": "Pergola",
+                "size": f"{w:g} x {h:g} mm" if w and h else "",
+                "fixing": "Floor / wall / garden as specified",
+                "materials": "Posts, rafters, louvers / glass / polycarbonate",
+            },
+            "layout": {"system": "pergola", "widthMm": w, "heightMm": h, "trackCount": None},
             "sectionSpecs": {},
         }
     try:
@@ -1388,10 +1429,10 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             cat = str(getattr(body, "category", "") or meta.get("category") or "").lower()
             ptype = str(getattr(body, "productType", None) or meta.get("productType") or "").lower()
             skip_window_engine = (
-                world in ("louver", "railing", "staircase_railing", "shower", "ventilator")
+                world in ("louver", "pergola", "railing", "staircase_railing", "shower", "ventilator")
                 or "louver" in prod or "louvre" in prod or "facade" in prod or "facade" in cat
-                or "rail" in prod or "shower" in prod or "ventilat" in prod
-                or "louver" in ptype or "louvre" in ptype
+                or "rail" in prod or "shower" in prod or "ventilat" in prod or "pergola" in prod
+                or "louver" in ptype or "louvre" in ptype or "pergola" in ptype
             )
             if not skip_window_engine:
                 engine_ids.append("29mm_sliding")

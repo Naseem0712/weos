@@ -375,6 +375,43 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
             v = clean_profile_print_name(v)
         rows.append((str(label or "").strip().upper(), v))
 
+    try:
+        from WEOS.factory.line_kind import line_world
+
+        world = line_world(line)
+    except Exception:
+        world = "window"
+    if world in ("louver", "pergola"):
+        title = str(line.get("displayName") or ("Pergola" if world == "pergola" else "Louvers"))
+        add("", title)
+        add("SIZE", f"{_mm_txt(w)} x {_mm_txt(h)} mm")
+        add("AREA", f"{_area_sqft(w, h)} Sq.Ft.")
+        colour = opts.get("powderCoatName") or line.get("powderCoatName") or opts.get("colour") or line.get("colour")
+        if world == "louver":
+            fill = line.get("panelFill") if isinstance(line.get("panelFill"), Mapping) else opts.get("panelFill")
+            fill = fill if isinstance(fill, Mapping) else {}
+            orient = str(fill.get("orientation") or "horizontal").replace("_", " ").title()
+            blade = fill.get("bladeWidthMm") or fill.get("bladeMm") or 80
+            gap = fill.get("gapMm") or 20
+            add("TYPE", "Standalone aluminium louvers")
+            add("BLADE", f"{orient} blades - {_mm_txt(blade)} mm face")
+            add("GAP", f"{_mm_txt(gap)} mm")
+            add("MATERIAL", "Aluminium louver blades and outer frame")
+        else:
+            pergola = opts.get("pergola") if isinstance(opts.get("pergola"), Mapping) else {}
+            fixing = pergola.get("fixing") or pergola.get("mount") or opts.get("fixing") or "Floor / wall / garden as specified"
+            post = pergola.get("post") or pergola.get("postSection") or "Posts as specified"
+            rafter = pergola.get("rafter") or pergola.get("rafterSection") or "Rafters as specified"
+            cover = pergola.get("cover") or pergola.get("roofFill") or "Louvers / glass / polycarbonate as specified"
+            add("TYPE", "Pergola catalogue design")
+            add("FIXING", fixing)
+            add("POSTS", post)
+            add("RAFTERS", rafter)
+            add("ROOF", cover)
+        if colour:
+            add("COLOUR", str(colour).replace("_", " ").title())
+        return rows
+
     snap_title = ""
     ident = line.get("itemSnapshot") or line.get("item_snapshot")
     if isinstance(ident, Mapping):

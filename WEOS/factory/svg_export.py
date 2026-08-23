@@ -998,7 +998,7 @@ def preview_svgs_for_drawing(
 
 def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> str | None:
     """Build quote/canvas SVG for a cart line from the same geometry engine as live preview."""
-    from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line, is_ventilator_cart_line
+    from WEOS.factory.line_kind import is_pergola_cart_line, is_railing_cart_line, is_shower_cart_line, is_ventilator_cart_line
 
     prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
     live_svg = str((prev or {}).get("svg") or (prev or {}).get("pdfSvg") or "").strip()
@@ -1107,7 +1107,26 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
     if is_louver_cart_line(line):
         prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
         svg = (prev or {}).get("svg")
-        return str(svg) if svg else None
+        if svg:
+            return str(svg)
+        try:
+            from WEOS.factory.special_schematics import louver_svg
+
+            return str(louver_svg(line))
+        except Exception:
+            return None
+
+    if is_pergola_cart_line(line):
+        prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
+        svg = (prev or {}).get("svg")
+        if svg:
+            return str(svg)
+        try:
+            from WEOS.factory.special_schematics import pergola_svg
+
+            return str(pergola_svg(line))
+        except Exception:
+            return None
 
     w = float(line.get("width") or 0)
     h = float(line.get("height") or 0)
