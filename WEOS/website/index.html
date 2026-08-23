@@ -78,6 +78,31 @@ a{color:inherit}
 .rail-tools .rt-steps button:active{transform:scale(.96)}
 .rail-tools .rt-steps button.active{background:var(--green);color:#fff;border-color:var(--green)}
 .rail-tools .rt-steps button.done{border-color:var(--green);color:var(--green)}
+.pdf-machine{position:fixed;inset:0;z-index:10000;display:none;align-items:stretch;justify-content:center;background:rgba(15,23,42,.72);backdrop-filter:blur(8px);padding:18px}
+.pdf-machine.active{display:flex}
+.pdf-machine-card{width:min(1040px,100%);min-height:min(760px,100%);background:#f8fafc;border:1px solid rgba(255,255,255,.38);border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.35);display:grid;grid-template-rows:auto auto 1fr;overflow:hidden}
+.pdf-machine-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding:18px 20px 12px;background:linear-gradient(135deg,#e6f7ee,#fff8e8)}
+.pdf-machine-title{margin:0;font-size:1.12rem;font-weight:800;color:#0f172a}
+.pdf-machine-sub{margin:.25rem 0 0;color:#475569;font-size:.86rem}
+.pdf-machine-close{border:1px solid var(--line);background:#fff;color:#0f172a;border-radius:10px;padding:.42rem .7rem;cursor:pointer}
+.pdf-machine-stage{padding:16px 20px;border-top:1px solid rgba(15,23,42,.08);border-bottom:1px solid rgba(15,23,42,.08);background:#fff}
+.machine-scene{height:96px;position:relative;border:1px solid #d8e2df;border-radius:12px;background:linear-gradient(180deg,#f8fafc,#eef7f2);overflow:hidden}
+.machine-wheel{position:absolute;left:24px;top:20px;width:54px;height:54px;border:7px solid #0a5a48;border-top-color:#b45324;border-radius:50%;animation:spin 1s linear infinite}
+.machine-wheel.small{left:92px;top:34px;width:32px;height:32px;border-width:5px;animation-duration:.72s;animation-direction:reverse}
+.machine-beam{position:absolute;left:142px;right:20px;top:44px;height:10px;border-radius:999px;background:repeating-linear-gradient(90deg,#0a5a48 0 28px,#147a62 28px 56px);animation:belt .9s linear infinite}
+.machine-doc{position:absolute;left:160px;top:23px;width:44px;height:54px;border-radius:6px;background:#fff;border:1px solid #cbd5e1;box-shadow:0 6px 18px rgba(15,23,42,.12);animation:docmove 2.4s ease-in-out infinite}
+.machine-doc:before,.machine-doc:after{content:"";position:absolute;left:8px;right:8px;height:2px;background:#94a3b8;border-radius:3px}
+.machine-doc:before{top:16px}.machine-doc:after{top:27px}
+.pdf-machine-status{display:flex;flex-wrap:wrap;gap:.45rem;margin-top:12px}
+.pdf-machine-status span{border:1px solid #d8e2df;background:#f8fafc;border-radius:999px;padding:.22rem .6rem;font-size:.76rem;color:#475569}
+.pdf-machine-status span.active{background:#0a5a48;color:#fff;border-color:#0a5a48}
+.pdf-machine-body{display:grid;grid-template-rows:auto 1fr;min-height:0;background:#e2e8f0}
+.pdf-machine-actions{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;padding:10px 14px;background:#fff;border-bottom:1px solid #d6dedb}
+.pdf-machine-frame{width:100%;height:100%;border:0;background:#fff;display:none}
+.pdf-machine-frame.ready{display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes belt{to{background-position:56px 0}}
+@keyframes docmove{0%{transform:translateX(0);opacity:.1}20%{opacity:1}75%{opacity:1}100%{transform:translateX(620px);opacity:.08}}
 .navbtn{border:0;background:transparent;color:#1f2d28;font-weight:500;text-align:left;padding:.65rem .75rem;border-radius:10px;cursor:pointer;width:100%;transition:background-color .15s ease,color .15s ease,transform .08s ease,box-shadow .15s ease}
 .navbtn:hover{background:rgba(10,90,72,.12);color:#0a5a48}
 .navbtn:active{background:rgba(10,90,72,.26);transform:scale(.98);box-shadow:inset 0 2px 6px rgba(10,90,72,.18)}
@@ -806,7 +831,7 @@ textarea{max-width:100%}
                 <button class="btn ghost sm" type="button" id="btnRailPrev">Back</button>
                 <button class="btn sm" type="button" id="btnRailNext">Next</button>
                 <button class="btn sm" type="button" id="btnRailCalc">Update</button>
-                <button class="btn sec sm" type="button" id="btnRailAdd">Add</button>
+                <button class="btn sec sm hidden" type="button" id="btnRailAdd" aria-hidden="true" tabindex="-1">Add</button>
               </div>
             </div>
             <div class="rt-body" id="railToolsBody">
@@ -1168,7 +1193,7 @@ textarea{max-width:100%}
               <strong style="font-size:.82rem">Shower partition</strong>
               <div class="row" style="gap:.3rem;margin:0">
                 <button class="btn sm" type="button" id="btnShowerCalc">Update</button>
-                <button class="btn sec sm" type="button" id="btnShowerAdd">Add</button>
+                <button class="btn sec sm hidden" type="button" id="btnShowerAdd" aria-hidden="true" tabindex="-1">Add</button>
               </div>
             </div>
             <div class="rt-body">
@@ -1266,7 +1291,7 @@ textarea{max-width:100%}
               <strong style="font-size:.82rem">Bathroom ventilator</strong>
               <div class="row" style="gap:.3rem;margin:0">
                 <button class="btn sm" type="button" id="btnVentCalc">Update</button>
-                <button class="btn sec sm" type="button" id="btnVentAdd">Add</button>
+                <button class="btn sec sm hidden" type="button" id="btnVentAdd" aria-hidden="true" tabindex="-1">Add</button>
               </div>
             </div>
             <div class="rt-body">
@@ -1404,10 +1429,10 @@ textarea{max-width:100%}
                 <div class="chip-row" id="printTermsChips"></div>
               </div>
               <div class="actions-inline">
-                <a class="btn sm" id="linkCust" href="#" target="_blank" title="Customer quotation: branding, sizes, specs, pricing, GST, terms.">📄 Quote PDF</a>
-                <a class="btn ghost sm" id="linkCustPrint" href="#" target="_blank" title="Open quote PDF for printing">🖨 Print quote</a>
+                <a class="btn sm" id="linkCust" href="#" title="Customer quotation: branding, sizes, specs, pricing, GST, terms.">📄 Quote PDF</a>
+                <a class="btn ghost sm" id="linkCustPrint" href="#" title="Open quote PDF for printing">🖨 Print quote</a>
                 <a class="btn ghost sm" id="linkCustXlsx" href="#" title="Download quote as Excel">📊 Quote Excel</a>
-                <a class="btn sec sm" id="linkFact" href="#" target="_blank" title="Factory production sheet: panel schedule, glass sizes, hardware BOM, cut list, weights. No customer pricing.">🏭 Factory Sheet (PDF)</a>
+                <a class="btn sec sm" id="linkFact" href="#" title="Factory production sheet: panel schedule, glass sizes, hardware BOM, cut list, weights. No customer pricing.">🏭 Factory Sheet (PDF)</a>
                 <a class="btn ghost sm" id="linkQuote" href="#" target="_blank" title="Raw quotation data (JSON) — for integrations.">Quote data</a>
               </div>
             </div>
@@ -2500,19 +2525,115 @@ function setButtonBusy(el, busy, label) {
     el.removeAttribute('aria-busy');
   }
 }
-function openPdfProgressTab(title) {
-  const win = window.open('', '_blank');
-  if (!win) return null;
+function ensurePdfMachine() {
+  let box = $('pdfMachine');
+  if (box) return box;
+  box = document.createElement('div');
+  box.id = 'pdfMachine';
+  box.className = 'pdf-machine';
+  box.innerHTML = `
+    <div class="pdf-machine-card" role="dialog" aria-modal="true" aria-labelledby="pdfMachineTitle">
+      <div class="pdf-machine-head">
+        <div>
+          <h2 class="pdf-machine-title" id="pdfMachineTitle">WEOS Engine</h2>
+          <p class="pdf-machine-sub" id="pdfMachineSub">Collecting drawings, specs, rates and terms.</p>
+        </div>
+        <button class="pdf-machine-close" type="button" id="pdfMachineClose">Back to app</button>
+      </div>
+      <div class="pdf-machine-stage">
+        <div class="machine-scene" aria-hidden="true">
+          <span class="machine-wheel"></span><span class="machine-wheel small"></span>
+          <span class="machine-doc"></span><span class="machine-beam"></span>
+        </div>
+        <div class="pdf-machine-status" id="pdfMachineSteps">
+          <span data-step="project">Project data</span>
+          <span data-step="design">Design drawings</span>
+          <span data-step="specs">Specs and totals</span>
+          <span data-step="pdf">PDF pages</span>
+          <span data-step="ready">Ready</span>
+        </div>
+      </div>
+      <div class="pdf-machine-body">
+        <div class="pdf-machine-actions">
+          <button class="btn ghost sm" type="button" id="pdfMachinePrint">Print</button>
+          <a class="btn sm" id="pdfMachineDownload" href="#" download="quote.pdf">Download PDF</a>
+          <span class="muted" id="pdfMachineNote" style="font-size:.8rem">Engine is preparing the file...</span>
+        </div>
+        <iframe class="pdf-machine-frame" id="pdfMachineFrame" title="Generated PDF preview"></iframe>
+      </div>
+    </div>`;
+  document.body.appendChild(box);
+  const close = $('pdfMachineClose');
+  if (close) close.onclick = () => hidePdfMachine();
+  const print = $('pdfMachinePrint');
+  if (print) print.onclick = () => printPdfMachine();
+  return box;
+}
+function showPdfMachine(title) {
+  const box = ensurePdfMachine();
+  box.classList.add('active');
+  const titleEl = $('pdfMachineTitle');
+  if (titleEl) titleEl.textContent = title || 'WEOS Engine';
+  const sub = $('pdfMachineSub');
+  if (sub) sub.textContent = 'Customer data, saved design, 2D drawings and terms are being compiled in one place.';
+  const frame = $('pdfMachineFrame');
+  if (frame) {
+    frame.classList.remove('ready');
+    frame.onload = null;
+    frame.removeAttribute('src');
+  }
+  const dl = $('pdfMachineDownload');
+  if (dl) {
+    dl.href = '#';
+    dl.setAttribute('aria-disabled', 'true');
+  }
+  const note = $('pdfMachineNote');
+  if (note) note.textContent = 'WEOS engine is gathering the latest project details...';
+  updatePdfMachineStep('project');
+}
+function hidePdfMachine() {
+  const box = $('pdfMachine');
+  if (box) box.classList.remove('active');
+}
+function updatePdfMachineStep(step, note) {
+  const steps = $('pdfMachineSteps');
+  if (steps) {
+    steps.querySelectorAll('[data-step]').forEach(el => {
+      el.classList.toggle('active', el.getAttribute('data-step') === step);
+    });
+  }
+  if (note && $('pdfMachineNote')) $('pdfMachineNote').textContent = note;
+}
+function finishPdfMachine(url, label, printNow) {
+  const box = ensurePdfMachine();
+  box.classList.add('active');
+  updatePdfMachineStep('ready', 'PDF ready. Review, print, download, or go back to the app.');
+  const frame = $('pdfMachineFrame');
+  if (frame) {
+    frame.onload = null;
+    frame.src = url;
+    frame.classList.add('ready');
+    if (printNow) {
+      frame.onload = () => setTimeout(() => printPdfMachine(), 450);
+    }
+  }
+  const dl = $('pdfMachineDownload');
+  if (dl) {
+    dl.href = url;
+    dl.download = String(label || 'quote').replace(/[^\w.-]+/g, '_') + '.pdf';
+    dl.removeAttribute('aria-disabled');
+  }
+}
+function printPdfMachine() {
+  const frame = $('pdfMachineFrame');
   try {
-    win.document.write(`<!doctype html><html><head><title>${title}</title><style>
-      body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#f8fafc;color:#0f172a}
-      main{max-width:360px;padding:24px;text-align:center}
-      i{display:inline-block;width:34px;height:34px;border:4px solid #0a5a48;border-right-color:transparent;border-radius:50%;animation:s .8s linear infinite}
-      p{color:#475569;margin:.6rem 0 0}@keyframes s{to{transform:rotate(360deg)}}
-    </style></head><body><main><i></i><h2>${title}</h2><p>Generating latest saved design...</p></main></body></html>`);
-    win.document.close();
+    if (frame && frame.contentWindow) {
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+      return;
+    }
   } catch (_) {}
-  return win;
+  toast('PDF ready — use the Download PDF button, then print');
 }
 function goCompanyLogin(ev) {
   if (ev && ev.preventDefault) ev.preventDefault();
@@ -9405,7 +9526,9 @@ function _liveExportBody(brand) {
     persist: true,
   };
 }
-async function openProjectPdf(kind, popupWin) {
+async function openProjectPdf(kind, opts) {
+  opts = opts || {};
+  const label = opts.label || (kind === 'factory' ? 'Factory PDF' : 'Quote PDF');
   if (state.selectedLine != null && state.lines[state.selectedLine] && !isRailingMode() && !isShowerMode() && !isVentMode()) {
     try {
       const draft = currentLineDraft();
@@ -9415,17 +9538,20 @@ async function openProjectPdf(kind, popupWin) {
   const cacheKind = kind === 'factory' ? 'factory' : 'customer';
   const cacheKey = _exportFingerprint(cacheKind);
   if (cacheKind === 'customer' && state._custPdfCache.key === cacheKey && state._custPdfCache.url) {
-    if (popupWin && !popupWin.closed) popupWin.location.href = state._custPdfCache.url;
-    else window.open(state._custPdfCache.url, '_blank');
-    return;
+    finishPdfMachine(state._custPdfCache.url, label, !!opts.print);
+    return state._custPdfCache.url;
   }
+  showPdfMachine(label);
   toast('Preparing latest quote data...');
+  updatePdfMachineStep('project', 'Checking project, customer and bill-to details...');
   await ensureProject();
+  updatePdfMachineStep('design', 'Collecting saved 2D designs and product drawings...');
   try { await ensureExportSetupApplied(); } catch (_) {}
   updatePdfLinks();
   const brand = (typeof activePdfBrand === 'function' && activePdfBrand()) || 'marqt';
   const body = _liveExportBody(brand);
   toast(kind === 'factory' ? 'Generating factory PDF...' : 'Generating quote PDF...');
+  updatePdfMachineStep('specs', 'Calculating specs, totals, notes and terms...');
   const res = await fetch(`${API_BASE}/api/projects/${state.projectId}/${kind}-pdf?brand=${encodeURIComponent(brand)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -9440,16 +9566,17 @@ async function openProjectPdf(kind, popupWin) {
     } catch (_) {}
     throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
   }
+  updatePdfMachineStep('pdf', 'Binding cover, drawings, tables and terms into one PDF...');
   const blob = await res.blob();
   if (cacheKind === 'customer' && state._custPdfCache.url) {
     try { URL.revokeObjectURL(state._custPdfCache.url); } catch (_) {}
   }
   const url = URL.createObjectURL(blob);
   if (cacheKind === 'customer') state._custPdfCache = { key: cacheKey, url, blob };
-  if (popupWin && !popupWin.closed) popupWin.location.href = url;
-  else window.open(url, '_blank');
+  finishPdfMachine(url, label, !!opts.print);
   toast(kind === 'factory' ? 'Factory PDF ready' : 'Quote PDF ready');
   saveProject(true).catch(() => {});
+  return url;
 }
 ['linkCust','linkCustPrint','linkFact'].forEach(id => {
   const a = $(id); if (!a) return;
@@ -9460,12 +9587,12 @@ async function openProjectPdf(kind, popupWin) {
     state._exportBusy = true;
     const kind = id === 'linkFact' ? 'factory' : 'customer';
     const label = id === 'linkFact' ? 'Factory PDF' : (id === 'linkCustPrint' ? 'Print quote' : 'Quote PDF');
-    const popup = openPdfProgressTab(label);
+    showPdfMachine(label);
     setButtonBusy(a, true, 'Generating...');
     try {
-      await openProjectPdf(kind, popup);
+      await openProjectPdf(kind, { label, print: id === 'linkCustPrint' });
     } catch(err) {
-      if (popup && !popup.closed) popup.close();
+      updatePdfMachineStep('project', err.message || String(err));
       toast(err.message || String(err));
     } finally {
       state._exportBusy = false;
