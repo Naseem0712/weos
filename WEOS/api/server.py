@@ -2032,7 +2032,7 @@ def api_project_approve(project_id: str) -> dict[str, Any]:
     from WEOS.factory.project_store import set_project_status
 
     try:
-        return set_project_status(project_id, "approved")
+        return set_project_status(project_id, "approved", source="admin", by_name="Admin")
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2048,7 +2048,7 @@ def api_project_reject(project_id: str, body: QuoteRejectBody | None = None) -> 
     from WEOS.factory.project_store import load_project, set_project_status
 
     try:
-        doc = set_project_status(project_id, "rejected")
+        doc = set_project_status(project_id, "rejected", source="admin", by_name="Admin", note=body.note)
         if body.note:
             try:
                 live = load_project(project_id)
@@ -2488,7 +2488,10 @@ def _public_scan_response(ref: str, request: Request, *, fmt: str | None = None)
     want_ledger = kind in ("ledger", "account")
     record = build_public_quote_record(ref)
     if record and want_ledger:
-        return _public_ledger_html(record, request)
+        # Advance-slip QR must stay scoped to this project/quote token. Do not
+        # expose the full customer ledger with other projects on a public scan.
+        html = render_scan_html(record, base_url=base)
+        return HTMLResponse(html)
     if record and want_all:
         from WEOS.factory.scan_all_pdf import render_scan_all_pdf
 
@@ -2595,15 +2598,19 @@ def api_public_quote(ref: str) -> dict[str, Any]:
 
 class PublicScanDecideBody(BaseModel):
     confirm: bool = False
+    name: str | None = None
+    mobile: str | None = None
+    note: str | None = None
 
 
 @app.post("/api/public/quote/{ref}/approve")
-def api_public_quote_approve(ref: str) -> dict[str, Any]:
+def api_public_quote_approve(ref: str, body: PublicScanDecideBody | None = None) -> dict[str, Any]:
     """QR scanner approve — only within 15 days of generate date."""
     from WEOS.factory.quote_share import apply_scanner_status, build_public_quote_record
 
+    body = body or PublicScanDecideBody()
     try:
-        apply_scanner_status(ref, "approved")
+        apply_scanner_status(ref, "approved", name=body.name, mobile=body.mobile, note=body.note)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:

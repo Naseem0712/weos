@@ -109,9 +109,16 @@ def main() -> None:
         raise SystemExit("FAIL: scanner reject after 7 days must fail")
     except PermissionError:
         print("OK: scanner reject blocked after 7 days")
-    apply_scanner_status(token_ref, "approved")
+    try:
+        apply_scanner_status(token_ref, "approved")
+        raise SystemExit("FAIL: scanner approve without identity must fail")
+    except ValueError:
+        print("OK: scanner approve requires name/mobile")
+    apply_scanner_status(token_ref, "approved", name="Pin Cust", mobile="9876500010")
     live_doc = load_project(doc["projectId"])
     _ok(str(live_doc.get("status")) == "approved", "scanner approve still allowed at day 10")
+    _ok((live_doc.get("approval") or {}).get("source") == "scanner", "scanner approval source saved")
+    _ok((live_doc.get("approval") or {}).get("byMobile") == "9876500010", "scanner mobile saved")
     set_project_status(doc["projectId"], "draft")
     set_project_status(doc["projectId"], "rejected")
     _ok(load_project(doc["projectId"]).get("status") == "rejected", "panel reject unlimited")

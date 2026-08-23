@@ -337,7 +337,15 @@ def _sync_customer_from_project(doc: Mapping[str, Any] | dict[str, Any]) -> None
         _log.exception("sync customer profile from project %s failed", doc.get("projectId"))
 
 
-def set_project_status(project_id: str, status: str) -> dict[str, Any]:
+def set_project_status(
+    project_id: str,
+    status: str,
+    *,
+    source: str = "admin",
+    by_name: Any = None,
+    by_mobile: Any = None,
+    note: Any = None,
+) -> dict[str, Any]:
     """Set project status (draft → approved → rejected/cancelled; archive)."""
     st = (status or "").strip().lower() or "draft"
     allowed = {
@@ -350,13 +358,67 @@ def set_project_status(project_id: str, status: str) -> dict[str, Any]:
     prev = str(doc.get("status") or "draft").strip().lower()
     doc["status"] = st
     now = datetime.now(timezone.utc).isoformat()
+    actor_name = str(by_name or "").strip() or ("Admin" if source == "admin" else "")
+    actor_mobile = _norm_mobile(by_mobile)
+    approval_event = {
+        "status": st,
+        "source": str(source or "admin").strip().lower() or "admin",
+        "at": now,
+        "byName": actor_name,
+        "byMobile": actor_mobile,
+        "previousStatus": prev,
+    }
+    if note:
+        approval_event["note"] = str(note).strip()
+    had_customer = bool(str(doc.get("customer") or "").strip())
     if st in {"approved", "confirmed", "accepted", "finalized", "ordered", "order", "won"}:
         doc["approvedAt"] = now
+        doc["approvedBy"] = actor_name or approval_event["source"]
+        doc["approvedByMobile"] = actor_mobile
+        doc["approvalSource"] = approval_event["source"]
+        doc["approval"] = approval_event
         if prev in {"rejected", "cancelled", "canceled"}:
             doc["reapprovedFrom"] = prev
+        try:
+            hist = list(doc.get("approvalHistory") or [])
+            hist.append(approval_event)
+            doc["approvalHistory"] = hist[-30:]
+        except Exception:
+            doc["approvalHistory"] = [approval_event]
+        if actor_name and not had_customer:
+            doc["customer"] = actor_name
+        if actor_mobile and not had_customer and not _norm_mobile(doc.get("customerMobile")):
+            doc["customerMobile"] = actor_mobile
+        try:
+            if str(source or "").strip().lower() == "scanner" and (actor_name or actor_mobile):
+                from WEOS.factory.customer_store import save_customer_profile
+
+                cust_name = str(doc.get("customer") or actor_name or actor_mobile).strip()
+                payload = {
+                    "name": cust_name,
+                    "phone": actor_mobile or doc.get("customerMobile") or "",
+                    "companyGst": _norm_company_gst(doc.get("companyGst")),
+                }
+                if doc.get("customerAddress"):
+                    payload["address"] = doc.get("customerAddress")
+                if doc.get("customerGst"):
+                    payload["gstNo"] = doc.get("customerGst")
+                save_customer_profile(cust_name, payload)
+        except Exception:
+            _log.exception("scanner approval customer profile save failed for %s", project_id)
     if st in {"rejected", "cancelled", "canceled"}:
         doc["rejectedAt"] = now
+        doc["rejectedBy"] = actor_name or approval_event["source"]
+        doc["rejectedByMobile"] = actor_mobile
+        doc["rejectionSource"] = approval_event["source"]
+        doc["rejection"] = approval_event
         doc["rejectedFrom"] = prev
+        try:
+            hist = list(doc.get("approvalHistory") or [])
+            hist.append(approval_event)
+            doc["approvalHistory"] = hist[-30:]
+        except Exception:
+            doc["approvalHistory"] = [approval_event]
     return save_project(doc, bump_version=False, action=f"status_{st}")
 
 

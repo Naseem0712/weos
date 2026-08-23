@@ -73,7 +73,21 @@ def scanner_decision_windows(doc: Mapping[str, Any] | None, *, now: datetime | N
     }
 
 
-def apply_scanner_status(ref: str, status: str, *, confirm_reject: bool = False) -> dict[str, Any]:
+def _clean_phone(value: Any) -> str:
+    import re
+
+    return re.sub(r"\D", "", str(value or ""))
+
+
+def apply_scanner_status(
+    ref: str,
+    status: str,
+    *,
+    confirm_reject: bool = False,
+    name: Any = None,
+    mobile: Any = None,
+    note: Any = None,
+) -> dict[str, Any]:
     """Approve/reject from the public QR page only — time-windowed."""
     doc = resolve_public_ref(ref)
     if not isinstance(doc, Mapping) or not doc.get("projectId"):
@@ -86,13 +100,33 @@ def apply_scanner_status(ref: str, status: str, *, confirm_reject: bool = False)
     if want == "approved":
         if not win.get("canApprove"):
             raise PermissionError("Approve from this scan page is only available for 15 days from the generate date.")
-        return set_project_status(pid, "approved")
+        by_name = str(name or "").strip()
+        by_mobile = _clean_phone(mobile)
+        if not by_name:
+            raise ValueError("Enter your name to approve this quote.")
+        if len(by_mobile) < 8:
+            raise ValueError("Enter a valid mobile number to approve this quote.")
+        return set_project_status(
+            pid,
+            "approved",
+            source="scanner",
+            by_name=by_name,
+            by_mobile=by_mobile,
+            note=note,
+        )
     if want in {"rejected", "reject"}:
         if not confirm_reject:
             raise ValueError("Confirm reject to un-approve this quote.")
         if not win.get("canReject"):
             raise PermissionError("Reject from this scan page is only available for 7 days from the generate date.")
-        return set_project_status(pid, "rejected")
+        return set_project_status(
+            pid,
+            "rejected",
+            source="scanner",
+            by_name=str(name or "").strip(),
+            by_mobile=_clean_phone(mobile),
+            note=note,
+        )
     raise ValueError("Choose approve or reject")
 
 
@@ -396,6 +430,8 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
     version_count = max(int(doc.get("version") or 1), len(versions) + 1)
 
     status = str(doc.get("status") or "draft").strip().lower() or "draft"
+    approval = doc.get("approval") if isinstance(doc.get("approval"), Mapping) else {}
+    rejection = doc.get("rejection") if isinstance(doc.get("rejection"), Mapping) else {}
     products = _customer_safe_products(list(doc.get("lines") or []), doc=doc)
     # Never expose revisionLog / importMeta / undo stacks on the public scan page.
     from WEOS.factory.customer_line_view import totals_by_type
@@ -430,6 +466,34 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
         "status": status,
         "approvalStatus": status,
         "approved": approved,
+        "approval": {
+            "status": approval.get("status") or status,
+            "source": approval.get("source") or doc.get("approvalSource") or "",
+            "at": approval.get("at") or doc.get("approvedAt"),
+            "byName": approval.get("byName") or doc.get("approvedBy") or "",
+            "byMobile": approval.get("byMobile") or doc.get("approvedByMobile") or "",
+            "note": approval.get("note") or "",
+        },
+        "rejection": {
+            "status": rejection.get("status") or ("rejected" if status in {"rejected", "cancelled", "canceled"} else ""),
+            "source": rejection.get("source") or doc.get("rejectionSource") or "",
+            "at": rejection.get("at") or doc.get("rejectedAt"),
+            "byName": rejection.get("byName") or doc.get("rejectedBy") or "",
+            "byMobile": rejection.get("byMobile") or doc.get("rejectedByMobile") or "",
+            "note": rejection.get("note") or doc.get("rejectNote") or "",
+        },
+        "approvalHistory": [
+            {
+                "status": h.get("status"),
+                "source": h.get("source"),
+                "at": h.get("at"),
+                "byName": h.get("byName"),
+                "byMobile": h.get("byMobile"),
+                "note": h.get("note"),
+            }
+            for h in (doc.get("approvalHistory") or [])[-8:]
+            if isinstance(h, Mapping)
+        ],
         "scanner": scan_win,
         "generatedAt": scan_win.get("generatedAt") or doc.get("createdAt"),
         "customer": {
@@ -653,6 +717,25 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     links_html = " ".join(links) if links else ""
 
     scan = record.get("scanner") or {}
+    approval_info = record.get("approval") or {}
+    rejection_info = record.get("rejection") or {}
+    active_decision = approval_info if approved else (rejection_info if status in ("rejected", "cancelled", "canceled") else {})
+    source_label = str(active_decision.get("source") or "").replace("_", " ").title() or "Pending"
+    by_bits = [x for x in (active_decision.get("byName"), active_decision.get("byMobile")) if x]
+    decision_by = " · ".join(esc(x) for x in by_bits) or "—"
+    decision_at = fmt_dt(active_decision.get("at")) if active_decision else "—"
+    decision_note = active_decision.get("note")
+    approval_card = f"""
+  <div class="card">
+    <h2>Approval status</h2>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Status</div><div class="v">{esc(badge)}</div></div>
+      <div class="kpi"><div class="l">Source</div><div class="v">{esc(source_label)}</div></div>
+      <div class="kpi"><div class="l">Approved / decided by</div><div class="v">{decision_by}</div></div>
+      <div class="kpi"><div class="l">Date & time</div><div class="v">{esc(decision_at)}</div></div>
+    </div>
+    {f'<p class="muted" style="margin:.55rem 0 0">Note: {esc(decision_note)}</p>' if decision_note else ''}
+  </div>"""
     token = esc(record.get("shareToken") or "")
     decide_bits = []
     if scan.get("canApprove"):
@@ -664,6 +747,10 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
   <div class="card" id="scanDecide">
     <h2>Approve / Reject</h2>
     <p class="muted">From generate date {esc(fmt_dt(scan.get('generatedAt')))}: reject up to {esc(scan.get('rejectDays') or 7)} days, approve up to {esc(scan.get('approveDays') or 15)} days. After that these buttons disappear here — the company panel can still decide any time.</p>
+    <div id="scanIdentity" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.5rem;margin:.65rem 0 .35rem">
+      <label><span class="muted">Your name</span><input id="scanName" autocomplete="name" value="{esc(cust.get('name') if cust.get('name') != '—' else '')}" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:10px;margin-top:.18rem"/></label>
+      <label><span class="muted">Mobile number</span><input id="scanMobile" autocomplete="tel" inputmode="tel" value="{esc(cust.get('phone') or '')}" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:10px;margin-top:.18rem"/></label>
+    </div>
     <div style="margin-top:.45rem">{''.join(decide_bits)}</div>
     <p class="muted" id="scanDecideMsg" style="margin:.45rem 0 0"></p>
   </div>
@@ -673,6 +760,12 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
   function go(path, extra){{
     var msg = document.getElementById('scanDecideMsg');
     extra = extra || {{}};
+    extra.name = (document.getElementById('scanName') || {{value:''}}).value.trim();
+    extra.mobile = (document.getElementById('scanMobile') || {{value:''}}).value.trim();
+    if (path === 'approve' && (!extra.name || !extra.mobile)) {{
+      if (msg) msg.textContent = 'Approve karne ke liye naam aur mobile number likhna zaroori hai.';
+      return;
+    }}
     fetch('/api/public/quote/' + encodeURIComponent(token) + '/' + path, {{
       method: 'POST',
       headers: {{'Content-Type':'application/json'}},
@@ -729,6 +822,7 @@ th{{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mu
 .btn{{display:inline-block;background:var(--green);color:#f4faf7;text-decoration:none;border-radius:10px;
   padding:.45rem .75rem;font-weight:600;font-size:.85rem;margin:.15rem .25rem 0 0}}
 .btn.ghost{{background:transparent;color:var(--green);border:1px solid var(--green)}}
+input{{font:inherit;background:#fffdf9;color:var(--ink)}}
 .item{{padding:.45rem 0;border-bottom:1px solid var(--line)}}
 .item:last-child{{border-bottom:0}}
 .foot{{margin-top:.8rem;font-size:.75rem;color:var(--muted)}}
@@ -773,6 +867,7 @@ th{{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mu
     </div>
     {f'<div style="margin-top:.75rem">{links_html}</div>' if links_html else ''}
   </div>
+  {approval_card}
   <div class="card">
     <h2>Advances</h2>
     <table>

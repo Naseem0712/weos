@@ -129,6 +129,8 @@ def main() -> int:
     _ok("available after approval" not in html, "no pending-only copy", fails)
     _ok("approve quote" in html, "scanner approve in 15-day window", fails)
     _ok("reject quote" in html, "scanner reject in 7-day window", fails)
+    _ok("approval status" in html, "approval status card visible", fails)
+    _ok("your name" in html and "mobile number" in html, "scanner identity form visible", fails)
     prods = rec.get("products") or []
     _ok(all(float(p.get("amount") or 0) > 0 for p in prods), f"all scan amounts >0 {prods}", fails)
     _ok(any("Hall" in str(p.get("location") or "") for p in prods), "scan location passed", fails)
@@ -157,6 +159,7 @@ def main() -> int:
     _ok(len(pack.get("photos") or []) == 1, "1 photo", fails)
     _ok(len(pack.get("documents") or []) == 1, "1 challan", fails)
     html2 = render_scan_html(rec2).lower()
+    _ok("source" in html2 and "admin" in html2, "admin approval source visible", fails)
     _ok("glass fixed" in html2 and "process updates" in html2, "scan shows timeline", fails)
     _ok("download all" in html2, "download all button", fails)
     _ok("available after approval" not in html2, "no pending copy after approve", fails)
