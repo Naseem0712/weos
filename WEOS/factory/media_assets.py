@@ -229,7 +229,8 @@ def resolve_doc_images(
         "companySignature": co_sign,
         "customerStamp": cu_stamp,
         "customerSignature": cu_sign,
-        # Convenience for authorized (left) / received (right)
-        "authImage": co_stamp or co_sign,
-        "recvImage": cu_stamp or cu_sign or co_sign,
+        # Convenience for authorized (left) / received (right). Keep company
+        # signature on the company side; never mirror it into the customer side.
+        "authImage": co_sign or co_stamp,
+        "recvImage": cu_sign or cu_stamp,
     }

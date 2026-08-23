@@ -1008,6 +1008,13 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     project_name = payload.get("name") or ""
     lines = list(payload.get("lines") or [])
     _rs = rupee_prefix()
+    try:
+        from WEOS.factory.media_assets import resolve_doc_images
+
+        customer_key = str(customer).strip() if customer and str(customer).strip() != "—" else None
+        doc_images = resolve_doc_images(customer=customer_key)
+    except Exception:
+        doc_images = {}
 
     def _draw_logo(cx: float, top_y: float, max_w: float, max_h: float) -> tuple[float, float]:
         """Draw company logo if configured. Returns (drawn_width, drawn_height)."""
@@ -1035,6 +1042,26 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             return dw, dh
         except Exception:
             return 0.0, 0.0
+
+    def _draw_doc_image(path: Any, x: float, top_y: float, max_w: float, max_h: float) -> None:
+        if not path:
+            return
+        try:
+            from pathlib import Path
+            from reportlab.lib.utils import ImageReader
+
+            p = Path(path)
+            if not p.is_file():
+                return
+            img = ImageReader(str(p))
+            iw, ih = img.getSize()
+            if iw <= 0 or ih <= 0:
+                return
+            scale = min(max_w / float(iw), max_h / float(ih))
+            dw, dh = iw * scale, ih * scale
+            c.drawImage(img, x, top_y - dh, width=dw, height=dh, mask="auto")
+        except Exception:
+            return
 
     # —— Cover letter page ——
     M = MARGIN
@@ -1114,7 +1141,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     def _cover_footer():
         set_font(c, 7)
         c.setFillColorRGB(0.5, 0.5, 0.5)
-        c.drawString(M, M / 2 + 8, f"powered by WEOS — page {cover_page}")
+        c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {cover_page}")
         c.setFillColorRGB(0, 0, 0)
 
     def _cover_new_page():
@@ -1235,14 +1262,14 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         if y < bottom_limit + min_block:
             set_font(c, 7)
             c.setFillColorRGB(0.5, 0.5, 0.5)
-            c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
+            c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
             c.showPage()
             page_no += 1
             y = header(page_no)
         elif need <= page_usable and y < bottom_limit + need:
             set_font(c, 7)
             c.setFillColorRGB(0.5, 0.5, 0.5)
-            c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
+            c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
             c.showPage()
             page_no += 1
             y = header(page_no)
@@ -1325,7 +1352,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             specs_paged[0] = True
             set_font(c, 7)
             c.setFillColorRGB(0.5, 0.5, 0.5)
-            c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
+            c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
             c.showPage()
             page_no += 1
             ny = header(page_no)
@@ -1370,7 +1397,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     if y < 140:
         set_font(c, 7)
         c.setFillColorRGB(0.5, 0.5, 0.5)
-        c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
+        c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
         c.showPage()
         page_no += 1
         y = header(page_no)
@@ -1421,7 +1448,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
 
     set_font(c, 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
+    c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
     c.showPage()
     page_no += 1
 
@@ -1454,7 +1481,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     def _terms_footer():
         set_font(c, 7)
         c.setFillColorRGB(0.5, 0.5, 0.5)
-        c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
+        c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
         c.setFillColorRGB(0, 0, 0)
 
     def _terms_new_page():
@@ -1495,12 +1522,13 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             bottom=terms_bottom, set_font=set_font, on_new_page=_terms_new_page, para_gap=4.0,
         )
 
-    if y < M + 130:
+    if y < M + 170:
         y = _terms_new_page()
     y -= 30
     set_font(c, 9)
     c.setFillColorRGB(0, 0, 0)
     c.drawString(M, y, "For " + company)
+    _draw_doc_image(doc_images.get("companySignature") or doc_images.get("companyStamp"), M, y - 8, 130, 38)
     y -= 50
     if y < M + 80:
         y = _terms_new_page()
@@ -1521,7 +1549,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
 
     set_font(c, 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawString(M, M / 2 + 8, f"powered by WEOS — page {page_no}")
+    c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
     c.showPage()
     c.save()
     return buf.getvalue()

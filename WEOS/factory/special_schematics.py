@@ -128,7 +128,7 @@ def louver_svg(line: Mapping[str, Any] | None, *, quote: Mapping[str, Any] | Non
 
 
 def pergola_svg(line: Mapping[str, Any] | None, *, quote: Mapping[str, Any] | None = None) -> str:
-    """Draw a catalogue-style isometric pergola schematic."""
+    """Draw a slim 2D pergola shop drawing: plan, rafters/louvers, fixing plates."""
     opts = _opts(line)
     pergola = opts.get("pergola") if isinstance(opts.get("pergola"), Mapping) else {}
     src: Mapping[str, Any] = pergola if pergola else (line if isinstance(line, Mapping) else {})
@@ -141,60 +141,66 @@ def pergola_svg(line: Mapping[str, Any] | None, *, quote: Mapping[str, Any] | No
     rafter = str(src.get("rafter") or src.get("rafterSection") or "rafters").strip()
 
     vb_w, vb_h = 640.0, 420.0
-    fl = (78.0, 305.0)
-    fr = (418.0, 305.0)
-    br = (548.0, 196.0)
-    bl = (208.0, 196.0)
-    drop = 132.0
-    tfl = (fl[0], fl[1] - drop)
-    tfr = (fr[0], fr[1] - drop)
-    tbr = (br[0], br[1] - drop)
-    tbl = (bl[0], bl[1] - drop)
-
-    def _p(pt: tuple[float, float]) -> str:
-        return f"{pt[0]:g},{pt[1]:g}"
-
-    def _lerp(a: tuple[float, float], b: tuple[float, float], t: float) -> tuple[float, float]:
-        return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
-
+    px, py, pw, ph = 38.0, 58.0, 372.0, 236.0
+    plan_ratio = max(width / max(depth, 1.0), 0.35)
+    if plan_ratio > 1.65:
+        ph = pw / plan_ratio
+        py += (236.0 - ph) / 2.0
+    elif plan_ratio < 0.75:
+        pw = ph * plan_ratio
+        px += (372.0 - pw) / 2.0
+    ex, ey, ew, eh = 452.0, 88.0, 138.0, 152.0
+    post_size = max(10.0, min(18.0, min(pw, ph) * 0.06))
+    plate_w, plate_h = post_size * 1.7, post_size * 1.25
+    rafter_count = max(3, min(14, int(round(width / 450.0)) if width else 6))
+    fill_count = max(3, min(18, int(round(depth / 250.0)) if depth else 8))
     parts: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb_w:g} {vb_h:g}" data-model-system="pergola" role="img">',
         '<rect width="100%" height="100%" fill="#fff"/>',
-        '<text x="30" y="28" font-family="Arial" font-size="17" font-weight="700" fill="#111827">Pergola isometric drawing</text>',
+        '<text x="30" y="28" font-family="Arial" font-size="17" font-weight="700" fill="#111827">Pergola 2D shop drawing</text>',
         f'<text x="610" y="28" font-family="Arial" font-size="12" text-anchor="end" fill="#475569">{_fmt(width)} x {_fmt(depth)} x {_fmt(height)} mm</text>',
-        f'<polygon points="{_p(fl)} {_p(fr)} {_p(br)} {_p(bl)}" fill="#f8fafc" stroke="#94a3b8" stroke-width="1" data-role="floor-plan"/>',
-        f'<polygon points="{_p(tfl)} {_p(tfr)} {_p(tbr)} {_p(tbl)}" fill="#eef6f8" stroke="#0f172a" stroke-width="2" data-role="roof-grid"/>',
-        f'<polygon points="{_p(tfl)} {_p(tfr)} {_p(fr)} {_p(fl)}" fill="#dbeafe" opacity=".28" stroke="#93c5fd" stroke-width=".8"/>',
-        f'<polygon points="{_p(tfr)} {_p(tbr)} {_p(br)} {_p(fr)}" fill="#ccfbf1" opacity=".28" stroke="#5eead4" stroke-width=".8"/>',
+        f'<text x="{px:g}" y="{py - 13:g}" font-family="Arial" font-size="12" font-weight="700" fill="#334155">Top plan</text>',
+        f'<rect x="{px:g}" y="{py:g}" width="{pw:g}" height="{ph:g}" fill="none" stroke="#111827" stroke-width="1.6" data-role="perimeter-frame"/>',
+        f'<rect x="{px + 8:g}" y="{py + 8:g}" width="{pw - 16:g}" height="{ph - 16:g}" fill="none" stroke="#64748b" stroke-width=".85" data-role="inner-frame"/>',
     ]
-    for bottom, top in ((fl, tfl), (fr, tfr), (br, tbr), (bl, tbl)):
+
+    # Posts and fixing plates: outline-only symbols, not solid blocks.
+    for sx, sy in ((px, py), (px + pw, py), (px, py + ph), (px + pw, py + ph)):
         parts.extend([
-            f'<line x1="{bottom[0]:g}" y1="{bottom[1]:g}" x2="{top[0]:g}" y2="{top[1]:g}" stroke="#111827" stroke-width="5" stroke-linecap="round" data-role="post"/>',
-            f'<rect x="{bottom[0] - 10:g}" y="{bottom[1] - 5:g}" width="20" height="10" fill="#e2e8f0" stroke="#0f172a" stroke-width="1" data-role="fixing-plate"/>',
-            f'<circle cx="{bottom[0]:g}" cy="{bottom[1]:g}" r="3" fill="#0f766e" data-role="anchor-bolt"/>',
+            f'<rect x="{sx - plate_w / 2:g}" y="{sy - plate_h / 2:g}" width="{plate_w:g}" height="{plate_h:g}" fill="none" stroke="#0f766e" stroke-width="1" data-role="fixing-plate"/>',
+            f'<rect x="{sx - post_size / 2:g}" y="{sy - post_size / 2:g}" width="{post_size:g}" height="{post_size:g}" fill="none" stroke="#111827" stroke-width="1.4" data-role="post"/>',
+            f'<circle cx="{sx - plate_w * .25:g}" cy="{sy - plate_h * .22:g}" r="1.7" fill="none" stroke="#0f766e" stroke-width=".75" data-role="anchor-bolt"/>',
+            f'<circle cx="{sx + plate_w * .25:g}" cy="{sy - plate_h * .22:g}" r="1.7" fill="none" stroke="#0f766e" stroke-width=".75" data-role="anchor-bolt"/>',
+            f'<circle cx="{sx - plate_w * .25:g}" cy="{sy + plate_h * .22:g}" r="1.7" fill="none" stroke="#0f766e" stroke-width=".75" data-role="anchor-bolt"/>',
+            f'<circle cx="{sx + plate_w * .25:g}" cy="{sy + plate_h * .22:g}" r="1.7" fill="none" stroke="#0f766e" stroke-width=".75" data-role="anchor-bolt"/>',
         ])
-    for a, b in ((tfl, tfr), (tfr, tbr), (tbr, tbl), (tbl, tfl)):
-        parts.append(f'<line x1="{a[0]:g}" y1="{a[1]:g}" x2="{b[0]:g}" y2="{b[1]:g}" stroke="#0f172a" stroke-width="6" stroke-linecap="round" data-role="perimeter-beam"/>')
-    rafter_count = max(4, min(12, int(round(width / 450.0)) if width else 6))
+
+    # Rafters run depth-wise at their real side spacing.
     for i in range(1, rafter_count):
         t = i / rafter_count
-        a = _lerp(tfl, tfr, t)
-        b = _lerp(tbl, tbr, t)
-        parts.append(f'<line x1="{a[0]:g}" y1="{a[1]:g}" x2="{b[0]:g}" y2="{b[1]:g}" stroke="#475569" stroke-width="2.4" data-role="rafter"/>')
-    fill_count = max(4, min(16, int(round(depth / 250.0)) if depth else 8))
+        rx = px + pw * t
+        parts.append(f'<line x1="{rx:g}" y1="{py + 8:g}" x2="{rx:g}" y2="{py + ph - 8:g}" stroke="#334155" stroke-width="1.05" data-role="rafter"/>')
+
+    # Louvers / roof fill run cross-wise: thinner than rafters.
     for i in range(1, fill_count):
         t = i / fill_count
-        a = _lerp(tfl, tbl, t)
-        b = _lerp(tfr, tbr, t)
-        parts.append(f'<line x1="{a[0]:g}" y1="{a[1]:g}" x2="{b[0]:g}" y2="{b[1]:g}" stroke="#94a3b8" stroke-width="1.3" data-role="roof-fill"/>')
+        ly = py + ph * t
+        parts.append(f'<line x1="{px + 8:g}" y1="{ly:g}" x2="{px + pw - 8:g}" y2="{ly:g}" stroke="#94a3b8" stroke-width=".75" data-role="roof-fill"/>')
+
+    # Side elevation: same 2D language as windows - thin outlines only.
+    roof_y = ey + 18.0
+    floor_y = ey + eh
     parts.extend([
-        '<text x="88" y="354" font-family="Arial" font-size="11" font-weight="700" fill="#334155">Fixing plate plan</text>',
-        '<rect x="88" y="366" width="42" height="28" fill="#f8fafc" stroke="#0f172a" stroke-width="1.2"/>',
-        '<circle cx="100" cy="376" r="3" fill="#0f766e"/><circle cx="118" cy="376" r="3" fill="#0f766e"/>',
-        '<circle cx="100" cy="386" r="3" fill="#0f766e"/><circle cx="118" cy="386" r="3" fill="#0f766e"/>',
-        '<text x="148" y="379" font-family="Arial" font-size="10" fill="#475569">post base + anchor bolts</text>',
-        '<text x="148" y="392" font-family="Arial" font-size="10" fill="#475569">floor / wall / garden fixing</text>',
+        f'<text x="{ex:g}" y="{ey - 13:g}" font-family="Arial" font-size="12" font-weight="700" fill="#334155">Side elevation</text>',
+        f'<line x1="{ex:g}" y1="{floor_y:g}" x2="{ex + ew:g}" y2="{floor_y:g}" stroke="#111827" stroke-width="1.2"/>',
+        f'<rect x="{ex + 8:g}" y="{roof_y:g}" width="{ew - 16:g}" height="10" fill="none" stroke="#111827" stroke-width="1.4" data-role="beam"/>',
+        f'<rect x="{ex + 16:g}" y="{roof_y + 10:g}" width="8" height="{floor_y - roof_y - 10:g}" fill="none" stroke="#111827" stroke-width="1.25" data-role="post"/>',
+        f'<rect x="{ex + ew - 24:g}" y="{roof_y + 10:g}" width="8" height="{floor_y - roof_y - 10:g}" fill="none" stroke="#111827" stroke-width="1.25" data-role="post"/>',
     ])
+    for i in range(1, min(rafter_count, 9)):
+        t = i / min(rafter_count, 9)
+        lx = ex + 16 + (ew - 32) * t
+        parts.append(f'<line x1="{lx:g}" y1="{roof_y - 10:g}" x2="{lx + 8:g}" y2="{roof_y:g}" stroke="#334155" stroke-width=".95" data-role="rafter"/>')
 
     callouts = [
         ("Fixing", fixing),
@@ -203,11 +209,17 @@ def pergola_svg(line: Mapping[str, Any] | None, *, quote: Mapping[str, Any] | No
         ("Roof", cover),
         ("Height", f"{_fmt(height)} mm"),
     ]
-    cy = 320.0
+    cy = 322.0
     for label, value in callouts:
-        parts.append(f'<text x="390" y="{cy:g}" font-family="Arial" font-size="11" font-weight="700" fill="#0f172a">{escape(label)}</text>')
-        parts.append(f'<text x="456" y="{cy:g}" font-family="Arial" font-size="11" fill="#334155">{escape(value)}</text>')
+        parts.append(f'<text x="38" y="{cy:g}" font-family="Arial" font-size="11" font-weight="700" fill="#0f172a">{escape(label)}</text>')
+        parts.append(f'<text x="104" y="{cy:g}" font-family="Arial" font-size="11" fill="#334155">{escape(value)}</text>')
         cy += 18.0
+    parts.extend([
+        '<text x="452" y="268" font-family="Arial" font-size="10" font-weight="700" fill="#334155">Fixing plate detail</text>',
+        '<rect x="452" y="280" width="42" height="28" fill="none" stroke="#0f766e" stroke-width="1"/>',
+        '<circle cx="464" cy="289" r="2" fill="none" stroke="#0f766e" stroke-width=".75"/><circle cx="482" cy="289" r="2" fill="none" stroke="#0f766e" stroke-width=".75"/>',
+        '<circle cx="464" cy="299" r="2" fill="none" stroke="#0f766e" stroke-width=".75"/><circle cx="482" cy="299" r="2" fill="none" stroke="#0f766e" stroke-width=".75"/>',
+    ])
     parts.append('</svg>')
     return "".join(parts)
 

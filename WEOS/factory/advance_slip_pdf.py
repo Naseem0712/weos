@@ -215,6 +215,8 @@ def render_advance_slip_pdf(
 
     # Stamp / signature — keep clear of totals
     imgs = resolve_doc_images(customer=cust)
+    company_auth_image = imgs.get("companySignature") or imgs.get("companyStamp")
+    customer_recv_image = imgs.get("customerSignature") or imgs.get("customerStamp")
     block_top = min(y - 10, 160)
     draw_stamp_signature_block(
         c,
@@ -223,15 +225,15 @@ def render_advance_slip_pdf(
         width=W - 2 * M,
         company_name=co_name,
         customer_name=cust,
-        stamp_path=imgs.get("authImage"),
-        signature_path=imgs.get("recvImage"),
+        stamp_path=company_auth_image,
+        signature_path=customer_recv_image,
         left_label="Authorized Signatory",
         right_label="Received by / Customer",
     )
 
     c.setFont("Helvetica", 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawString(M, M / 2 + 6, "powered by WEOS — advance receipt")
+    c.drawString(M, M / 2 + 6, "This is a computer generated document - powered by WEOS - advance receipt")
     c.showPage()
     c.save()
     return buf.getvalue()

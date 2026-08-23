@@ -270,8 +270,8 @@ def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | No
     y -= 16
 
     imgs = resolve_doc_images(customer=cust)
-    auth = imgs.get("authImage")
-    recv = imgs.get("recvImage")
+    auth = imgs.get("companySignature") or imgs.get("companyStamp")
+    recv = imgs.get("customerSignature") or imgs.get("customerStamp")
     if auth or recv:
         ensure(90)
         from WEOS.factory.media_assets import draw_stamp_signature_block
@@ -289,7 +289,7 @@ def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | No
 
     c.setFillColorRGB(*muted)
     c.setFont("Helvetica", 7)
-    c.drawString(M, 20, "Powered by WEOS")
+    c.drawString(M, 20, "This is a computer generated document - Powered by WEOS")
     c.showPage()
     c.save()
     return buf.getvalue()
