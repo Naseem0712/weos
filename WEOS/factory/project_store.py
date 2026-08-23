@@ -223,6 +223,17 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
             pass
     elif doc.get("shareToken") and not doc.get("quoteShareToken"):
         doc["quoteShareToken"] = doc["shareToken"]
+    prev_doc: dict[str, Any] | None = None
+    path = project_path(pid)
+    if path.is_file():
+        try:
+            prev_doc = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            prev_doc = None
+    elif pid:
+        prev_doc = _db_get_project(str(pid))
+    _assert_customer_owner_stable(prev_doc, doc)
+    _stamp_quote_identity(doc)
     now = datetime.now(timezone.utc).isoformat()
     if "createdAt" not in doc:
         doc["createdAt"] = now
@@ -252,7 +263,6 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
         log.append({"at": now, "action": str(action or "save"), "version": ver})
         doc["revisionLog"] = log[-80:]
 
-    path = project_path(pid)
     if path.is_file() and bump_version:
         snap = PROJECTS_DIR / "versions" / f"{pid}_v{ver - 1}.json"
         shutil.copy2(path, snap)
@@ -362,6 +372,50 @@ def _norm_company_gst(value: Any) -> str:
 def _norm_quote_number(value: Any) -> str:
     """Normalise for exact-id compares; prefer base key for version-family matches."""
     return re.sub(r"\s+", "", str(value or "").strip()).upper()
+
+
+def _norm_mobile(value: Any) -> str:
+    return re.sub(r"\D", "", str(value or ""))
+
+
+def _customer_identity_key(doc: Mapping[str, Any] | dict[str, Any]) -> str:
+    """Stable customer owner key for a quote.
+
+    Prefer customer GST, then mobile, then name. This prevents a saved quote from
+    silently moving between customers when a browser sends stale setup fields.
+    """
+    cgst = _norm_company_gst(doc.get("companyGst"))
+    cust_gst = _norm_company_gst(doc.get("customerGst"))
+    mobile = _norm_mobile(doc.get("customerMobile"))
+    name = re.sub(r"[^a-zA-Z0-9]+", "_", str(doc.get("customer") or "").strip().lower()).strip("_")
+    who = cust_gst or (f"mobile:{mobile}" if mobile else "") or (f"name:{name}" if name else "")
+    return f"{cgst}|{who}" if who else cgst
+
+
+def _stamp_quote_identity(doc: dict[str, Any]) -> None:
+    doc["quoteIdentity"] = {
+        "projectId": str(doc.get("projectId") or ""),
+        "quotationId": str(doc.get("quotationId") or ""),
+        "companyGst": _norm_company_gst(doc.get("companyGst")),
+        "customer": str(doc.get("customer") or "").strip(),
+        "customerMobile": _norm_mobile(doc.get("customerMobile")),
+        "customerGst": _norm_company_gst(doc.get("customerGst")),
+        "customerKey": _customer_identity_key(doc),
+    }
+
+
+def _assert_customer_owner_stable(prev: Mapping[str, Any] | None, doc: Mapping[str, Any]) -> None:
+    if not isinstance(prev, Mapping) or not prev:
+        return
+    prev_key = _customer_identity_key(prev)
+    next_key = _customer_identity_key(doc)
+    if not prev_key or not next_key or prev_key == next_key:
+        return
+    locked = bool(prev.get("quotationId") or prev.get("lines") or int(prev.get("version") or 0) > 0)
+    if locked:
+        raise ValueError(
+            "This quote already belongs to another customer. Create a new project/quote instead of changing the customer on an existing quote."
+        )
 
 
 def _belongs_to_company(doc: Mapping[str, Any] | dict[str, Any], company_gst: str | None, *, include_unscoped: bool) -> bool:

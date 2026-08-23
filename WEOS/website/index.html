@@ -9172,7 +9172,7 @@ function _liveExportBody(brand) {
     name: ($('cartName') && $('cartName').value) || undefined,
     ...projectBillTo(),
     brand,
-    persist: false,
+    persist: true,
   };
 }
 async function openProjectPdf(kind) {

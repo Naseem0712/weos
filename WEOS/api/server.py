@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import platform
+import re
 import sys
 from collections.abc import Mapping
 from typing import Any
@@ -854,6 +855,8 @@ def _pdf_response(
         if overlay.get("persist") and overlay.get("lines") is not None:
             try:
                 save_project(doc, action="pdf-flush")
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
             except Exception:
                 _log.exception("pdf-flush save failed for %s; continuing with in-memory lines", project_id)
     src_n = len(doc.get("lines") or [])
@@ -1032,6 +1035,28 @@ def _pdf_response(
         from WEOS.factory.pdf_engine import _minimal_text_pdf
 
         pdf = _minimal_text_pdf(f"WEOS {kind.title()} PDF", payload)
+    if overlay and overlay.get("persist"):
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+
+            doc["lastPdfExport"] = {
+                "kind": kind,
+                "exportedAt": _dt.now(_tz.utc).isoformat(),
+                "projectId": project_id,
+                "quotationId": payload.get("quotationId"),
+                "customer": payload.get("customer"),
+                "customerMobile": doc.get("customerMobile"),
+                "customerGst": doc.get("customerGst"),
+                "companyGst": payload.get("companyGst"),
+                "templateId": payload.get("templateId") or ("marqt_customer" if kind == "customer" else None),
+                "brand": payload.get("brand"),
+                "lineCount": len(payload.get("lines") or []),
+                "total": (payload.get("price") or {}).get("total") or (payload.get("combined") or {}).get("grandTotal"),
+                "pdfBytes": len(pdf or b""),
+            }
+            save_project(doc, bump_version=False, action=f"{kind}_pdf_export")
+        except Exception:
+            _log.exception("PDF export snapshot save failed for %s (%s)", project_id, kind)
     disposition = "inline" if inline else "attachment"
     return Response(
         content=pdf,
@@ -1601,7 +1626,10 @@ def api_create_project(body: ProjectCreate) -> dict[str, Any]:
     apply_package_fields(doc, dumped)
     if dumped.get("quoteDiscount") is not None:
         doc["quoteDiscount"] = dumped["quoteDiscount"]
-    return save_project(doc, action="create")
+    try:
+        return save_project(doc, action="create")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/projects/{project_id}")
@@ -1671,7 +1699,10 @@ def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
     apply_package_fields(doc, dumped)
     if "quoteDiscount" in dumped:
         doc["quoteDiscount"] = dumped.get("quoteDiscount")
-    return save_project(doc, action="update")
+    try:
+        return save_project(doc, action="update")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/ledger/master")
@@ -2096,7 +2127,10 @@ def api_project_calculate(project_id: str, body: ProjectCalculateOpts | None = N
             ln["lineId"] = result["lines"][i].get("lineId", ln.get("lineId"))
     saved = doc
     if persist:
-        saved = save_project(doc, action="calculate")
+        try:
+            saved = save_project(doc, action="calculate")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     # If quote-number versioning folded into another project, surface the live id.
     live_id = saved.get("projectId") or project_id
     if persist:
@@ -3260,6 +3294,35 @@ def api_add_customer_advance(customer: str, body: AdvanceBody, request: Request,
     payload = body.model_dump(exclude_none=True)
     payload["companyGst"] = g
     payload.setdefault("customerName", customer)
+    pid = str(payload.get("projectId") or "").strip()
+    qid = str(payload.get("quoteId") or "").strip()
+    if pid and qid:
+        try:
+            from WEOS.factory.project_store import _belongs_to_company, load_project
+
+            linked = load_project(pid)
+            if not _belongs_to_company(linked, g, include_unscoped=False):
+                raise HTTPException(status_code=403, detail="Selected project belongs to another company workspace")
+            want_q = re.sub(r"\s+", "", qid).upper()
+            live_q = re.sub(r"\s+", "", str(linked.get("quotationId") or linked.get("quoteNumber") or "").strip()).upper()
+            live_pid = re.sub(r"\s+", "", str(linked.get("projectId") or "").strip()).upper()
+            if want_q not in {live_q, live_pid}:
+                raise HTTPException(status_code=400, detail="Selected quote is not on this project")
+            cust_slug = re.sub(r"[^a-zA-Z0-9]+", "_", str(customer or "").strip().lower()).strip("_")
+            linked_slug = re.sub(r"[^a-zA-Z0-9]+", "_", str(linked.get("customer") or "").strip().lower()).strip("_")
+            cust_digits = re.sub(r"\D", "", str(customer or ""))
+            linked_digits = re.sub(r"\D", "", str(linked.get("customerMobile") or ""))
+            if linked_slug and cust_slug and linked_slug != cust_slug:
+                phone_match = (
+                    bool(cust_digits and linked_digits)
+                    and (cust_digits in linked_digits or linked_digits in cust_digits)
+                )
+                if not phone_match:
+                    raise HTTPException(status_code=400, detail="Selected project belongs to a different customer")
+            payload["quoteId"] = linked.get("quotationId") or qid
+            payload["quoteVersion"] = linked.get("version") or payload.get("quoteVersion")
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
     try:
         created = add_advance(customer, payload)
     except ValueError as exc:
