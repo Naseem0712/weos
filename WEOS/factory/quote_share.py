@@ -23,6 +23,14 @@ TOKEN_KEY_PREFIX = "quote_share:"
 OLD_DRAFT_DAYS = 30
 SCANNER_REJECT_DAYS = 7
 SCANNER_APPROVE_DAYS = 15
+ACCESS_PERMISSION_KEYS = ("design", "rate", "amount", "advances", "pdf")
+DEFAULT_ACCESS_PERMISSIONS = {
+    "design": True,
+    "rate": False,
+    "amount": False,
+    "advances": True,
+    "pdf": False,
+}
 
 
 def _parse_iso(value: Any) -> datetime | None:
@@ -128,6 +136,26 @@ def _verify_last6(expected_phone: Any, provided: Any, *, who: str = "mobile") ->
     return expected
 
 
+def _access_permissions(raw: Mapping[str, Any] | None = None) -> dict[str, bool]:
+    src = raw if isinstance(raw, Mapping) else {}
+    return {key: bool(src.get(key, DEFAULT_ACCESS_PERMISSIONS[key])) for key in ACCESS_PERMISSION_KEYS}
+
+
+def _customer_scanner_approved(doc: Mapping[str, Any]) -> bool:
+    from WEOS.factory.ledger_store import CONFIRMED_STATUSES
+
+    status = str(doc.get("status") or "").strip().lower()
+    if status not in CONFIRMED_STATUSES:
+        return False
+    approval = doc.get("approval") if isinstance(doc.get("approval"), Mapping) else {}
+    source = str(approval.get("source") or doc.get("approvalSource") or "").strip().lower()
+    if source != "scanner":
+        return False
+    customer_mobile = _customer_phone_for_doc(doc)
+    approved_mobile = approval.get("byMobile") or doc.get("approvedByMobile")
+    return bool(customer_mobile and _last_digits(customer_mobile) == _last_digits(approved_mobile))
+
+
 def apply_scanner_status(
     ref: str,
     status: str,
@@ -199,6 +227,7 @@ def _public_access_grants(doc: Mapping[str, Any]) -> list[dict[str, Any]]:
                 "phoneMasked": _mask_phone(row.get("mobile")),
                 "createdAt": row.get("createdAt"),
                 "grantedByName": row.get("grantedByName") or "",
+                "permissions": _access_permissions(row.get("permissions") if isinstance(row.get("permissions"), Mapping) else None),
             }
         )
     return out[-30:]
@@ -212,11 +241,14 @@ def add_monitor_access(
     mobile: Any,
     granted_by_name: Any = None,
     customer_last6: Any = None,
+    permissions: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Customer-scanner grants a protected monitor link to another stakeholder."""
     doc = resolve_public_ref(ref)
     if not isinstance(doc, dict) or not doc.get("projectId"):
         raise FileNotFoundError("Quote not found")
+    if not _customer_scanner_approved(doc):
+        raise PermissionError("Monitor access can be given only after the customer approves this quote from the scanner.")
     expected_mobile = _customer_phone_for_doc(doc)
     _verify_last6(expected_mobile, customer_last6, who="customer mobile")
     role_s = str(role or "").strip()
@@ -229,6 +261,9 @@ def add_monitor_access(
         raise ValueError("Enter access person's name.")
     if len(mobile_s) < 8:
         raise ValueError("Enter a valid mobile number for this access.")
+    perms = _access_permissions(permissions)
+    if not any(perms.values()):
+        raise ValueError("Select at least one thing to show for this access.")
     token = secrets.token_urlsafe(12)
     grant = {
         "token": token,
@@ -237,6 +272,7 @@ def add_monitor_access(
         "mobile": mobile_s,
         "mobileMasked": _mask_phone(mobile_s),
         "status": "active",
+        "permissions": perms,
         "createdAt": _now_iso(),
         "grantedByName": grantor[:80],
         "grantedByMobile": expected_mobile,
@@ -257,6 +293,7 @@ def add_monitor_access(
         "role": grant["role"],
         "name": grant["name"],
         "phoneMasked": grant["mobileMasked"],
+        "permissions": perms,
         "accessToken": token,
         "accessPath": f"/q/{share}/access/{token}",
         "createdAt": grant["createdAt"],
@@ -282,6 +319,9 @@ def verify_monitor_access(ref: str, access_token: str, *, last6: Any) -> dict[st
         rec["accessVerified"] = True
         rec["accessRole"] = row.get("role") or ""
         rec["accessName"] = row.get("name") or ""
+        rec["accessPermissions"] = _access_permissions(
+            row.get("permissions") if isinstance(row.get("permissions"), Mapping) else None
+        )
         return rec
     raise FileNotFoundError("Access link not found")
 
@@ -302,6 +342,7 @@ def public_monitor_access_meta(ref: str, access_token: str) -> dict[str, Any] | 
             "phoneMasked": _mask_phone(row.get("mobile")),
             "createdAt": row.get("createdAt"),
             "status": row.get("status") or "active",
+            "permissions": _access_permissions(row.get("permissions") if isinstance(row.get("permissions"), Mapping) else None),
         }
     return None
 
@@ -705,6 +746,7 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
         "typeTotals": type_totals,
         "pack": pack,
         "accessGrants": _public_access_grants(doc),
+        "canGrantAccess": _customer_scanner_approved(doc),
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt") or _now_iso(),
         "customerPdfUrl": f"/api/projects/{pid}/customer-pdf" if pid else None,
@@ -792,6 +834,13 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     approved = bool(record.get("approved"))
     badge = "Approved" if approved else status.replace("_", " ").title()
     badge_bg = "#0a5a48" if approved else ("#b45324" if status in ("draft", "unused") else "#334155")
+    access_restricted = bool(record.get("accessVerified"))
+    perms = _access_permissions(record.get("accessPermissions") if access_restricted else {k: True for k in ACCESS_PERMISSION_KEYS})
+    show_design = (not access_restricted) or perms.get("design")
+    show_rate = (not access_restricted) or perms.get("rate")
+    show_amount = (not access_restricted) or perms.get("amount")
+    show_advances = (not access_restricted) or perms.get("advances")
+    show_pdf_links = (not access_restricted) or perms.get("pdf")
 
     def inr(n: Any) -> str:
         try:
@@ -813,44 +862,59 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
             return esc(text[:19].replace("T", " "))
 
     adv_rows = ""
-    for a in record.get("advances") or []:
-        adv_rows += (
-            f"<tr><td>{esc(a.get('n'))}</td><td>{inr(a.get('amount'))}</td>"
-            f"<td>{esc(a.get('paymentMode'))}</td><td>{fmt_dt(a.get('date'))}</td>"
-            f"<td>{inr(a.get('runningTotal'))}</td></tr>"
-        )
-    if not adv_rows:
-        adv_rows = '<tr><td colspan="5" class="muted">No advances recorded yet</td></tr>'
-
-    prod_rows = ""
-    for p in record.get("products") or []:
-        amt = inr(p.get("amount")) if p.get("amount") is not None else "—"
-        loc = p.get("location") or p.get("locationName") or p.get("positionName") or "—"
-        extra = " · ".join(
-            x
-            for x in (
-                "" if not p.get("glass") or str(p.get("glass")) == "—" else str(p.get("glass")),
-                "" if not p.get("colour") or str(p.get("colour")) == "—" else str(p.get("colour")),
+    if show_advances:
+        for a in record.get("advances") or []:
+            adv_rows += (
+                f"<tr><td>{esc(a.get('n'))}</td><td>{inr(a.get('amount'))}</td>"
+                f"<td>{esc(a.get('paymentMode'))}</td><td>{fmt_dt(a.get('date'))}</td>"
+                f"<td>{inr(a.get('runningTotal'))}</td></tr>"
             )
-            if x
-        )
-        type_cell = esc(p.get("type"))
-        if extra:
-            type_cell += f'<div class="muted" style="font-size:.72rem">{esc(extra)}</div>'
-        prod_rows += (
-            f"<tr><td>{esc(p.get('serial'))}</td><td>{esc(loc)}</td>"
-            f"<td>{type_cell}</td><td>{esc(p.get('size'))}</td>"
-            f"<td>{esc(p.get('qty'))}</td><td>{amt}</td></tr>"
-        )
-    if not prod_rows:
-        prod_rows = '<tr><td colspan="6" class="muted">No products on this quote</td></tr>'
+        if not adv_rows:
+            adv_rows = '<tr><td colspan="5" class="muted">No advances recorded yet</td></tr>'
+
+    product_header = "<th>Serial</th><th>Location</th><th>Type</th><th>Size</th><th>Qty</th>"
+    if show_rate:
+        product_header += "<th>Rate</th>"
+    if show_amount:
+        product_header += "<th>Amount</th>"
+    prod_rows = ""
+    if show_design:
+        col_count = 5 + (1 if show_rate else 0) + (1 if show_amount else 0)
+        for p in record.get("products") or []:
+            amt = inr(p.get("amount")) if p.get("amount") is not None else "—"
+            rate = esc(p.get("rate") or "—")
+            loc = p.get("location") or p.get("locationName") or p.get("positionName") or "—"
+            extra = " · ".join(
+                x
+                for x in (
+                    "" if not p.get("glass") or str(p.get("glass")) == "—" else str(p.get("glass")),
+                    "" if not p.get("colour") or str(p.get("colour")) == "—" else str(p.get("colour")),
+                )
+                if x
+            )
+            type_cell = esc(p.get("type"))
+            if extra:
+                type_cell += f'<div class="muted" style="font-size:.72rem">{esc(extra)}</div>'
+            row = (
+                f"<tr><td>{esc(p.get('serial'))}</td><td>{esc(loc)}</td>"
+                f"<td>{type_cell}</td><td>{esc(p.get('size'))}</td>"
+                f"<td>{esc(p.get('qty'))}</td>"
+            )
+            if show_rate:
+                row += f"<td>{rate}</td>"
+            if show_amount:
+                row += f"<td>{amt}</td>"
+            prod_rows += row + "</tr>"
+        if not prod_rows:
+            prod_rows = f'<tr><td colspan="{col_count}" class="muted">No products on this quote</td></tr>'
 
     type_tot_html = ""
-    for trow in record.get("typeTotals") or []:
-        type_tot_html += (
-            f"<div class='muted' style='margin:.15rem 0'>{esc(trow.get('type'))} × {esc(trow.get('qty'))}"
-            f" · {inr(trow.get('amount'))}</div>"
-        )
+    if show_amount:
+        for trow in record.get("typeTotals") or []:
+            type_tot_html += (
+                f"<div class='muted' style='margin:.15rem 0'>{esc(trow.get('type'))} × {esc(trow.get('qty'))}"
+                f" · {inr(trow.get('amount'))}</div>"
+            )
 
     pack = record.get("pack") or {}
     pack_html = ""
@@ -874,11 +938,12 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
         thumb = ""
         if ct.startswith("image/"):
             thumb = f'<a href="{href}" target="_blank" rel="noopener"><img src="{href}" alt="" style="max-height:72px;max-width:110px;border-radius:8px;border:1px solid var(--line);object-fit:cover"/></a>'
+        open_link = f'<a class="btn ghost" href="{href}" target="_blank" rel="noopener">Open / download</a>' if show_pdf_links else ""
         doc_html += (
             f'<div class="item" style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">'
             f"{thumb}<div><strong>{esc(kind)}</strong>"
             f'<div class="muted">{fmt_dt(d.get("date") or d.get("createdAt"))} · {note}</div>'
-            f'<a class="btn ghost" href="{href}" target="_blank" rel="noopener">Open / download</a></div></div>'
+            f"{open_link}</div></div>"
         )
     if not doc_html:
         doc_html = '<p class="muted">No bills, warranty cards, or delivery challans yet</p>'
@@ -908,6 +973,8 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     <h2>Process photos</h2>
     {photo_html}
   </div>"""
+    if access_restricted and not show_design:
+        pack_html = ""
 
     ver_bits = []
     for v in record.get("versions") or []:
@@ -934,16 +1001,16 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
             led_html = b + led_html
 
     links = []
-    if all_url:
+    if show_pdf_links and all_url:
         links.append(f'<a class="btn" href="{esc(all_url)}" target="_blank" rel="noopener">Download all (A4 PDF)</a>')
         links.append(f'<a class="btn ghost" href="{esc(all_url)}" target="_blank" rel="noopener">🖨 Print all</a>')
-    if pdf_url:
+    if show_pdf_links and pdf_url:
         links.append(f'<a class="btn ghost" href="{esc(pdf_url)}" target="_blank" rel="noopener">Customer PDF</a>')
         links.append(f'<a class="btn ghost" href="{esc(pdf_url)}" target="_blank" rel="noopener">🖨 Print quote</a>')
-    if led_url:
+    if show_pdf_links and show_advances and led_url:
         links.append(f'<a class="btn ghost" href="{esc(led_url)}" target="_blank" rel="noopener">Ledger PDF</a>')
         links.append(f'<a class="btn ghost" href="{esc(led_url)}" target="_blank" rel="noopener">🖨 Print ledger</a>')
-    if led_html:
+    if show_pdf_links and show_advances and led_html:
         links.append(f'<a class="btn ghost" href="{esc(led_html)}" target="_blank" rel="noopener">Ledger</a>')
     links_html = " ".join(links) if links else ""
 
@@ -984,9 +1051,9 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
         )
     token = esc(record.get("shareToken") or "")
     decide_bits = []
-    if scan.get("canApprove"):
+    if not access_restricted and scan.get("canApprove"):
         decide_bits.append('<button class="btn" type="button" id="scanApprove">Approve quote</button>')
-    if scan.get("canReject"):
+    if not access_restricted and scan.get("canReject"):
         decide_bits.append('<button class="btn ghost" type="button" id="scanReject">Reject quote</button>')
     if decide_bits:
         decide_html = f"""
@@ -1028,7 +1095,7 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
   if (r) r.onclick = function(){{ if (confirm('Reject this quote? It drops out of turnover.')) go('reject', {{confirm:true}}); }};
 }})();
 </script>"""
-    elif not approved and not scan.get("alreadyRejected"):
+    elif (not access_restricted) and not approved and not scan.get("alreadyRejected"):
         decide_html = """
   <div class="card">
     <h2>Approve / Reject</h2>
@@ -1037,7 +1104,9 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     else:
         decide_html = ""
 
-    monitor_html = f"""
+    monitor_html = ""
+    if (not access_restricted) and bool(record.get("canGrantAccess")):
+        monitor_html = f"""
   <div class="card" id="monitorAccess">
     <h2>Monitor access</h2>
     <p class="muted">Customer apna saved mobile last-6 verify karke architect, site incharge, accounts ya kisi trusted person ko read-only project/quote/advance/balance link de sakta hai.</p>
@@ -1050,6 +1119,13 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
       <label><span class="muted">Role</span><input id="grantRole" placeholder="Architect / Accounts" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:10px;margin-top:.18rem"/></label>
       <label><span class="muted">Person name</span><input id="grantName" autocomplete="name" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:10px;margin-top:.18rem"/></label>
       <label><span class="muted">Person mobile</span><input id="grantMobile" autocomplete="tel" inputmode="tel" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:10px;margin-top:.18rem"/></label>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:.45rem .8rem;margin-top:.7rem">
+      <label class="muted"><input id="permDesign" type="checkbox" checked style="width:auto;margin-right:.25rem"/>Design/details</label>
+      <label class="muted"><input id="permRate" type="checkbox" style="width:auto;margin-right:.25rem"/>Rate</label>
+      <label class="muted"><input id="permAmount" type="checkbox" style="width:auto;margin-right:.25rem"/>Amount/totals</label>
+      <label class="muted"><input id="permAdvances" type="checkbox" checked style="width:auto;margin-right:.25rem"/>Advance/balance</label>
+      <label class="muted"><input id="permPdf" type="checkbox" style="width:auto;margin-right:.25rem"/>PDF/print/import links</label>
     </div>
     <button class="btn" type="button" id="grantAccessBtn" style="margin-top:.55rem">Generate monitor link</button>
     <p class="muted" id="grantAccessMsg" style="margin:.55rem 0 0"></p>
@@ -1066,10 +1142,19 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
       customerLast6: (document.getElementById('grantLast6') || {{value:''}}).value.trim(),
       role: (document.getElementById('grantRole') || {{value:''}}).value.trim(),
       name: (document.getElementById('grantName') || {{value:''}}).value.trim(),
-      mobile: (document.getElementById('grantMobile') || {{value:''}}).value.trim()
+      mobile: (document.getElementById('grantMobile') || {{value:''}}).value.trim(),
+      showDesign: !!(document.getElementById('permDesign') || {{checked:false}}).checked,
+      showRate: !!(document.getElementById('permRate') || {{checked:false}}).checked,
+      showAmount: !!(document.getElementById('permAmount') || {{checked:false}}).checked,
+      showAdvances: !!(document.getElementById('permAdvances') || {{checked:false}}).checked,
+      allowPdf: !!(document.getElementById('permPdf') || {{checked:false}}).checked
     }};
     if (!payload.customerLast6 || !payload.role || !payload.name || !payload.mobile) {{
       if (msg) msg.textContent = 'Last-6, role, name aur mobile sab required hain.';
+      return;
+    }}
+    if (!payload.showDesign && !payload.showRate && !payload.showAmount && !payload.showAdvances && !payload.allowPdf) {{
+      if (msg) msg.textContent = 'Kam se kam ek visibility option select karo.';
       return;
     }}
     btn.disabled = true;
@@ -1088,6 +1173,42 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
   }};
 }})();
 </script>"""
+
+    kpis_html = ""
+    if show_amount:
+        kpis_html = f"""
+    <div class="kpis" style="margin-top:.7rem">
+      <div class="kpi"><div class="l">Taxable</div><div class="v">{inr(val.get('totalTaxable'))}</div></div>
+      <div class="kpi"><div class="l">GST {esc(val.get('gstPercent') or 18)}%</div><div class="v">{inr(val.get('totalGst'))}</div></div>
+      <div class="kpi"><div class="l">Grand (w/ GST)</div><div class="v">{inr(val.get('totalGrand'))}</div></div>
+      <div class="kpi"><div class="l">Advance ({esc(record.get('advanceCount') or 0)}x)</div><div class="v">{inr(record.get('totalAdvance'))}</div></div>
+      <div class="kpi"><div class="l">Balance outstanding</div><div class="v">{inr(record.get('balanceWithGst'))}</div></div>
+    </div>"""
+    elif access_restricted:
+        kpis_html = '<p class="muted" style="margin:.65rem 0 0">Commercial value hidden by customer permission.</p>'
+
+    advances_html = ""
+    if show_advances:
+        advances_html = f"""
+  <div class="card">
+    <h2>Advances</h2>
+    <table>
+      <thead><tr><th>#</th><th>Amount</th><th>Mode</th><th>Date</th><th>Running total</th></tr></thead>
+      <tbody>{adv_rows}</tbody>
+    </table>
+  </div>"""
+
+    products_html = ""
+    if show_design:
+        products_html = f"""
+  <div class="card">
+    <h2>Products</h2>
+    <table>
+      <thead><tr>{product_header}</tr></thead>
+      <tbody>{prod_rows}</tbody>
+    </table>
+    {f'<div style="margin-top:.55rem">{type_tot_html}</div>' if type_tot_html else ''}
+  </div>"""
 
     co_name = esc(co.get("name") or "WEOS")
     return f"""<!DOCTYPE html>
@@ -1156,32 +1277,13 @@ input{{font:inherit;background:#fffdf9;color:var(--ink)}}
     <div class="muted" style="margin-top:.45rem">Customer: {esc(cust.get('name'))}
       {(' · ' + esc(cust.get('phone'))) if cust.get('phone') else ''}
     </div>
-    <div class="kpis" style="margin-top:.7rem">
-      <div class="kpi"><div class="l">Taxable</div><div class="v">{inr(val.get('totalTaxable'))}</div></div>
-      <div class="kpi"><div class="l">GST {esc(val.get('gstPercent') or 18)}%</div><div class="v">{inr(val.get('totalGst'))}</div></div>
-      <div class="kpi"><div class="l">Grand (w/ GST)</div><div class="v">{inr(val.get('totalGrand'))}</div></div>
-      <div class="kpi"><div class="l">Advance ({esc(record.get('advanceCount') or 0)}×)</div><div class="v">{inr(record.get('totalAdvance'))}</div></div>
-      <div class="kpi"><div class="l">Balance outstanding</div><div class="v">{inr(record.get('balanceWithGst'))}</div></div>
-    </div>
+    {kpis_html}
     {f'<div style="margin-top:.75rem">{links_html}</div>' if links_html else ''}
   </div>
   {access_notice}
   {approval_card}
-  <div class="card">
-    <h2>Advances</h2>
-    <table>
-      <thead><tr><th>#</th><th>Amount</th><th>Mode</th><th>Date</th><th>Running total</th></tr></thead>
-      <tbody>{adv_rows}</tbody>
-    </table>
-  </div>
-  <div class="card">
-    <h2>Products</h2>
-    <table>
-      <thead><tr><th>Serial</th><th>Location</th><th>Type</th><th>Size</th><th>Qty</th><th>Amount</th></tr></thead>
-      <tbody>{prod_rows}</tbody>
-    </table>
-    {f'<div style="margin-top:.55rem">{type_tot_html}</div>' if type_tot_html else ''}
-  </div>
+  {advances_html}
+  {products_html}
   {pack_html}
   {decide_html}
   {monitor_html}

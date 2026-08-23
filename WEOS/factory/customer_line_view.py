@@ -279,6 +279,15 @@ def public_product_row(index: int, line: Mapping[str, Any] | None) -> dict[str, 
     except (TypeError, ValueError):
         qty_n = qty or 1
     amt = customer_line_amount(line)
+    selling = line.get("selling") if isinstance(line.get("selling"), Mapping) else {}
+    rate = line.get("sellingRate")
+    if rate is None or str(rate).strip() == "":
+        rate = selling.get("sellingRate") or line.get("customerRate")
+    sale_unit = str(line.get("saleUnit") or selling.get("saleUnit") or "").strip()
+    rate_label = ""
+    rate_n = _money(rate)
+    if rate_n is not None and rate_n > 0:
+        rate_label = f"{rate_n:,.2f}" + (f" / {sale_unit}" if sale_unit else "")
     return {
         "serial": serial or design_serial_label(index, None),
         "location": loc or "—",
@@ -289,6 +298,7 @@ def public_product_row(index: int, line: Mapping[str, Any] | None) -> dict[str, 
         "qty": qty_n,
         "glass": line_glass_label(line) or "—",
         "colour": line_colour(line) or "—",
+        "rate": rate_label,
         "amount": amt,
     }
 

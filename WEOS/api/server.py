@@ -2643,6 +2643,11 @@ class PublicMonitorAccessBody(BaseModel):
     mobile: str
     grantedByName: str | None = None
     customerLast6: str | None = None
+    showDesign: bool = True
+    showRate: bool = False
+    showAmount: bool = False
+    showAdvances: bool = True
+    allowPdf: bool = False
 
 
 @app.post("/api/public/quote/{ref}/approve")
@@ -2713,6 +2718,13 @@ def api_public_quote_access(ref: str, body: PublicMonitorAccessBody, request: Re
             mobile=body.mobile,
             granted_by_name=body.grantedByName,
             customer_last6=body.customerLast6,
+            permissions={
+                "design": body.showDesign,
+                "rate": body.showRate,
+                "amount": body.showAmount,
+                "advances": body.showAdvances,
+                "pdf": body.allowPdf,
+            },
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -26,6 +26,21 @@ def _money(v: Any) -> str:
     return money_text(v)
 
 
+def _mask_phone_for_print(value: Any) -> str:
+    import re
+
+    digits = re.sub(r"\D", "", str(value or ""))
+    if not digits:
+        return ""
+    n = len(digits)
+    pre = max(1, min(4, n - 2))
+    suf = 1 if n > 2 else 0
+    if n <= 6:
+        pre = 1
+    hidden = max(1, n - pre - suf)
+    return digits[:pre] + ("*" * hidden) + (digits[-suf:] if suf else "")
+
+
 def _mm(v: Any) -> str:
     from WEOS.factory.fmt import mm_str
 
@@ -1110,9 +1125,8 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     if cust_profile.get("address"):
         c.drawString(M + 22, y, str(cust_profile["address"])[:110])
         y -= 11
-    cust_contact = " · ".join(
-        str(x) for x in (cust_profile.get("contactPerson"), cust_profile.get("phone"), cust_profile.get("email")) if x
-    )
+    cust_phone = _mask_phone_for_print(cust_profile.get("phone"))
+    cust_contact = " · ".join(str(x) for x in (cust_profile.get("contactPerson"), cust_phone, cust_profile.get("email")) if x)
     if cust_contact:
         c.drawString(M + 22, y, cust_contact[:110])
         y -= 11
