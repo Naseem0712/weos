@@ -69,6 +69,11 @@ def main() -> None:
     # PDF path re-derive from calculated line only
     svg = elevation_svg_for_line(r)
     assert svg and "svg" in svg.lower(), "missing svg"
+    assert 'data-role="fold-plan-leaf"' in svg, "fold plan leaves missing"
+    assert 'data-role="fold-plan-handle"' in svg, "fold plan handle missing"
+    assert 'data-role="fold-plan-hinge"' in svg, "fold plan hinge marks missing"
+    assert 'stroke-width="3.40"' not in svg, "fold drawing strokes fell back to heavy window width"
+    assert 'stroke-width="2.05"' in svg, "fold drawing slim stroke cap missing"
 
     # fold only on layout (legacy) still resolves
     legacy = {

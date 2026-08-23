@@ -578,37 +578,88 @@ def _draw_plan(
 
 
 def _draw_plan_bifold(parts: list[str], *, tx, ty, shutters, W: float, y_mid: float, plan_h: float, stroke_scale: float) -> None:
-    """Accordion plan for Fold & Sliding — zigzag of folded leaves per pack."""
+    """Accordion plan for Fold & Sliding - separate leaves with hinge/handle marks."""
     glass = [s for s in shutters if s.get("role") == "glass"]
     if not glass:
         return
+    glass.sort(key=lambda s: float(s.get("nomX0") or 0))
     amp = plan_h * 0.30
     bounds = [float(glass[0].get("nomX0") or 0)] + [float(s.get("nomX1") or 0) for s in glass]
     pts = [(bounds[j], y_mid + (amp if j % 2 == 0 else -amp)) for j in range(len(bounds))]
-    d = " ".join(f"{tx(x):.2f},{ty(y):.2f}" for x, y in pts)
-    parts.append(
-        f'<polyline points="{d}" fill="none" stroke="#173a63" stroke-width="{1.4 * stroke_scale:.2f}" '
-        f'stroke-linejoin="round"/>'
-    )
-    # Hinge dots at internal vertices
-    for j in range(1, len(pts) - 1):
-        x, y = pts[j]
+    sw = max(0.95, 1.05 * stroke_scale)
+
+    def _line_segment(a: tuple[float, float], b: tuple[float, float], gap_px: float = 3.0) -> tuple[float, float, float, float]:
+        ax, ay = tx(a[0]), ty(a[1])
+        bx, by = tx(b[0]), ty(b[1])
+        dx, dy = bx - ax, by - ay
+        ln = max((dx * dx + dy * dy) ** 0.5, 1.0)
+        g = min(gap_px * stroke_scale, ln * 0.20)
+        return ax + dx / ln * g, ay + dy / ln * g, bx - dx / ln * g, by - dy / ln * g
+
+    # Draw every folded leaf as its own slim segment. Small gaps make the opening
+    # points read as separate door leaves instead of one heavy joined polyline.
+    for i, leaf in enumerate(glass):
+        x1, y1, x2, y2 = _line_segment(pts[i], pts[i + 1])
+        pack = str(leaf.get("pack") or "").upper()
         parts.append(
-            f'<circle cx="{tx(x):.2f}" cy="{ty(y):.2f}" r="{2.2 * stroke_scale:.2f}" fill="#8b1e1a"/>'
+            f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}" '
+            f'stroke="#173a63" stroke-width="{sw:.2f}" stroke-linecap="round" data-role="fold-plan-leaf"/>'
         )
-    # Fold-direction arrows per pack
-    fl = sum(1 for s in glass if s.get("pack") == "L")
+        mx, my = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+        parts.append(
+            f'<text x="{mx:.2f}" y="{my - 4 * stroke_scale:.2f}" text-anchor="middle" '
+            f'font-family="Segoe UI, Arial, sans-serif" font-size="{8 * stroke_scale:.0f}" fill="#0b3d7a">{pack}{i + 1}</text>'
+        )
+
+    # Hinge dots at real hinge vertices: inside a pack and at each outer pivot.
+    for j, (x, y) in enumerate(pts):
+        left = glass[j - 1] if 0 <= j - 1 < len(glass) else None
+        right = glass[j] if 0 <= j < len(glass) else None
+        left_pack = str((left or {}).get("pack") or "")
+        right_pack = str((right or {}).get("pack") or "")
+        is_outer = j == 0 or j == len(pts) - 1
+        is_hinge = is_outer or (left_pack and left_pack == right_pack)
+        if not is_hinge:
+            continue
+        parts.append(
+            f'<circle cx="{tx(x):.2f}" cy="{ty(y):.2f}" r="{2.0 * stroke_scale:.2f}" fill="#ffffff" '
+            f'stroke="#8b1e1a" stroke-width="{0.85 * stroke_scale:.2f}" data-role="fold-plan-hinge"/>'
+        )
+
+    # Handles at lead/meeting leaves. If a one-side folding pack is used, this
+    # marks the pull stile on the end leaf.
+    for i, leaf in enumerate(glass):
+        side = str(leaf.get("handleSide") or "").lower()
+        if side not in ("left", "right"):
+            continue
+        j = i if side == "left" else i + 1
+        if not (0 <= j < len(pts)):
+            continue
+        x, y = pts[j]
+        sx, sy = tx(x), ty(y)
+        parts.append(
+            f'<rect x="{sx - 3.2 * stroke_scale:.2f}" y="{sy - 9 * stroke_scale:.2f}" '
+            f'width="{6.4 * stroke_scale:.2f}" height="{18 * stroke_scale:.2f}" rx="{2 * stroke_scale:.2f}" '
+            f'fill="#ffffff" stroke="#111827" stroke-width="{0.95 * stroke_scale:.2f}" data-role="fold-plan-handle"/>'
+        )
+        parts.append(
+            f'<circle cx="{sx:.2f}" cy="{sy + 4.5 * stroke_scale:.2f}" r="{1.7 * stroke_scale:.2f}" '
+            f'fill="none" stroke="#111827" stroke-width="{0.75 * stroke_scale:.2f}"/>'
+        )
+
+    # Fold-direction arrows per pack.
+    fl = sum(1 for s in glass if str(s.get("pack") or "").upper() == "L")
     if fl > 0:
         lx = float(glass[0].get("nomX0") or 0)
         parts.append(
             f'<line x1="{tx(lx) + 26 * stroke_scale:.2f}" y1="{ty(y_mid):.2f}" x2="{tx(lx) + 2:.2f}" '
-            f'y2="{ty(y_mid):.2f}" stroke="#0b3d7a" stroke-width="{1.4 * stroke_scale:.2f}" marker-end="url(#slideArrow)"/>'
+            f'y2="{ty(y_mid):.2f}" stroke="#0b3d7a" stroke-width="{1.05 * stroke_scale:.2f}" marker-end="url(#slideArrow)"/>'
         )
     if fl < len(glass):
         rx = float(glass[-1].get("nomX1") or W)
         parts.append(
             f'<line x1="{tx(rx) - 26 * stroke_scale:.2f}" y1="{ty(y_mid):.2f}" x2="{tx(rx) - 2:.2f}" '
-            f'y2="{ty(y_mid):.2f}" stroke="#0b3d7a" stroke-width="{1.4 * stroke_scale:.2f}" marker-end="url(#slideArrow)"/>'
+            f'y2="{ty(y_mid):.2f}" stroke="#0b3d7a" stroke-width="{1.05 * stroke_scale:.2f}" marker-end="url(#slideArrow)"/>'
         )
 
 
@@ -681,12 +732,18 @@ def render_svg_string(
     # Slim 2D CAD strokes in model-mm. Dark + solid. Floor is ~1.45× Cairo PNG
     # into a ~200 pt PDF cell — hairlines (~1 mm) RIP as dotted. Keep slim
     # (old fat contrast was ~11 mm) but above print-safe minimum.
-    sw_outer = max(2.00, min(ref * 0.0024, 3.40))
-    sw_inner = max(1.55, sw_outer * 0.82)
+    _style_meta = model.metadata or {}
+    _style_system = str(_style_meta.get("system") or "").lower()
+    if _style_system == "bifold":
+        sw_outer = max(1.25, min(ref * 0.00145, 2.05))
+        sw_inner = max(0.95, sw_outer * 0.68)
+    else:
+        sw_outer = max(2.00, min(ref * 0.0024, 3.40))
+        sw_inner = max(1.55, sw_outer * 0.82)
     sw_profile = sw_inner
     sw_seg = sw_inner
     sw_grid = max(1.15, sw_inner * 0.72)
-    sw_interlock = max(1.70, sw_outer * 0.90)
+    sw_interlock = max(1.10, sw_outer * (0.72 if _style_system == "bifold" else 0.90))
     dim_font = 36.0 * k
     label_font = 26.0 * k
 
