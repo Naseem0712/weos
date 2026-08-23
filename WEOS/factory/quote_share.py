@@ -79,6 +79,49 @@ def _clean_phone(value: Any) -> str:
     return re.sub(r"\D", "", str(value or ""))
 
 
+def _mask_phone(value: Any, *, keep: int = 4) -> str:
+    digits = _clean_phone(value)
+    if not digits:
+        return ""
+    keep = max(0, min(int(keep or 0), len(digits)))
+    if len(digits) <= keep:
+        return "*" * len(digits)
+    return ("*" * (len(digits) - keep)) + digits[-keep:]
+
+
+def _last_digits(value: Any, *, count: int = 6) -> str:
+    digits = _clean_phone(value)
+    return digits[-count:] if digits and len(digits) >= count else digits
+
+
+def _customer_phone_for_doc(doc: Mapping[str, Any]) -> str:
+    phone = _clean_phone(doc.get("customerMobile"))
+    if phone:
+        return phone
+    customer_name = str(doc.get("customer") or "").strip()
+    if customer_name:
+        try:
+            from WEOS.factory.customer_store import load_customer_profile
+
+            profile = load_customer_profile(customer_name) or {}
+            return _clean_phone(profile.get("phone"))
+        except Exception:
+            return ""
+    return ""
+
+
+def _verify_last6(expected_phone: Any, provided: Any, *, who: str = "mobile") -> str:
+    expected = _clean_phone(expected_phone)
+    got = _clean_phone(provided)
+    if len(expected) < 6:
+        raise ValueError(f"{who.title()} number is not saved for verification.")
+    if len(got) < 6:
+        raise ValueError(f"Enter last 6 digits of the {who} number.")
+    if _last_digits(got) != _last_digits(expected):
+        raise PermissionError(f"Last 6 digits do not match the {who} number.")
+    return expected
+
+
 def apply_scanner_status(
     ref: str,
     status: str,
@@ -86,6 +129,7 @@ def apply_scanner_status(
     confirm_reject: bool = False,
     name: Any = None,
     mobile: Any = None,
+    verify_last6: Any = None,
     note: Any = None,
 ) -> dict[str, Any]:
     """Approve/reject from the public QR page only — time-windowed."""
@@ -101,11 +145,10 @@ def apply_scanner_status(
         if not win.get("canApprove"):
             raise PermissionError("Approve from this scan page is only available for 15 days from the generate date.")
         by_name = str(name or "").strip()
-        by_mobile = _clean_phone(mobile)
         if not by_name:
             raise ValueError("Enter your name to approve this quote.")
-        if len(by_mobile) < 8:
-            raise ValueError("Enter a valid mobile number to approve this quote.")
+        expected_mobile = _customer_phone_for_doc(doc)
+        by_mobile = _verify_last6(expected_mobile, verify_last6 or mobile, who="customer mobile")
         return set_project_status(
             pid,
             "approved",
@@ -119,15 +162,142 @@ def apply_scanner_status(
             raise ValueError("Confirm reject to un-approve this quote.")
         if not win.get("canReject"):
             raise PermissionError("Reject from this scan page is only available for 7 days from the generate date.")
+        by_name = str(name or "").strip()
+        if not by_name:
+            raise ValueError("Enter your name to reject this quote.")
+        expected_mobile = _customer_phone_for_doc(doc)
+        by_mobile = _verify_last6(expected_mobile, verify_last6 or mobile, who="customer mobile")
         return set_project_status(
             pid,
             "rejected",
             source="scanner",
-            by_name=str(name or "").strip(),
-            by_mobile=_clean_phone(mobile),
+            by_name=by_name,
+            by_mobile=by_mobile,
             note=note,
         )
     raise ValueError("Choose approve or reject")
+
+
+def _public_access_grants(doc: Mapping[str, Any]) -> list[dict[str, Any]]:
+    grants = doc.get("publicAccessGrants") if isinstance(doc, Mapping) else []
+    out: list[dict[str, Any]] = []
+    for row in grants or []:
+        if not isinstance(row, Mapping):
+            continue
+        if str(row.get("status") or "active").lower() not in {"active", "approved"}:
+            continue
+        out.append(
+            {
+                "role": str(row.get("role") or "").strip(),
+                "name": str(row.get("name") or "").strip(),
+                "phoneMasked": _mask_phone(row.get("mobile")),
+                "createdAt": row.get("createdAt"),
+                "grantedByName": row.get("grantedByName") or "",
+            }
+        )
+    return out[-30:]
+
+
+def add_monitor_access(
+    ref: str,
+    *,
+    role: Any,
+    name: Any,
+    mobile: Any,
+    granted_by_name: Any = None,
+    customer_last6: Any = None,
+) -> dict[str, Any]:
+    """Customer-scanner grants a protected monitor link to another stakeholder."""
+    doc = resolve_public_ref(ref)
+    if not isinstance(doc, dict) or not doc.get("projectId"):
+        raise FileNotFoundError("Quote not found")
+    expected_mobile = _customer_phone_for_doc(doc)
+    _verify_last6(expected_mobile, customer_last6, who="customer mobile")
+    role_s = str(role or "").strip()
+    name_s = str(name or "").strip()
+    mobile_s = _clean_phone(mobile)
+    grantor = str(granted_by_name or doc.get("customer") or "").strip()
+    if not role_s:
+        raise ValueError("Enter role, e.g. Architect / Site incharge / Accounts.")
+    if not name_s:
+        raise ValueError("Enter access person's name.")
+    if len(mobile_s) < 8:
+        raise ValueError("Enter a valid mobile number for this access.")
+    token = secrets.token_urlsafe(12)
+    grant = {
+        "token": token,
+        "role": role_s[:60],
+        "name": name_s[:80],
+        "mobile": mobile_s,
+        "mobileMasked": _mask_phone(mobile_s),
+        "status": "active",
+        "createdAt": _now_iso(),
+        "grantedByName": grantor[:80],
+        "grantedByMobile": expected_mobile,
+    }
+    grants = [g for g in (doc.get("publicAccessGrants") or []) if isinstance(g, dict)]
+    grants.append(grant)
+    doc["publicAccessGrants"] = grants[-30:]
+    try:
+        from WEOS.factory.project_store import save_project
+
+        save_project(doc, bump_version=False, action="public_access_grant")
+    except Exception:
+        _log.exception("public access grant save failed for %s", doc.get("projectId"))
+        raise
+    share = ensure_project_share_token(doc, persist=True)
+    return {
+        "ok": True,
+        "role": grant["role"],
+        "name": grant["name"],
+        "phoneMasked": grant["mobileMasked"],
+        "accessToken": token,
+        "accessPath": f"/q/{share}/access/{token}",
+        "createdAt": grant["createdAt"],
+    }
+
+
+def verify_monitor_access(ref: str, access_token: str, *, last6: Any) -> dict[str, Any]:
+    doc = resolve_public_ref(ref)
+    if not isinstance(doc, Mapping):
+        raise FileNotFoundError("Quote not found")
+    tok = str(access_token or "").strip()
+    for row in doc.get("publicAccessGrants") or []:
+        if not isinstance(row, Mapping):
+            continue
+        if str(row.get("token") or "").strip() != tok:
+            continue
+        if str(row.get("status") or "active").lower() not in {"active", "approved"}:
+            raise PermissionError("This access link is not active.")
+        _verify_last6(row.get("mobile"), last6, who="access mobile")
+        rec = build_public_quote_record(ref)
+        if not rec:
+            raise FileNotFoundError("Quote not found")
+        rec["accessVerified"] = True
+        rec["accessRole"] = row.get("role") or ""
+        rec["accessName"] = row.get("name") or ""
+        return rec
+    raise FileNotFoundError("Access link not found")
+
+
+def public_monitor_access_meta(ref: str, access_token: str) -> dict[str, Any] | None:
+    doc = resolve_public_ref(ref)
+    if not isinstance(doc, Mapping):
+        return None
+    tok = str(access_token or "").strip()
+    for row in doc.get("publicAccessGrants") or []:
+        if not isinstance(row, Mapping):
+            continue
+        if str(row.get("token") or "").strip() != tok:
+            continue
+        return {
+            "role": row.get("role") or "",
+            "name": row.get("name") or "",
+            "phoneMasked": _mask_phone(row.get("mobile")),
+            "createdAt": row.get("createdAt"),
+            "status": row.get("status") or "active",
+        }
+    return None
 
 
 def _now_iso() -> str:
@@ -432,6 +602,7 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
     status = str(doc.get("status") or "draft").strip().lower() or "draft"
     approval = doc.get("approval") if isinstance(doc.get("approval"), Mapping) else {}
     rejection = doc.get("rejection") if isinstance(doc.get("rejection"), Mapping) else {}
+    customer_phone_raw = doc.get("customerMobile") or customer_profile.get("phone") or ""
     products = _customer_safe_products(list(doc.get("lines") or []), doc=doc)
     # Never expose revisionLog / importMeta / undo stacks on the public scan page.
     from WEOS.factory.customer_line_view import totals_by_type
@@ -471,7 +642,7 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
             "source": approval.get("source") or doc.get("approvalSource") or "",
             "at": approval.get("at") or doc.get("approvedAt"),
             "byName": approval.get("byName") or doc.get("approvedBy") or "",
-            "byMobile": approval.get("byMobile") or doc.get("approvedByMobile") or "",
+            "byMobile": _mask_phone(approval.get("byMobile") or doc.get("approvedByMobile") or ""),
             "note": approval.get("note") or "",
         },
         "rejection": {
@@ -479,7 +650,7 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
             "source": rejection.get("source") or doc.get("rejectionSource") or "",
             "at": rejection.get("at") or doc.get("rejectedAt"),
             "byName": rejection.get("byName") or doc.get("rejectedBy") or "",
-            "byMobile": rejection.get("byMobile") or doc.get("rejectedByMobile") or "",
+            "byMobile": _mask_phone(rejection.get("byMobile") or doc.get("rejectedByMobile") or ""),
             "note": rejection.get("note") or doc.get("rejectNote") or "",
         },
         "approvalHistory": [
@@ -488,7 +659,7 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
                 "source": h.get("source"),
                 "at": h.get("at"),
                 "byName": h.get("byName"),
-                "byMobile": h.get("byMobile"),
+                "byMobile": _mask_phone(h.get("byMobile")),
                 "note": h.get("note"),
             }
             for h in (doc.get("approvalHistory") or [])[-8:]
@@ -498,7 +669,9 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
         "generatedAt": scan_win.get("generatedAt") or doc.get("createdAt"),
         "customer": {
             "name": customer_name or customer_profile.get("name") or "—",
-            "phone": doc.get("customerMobile") or customer_profile.get("phone") or "",
+            "phone": _mask_phone(customer_phone_raw),
+            "phoneMasked": _mask_phone(customer_phone_raw),
+            "verifyDigits": 6 if len(_clean_phone(customer_phone_raw)) >= 6 else 0,
             "gstNo": doc.get("customerGst") or customer_profile.get("gstNo") or "",
             "address": doc.get("customerAddress") or customer_profile.get("address") or "",
         },
@@ -525,6 +698,7 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
         "productCount": len(products),
         "typeTotals": type_totals,
         "pack": pack,
+        "accessGrants": _public_access_grants(doc),
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt") or _now_iso(),
         "customerPdfUrl": f"/api/projects/{pid}/customer-pdf" if pid else None,
@@ -550,6 +724,57 @@ def public_quote_url(payload: Mapping[str, Any], *, base: str = "") -> str:
     ref = _urlquote(token or "WEOS", safe="")
     b = (base or "").rstrip("/")
     return f"{b}/q/{ref}" if b else f"/q/{ref}"
+
+
+def render_access_verify_html(
+    record: Mapping[str, Any] | None,
+    *,
+    ref: str,
+    access_token: str,
+    grant: Mapping[str, Any] | None = None,
+    message: str = "",
+) -> str:
+    co = (record or {}).get("company") if isinstance(record, Mapping) else {}
+    cust = (record or {}).get("customer") if isinstance(record, Mapping) else {}
+    quote_no = (record or {}).get("quoteNumber") if isinstance(record, Mapping) else ref
+
+    def esc(x: Any) -> str:
+        return html.escape("" if x is None else str(x))
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="robots" content="noindex"/>
+<title>Verify access · {esc(quote_no)}</title>
+<style>
+*{{box-sizing:border-box}}body{{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#e8e3d8;color:#141410}}
+.wrap{{max-width:560px;margin:0 auto;padding:1.25rem 1rem 2.5rem}}
+.card{{background:#fffdf9;border:1px solid rgba(20,20,16,.12);border-radius:14px;padding:1rem 1.1rem;box-shadow:0 10px 40px rgba(20,20,16,.06)}}
+.muted{{color:#5c584f;font-size:.86rem}}h1{{font-size:1.25rem;margin:.15rem 0 .45rem}}
+input{{font:inherit;width:100%;padding:.7rem;border:1px solid rgba(20,20,16,.16);border-radius:10px;background:#fffdf9;margin-top:.25rem}}
+.btn{{display:inline-block;background:#0a5a48;color:#f4faf7;border:0;border-radius:10px;padding:.58rem .85rem;font-weight:700;font-size:.92rem;margin-top:.75rem;cursor:pointer}}
+.err{{color:#9f1239;margin-top:.65rem;font-size:.86rem}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="muted">Protected monitor link</div>
+    <h1>{esc(co.get('name') if isinstance(co, Mapping) else '') or 'WEOS'} · Quote {esc(quote_no)}</h1>
+    <p class="muted">Customer: {esc(cust.get('name') if isinstance(cust, Mapping) else '')} {(' · ' + esc(cust.get('phoneMasked') or cust.get('phone'))) if isinstance(cust, Mapping) and (cust.get('phoneMasked') or cust.get('phone')) else ''}</p>
+    {f"<p class='muted'>Access for: <strong>{esc(grant.get('name'))}</strong> · {esc(grant.get('role'))} · {esc(grant.get('phoneMasked'))}</p>" if isinstance(grant, Mapping) else ""}
+    <form method="get" action="/q/{esc(ref)}/access/{esc(access_token)}">
+      <label><span class="muted">Assigned mobile ke last 6 digits</span><input name="last6" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="Last 6 digits" autofocus/></label>
+      <button class="btn" type="submit">Open monitor page</button>
+    </form>
+    {f'<div class="err">{esc(message)}</div>' if message else ''}
+    <p class="muted" style="margin:.8rem 0 0">Number match hone par hi quote, project, advance aur balance view open hoga.</p>
+  </div>
+</div>
+</body>
+</html>"""
 
 
 def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
@@ -736,6 +961,21 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     </div>
     {f'<p class="muted" style="margin:.55rem 0 0">Note: {esc(decision_note)}</p>' if decision_note else ''}
   </div>"""
+    grants_rows = ""
+    for g in record.get("accessGrants") or []:
+        grants_rows += (
+            f"<tr><td>{esc(g.get('role'))}</td><td>{esc(g.get('name'))}</td>"
+            f"<td>{esc(g.get('phoneMasked'))}</td><td>{fmt_dt(g.get('createdAt'))}</td></tr>"
+        )
+    if not grants_rows:
+        grants_rows = '<tr><td colspan="4" class="muted">No monitor access links issued yet</td></tr>'
+    access_notice = ""
+    if record.get("accessVerified"):
+        access_notice = (
+            f'<div class="card"><h2>Access verified</h2><p class="muted" style="margin:0">'
+            f'Role: {esc(record.get("accessRole"))} · Name: {esc(record.get("accessName"))}. '
+            f'This protected link is read-only for quote, project, advance and balance monitoring.</p></div>'
+        )
     token = esc(record.get("shareToken") or "")
     decide_bits = []
     if scan.get("canApprove"):
@@ -749,7 +989,7 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     <p class="muted">From generate date {esc(fmt_dt(scan.get('generatedAt')))}: reject up to {esc(scan.get('rejectDays') or 7)} days, approve up to {esc(scan.get('approveDays') or 15)} days. After that these buttons disappear here — the company panel can still decide any time.</p>
     <div id="scanIdentity" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.5rem;margin:.65rem 0 .35rem">
       <label><span class="muted">Your name</span><input id="scanName" autocomplete="name" value="{esc(cust.get('name') if cust.get('name') != '—' else '')}" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:10px;margin-top:.18rem"/></label>
-      <label><span class="muted">Mobile number</span><input id="scanMobile" autocomplete="tel" inputmode="tel" value="{esc(cust.get('phone') or '')}" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:10px;margin-top:.18rem"/></label>
+      <label><span class="muted">Customer mobile last 6 digits</span><input id="scanLast6" autocomplete="one-time-code" inputmode="numeric" maxlength="6" placeholder="Last 6 digits" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:10px;margin-top:.18rem"/></label>
     </div>
     <div style="margin-top:.45rem">{''.join(decide_bits)}</div>
     <p class="muted" id="scanDecideMsg" style="margin:.45rem 0 0"></p>
@@ -761,9 +1001,9 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     var msg = document.getElementById('scanDecideMsg');
     extra = extra || {{}};
     extra.name = (document.getElementById('scanName') || {{value:''}}).value.trim();
-    extra.mobile = (document.getElementById('scanMobile') || {{value:''}}).value.trim();
-    if (path === 'approve' && (!extra.name || !extra.mobile)) {{
-      if (msg) msg.textContent = 'Approve karne ke liye naam aur mobile number likhna zaroori hai.';
+    extra.verifyLast6 = (document.getElementById('scanLast6') || {{value:''}}).value.trim();
+    if (!extra.name || !extra.verifyLast6) {{
+      if (msg) msg.textContent = 'Naam aur saved customer mobile ke last 6 digits zaroori hain.';
       return;
     }}
     fetch('/api/public/quote/' + encodeURIComponent(token) + '/' + path, {{
@@ -790,6 +1030,58 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
   </div>"""
     else:
         decide_html = ""
+
+    monitor_html = f"""
+  <div class="card" id="monitorAccess">
+    <h2>Monitor access</h2>
+    <p class="muted">Customer apna saved mobile last-6 verify karke architect, site incharge, accounts ya kisi trusted person ko read-only project/quote/advance/balance link de sakta hai.</p>
+    <div style="overflow:auto;margin:.55rem 0">
+      <table><thead><tr><th>Role</th><th>Name</th><th>Mobile</th><th>Issued</th></tr></thead><tbody>{grants_rows}</tbody></table>
+    </div>
+    <div id="monitorForm" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.5rem;margin-top:.65rem">
+      <label><span class="muted">Your name</span><input id="grantBy" autocomplete="name" value="{esc(cust.get('name') if cust.get('name') != '—' else '')}" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:10px;margin-top:.18rem"/></label>
+      <label><span class="muted">Customer mobile last 6</span><input id="grantLast6" inputmode="numeric" maxlength="6" placeholder="Last 6 digits" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:10px;margin-top:.18rem"/></label>
+      <label><span class="muted">Role</span><input id="grantRole" placeholder="Architect / Accounts" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:10px;margin-top:.18rem"/></label>
+      <label><span class="muted">Person name</span><input id="grantName" autocomplete="name" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:10px;margin-top:.18rem"/></label>
+      <label><span class="muted">Person mobile</span><input id="grantMobile" autocomplete="tel" inputmode="tel" style="width:100%;padding:.55rem;border:1px solid var(--line);border-radius:10px;margin-top:.18rem"/></label>
+    </div>
+    <button class="btn" type="button" id="grantAccessBtn" style="margin-top:.55rem">Generate monitor link</button>
+    <p class="muted" id="grantAccessMsg" style="margin:.55rem 0 0"></p>
+  </div>
+<script>
+(function(){{
+  var token = {json.dumps(record.get("shareToken") or "")};
+  var btn = document.getElementById('grantAccessBtn');
+  var msg = document.getElementById('grantAccessMsg');
+  if (!btn) return;
+  btn.onclick = function(){{
+    var payload = {{
+      grantedByName: (document.getElementById('grantBy') || {{value:''}}).value.trim(),
+      customerLast6: (document.getElementById('grantLast6') || {{value:''}}).value.trim(),
+      role: (document.getElementById('grantRole') || {{value:''}}).value.trim(),
+      name: (document.getElementById('grantName') || {{value:''}}).value.trim(),
+      mobile: (document.getElementById('grantMobile') || {{value:''}}).value.trim()
+    }};
+    if (!payload.customerLast6 || !payload.role || !payload.name || !payload.mobile) {{
+      if (msg) msg.textContent = 'Last-6, role, name aur mobile sab required hain.';
+      return;
+    }}
+    btn.disabled = true;
+    if (msg) msg.textContent = 'Generating protected link...';
+    fetch('/api/public/quote/' + encodeURIComponent(token) + '/access', {{
+      method:'POST',
+      headers:{{'Content-Type':'application/json'}},
+      body:JSON.stringify(payload)
+    }}).then(function(r){{ return r.json().then(function(j){{ return {{ok:r.ok,j:j}}; }}); }})
+      .then(function(res){{
+        btn.disabled = false;
+        if (!res.ok) {{ if (msg) msg.textContent = (res.j && (res.j.detail||res.j.message)) || 'Could not generate link'; return; }}
+        var url = location.origin + res.j.accessPath;
+        if (msg) msg.innerHTML = 'Monitor link: <a href="' + url + '" target="_blank" rel="noopener">' + url + '</a>';
+      }}).catch(function(e){{ btn.disabled = false; if (msg) msg.textContent = e.message || 'Network error'; }});
+  }};
+}})();
+</script>"""
 
     co_name = esc(co.get("name") or "WEOS")
     return f"""<!DOCTYPE html>
@@ -867,6 +1159,7 @@ input{{font:inherit;background:#fffdf9;color:var(--ink)}}
     </div>
     {f'<div style="margin-top:.75rem">{links_html}</div>' if links_html else ''}
   </div>
+  {access_notice}
   {approval_card}
   <div class="card">
     <h2>Advances</h2>
@@ -885,6 +1178,7 @@ input{{font:inherit;background:#fffdf9;color:var(--ink)}}
   </div>
   {pack_html}
   {decide_html}
+  {monitor_html}
   <p class="foot">Last updated {fmt_dt(record.get('updatedAt'))}. This page always loads the live project from the company database — not a PDF snapshot.</p>
 </div>
 </body>

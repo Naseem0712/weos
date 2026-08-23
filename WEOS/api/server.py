@@ -2565,6 +2565,39 @@ def public_quote_ledger(ref: str, request: Request) -> Response:
     return _public_scan_response(ref, request, fmt="ledger")
 
 
+@app.get("/q/{ref}/access/{access_token}")
+@app.get("/scan/{ref}/access/{access_token}")
+def public_quote_access(ref: str, access_token: str, request: Request, last6: str | None = Query(None)) -> Response:
+    """Protected read-only monitor link for architects/site/accounts."""
+    from WEOS.factory.quote_share import (
+        build_public_quote_record,
+        public_monitor_access_meta,
+        render_access_verify_html,
+        render_scan_html,
+        verify_monitor_access,
+    )
+
+    if not last6:
+        rec = build_public_quote_record(ref)
+        grant = public_monitor_access_meta(ref, access_token)
+        return HTMLResponse(render_access_verify_html(rec, ref=ref, access_token=access_token, grant=grant))
+    try:
+        rec = verify_monitor_access(ref, access_token, last6=last6)
+    except FileNotFoundError as exc:
+        rec = build_public_quote_record(ref)
+        grant = public_monitor_access_meta(ref, access_token)
+        return HTMLResponse(render_access_verify_html(rec, ref=ref, access_token=access_token, grant=grant, message=str(exc)), status_code=404)
+    except PermissionError as exc:
+        rec = build_public_quote_record(ref)
+        grant = public_monitor_access_meta(ref, access_token)
+        return HTMLResponse(render_access_verify_html(rec, ref=ref, access_token=access_token, grant=grant, message=str(exc)), status_code=403)
+    except ValueError as exc:
+        rec = build_public_quote_record(ref)
+        grant = public_monitor_access_meta(ref, access_token)
+        return HTMLResponse(render_access_verify_html(rec, ref=ref, access_token=access_token, grant=grant, message=str(exc)), status_code=400)
+    return HTMLResponse(render_scan_html(rec, base_url=_public_base_url(request)))
+
+
 @app.get("/q/{ref}/all.pdf")
 @app.get("/scan/{ref}/all.pdf")
 @app.get("/api/public/quote/{ref}/all.pdf")
@@ -2600,7 +2633,16 @@ class PublicScanDecideBody(BaseModel):
     confirm: bool = False
     name: str | None = None
     mobile: str | None = None
+    verifyLast6: str | None = None
     note: str | None = None
+
+
+class PublicMonitorAccessBody(BaseModel):
+    role: str
+    name: str
+    mobile: str
+    grantedByName: str | None = None
+    customerLast6: str | None = None
 
 
 @app.post("/api/public/quote/{ref}/approve")
@@ -2610,7 +2652,14 @@ def api_public_quote_approve(ref: str, body: PublicScanDecideBody | None = None)
 
     body = body or PublicScanDecideBody()
     try:
-        apply_scanner_status(ref, "approved", name=body.name, mobile=body.mobile, note=body.note)
+        apply_scanner_status(
+            ref,
+            "approved",
+            name=body.name,
+            mobile=body.mobile,
+            verify_last6=body.verifyLast6,
+            note=body.note,
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -2630,7 +2679,15 @@ def api_public_quote_reject(ref: str, body: PublicScanDecideBody | None = None) 
 
     body = body or PublicScanDecideBody()
     try:
-        apply_scanner_status(ref, "rejected", confirm_reject=bool(body.confirm))
+        apply_scanner_status(
+            ref,
+            "rejected",
+            confirm_reject=bool(body.confirm),
+            name=body.name,
+            mobile=body.mobile,
+            verify_last6=body.verifyLast6,
+            note=body.note,
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -2641,6 +2698,32 @@ def api_public_quote_reject(ref: str, body: PublicScanDecideBody | None = None) 
     if not rec:
         raise HTTPException(status_code=404, detail="Quote not found")
     return rec
+
+
+@app.post("/api/public/quote/{ref}/access")
+def api_public_quote_access(ref: str, body: PublicMonitorAccessBody, request: Request) -> dict[str, Any]:
+    """Customer-scanner grants a protected read-only monitor link."""
+    from WEOS.factory.quote_share import add_monitor_access
+
+    try:
+        out = add_monitor_access(
+            ref,
+            role=body.role,
+            name=body.name,
+            mobile=body.mobile,
+            granted_by_name=body.grantedByName,
+            customer_last6=body.customerLast6,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    base = _public_base_url(request).rstrip("/")
+    if out.get("accessPath"):
+        out["accessUrl"] = base + str(out["accessPath"])
+    return out
 
 
 @app.get("/api/public/quote/{ref}/pack/files/{item_id}")
