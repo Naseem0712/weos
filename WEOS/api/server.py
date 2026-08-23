@@ -748,10 +748,16 @@ def _sanitize_filename_part(value: Any) -> str:
     return text
 
 
-def _pdf_filename(quote_no: Any, customer: Any, project_id: str, kind: str) -> str:
-    """Downloaded PDF name = quotenumber_customername (sanitized)."""
-    parts = [p for p in (_sanitize_filename_part(quote_no), _sanitize_filename_part(customer)) if p]
-    base = "_".join(parts) or _sanitize_filename_part(project_id) or "WEOS-quotation"
+def _pdf_filename(quote_no: Any, customer: Any, project_id: str, kind: str, project_name: Any = None) -> str:
+    """Downloaded PDF name = customer_project, with quote/project id as fallback."""
+    parts: list[str] = []
+    for raw in (customer, project_name):
+        part = _sanitize_filename_part(raw)
+        if part and part not in parts:
+            parts.append(part)
+    if not parts:
+        parts = [p for p in (_sanitize_filename_part(quote_no), _sanitize_filename_part(project_id)) if p]
+    base = "_".join(parts) or "WEOS-quotation"
     if kind == "factory":
         base = f"{base}_factory"
     return f"{base}.pdf"
@@ -1024,7 +1030,13 @@ def _pdf_response(
         _log.exception("design photo merge failed for %s", project_id)
 
     quote_no = payload.get("quotationId") or result.get("quotationId") or project_id
-    name = _pdf_filename(quote_no, doc.get("customer") or payload.get("customer"), project_id, kind)
+    name = _pdf_filename(
+        quote_no,
+        doc.get("customer") or payload.get("customer"),
+        project_id,
+        kind,
+        project_name=doc.get("name") or payload.get("name"),
+    )
     try:
         if kind == "factory":
             pdf = build_factory_pdf_bytes(payload)

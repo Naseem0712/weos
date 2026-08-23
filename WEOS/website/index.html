@@ -78,28 +78,33 @@ a{color:inherit}
 .rail-tools .rt-steps button:active{transform:scale(.96)}
 .rail-tools .rt-steps button.active{background:var(--green);color:#fff;border-color:var(--green)}
 .rail-tools .rt-steps button.done{border-color:var(--green);color:var(--green)}
-.pdf-machine{position:fixed;inset:0;z-index:10000;display:none;align-items:stretch;justify-content:center;background:rgba(15,23,42,.72);backdrop-filter:blur(8px);padding:18px}
+.pdf-machine{position:fixed;inset:0;z-index:10000;display:none;align-items:stretch;justify-content:center;background:rgba(15,23,42,.72);backdrop-filter:blur(8px);padding:14px}
 .pdf-machine.active{display:flex}
-.pdf-machine-card{width:min(1040px,100%);min-height:min(760px,100%);background:#f8fafc;border:1px solid rgba(255,255,255,.38);border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.35);display:grid;grid-template-rows:auto auto 1fr;overflow:hidden}
-.pdf-machine-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding:18px 20px 12px;background:linear-gradient(135deg,#e6f7ee,#fff8e8)}
-.pdf-machine-title{margin:0;font-size:1.12rem;font-weight:800;color:#0f172a}
-.pdf-machine-sub{margin:.25rem 0 0;color:#475569;font-size:.86rem}
+.pdf-machine-card{width:min(1040px,100%);height:min(92vh,100%);background:#f8fafc;border:1px solid rgba(255,255,255,.38);border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.35);display:grid;grid-template-rows:auto auto minmax(0,1fr);overflow:hidden}
+.pdf-machine-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding:12px 16px 8px;background:linear-gradient(135deg,#e6f7ee,#fff8e8)}
+.pdf-machine-title{margin:0;font-size:1rem;font-weight:800;color:#0f172a}
+.pdf-machine-sub{margin:.18rem 0 0;color:#475569;font-size:.78rem}
 .pdf-machine-close{border:1px solid var(--line);background:#fff;color:#0f172a;border-radius:10px;padding:.42rem .7rem;cursor:pointer}
-.pdf-machine-stage{padding:16px 20px;border-top:1px solid rgba(15,23,42,.08);border-bottom:1px solid rgba(15,23,42,.08);background:#fff}
-.machine-scene{height:96px;position:relative;border:1px solid #d8e2df;border-radius:12px;background:linear-gradient(180deg,#f8fafc,#eef7f2);overflow:hidden}
-.machine-wheel{position:absolute;left:24px;top:20px;width:54px;height:54px;border:7px solid #0a5a48;border-top-color:#b45324;border-radius:50%;animation:spin 1s linear infinite}
-.machine-wheel.small{left:92px;top:34px;width:32px;height:32px;border-width:5px;animation-duration:.72s;animation-direction:reverse}
-.machine-beam{position:absolute;left:142px;right:20px;top:44px;height:10px;border-radius:999px;background:repeating-linear-gradient(90deg,#0a5a48 0 28px,#147a62 28px 56px);animation:belt .9s linear infinite}
-.machine-doc{position:absolute;left:160px;top:23px;width:44px;height:54px;border-radius:6px;background:#fff;border:1px solid #cbd5e1;box-shadow:0 6px 18px rgba(15,23,42,.12);animation:docmove 2.4s ease-in-out infinite}
-.machine-doc:before,.machine-doc:after{content:"";position:absolute;left:8px;right:8px;height:2px;background:#94a3b8;border-radius:3px}
-.machine-doc:before{top:16px}.machine-doc:after{top:27px}
-.pdf-machine-status{display:flex;flex-wrap:wrap;gap:.45rem;margin-top:12px}
+.pdf-machine-stage{padding:8px 14px;border-top:1px solid rgba(15,23,42,.08);border-bottom:1px solid rgba(15,23,42,.08);background:#fff}
+.machine-scene{height:42px;position:relative;border:1px solid #d8e2df;border-radius:10px;background:linear-gradient(180deg,#f8fafc,#eef7f2);overflow:hidden}
+.machine-wheel{position:absolute;left:18px;top:10px;width:22px;height:22px;border:4px solid #0a5a48;border-top-color:#b45324;border-radius:50%;animation:spin 1s linear infinite}
+.machine-wheel.small{left:50px;top:15px;width:14px;height:14px;border-width:3px;animation-duration:.72s;animation-direction:reverse}
+.machine-beam{position:absolute;left:86px;right:12px;top:18px;height:6px;border-radius:999px;background:repeating-linear-gradient(90deg,#0a5a48 0 22px,#147a62 22px 44px);animation:belt .9s linear infinite}
+.machine-doc{position:absolute;left:104px;top:7px;width:26px;height:30px;border-radius:5px;background:#fff;border:1px solid #cbd5e1;box-shadow:0 4px 12px rgba(15,23,42,.12);animation:docmove 2.4s ease-in-out infinite}
+.machine-doc:before,.machine-doc:after{content:"";position:absolute;left:6px;right:6px;height:2px;background:#94a3b8;border-radius:3px}
+.machine-doc:before{top:10px}.machine-doc:after{top:17px}
+.pdf-machine-status{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:6px}
 .pdf-machine-status span{border:1px solid #d8e2df;background:#f8fafc;border-radius:999px;padding:.22rem .6rem;font-size:.76rem;color:#475569}
 .pdf-machine-status span.active{background:#0a5a48;color:#fff;border-color:#0a5a48}
 .pdf-machine-body{display:grid;grid-template-rows:auto 1fr;min-height:0;background:#e2e8f0}
-.pdf-machine-actions{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;padding:10px 14px;background:#fff;border-bottom:1px solid #d6dedb}
+.pdf-machine-actions{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;padding:7px 12px;background:#fff;border-bottom:1px solid #d6dedb}
 .pdf-machine-frame{width:100%;height:100%;border:0;background:#fff;display:none}
 .pdf-machine-frame.ready{display:block}
+#windowCartTools.special-product-tools > .row:nth-of-type(n+2),
+#windowCartTools.special-product-tools #customGlassBox,
+#windowCartTools.special-product-tools #casementPanelBox{display:none!important}
+#windowCartTools.special-product-tools #addFeatureBox{margin-top:.55rem}
+#windowCartTools.special-product-tools #addFeatureBox .muted{display:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes belt{to{background-position:56px 0}}
 @keyframes docmove{0%{transform:translateX(0);opacity:.1}20%{opacity:1}75%{opacity:1}100%{transform:translateX(620px);opacity:.08}}
@@ -2604,7 +2609,33 @@ function updatePdfMachineStep(step, note) {
   }
   if (note && $('pdfMachineNote')) $('pdfMachineNote').textContent = note;
 }
-function finishPdfMachine(url, label, printNow) {
+function safePdfFilePart(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-._]+|[-._]+$/g, '');
+}
+function pdfDownloadFilename(kind) {
+  const customer = safePdfFilePart(
+    ($('cartCustomer') && $('cartCustomer').value)
+    || ($('projCustName') && $('projCustName').value)
+    || ($('projMobile') && $('projMobile').value)
+    || 'Customer'
+  );
+  const project = safePdfFilePart(
+    ($('cartName') && $('cartName').value)
+    || ($('projName') && $('projName').value)
+    || state.projectId
+    || 'Project'
+  );
+  const parts = [customer, project].filter(Boolean);
+  let base = parts.length ? parts.join('_') : safePdfFilePart(state.projectId || 'WEOS-quotation');
+  if (kind === 'factory') base += '_factory';
+  return base + '.pdf';
+}
+function finishPdfMachine(url, label, printNow, filename) {
   const box = ensurePdfMachine();
   box.classList.add('active');
   updatePdfMachineStep('ready', 'PDF ready. Review, print, download, or go back to the app.');
@@ -2620,7 +2651,7 @@ function finishPdfMachine(url, label, printNow) {
   const dl = $('pdfMachineDownload');
   if (dl) {
     dl.href = url;
-    dl.download = String(label || 'quote').replace(/[^\w.-]+/g, '_') + '.pdf';
+    dl.download = filename || pdfDownloadFilename(label === 'Factory PDF' ? 'factory' : 'customer');
     dl.removeAttribute('aria-disabled');
   }
 }
@@ -4020,7 +4051,7 @@ function applySystemUiRules(opts) {
   const ventilator = sys === 'ventilator';
   const louver = sys === 'louver';
   const pergola = sys === 'pergola';
-  const surface = louver || pergola;
+  const surface = louver || pergola || sys === 'surface';
   const hasTracks = productHasTracks(selectedProductMeta(), state.lines[state.selectedLine], sys);
   const show = (id, on) => { const el = $(id); if (el) el.style.display = on ? '' : 'none'; };
   show('bifoldRow', bifold);
@@ -4069,8 +4100,9 @@ function systemForProduct(p) {
   if (t.includes('rail') || cat.includes('rail')) return null; // railing world — no window system
   if (t.includes('ventilat')) return 'ventilator';
   if (t.includes('shower') || cat.includes('shower') || (cat.includes('bathroom') && !t.includes('ventilat'))) return 'shower';
-  if (t.includes('louver') || t.includes('louvre') || cat.includes('louver') || cat.includes('louvre') || cat.includes('facade')) return 'louver';
+  if (t.includes('louver') || t.includes('louvre') || cat.includes('louver') || cat.includes('louvre')) return 'louver';
   if (t.includes('pergola') || cat.includes('pergola')) return 'pergola';
+  if (t.includes('acp') || cat.includes('acp') || t.includes('hpl') || cat.includes('hpl') || t.includes('fluted') || cat.includes('fluted') || t.includes('perforated') || cat.includes('perforated') || t.includes('cladding') || cat.includes('cladding') || cat.includes('facade')) return 'surface';
   if (t.includes('casement') || t.includes('openable') || t.includes('opening')) return 'casement';
   if (t.includes('bifold') || t.includes('fold')) return 'bifold';
   if (t.includes('grid') || (t.includes('partition') && !t.includes('shower'))) return 'grid';
@@ -4194,11 +4226,27 @@ function productHasTracks(p, ln, sys) {
   if (typ.includes('slid') || typ.includes('tele') || typ.includes('sync') || typ.includes('fold') || typ === 'windows' || typ === 'door' || typ === 'style') return true;
   return s ? (s.indexOf('slid') >= 0 || s.indexOf('fold') >= 0) : false;
 }
+function setSpecialProductToolMode(world) {
+  const win = $('windowCartTools');
+  if (win) {
+    const special = world === 'louver' || world === 'pergola' || world === 'surface';
+    win.classList.toggle('special-product-tools', special);
+    if (special) win.dataset.world = world;
+    else delete win.dataset.world;
+  }
+  const feature = $('addFeatureBox');
+  if (feature) {
+    feature.style.display = world === 'pergola' || world === 'surface' ? 'none' : '';
+    const title = feature.querySelector('strong');
+    if (title) title.textContent = world === 'louver' ? 'Louver design' : 'Add feature';
+  }
+}
 function applyProductWorld() {
   const p = selectedProductMeta();
   const world = productWorldOf(p, null);
   const win = $('windowCartTools');
   const addBtn = $('btnAddLine');
+  setSpecialProductToolMode(world);
   if (world === 'louver' || world === 'pergola' || world === 'surface') {
     state.railingMode = false;
     state.showerMode = false;
@@ -4227,6 +4275,7 @@ function applyProductWorld() {
     showVentTools(true);
     if (addBtn) addBtn.textContent = 'Add ventilator to cart';
     if ($('lineSeries')) $('lineSeries').value = '';
+    setSpecialProductToolMode('');
     ventCalc();
     return;
   }
@@ -4241,6 +4290,7 @@ function applyProductWorld() {
     showShowerTools(true);
     if (addBtn) addBtn.textContent = 'Add shower to cart';
     if ($('lineSeries')) $('lineSeries').value = '';
+    setSpecialProductToolMode('');
     showerCalc();
     return;
   }
@@ -4266,6 +4316,7 @@ function applyProductWorld() {
       if (!['design', 'bottom', 'handrail', 'glass', 'rates'].includes(state.railStep)) state.railStep = 'design';
     }
     if (win) win.classList.add('hidden');
+    setSpecialProductToolMode('');
     showRailTools(true);
     if (addBtn) addBtn.textContent = 'Add railing to cart';
     // Drop window series leftovers under the canvas when entering railing world.
@@ -9565,8 +9616,9 @@ async function openProjectPdf(kind, opts) {
   }
   const cacheKind = kind === 'factory' ? 'factory' : 'customer';
   const cacheKey = _exportFingerprint(cacheKind);
+  const downloadName = pdfDownloadFilename(cacheKind);
   if (cacheKind === 'customer' && state._custPdfCache.key === cacheKey && state._custPdfCache.url) {
-    finishPdfMachine(state._custPdfCache.url, label, !!opts.print);
+    finishPdfMachine(state._custPdfCache.url, label, !!opts.print, downloadName);
     return state._custPdfCache.url;
   }
   showPdfMachine(label);
@@ -9601,7 +9653,7 @@ async function openProjectPdf(kind, opts) {
   }
   const url = URL.createObjectURL(blob);
   if (cacheKind === 'customer') state._custPdfCache = { key: cacheKey, url, blob };
-  finishPdfMachine(url, label, !!opts.print);
+  finishPdfMachine(url, label, !!opts.print, downloadName);
   toast(kind === 'factory' ? 'Factory PDF ready' : 'Quote PDF ready');
   saveProject(true).catch(() => {});
   return url;
