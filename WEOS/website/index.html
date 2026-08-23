@@ -191,6 +191,12 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
 .toast{position:fixed;right:1rem;bottom:1rem;background:#12140f;color:#fff;padding:.7rem 1rem;border-radius:10px;z-index:50;opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none}
 .toast.show{opacity:1;transform:none}
 .hidden{display:none!important}
+.btn.busy,a.btn.busy,label.btn.busy{position:relative;opacity:.78;pointer-events:none}
+.btn.busy::before,a.btn.busy::before,label.btn.busy::before{
+  content:"";width:.82em;height:.82em;margin-right:.38rem;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;
+  display:inline-block;vertical-align:-.12em;animation:spin .8s linear infinite
+}
+@keyframes spin{to{transform:rotate(360deg)}}
 .total{font-family:var(--serif);font-size:clamp(1.6rem,3vw,2.2rem)}
 .actions-inline{display:flex;gap:.3rem;flex-wrap:wrap}
 .specs{display:grid;grid-template-columns:1fr 1fr;gap:.45rem .75rem;font-size:.88rem}
@@ -297,6 +303,9 @@ textarea{max-width:100%}
   .row input:not([type=checkbox]):not([type=radio]):not([type=range]),
   .row select,
   .row textarea,
+  .rt-row input:not([type=checkbox]):not([type=radio]):not([type=range]),
+  .rt-row select,
+  .rt-row textarea,
   .review-field input,
   .review-field select,
   .review-field textarea{
@@ -814,7 +823,7 @@ textarea{max-width:100%}
               <!-- 1 · Design / size (normal) or stair geometry -->
               <div class="rt-panel" data-rail-step="design">
                 <div id="wrapRailDesignNormal">
-                  <span class="l" style="width:100%;margin:0 0 .15rem">Design shape (straight or complicated)</span>
+                  <span class="l" id="railShapeLabel" style="width:100%;margin:0 0 .15rem">Advanced shape</span>
                   <div class="rt-shapes" id="railShapeBtns">
                     <button type="button" data-shape="straight" class="active">Straight</button>
                     <button type="button" data-shape="L">L</button>
@@ -880,6 +889,7 @@ textarea{max-width:100%}
                   <div class="rt-row" style="align-items:center;margin-top:0">
                     <span class="l" style="margin:0" id="rRunRowsTitle">Spans</span>
                     <button class="btn ghost sm" type="button" id="btnRailAddRun">+ Add span</button>
+                    <button class="btn ghost sm" type="button" id="btnRailShapeToggle">Shape</button>
                     <div><label class="l">Gap mm</label><input id="rGapLive" type="number" value="12" style="width:52px"/></div>
                     <div><label class="l">Qty</label><input id="rQtyLive" type="number" min="1" value="1" style="width:48px"/></div>
                   </div>
@@ -2448,6 +2458,7 @@ const state = {
   railShape: 'straight',
   railMode: 'normal',
   railStep: 'design',
+  railShowShapeTools: false,
   railBottomKind: 'continuous', // continuous | block | ss_pillar | studs
   railStairBottom: 'block', // block | topiller
   railStairMount: 'side', // step | side — default side (table); step is explicit exception
@@ -2476,6 +2487,33 @@ const toast = (m) => {
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2200);
 };
+function setButtonBusy(el, busy, label) {
+  if (!el) return;
+  if (busy) {
+    if (!el.dataset.idleText) el.dataset.idleText = el.textContent || '';
+    if (label) el.textContent = label;
+    el.classList.add('busy');
+    el.setAttribute('aria-busy', 'true');
+  } else {
+    if (el.dataset.idleText) el.textContent = el.dataset.idleText;
+    el.classList.remove('busy');
+    el.removeAttribute('aria-busy');
+  }
+}
+function openPdfProgressTab(title) {
+  const win = window.open('', '_blank');
+  if (!win) return null;
+  try {
+    win.document.write(`<!doctype html><html><head><title>${title}</title><style>
+      body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#f8fafc;color:#0f172a}
+      main{max-width:360px;padding:24px;text-align:center}
+      i{display:inline-block;width:34px;height:34px;border:4px solid #0a5a48;border-right-color:transparent;border-radius:50%;animation:s .8s linear infinite}
+      p{color:#475569;margin:.6rem 0 0}@keyframes s{to{transform:rotate(360deg)}}
+    </style></head><body><main><i></i><h2>${title}</h2><p>Generating latest saved design...</p></main></body></html>`);
+    win.document.close();
+  } catch (_) {}
+  return win;
+}
 function goCompanyLogin(ev) {
   if (ev && ev.preventDefault) ev.preventDefault();
   const company = document.getElementById('view-company');
@@ -6498,11 +6536,17 @@ function syncRailShapeUi() {
   const arch = shape === 'arch';
   const stair = shape === 'staircase';
   const legs = shape === 'L' || shape === 'U';
-  if ($('wrapRailSegs')) $('wrapRailSegs').style.display = poly ? '' : 'none';
-  if ($('wrapRailArch')) $('wrapRailArch').style.display = arch ? '' : 'none';
-  if ($('wrapRailLegs')) $('wrapRailLegs').style.display = legs ? '' : 'none';
-  if ($('wrapRailSpans')) $('wrapRailSpans').style.display = legs ? '' : 'none';
-  if ($('railShapeBtns')) $('railShapeBtns').style.display = stair ? 'none' : '';
+  const showAdvanced = !stair && (state.railShowShapeTools || legs || arch || (poly && (($('rSegments') && $('rSegments').value.trim()) || false)));
+  if ($('railShapeLabel')) $('railShapeLabel').style.display = showAdvanced ? '' : 'none';
+  if ($('wrapRailSegs')) $('wrapRailSegs').style.display = showAdvanced && poly ? '' : 'none';
+  if ($('wrapRailArch')) $('wrapRailArch').style.display = showAdvanced && arch ? '' : 'none';
+  if ($('wrapRailLegs')) $('wrapRailLegs').style.display = showAdvanced && legs ? '' : 'none';
+  if ($('wrapRailSpans')) $('wrapRailSpans').style.display = showAdvanced && legs ? '' : 'none';
+  if ($('railShapeBtns')) $('railShapeBtns').style.display = showAdvanced ? '' : 'none';
+  if ($('btnRailShapeToggle')) {
+    $('btnRailShapeToggle').classList.toggle('active', !!showAdvanced);
+    $('btnRailShapeToggle').textContent = showAdvanced ? 'Hide shape' : 'Shape';
+  }
   if ($('rBasis') && !state._railBasisTouched) {
     $('rBasis').value = stair ? 'sloping_rft' : 'horizontal_rft';
   }
@@ -6512,6 +6556,7 @@ function populateRailTools(cfg) {
   state.railingMode = true;
   state.railShape = cfg.shape || 'straight';
   state.railMode = (cfg.shape === 'staircase') ? 'staircase' : 'normal';
+  state.railShowShapeTools = !!(cfg.shape && !['straight', 'staircase'].includes(String(cfg.shape)));
   state.railStep = 'design';
   // Restore easy-wizard exclusive bottom choice
   if (cfg.shape === 'staircase') {
@@ -7234,7 +7279,9 @@ function bindRailRunEvents() {
 function railingConfig(){
   const num = (id,d)=>{ const el=$(id); const v=el?el.value:''; return v===''?d:+v; };
   const stairs = railIsStairs();
-  const shape = stairs ? 'staircase' : (state.railShape || 'straight');
+  const draftRuns = collectRailRuns();
+  const hasAdvancedShape = !stairs && !!(state.railShowShapeTools && state.railShape && state.railShape !== 'straight');
+  const shape = stairs ? 'staircase' : (hasAdvancedShape ? state.railShape : (draftRuns.length > 1 ? 'polyline' : 'straight'));
   const flags = railInstallFlags();
   const contOnly = railOnlyContinuousBottom();
   applyGlassPreset();
@@ -7375,7 +7422,7 @@ function railingConfig(){
   if (shape === 'staircase' && cfg.glassHeightMm) {
     cfg.heightMm = cfg.glassHeightMm;
   }
-  const runRows = collectRailRuns();
+  const runRows = draftRuns;
   if (runRows.length) {
     cfg.runs = runRows;
     const first = runRows[0];
@@ -8196,6 +8243,7 @@ document.querySelectorAll('#railModeBtns [data-mode]').forEach(btn => {
   btn.onclick = () => {
     state.railMode = btn.dataset.mode;
     state.railShape = state.railMode === 'staircase' ? 'staircase' : 'straight';
+    state.railShowShapeTools = false;
     state.railStep = 'design';
     state.railingMode = true;
     state.railRuns = [];
@@ -8218,6 +8266,7 @@ document.querySelectorAll('#railShapeBtns [data-shape]').forEach(btn => {
   btn.onclick = () => {
     state.railShape = btn.dataset.shape;
     state.railMode = 'normal';
+    state.railShowShapeTools = true;
     state.railingMode = true;
     if (state.railShape !== 'straight' && $('rHandrail')) $('rHandrail').checked = true;
     syncRailWizardUi();
@@ -8248,14 +8297,22 @@ document.querySelectorAll('#rStairMountBtns [data-stair-mount]').forEach(btn => 
 });
 if ($('rGlassPreset')) $('rGlassPreset').onchange = () => { applyGlassPreset(); railingCalc(); };
 if ($('rHandrail')) $('rHandrail').onchange = () => { syncRailBottomUi(); railingCalc(); };
+if ($('btnRailShapeToggle')) $('btnRailShapeToggle').onclick = () => {
+  state.railShowShapeTools = !state.railShowShapeTools;
+  if (!state.railShowShapeTools && state.railShape !== 'staircase') state.railShape = 'straight';
+  syncRailWizardUi();
+  railingCalc();
+};
 if ($('btnRailPresetJog')) $('btnRailPresetJog').onclick = () => {
   state.railShape = 'polyline'; state.railMode = 'normal'; state.railingMode = true;
+  state.railShowShapeTools = true;
   if ($('rSegments')) $('rSegments').value = '6694,6585,1900,4567,6835';
   if ($('rHandrail')) $('rHandrail').checked = true;
   syncRailWizardUi(); railingCalc();
 };
 if ($('btnRailPresetStep')) $('btnRailPresetStep').onclick = () => {
   state.railShape = 'polyline'; state.railMode = 'normal'; state.railingMode = true;
+  state.railShowShapeTools = true;
   if ($('rSegments')) $('rSegments').value = '6865,11500,5100,4700,5100,11700';
   if ($('rHandrail')) $('rHandrail').checked = true;
   syncRailWizardUi(); railingCalc();
@@ -9258,7 +9315,7 @@ function _liveExportBody(brand) {
     persist: true,
   };
 }
-async function openProjectPdf(kind) {
+async function openProjectPdf(kind, popupWin) {
   if (state.selectedLine != null && state.lines[state.selectedLine] && !isRailingMode() && !isShowerMode() && !isVentMode()) {
     try {
       const draft = currentLineDraft();
@@ -9268,18 +9325,22 @@ async function openProjectPdf(kind) {
   const cacheKind = kind === 'factory' ? 'factory' : 'customer';
   const cacheKey = _exportFingerprint(cacheKind);
   if (cacheKind === 'customer' && state._custPdfCache.key === cacheKey && state._custPdfCache.url) {
-    window.open(state._custPdfCache.url, '_blank');
+    if (popupWin && !popupWin.closed) popupWin.location.href = state._custPdfCache.url;
+    else window.open(state._custPdfCache.url, '_blank');
     return;
   }
+  toast('Preparing latest quote data...');
   await ensureProject();
   try { await ensureExportSetupApplied(); } catch (_) {}
   updatePdfLinks();
   const brand = (typeof activePdfBrand === 'function' && activePdfBrand()) || 'marqt';
   const body = _liveExportBody(brand);
+  toast(kind === 'factory' ? 'Generating factory PDF...' : 'Generating quote PDF...');
   const res = await fetch(`${API_BASE}/api/projects/${state.projectId}/${kind}-pdf?brand=${encodeURIComponent(brand)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal: (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(90000) : undefined,
   });
   if (!res.ok) {
     let msg = res.statusText;
@@ -9295,7 +9356,9 @@ async function openProjectPdf(kind) {
   }
   const url = URL.createObjectURL(blob);
   if (cacheKind === 'customer') state._custPdfCache = { key: cacheKey, url, blob };
-  window.open(url, '_blank');
+  if (popupWin && !popupWin.closed) popupWin.location.href = url;
+  else window.open(url, '_blank');
+  toast(kind === 'factory' ? 'Factory PDF ready' : 'Quote PDF ready');
   saveProject(true).catch(() => {});
 }
 ['linkCust','linkCustPrint','linkFact'].forEach(id => {
@@ -9303,14 +9366,29 @@ async function openProjectPdf(kind) {
   a.addEventListener('click', async (e) => {
     e.preventDefault();
     if (!(state.projectId || (state.lines && state.lines.length))) { toast('Save / calculate a project first'); return; }
+    if (state._exportBusy) return;
+    state._exportBusy = true;
+    const kind = id === 'linkFact' ? 'factory' : 'customer';
+    const label = id === 'linkFact' ? 'Factory PDF' : (id === 'linkCustPrint' ? 'Print quote' : 'Quote PDF');
+    const popup = openPdfProgressTab(label);
+    setButtonBusy(a, true, 'Generating...');
     try {
-      await openProjectPdf(id === 'linkFact' ? 'factory' : 'customer');
-    } catch(err) { toast(err.message || String(err)); }
+      await openProjectPdf(kind, popup);
+    } catch(err) {
+      if (popup && !popup.closed) popup.close();
+      toast(err.message || String(err));
+    } finally {
+      state._exportBusy = false;
+      setButtonBusy(a, false);
+    }
   });
 });
 if ($('linkCustXlsx')) $('linkCustXlsx').addEventListener('click', async (e) => {
   e.preventDefault();
   if (!(state.projectId || (state.lines && state.lines.length))) { toast('Save / calculate a project first'); return; }
+  if (state._exportBusy) return;
+  state._exportBusy = true;
+  setButtonBusy($('linkCustXlsx'), true, 'Exporting...');
   try {
     if (state.selectedLine != null && state.lines[state.selectedLine] && !isRailingMode() && !isShowerMode() && !isVentMode()) {
       try {
@@ -9326,6 +9404,7 @@ if ($('linkCustXlsx')) $('linkCustXlsx').addEventListener('click', async (e) => 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(_liveExportBody(brand)),
+      signal: (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(90000) : undefined,
     });
     if (!res.ok) {
       let msg = res.statusText;
@@ -9339,8 +9418,13 @@ if ($('linkCustXlsx')) $('linkCustXlsx').addEventListener('click', async (e) => 
     document.body.appendChild(a);
     a.click();
     a.remove();
+    toast('Quote Excel ready');
     saveProject(true).catch(() => {});
   } catch(err) { toast(err.message || String(err)); }
+  finally {
+    state._exportBusy = false;
+    setButtonBusy($('linkCustXlsx'), false);
+  }
 });
 if ($('exportSetupSelect')) {
   $('exportSetupSelect').onchange = async () => {

@@ -852,7 +852,9 @@ def _pdf_response(
         ):
             if overlay.get(_fld) is not None:
                 doc[_fld] = overlay[_fld]
-        if overlay.get("persist") and overlay.get("lines") is not None:
+        # Customer export persists the same live design in lastPdfExport below;
+        # avoid a duplicate write before PDF generation so the button responds faster.
+        if kind == "factory" and overlay.get("persist") and overlay.get("lines") is not None:
             try:
                 save_project(doc, action="pdf-flush")
             except ValueError as exc:
