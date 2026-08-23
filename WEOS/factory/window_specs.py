@@ -381,8 +381,8 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
         world = line_world(line)
     except Exception:
         world = "window"
-    if world in ("louver", "pergola"):
-        title = str(line.get("displayName") or ("Pergola" if world == "pergola" else "Louvers"))
+    if world in ("louver", "pergola", "surface"):
+        title = str(line.get("displayName") or ("Pergola" if world == "pergola" else ("Surface panel" if world == "surface" else "Louvers")))
         add("", title)
         add("SIZE", f"{_mm_txt(w)} x {_mm_txt(h)} mm")
         add("AREA", f"{_area_sqft(w, h)} Sq.Ft.")
@@ -397,7 +397,7 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
             add("BLADE", f"{orient} blades - {_mm_txt(blade)} mm face")
             add("GAP", f"{_mm_txt(gap)} mm")
             add("MATERIAL", "Aluminium louver blades and outer frame")
-        else:
+        elif world == "pergola":
             pergola = opts.get("pergola") if isinstance(opts.get("pergola"), Mapping) else {}
             fixing = pergola.get("fixing") or pergola.get("mount") or opts.get("fixing") or "Floor / wall / garden as specified"
             post = pergola.get("post") or pergola.get("postSection") or "Posts as specified"
@@ -408,6 +408,21 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
             add("POSTS", post)
             add("RAFTERS", rafter)
             add("ROOF", cover)
+        else:
+            blob = " ".join(str(x or "").lower() for x in (line.get("productType"), line.get("product"), line.get("productId"), title))
+            if "acp" in blob:
+                kind = "ACP cladding"
+            elif "hpl" in blob:
+                kind = "HPL cladding"
+            elif "fluted" in blob:
+                kind = "Fluted panel"
+            elif "perforated" in blob:
+                kind = "Perforated panel"
+            else:
+                kind = "Facade panel"
+            add("TYPE", kind)
+            add("MATERIAL", "Panel / sheet as specified")
+            add("FIXING", "Site fixing frame / adhesive / fasteners as specified")
         if colour:
             add("COLOUR", str(colour).replace("_", " ").title())
         return rows

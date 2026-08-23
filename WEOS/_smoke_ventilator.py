@@ -104,8 +104,10 @@ def main() -> None:
     blob = " ".join(v for _, v in cust).lower()
     _ok("BOM" not in labels, f"customer has no BOM labels {labels}")
     _ok("bom" not in blob, "customer text has no bom")
-    for need in ("PROFILE", "GLASS", "COLOUR", "HARDWARE", "LAYOUT", "AREA", "RATE", "AMOUNT", "QTY"):
+    for need in ("PROFILE", "GLASS", "COLOUR", "HARDWARE", "LAYOUT", "AREA"):
         _ok(need in labels, f"customer spec {need}")
+    for dup in ("RATE", "AMOUNT", "QTY"):
+        _ok(dup not in labels, f"customer spec must not duplicate table column {dup}")
     desc = format_ventilator_description(q, split_cfg)
     _ok("Bathroom ventilator" in desc, f"desc {desc}")
     _ok("frosted" in (q.get("glassLabel") or "").lower() or q.get("glassColour") == "frosted", "frosted default")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from WEOS.factory.line_kind import is_pergola_cart_line, line_world
+from WEOS.factory.marqt_pdf import _spec_rows
 from WEOS.factory.project_engine import calculate_line
 from WEOS.factory.svg_export import elevation_svg_for_line
 from WEOS.factory.window_specs import short_window_spec_rows
@@ -65,6 +66,45 @@ def main() -> None:
     _ok("SASH" not in _labels(prows), f"pergola printed SASH: {prows}", fails)
     _ok("SHUTTER" not in _labels(prows), f"pergola printed SHUTTER: {prows}", fails)
     _ok(any(a == "FIXING" for a, _ in prows), f"pergola fixing missing: {prows}", fails)
+
+    acp = {
+        "product": "acp_stub",
+        "productId": "acp_stub",
+        "displayName": "ACP Cladding",
+        "category": "Facades",
+        "productType": "acp_stub",
+        "width": 2050,
+        "height": 1970,
+        "qty": 1,
+        "sellingRate": 560,
+        "saleUnit": "sqft",
+    }
+    acalc = calculate_line(acp, include_preview=False)
+    asvg = elevation_svg_for_line(acalc) or ""
+    arows = short_window_spec_rows(acalc)
+    _ok(line_world(acalc) == "surface", f"acp world wrong: {line_world(acalc)!r}", fails)
+    _ok("<svg" in asvg and 'data-model-system="surface"' in asvg, "ACP surface SVG missing", fails)
+    _ok("TRACK" not in _labels(arows), f"ACP printed TRACK: {arows}", fails)
+    _ok("SASH" not in _labels(arows), f"ACP printed SASH: {arows}", fails)
+    _ok("GLASS" not in _labels(arows), f"ACP printed GLASS: {arows}", fails)
+
+    vent = {
+        "product": "bathroom_ventilator",
+        "productType": "bathroom_ventilator",
+        "width": 600,
+        "height": 450,
+        "qty": 1,
+        "sellingRate": 560,
+        "saleUnit": "sqft",
+        "options": {
+            "ventilator": {"widthMm": 600, "heightMm": 450, "mode": "split"},
+        },
+    }
+    vcalc = calculate_line(vent, include_preview=False)
+    vrows = _spec_rows(vcalc)
+    _ok("RATE" not in _labels(vrows), f"vent RATE duplicate: {vrows}", fails)
+    _ok("AMOUNT" not in _labels(vrows), f"vent AMOUNT duplicate: {vrows}", fails)
+    _ok("QTY" not in _labels(vrows), f"vent QTY duplicate: {vrows}", fails)
 
     if fails:
         raise SystemExit("\n".join(fails))

@@ -573,6 +573,7 @@ def draw_line_model_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
         is_pergola_cart_line,
         is_railing_cart_line,
         is_shower_cart_line,
+        is_surface_cart_line,
         is_ventilator_cart_line,
     )
 
@@ -583,6 +584,7 @@ def draw_line_model_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
         or is_ventilator_cart_line(line)
         or is_louver_cart_line(line)
         or is_pergola_cart_line(line)
+        or is_surface_cart_line(line)
     ):
         return False
     w = float(line.get("width") or 0)

@@ -170,6 +170,8 @@ def line_world(line: Mapping[str, Any] | None = None, *, product: Mapping[str, A
         return "pergola"
     if is_louver_cart_line(line):
         return "louver"
+    if is_surface_cart_line(line):
+        return "surface"
     if is_railing_cart_line(line):
         return railing_product_type_for_line(line)
     pt = cat = pid = None
@@ -208,6 +210,8 @@ def product_world(product_type: Any = None, *, category: Any = None, product_id:
         return "louver"
     if "pergola" in cat or "pergola" in pid:
         return "pergola"
+    if any(x in cat or x in pid for x in ("acp", "hpl", "fluted", "perforated", "cladding", "facade")):
+        return "surface"
     if "stair" in cat and "rail" in cat:
         return "staircase_railing"
     if "rail" in cat:
@@ -244,7 +248,7 @@ def product_has_tracks(product_type: Any = None, *, system: Any = None, category
     Casement, railing, shower, pergola, ACP/HPL/louvers do not.
     """
     sys = str(system or "").strip().lower()
-    if sys in ("casement", "openable", "opening", "shower", "ventilator", "railing", "pergola", "grid"):
+    if sys in ("casement", "openable", "opening", "shower", "ventilator", "railing", "pergola", "surface", "grid"):
         return False
     if sys in ("sliding", "telescopic", "synchron", "style", "bifold", "fold", "fold_sliding", "fold_and_sliding"):
         return True
@@ -313,6 +317,38 @@ def is_pergola_cart_line(line: Mapping[str, Any] | None) -> bool:
         sp = str(snap.get("product_id") or "").lower()
         world = str((snap.get("profile_snapshot") or {}).get("world") or "").lower()
         if world == "pergola" or "pergola" in sc or "pergola" in sp:
+            return True
+    return False
+
+
+def is_surface_cart_line(line: Mapping[str, Any] | None) -> bool:
+    """True for flat facade/surface products such as ACP/HPL/fluted panels."""
+    if not isinstance(line, Mapping):
+        return False
+    if is_louver_cart_line(line) or is_pergola_cart_line(line):
+        return False
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    blob = " ".join(
+        str(x or "").lower()
+        for x in (
+            line.get("productType"),
+            opts.get("productType") if isinstance(opts, Mapping) else "",
+            line.get("product"),
+            line.get("productId"),
+            line.get("category"),
+            line.get("displayName"),
+            line.get("status"),
+        )
+    )
+    if any(x in blob for x in ("acp", "hpl", "fluted", "perforated", "cladding", "facade")):
+        return True
+    snap = line.get("itemSnapshot") or line.get("item_snapshot")
+    if isinstance(snap, Mapping):
+        sc = str(snap.get("category_snapshot") or "").lower()
+        sp = str(snap.get("product_id") or "").lower()
+        sn = str(snap.get("product_name_snapshot") or "").lower()
+        world = str((snap.get("profile_snapshot") or {}).get("world") or "").lower()
+        if world == "surface" or any(x in f"{sc} {sp} {sn}" for x in ("acp", "hpl", "fluted", "perforated", "cladding", "facade")):
             return True
     return False
 

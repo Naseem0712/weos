@@ -193,3 +193,89 @@ def pergola_svg(line: Mapping[str, Any] | None, *, quote: Mapping[str, Any] | No
         cy += 18.0
     parts.append('</svg>')
     return "".join(parts)
+
+
+def surface_svg(line: Mapping[str, Any] | None, *, quote: Mapping[str, Any] | None = None) -> str:
+    """Draw a flat facade/surface product such as ACP or HPL cladding."""
+    width = _num(
+        (quote or {}).get("widthMm") if isinstance(quote, Mapping) else None,
+        (line or {}).get("widthMm") if isinstance(line, Mapping) else None,
+        (line or {}).get("width") if isinstance(line, Mapping) else None,
+        default=1200,
+    )
+    height = _num(
+        (quote or {}).get("heightMm") if isinstance(quote, Mapping) else None,
+        (line or {}).get("heightMm") if isinstance(line, Mapping) else None,
+        (line or {}).get("height") if isinstance(line, Mapping) else None,
+        default=1200,
+    )
+    opts = _opts(line)
+    if isinstance(line, Mapping):
+        raw_title = line.get("displayName")
+    else:
+        raw_title = None
+    title = str(raw_title or opts.get("displayName") or "Surface panel")
+    blob = " ".join(
+        str(x or "").lower()
+        for x in (
+            (line or {}).get("productType") if isinstance(line, Mapping) else "",
+            (line or {}).get("product") if isinstance(line, Mapping) else "",
+            title,
+        )
+    )
+    if "acp" in blob:
+        title = "ACP Cladding"
+        fill = "#d8e8ef"
+    elif "hpl" in blob:
+        title = "HPL Cladding"
+        fill = "#e8ddd0"
+    elif "fluted" in blob:
+        title = "Fluted panel"
+        fill = "#e6e0d4"
+    elif "perforated" in blob:
+        title = "Perforated panel"
+        fill = "#dbe4ea"
+    else:
+        fill = "#dbeafe"
+
+    vb_w, vb_h = 520.0, 360.0
+    pad = 40.0
+    title_h = 38.0
+    max_w = vb_w - pad * 2
+    max_h = vb_h - pad * 2 - title_h
+    scale = min(max_w / max(width, 1.0), max_h / max(height, 1.0))
+    dw, dh = width * scale, height * scale
+    x = (vb_w - dw) / 2.0
+    y = title_h + (max_h - dh) / 2.0 + pad / 2.0
+    parts: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb_w:g} {vb_h:g}" data-model-system="surface" role="img">',
+        '<rect width="100%" height="100%" fill="#fff"/>',
+        f'<text x="{pad:g}" y="24" font-family="Arial" font-size="16" font-weight="700" fill="#1f2937">{escape(title)}</text>',
+        f'<text x="{vb_w - pad:g}" y="24" font-family="Arial" font-size="12" text-anchor="end" fill="#475569">{_fmt(width)} x {_fmt(height)} mm</text>',
+        f'<rect x="{x:g}" y="{y:g}" width="{dw:g}" height="{dh:g}" fill="{fill}" stroke="#111827" stroke-width="2.1"/>',
+        f'<rect x="{x + 7:g}" y="{y + 7:g}" width="{max(dw - 14, 1):g}" height="{max(dh - 14, 1):g}" fill="none" stroke="#64748b" stroke-width="1"/>',
+    ]
+    if "fluted" in blob:
+        count = max(4, min(18, int(dw // 18)))
+        for i in range(1, count):
+            px = x + dw * i / count
+            parts.append(f'<line x1="{px:g}" y1="{y + 8:g}" x2="{px:g}" y2="{y + dh - 8:g}" stroke="#94a3b8" stroke-width="1"/>')
+    elif "perforated" in blob:
+        step = max(14.0, min(26.0, dw / 10.0))
+        cy = y + step
+        while cy < y + dh - step / 2:
+            cx = x + step
+            while cx < x + dw - step / 2:
+                parts.append(f'<circle cx="{cx:g}" cy="{cy:g}" r="{max(step * .16, 2):g}" fill="#fff" stroke="#94a3b8" stroke-width=".6"/>')
+                cx += step
+            cy += step
+    else:
+        parts.extend([
+            f'<line x1="{x:g}" y1="{y:g}" x2="{x + dw:g}" y2="{y + dh:g}" stroke="#94a3b8" stroke-width=".9" opacity=".65"/>',
+            f'<line x1="{x + dw:g}" y1="{y:g}" x2="{x:g}" y2="{y + dh:g}" stroke="#94a3b8" stroke-width=".9" opacity=".65"/>',
+        ])
+    parts.extend([
+        f'<text x="{x + dw / 2:g}" y="{min(vb_h - 18, y + dh + 28):g}" font-family="Arial" font-size="11" text-anchor="middle" fill="#334155">Flat facade panel - no window track or shutter</text>',
+        '</svg>',
+    ])
+    return "".join(parts)

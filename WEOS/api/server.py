@@ -1337,8 +1337,6 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
         world == "louver"
         or "louver" in prod
         or "louvre" in prod
-        or "facade" in str(getattr(body, "category", "") or "").lower()
-        or "facade" in prod
     ):
         from WEOS.factory.special_schematics import louver_svg
 
@@ -1392,6 +1390,35 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             "layout": {"system": "pergola", "widthMm": w, "heightMm": h, "trackCount": None},
             "sectionSpecs": {},
         }
+    if (
+        world == "surface"
+        or any(x in prod for x in ("acp", "hpl", "fluted", "perforated", "cladding", "facade"))
+        or any(x in str(getattr(body, "category", "") or "").lower() for x in ("acp", "hpl", "facade", "cladding"))
+    ):
+        from WEOS.factory.special_schematics import surface_svg
+
+        w = float(getattr(body, "width", 0) or 0)
+        h = float(getattr(body, "height", 0) or 0)
+        cfg = {
+            "width": w,
+            "height": h,
+            "product": getattr(body, "product", None) or "surface",
+            "productType": getattr(body, "productType", None) or "surface",
+            "category": getattr(body, "category", None) or "Facades",
+            "displayName": "ACP Cladding" if "acp" in prod else "Surface panel",
+        }
+        return {
+            "svg": surface_svg(cfg),
+            "system": "surface",
+            "productType": getattr(body, "productType", None) or "surface",
+            "specifications": {
+                "type": cfg["displayName"],
+                "size": f"{w:g} x {h:g} mm" if w and h else "",
+                "material": "Facade panel as specified",
+            },
+            "layout": {"system": "surface", "widthMm": w, "heightMm": h, "trackCount": None},
+            "sectionSpecs": {},
+        }
     try:
         from WEOS.factory.layout_options import resolve_mesh_track
         from WEOS.factory.product_loader import load_product, resolve_engine_product_id
@@ -1429,7 +1456,7 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             cat = str(getattr(body, "category", "") or meta.get("category") or "").lower()
             ptype = str(getattr(body, "productType", None) or meta.get("productType") or "").lower()
             skip_window_engine = (
-                world in ("louver", "pergola", "railing", "staircase_railing", "shower", "ventilator")
+                world in ("louver", "pergola", "surface", "railing", "staircase_railing", "shower", "ventilator")
                 or "louver" in prod or "louvre" in prod or "facade" in prod or "facade" in cat
                 or "rail" in prod or "shower" in prod or "ventilat" in prod or "pergola" in prod
                 or "louver" in ptype or "louvre" in ptype or "pergola" in ptype

@@ -361,6 +361,58 @@ def _pergola_line_result(line: Mapping[str, Any], *, include_preview: bool = Tru
     return apply_selling_to_line_result(result, frozen)
 
 
+def _surface_line_result(line: Mapping[str, Any], *, include_preview: bool = True) -> dict[str, Any]:
+    """Flat facade/surface product: ACP/HPL/fluted/perforated. Never window geometry."""
+    from WEOS.factory.live_pricing import apply_selling_to_line_result
+    from WEOS.factory.quote_item_snapshot import attach_snapshot, product_id_of
+
+    frozen = attach_snapshot(dict(line) if isinstance(line, Mapping) else {})
+    pid = product_id_of(frozen) or str(frozen.get("product") or frozen.get("productId") or "surface")
+    try:
+        product = load_product(pid, strict=False)
+    except Exception:
+        product = {
+            "id": pid,
+            "displayName": frozen.get("displayName") or "Surface panel",
+            "category": "Facades",
+            "quotation": {},
+            "_stub": True,
+        }
+    result = _stub_line_result(frozen, product)
+    result["product"] = pid
+    result["displayName"] = frozen.get("displayName") or product.get("displayName") or "Surface panel"
+    result["category"] = frozen.get("category") or product.get("category") or "Facades"
+    result["productType"] = frozen.get("productType") or product.get("productType") or "surface"
+    result["status"] = "surface"
+    result["glass"] = []
+    result["hardware"] = []
+    result["trackRail"] = []
+    result["cutList"] = []
+    result["bom"] = []
+    w = float(frozen.get("width") or 0)
+    h = float(frozen.get("height") or 0)
+    opts = dict(result.get("options") or {})
+    opts["productType"] = result["productType"]
+    opts.pop("system", None)
+    result["options"] = opts
+    result["layout"] = {
+        "kind": "surface",
+        "system": "surface",
+        "widthMm": w,
+        "heightMm": h,
+        "trackCount": None,
+    }
+    try:
+        from WEOS.factory.special_schematics import surface_svg
+
+        svg = _special_line_preview_svg(result, include_preview=include_preview, builder=lambda: surface_svg(result))
+        result["preview"] = {"svg": svg, "pdfSvg": svg} if svg else {"svg": None}
+    except Exception:
+        result["preview"] = {"svg": None}
+    result["note"] = "Facade/surface product - not a window system"
+    return apply_selling_to_line_result(result, frozen)
+
+
 def _error_line_result(line: Mapping[str, Any], error: str = "") -> dict[str, Any]:
     """Minimal, render-safe line result used when a single line fails to calculate.
 
@@ -944,6 +996,12 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
         except Exception as exc:  # pragma: no cover
             _log.exception("pergola line calc failed: %s", exc)
             return _error_line_result(line, f"pergola calc failed: {exc}")
+    if world == "surface":
+        try:
+            return _surface_line_result(line, include_preview=include_preview)
+        except Exception as exc:  # pragma: no cover
+            _log.exception("surface line calc failed: %s", exc)
+            return _error_line_result(line, f"surface calc failed: {exc}")
     if not product_id:
         return _error_line_result(line, PRODUCT_UNAVAILABLE)
     if world in ("railing", "staircase_railing"):
@@ -984,6 +1042,12 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
         except Exception as exc:  # pragma: no cover
             _log.exception("pergola line calc failed: %s", exc)
             return _error_line_result(line, f"pergola calc failed: {exc}")
+    if world == "surface":
+        try:
+            return _surface_line_result(line, include_preview=include_preview)
+        except Exception as exc:  # pragma: no cover
+            _log.exception("surface line calc failed: %s", exc)
+            return _error_line_result(line, f"surface calc failed: {exc}")
     if world == "ventilator":
         enriched = dict(line) if isinstance(line, Mapping) else {}
         enriched.setdefault("productType", "bathroom_ventilator")

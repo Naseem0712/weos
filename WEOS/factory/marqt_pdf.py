@@ -367,6 +367,7 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
         is_pergola_cart_line,
         is_railing_cart_line,
         is_shower_cart_line,
+        is_surface_cart_line,
         is_ventilator_cart_line,
     )
 
@@ -398,6 +399,7 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
         or is_ventilator_cart_line(line)
         or is_louver_cart_line(line)
         or is_pergola_cart_line(line)
+        or is_surface_cart_line(line)
     )
     if special:
         svg = _line_canvas_svg(line)
@@ -780,10 +782,6 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
             add("HARDWARE", " · ".join(hw_v))
         add("SIDE", str(qv.get("louversSide") or qv.get("exhaustSide") or "—"))
         add("AREA", f"{qv.get('areaSqft') or 0} Sq.Ft.")
-        sale_uv = str(qv.get("saleUnit") or line.get("saleUnit") or "sqft").upper()
-        add("RATE", f"{_money(qv.get('sellingPerUnit') or line.get('sellingRate') or 0)} / {sale_uv}")
-        add("AMOUNT", f"{_money(qv.get('sellingTotal') or line.get('commercialTotal') or 0)}")
-        add("QTY", str(line.get("qty") or qv.get("qty") or 1))
         if factory:
             for it in qv.get("items") or []:
                 if not isinstance(it, Mapping):
@@ -842,10 +840,7 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
             hw_s.append(f"{q.get('hingeType') or 'casement'} ×{q.get('hingesPerDoor')}/door")
         add("HARDWARE", " · ".join(hw_s))
         add("COLOUR", str(q.get("colour") or line.get("colour") or "").replace("_", " "))
-        add("AREA", f"{q.get('areaSqft') or 0} Sq.Ft. · qty {line.get('qty') or q.get('qty') or 1}")
-        sale_u = str(q.get("saleUnit") or line.get("saleUnit") or "sqft").upper()
-        add("AMOUNT", f"{_money(q.get('sellingPerUnit') or line.get('sellingRate') or 0)} / {sale_u} → "
-            f"{_money(q.get('sellingTotal') or line.get('commercialTotal') or 0)}")
+        add("AREA", f"{q.get('areaSqft') or 0} Sq.Ft.")
         return rows
 
     from WEOS.factory.line_kind import is_louver_cart_line
@@ -1229,6 +1224,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         # Specs first so we know how tall the text block is (wrap may exceed draw_h).
         try:
             spec_rows = _spec_rows(line)
+            spec_rows = [(a, b) for a, b in spec_rows if str(a or "").upper() not in ("QTY", "RATE", "AMOUNT")]
         except Exception:
             _log.exception("marqt spec build failed for line %d; using name only", idx)
             spec_rows = [("", str(line.get("displayName") or line.get("product") or "Window"))]

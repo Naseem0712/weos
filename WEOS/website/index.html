@@ -3097,6 +3097,14 @@ function _previewElementSignature(el) {
 function normalizePreviewSvgViewport(svg) {
   if (!svg || !svg.tagName || svg.tagName.toLowerCase() !== 'svg') return;
   if (svg.dataset.previewViewport === 'normalized') return;
+  const sys = String(svg.getAttribute('data-model-system') || '').toLowerCase();
+  if (['ventilator', 'shower', 'railing', 'louver', 'pergola', 'surface'].includes(sys)) {
+    svg.removeAttribute('width');
+    svg.removeAttribute('height');
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svg.dataset.previewViewport = 'authored';
+    return;
+  }
   try {
     const box = svg.getBBox();
     if (!(box && box.width > 0 && box.height > 0)) return;
@@ -4135,6 +4143,7 @@ function _worldFromBits(typ, pid, cat) {
   if (t.includes('shower') || id.includes('shower') || (c.includes('bathroom') && !c.includes('ventilat') && !id.includes('ventilat'))) return 'shower';
   if (t.includes('louver') || t.includes('louvre') || id.includes('louver') || id.includes('louvre') || c.includes('louver') || c.includes('louvre')) return 'louver';
   if (t.includes('pergola') || id.includes('pergola') || c.includes('pergola')) return 'pergola';
+  if (t.includes('acp') || id.includes('acp') || c.includes('acp') || t.includes('hpl') || id.includes('hpl') || c.includes('hpl') || t.includes('fluted') || id.includes('fluted') || c.includes('fluted') || t.includes('perforated') || id.includes('perforated') || c.includes('perforated') || t.includes('cladding') || id.includes('cladding') || c.includes('cladding') || c.includes('facade')) return 'surface';
   return '';
 }
 function productWorldOf(p, ln) {
@@ -4176,10 +4185,10 @@ function designerWorld() {
 }
 function productHasTracks(p, ln, sys) {
   const s = String(sys || (ln && ln.system) || '').toLowerCase();
-  if (s === 'casement' || s === 'openable' || s === 'opening' || s === 'shower' || s === 'ventilator' || s === 'railing' || s === 'grid') return false;
+  if (s === 'casement' || s === 'openable' || s === 'opening' || s === 'shower' || s === 'ventilator' || s === 'railing' || s === 'surface' || s === 'grid') return false;
   if (s === 'sliding' || s === 'telescopic' || s === 'synchron' || s === 'style' || s === 'bifold' || s.indexOf('fold') >= 0) return true;
   const world = productWorldOf(p, ln);
-  if (world === 'louver' || world === 'pergola' || world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator') return false;
+  if (world === 'louver' || world === 'pergola' || world === 'surface' || world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator') return false;
   const typ = String((p && p.productType) || (ln && ln.productType) || '').toLowerCase();
   if (typ.includes('casement') || typ.includes('shower') || typ.includes('ventilat') || typ.includes('rail') || typ.includes('pergola')) return false;
   if (typ.includes('slid') || typ.includes('tele') || typ.includes('sync') || typ.includes('fold') || typ === 'windows' || typ === 'door' || typ === 'style') return true;
@@ -4190,7 +4199,7 @@ function applyProductWorld() {
   const world = productWorldOf(p, null);
   const win = $('windowCartTools');
   const addBtn = $('btnAddLine');
-  if (world === 'louver' || world === 'pergola') {
+  if (world === 'louver' || world === 'pergola' || world === 'surface') {
     state.railingMode = false;
     state.showerMode = false;
     state.ventMode = false;
@@ -4201,9 +4210,9 @@ function applyProductWorld() {
     if ($('lineSystem')) $('lineSystem').value = world;
     if ($('lineSeries')) $('lineSeries').value = '';
     if (world === 'louver' && $('lineFillType')) $('lineFillType').value = 'louvers';
-    if (world === 'pergola' && $('lineFillType')) $('lineFillType').value = 'glass';
+    if ((world === 'pergola' || world === 'surface') && $('lineFillType')) $('lineFillType').value = 'glass';
     syncFillFeatureUi();
-    if (addBtn) addBtn.textContent = world === 'pergola' ? 'Add pergola to cart' : 'Add louver to cart';
+    if (addBtn) addBtn.textContent = world === 'pergola' ? 'Add pergola to cart' : (world === 'surface' ? 'Add panel to cart' : 'Add louver to cart');
     applySystemUiRules();
     return;
   }
@@ -4239,7 +4248,7 @@ function applyProductWorld() {
   state.ventMode = false;
   showShowerTools(false);
   showVentTools(false);
-  if (world === 'window' || world === 'louver' || world === 'pergola') {
+  if (world === 'window' || world === 'louver' || world === 'pergola' || world === 'surface') {
     state._previewLineId = null;
     if ($('livePreview')) $('livePreview').innerHTML = '<span class="muted">Drawing…</span>';
   }
@@ -4437,8 +4446,8 @@ function currentLineDraft() {
   const p = selectedProductMeta();
   let sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
   const dw = productWorldOf(p, null);
-  if ((dw === 'window' || dw === 'louver' || dw === 'pergola') && (sys === 'ventilator' || sys === 'shower' || sys === 'railing' || (dw !== 'window' && sys !== dw))) {
-    sys = (dw === 'louver' || dw === 'pergola') ? dw : (systemForProduct(p) || 'sliding');
+  if ((dw === 'window' || dw === 'louver' || dw === 'pergola' || dw === 'surface') && (sys === 'ventilator' || sys === 'shower' || sys === 'railing' || (dw !== 'window' && sys !== dw))) {
+    sys = (dw === 'louver' || dw === 'pergola' || dw === 'surface') ? dw : (systemForProduct(p) || 'sliding');
     if ($('lineSystem')) $('lineSystem').value = sys;
   }
   const finish = ($('lineHandleFinish') && $('lineHandleFinish').value) || 'auto';
@@ -4458,7 +4467,7 @@ function currentLineDraft() {
     locationName: ($('lineLocation') && $('lineLocation').value.trim()) || null,
     positionName: ($('lineLocation') && $('lineLocation').value.trim()) || null,
     glass: (function(){
-      if (sys === 'louver' || sys === 'pergola') {
+      if (sys === 'louver' || sys === 'pergola' || sys === 'surface') {
         const wrap = $('wrapLineGlass');
         if (wrap && wrap.style.display === 'none') return null;
         const ft = ($('lineFillType') && $('lineFillType').value) || 'glass';
@@ -4468,7 +4477,7 @@ function currentLineDraft() {
     })(),
     colour: $('lineColour').value,
     handle: (function(){
-      if (sys === 'louver' || sys === 'pergola') {
+      if (sys === 'louver' || sys === 'pergola' || sys === 'surface') {
         const wrap = $('wrapLineHandle');
         if (wrap && wrap.style.display === 'none') return null;
       }
@@ -4479,10 +4488,10 @@ function currentLineDraft() {
     sellingRate: rateRaw === '' ? null : +rateRaw,
     description: ($('lineDesc') && $('lineDesc').value.trim()) || null,
     partitions: (state.draftPartitions || []).slice(),
-    mesh: (sys === 'louver' || sys === 'pergola') ? false : !!( $('lineMesh') && $('lineMesh').checked ),
+    mesh: (sys === 'louver' || sys === 'pergola' || sys === 'surface') ? false : !!( $('lineMesh') && $('lineMesh').checked ),
     trackCount: (function(){
       const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
-      if (sys === 'louver' || sys === 'pergola') return null;
+      if (sys === 'louver' || sys === 'pergola' || sys === 'surface') return null;
       if (!productHasTracks(selectedProductMeta(), null, sys)) return null;
       return $('lineTrack') ? parseFloat($('lineTrack').value) || 2 : 2;
     })(),
@@ -4501,7 +4510,7 @@ function currentLineDraft() {
       return v === 'center' || v === 'side';
     })(),
     glassShutters: (function(){
-      if (sys === 'louver' || sys === 'pergola') return null;
+      if (sys === 'louver' || sys === 'pergola' || sys === 'surface') return null;
       return $('lineGlassShutters') ? (parseInt($('lineGlassShutters').value) || 2) : 2;
     })(),
     meshShutters: $('lineMeshShutters') ? (parseInt($('lineMeshShutters').value) || 0) : 0,
@@ -4519,8 +4528,8 @@ function currentLineDraft() {
     reinforcement: ($('lineReinfPresent') && $('lineReinfPresent').value !== 'no'),
     reinforcementMaterial: ($('lineReinfMaterial') && $('lineReinfMaterial').value) || 'gi',
     hardwareBrand: ($('lineHwBrand') && $('lineHwBrand').value.trim()) || null,
-    panelFill: (sys === 'pergola') ? null : currentPanelFill(),
-    features: (sys === 'pergola' || !currentPanelFill()) ? null : [{ type: 'panel_fill', ...currentPanelFill() }],
+    panelFill: (sys === 'pergola' || sys === 'surface') ? null : currentPanelFill(),
+    features: (sys === 'pergola' || sys === 'surface' || !currentPanelFill()) ? null : [{ type: 'panel_fill', ...currentPanelFill() }],
     casementPanels: (sys === 'casement') ? (state.draftCasementPanels || []).slice() : null,
     sashOverlapMm: (function(){
       if (sys !== 'casement') return null;
@@ -5094,8 +5103,8 @@ async function refreshPreview() {
   const selectedCart = state.lines[state.selectedLine];
   const cartWorld = productWorldOf(null, selectedCart);
   const sameIdentity = !!(selectedCart && lineIdentityKey(selectedCart) === lineIdentityKey(draft)
-    && (cartWorld === 'window' || cartWorld === 'louver' || cartWorld === 'pergola')
-    && (world === 'window' || world === 'louver' || world === 'pergola'));
+    && (cartWorld === 'window' || cartWorld === 'louver' || cartWorld === 'pergola' || cartWorld === 'surface')
+    && (world === 'window' || world === 'louver' || world === 'pergola' || world === 'surface'));
   const previewTargetId = sameIdentity ? (selectedCart.lineId || selectedCart.id) : null;
   const ln = sameIdentity ? { ...selectedCart, ...draft, preview: undefined } : draft;
   const bits = [designSerialLabel(state.selectedLine, ln), `${ln.width}×${ln.height}`];
@@ -5142,7 +5151,7 @@ async function refreshPreview() {
       reinforcement: ln.reinforcement != null ? ln.reinforcement : (ln.options && ln.options.reinforcement),
       reinforcementMaterial: ln.reinforcementMaterial || (ln.options && ln.options.reinforcementMaterial) || 'gi',
       hardwareBrand: ln.hardwareBrand || (ln.options && ln.options.hardwareBrand) || null,
-      panelFill: ln.system === 'pergola' ? null : (ln.panelFill || currentPanelFill() || null),
+      panelFill: (ln.system === 'pergola' || ln.system === 'surface') ? null : (ln.panelFill || currentPanelFill() || null),
       features: ln.features || null,
       productType: ln.productType || null,
       category: ln.category || null,
@@ -5205,6 +5214,9 @@ async function refreshPreview() {
       extra.push(['System', 'Pergola']);
       if (specs.fixing) extra.push(['Fixing', specs.fixing]);
       if (specs.materials) extra.push(['Materials', specs.materials]);
+    } else if (prev.system === 'surface' || ln.system === 'surface') {
+      extra.push(['System', 'Facade panel']);
+      if (specs.material) extra.push(['Material', specs.material]);
     } else {
       const gCount = prev.glassShutters != null ? prev.glassShutters : (ln.glassShutters != null ? ln.glassShutters : null);
       const mCount = prev.meshShutters != null ? prev.meshShutters : (ln.meshShutters != null ? ln.meshShutters : null);
@@ -6476,6 +6488,22 @@ $('btnAddLine').onclick = () => {
     draft.category = 'Pergolas';
     draft.displayName = draft.displayName || (p && p.displayName) || 'Pergola';
     draft.system = 'pergola';
+    draft.panelFill = null;
+    draft.features = null;
+    draft.glass = null;
+    draft.handle = null;
+    draft.mesh = false;
+    delete draft.trackCount;
+    delete draft.glassShutters;
+    delete draft.meshShutters;
+    delete draft.fixShutters;
+    delete draft.sectionSeries;
+  }
+  if (world === 'surface') {
+    draft.productType = (p && p.productType) || draft.productType || 'surface';
+    draft.category = (p && p.category) || draft.category || 'Facades';
+    draft.displayName = draft.displayName || (p && p.displayName) || 'Facade panel';
+    draft.system = 'surface';
     draft.panelFill = null;
     draft.features = null;
     draft.glass = null;
