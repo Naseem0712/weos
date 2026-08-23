@@ -79,14 +79,20 @@ def _clean_phone(value: Any) -> str:
     return re.sub(r"\D", "", str(value or ""))
 
 
-def _mask_phone(value: Any, *, keep: int = 4) -> str:
+def _mask_phone(value: Any, *, prefix: int = 4, suffix: int = 1) -> str:
     digits = _clean_phone(value)
     if not digits:
         return ""
-    keep = max(0, min(int(keep or 0), len(digits)))
-    if len(digits) <= keep:
-        return "*" * len(digits)
-    return ("*" * (len(digits) - keep)) + digits[-keep:]
+    n = len(digits)
+    # Show the beginning for recognition and only one ending digit. The hidden
+    # middle must include the last-6 verification digits, so never expose last 4.
+    pre = max(1, min(int(prefix or 0), n - 2))
+    suf = max(0, min(int(suffix or 0), n - pre - 1))
+    if n <= 6:
+        pre = 1
+        suf = 1 if n > 2 else 0
+    hidden = max(1, n - pre - suf)
+    return digits[:pre] + ("*" * hidden) + (digits[-suf:] if suf else "")
 
 
 def _last_digits(value: Any, *, count: int = 6) -> str:

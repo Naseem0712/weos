@@ -12,7 +12,7 @@ from WEOS.factory.quote_share import (
 def main() -> None:
     raw = "9876543210"
     masked = _mask_phone(raw)
-    assert masked == "******3210", masked
+    assert masked == "9876*****0", masked
 
     record = {
         "shareToken": "tok123",
@@ -29,7 +29,7 @@ def main() -> None:
         "rejection": {},
         "advances": [],
         "products": [],
-        "accessGrants": [{"role": "Architect", "name": "Amit", "phoneMasked": "******4444"}],
+        "accessGrants": [{"role": "Architect", "name": "Amit", "phoneMasked": "9876*****4"}],
     }
     html = render_scan_html(record)
     assert raw not in html
@@ -42,10 +42,10 @@ def main() -> None:
         record,
         ref="tok123",
         access_token="acc123",
-        grant={"role": "Architect", "name": "Amit", "phoneMasked": "******4444"},
+        grant={"role": "Architect", "name": "Amit", "phoneMasked": "9876*****4"},
     )
     assert "Access for:" in gate
-    assert "Amit" in gate and "Architect" in gate and "******4444" in gate
+    assert "Amit" in gate and "Architect" in gate and "9876*****4" in gate
     assert raw not in gate
     print("OK public scan security")
 
