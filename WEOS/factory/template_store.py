@@ -176,5 +176,5 @@ def resolve_template_id(
     layout = product_pdf_layout or {}
     if kind in layout and layout[kind]:
         return str(layout[kind])
-    b = (brand or "woodenmax").lower()
+    b = (brand or ("marqt" if kind == "customer" else "woodenmax")).lower()
     return f"{b}_{kind}"

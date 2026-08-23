@@ -889,7 +889,7 @@ def _pdf_response(
         "projectId": project_id,
         "customer": bill_to,
         "name": doc.get("name"),
-        "brand": brand or doc.get("brand") or "",
+        "brand": brand or doc.get("brand") or ("marqt" if kind == "customer" else ""),
         "templateId": template_id,
         "createdAt": created_at,
         "updatedAt": updated_at,
@@ -2409,7 +2409,7 @@ def _public_scan_response(ref: str, request: Request, *, fmt: str | None = None)
             "shareToken": q.get("shareToken"),
             "customer": cust_name,
             "name": "",
-            "brand": q.get("brand") or "woodenmax",
+            "brand": q.get("brand") or "marqt",
             "publicBaseUrl": base,
         }
         try:
