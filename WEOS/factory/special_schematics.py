@@ -275,7 +275,7 @@ def surface_svg(line: Mapping[str, Any] | None, *, quote: Mapping[str, Any] | No
             f'<line x1="{x + dw:g}" y1="{y:g}" x2="{x:g}" y2="{y + dh:g}" stroke="#94a3b8" stroke-width=".9" opacity=".65"/>',
         ])
     parts.extend([
-        f'<text x="{x + dw / 2:g}" y="{min(vb_h - 18, y + dh + 28):g}" font-family="Arial" font-size="11" text-anchor="middle" fill="#334155">Flat facade panel - no window track or shutter</text>',
+        f'<text x="{x + dw / 2:g}" y="{min(vb_h - 18, y + dh + 28):g}" font-family="Arial" font-size="11" text-anchor="middle" fill="#334155">Flat facade panel</text>',
         '</svg>',
     ])
     return "".join(parts)
