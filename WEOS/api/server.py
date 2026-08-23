@@ -943,6 +943,10 @@ def _pdf_response(
         payload["quoteRef"] = token
     except Exception:
         _log.debug("share token mint during PDF skipped", exc_info=True)
+    if kind == "customer" and not payload.get("templateId"):
+        # Company branding (AllKraft/WoodenMax/etc.) should change logos/colors,
+        # not downgrade the customer quote to the old single-page table layout.
+        payload["templateId"] = "marqt_customer"
     # Bill-to profile: saved customer profile first, then overlay the Project-Setup
     # values (mobile/address/GST) so the bill-to prints even without a saved profile.
     profile: dict[str, Any] = {}
@@ -2410,6 +2414,7 @@ def _public_scan_response(ref: str, request: Request, *, fmt: str | None = None)
             "customer": cust_name,
             "name": "",
             "brand": q.get("brand") or "marqt",
+            "templateId": q.get("templateId") or "marqt_customer",
             "publicBaseUrl": base,
         }
         try:
