@@ -21,13 +21,16 @@ import os
 from typing import Any, Mapping
 from urllib.parse import quote as _urlquote
 
+# Human-readable quote numbers must win over opaque share tokens so the QR
+# matches the "Quote No." printed on the PDF (scan still resolves via
+# resolve_public_ref for tokens / project ids when needed).
 _REF_KEYS = (
+    "quotationId",
+    "quoteNumber",
+    "quoteId",
+    "quoteRef",
     "shareToken",
     "quoteShareToken",
-    "quoteRef",
-    "quoteId",
-    "quoteNumber",
-    "quotationId",
     "projectId",
 )
 

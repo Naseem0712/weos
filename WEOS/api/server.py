@@ -824,6 +824,53 @@ def _coerce_cart_lines(
     return out
 
 
+def _merge_calc_lines(doc_lines: list[Any], calc_lines: list[Any]) -> list[dict[str, Any]]:
+    """Keep every cart row — overlay calculated prices/specs by lineId or index."""
+    if not doc_lines:
+        return [dict(ln) for ln in calc_lines if isinstance(ln, Mapping)]
+    if not calc_lines:
+        return [dict(ln) for ln in doc_lines if isinstance(ln, Mapping)]
+    calc_by_id: dict[str, dict[str, Any]] = {}
+    for ln in calc_lines:
+        if not isinstance(ln, Mapping):
+            continue
+        lid = str(ln.get("lineId") or ln.get("id") or "").strip()
+        if lid:
+            calc_by_id[lid] = dict(ln)
+    merged: list[dict[str, Any]] = []
+    for i, raw in enumerate(doc_lines):
+        if not isinstance(raw, Mapping):
+            continue
+        src = dict(raw)
+        lid = str(src.get("lineId") or src.get("id") or "").strip()
+        hit = calc_by_id.get(lid) if lid else None
+        if hit is None and i < len(calc_lines) and isinstance(calc_lines[i], Mapping):
+            cand = calc_lines[i]
+            cand_id = str(cand.get("lineId") or cand.get("id") or "").strip()
+            if not lid or not cand_id or cand_id == lid:
+                hit = dict(cand)
+        if hit:
+            out = dict(hit)
+            for key in ("designPhoto", "locationName", "positionName", "description"):
+                if src.get(key) and not out.get(key):
+                    out[key] = src[key]
+            merged.append(out)
+        else:
+            merged.append(src)
+    if len(merged) < len(calc_lines):
+        seen = {str(ln.get("lineId") or ln.get("id") or "") for ln in merged}
+        for ln in calc_lines:
+            if not isinstance(ln, Mapping):
+                continue
+            lid = str(ln.get("lineId") or ln.get("id") or "").strip()
+            if lid and lid in seen:
+                continue
+            merged.append(dict(ln))
+            if lid:
+                seen.add(lid)
+    return merged
+
+
 def _pdf_response(
     project_id: str,
     kind: str,
@@ -876,13 +923,22 @@ def _pdf_response(
             include_preview=False,
         )
         calc_lines = list(result.get("lines") or [])
-        if src_n and len(calc_lines) < src_n:
+        merged_lines = _merge_calc_lines(list(doc.get("lines") or []), calc_lines)
+        if src_n and len(merged_lines) < src_n:
             _log.warning(
-                "PDF calc returned %s lines, cart had %s — keeping extras",
-                len(calc_lines),
+                "PDF merge returned %s lines, cart had %s — keeping raw cart rows",
+                len(merged_lines),
                 src_n,
             )
-            result["lines"] = calc_lines + list((doc.get("lines") or [])[len(calc_lines) :])
+            merged_lines = [dict(ln) for ln in (doc.get("lines") or []) if isinstance(ln, Mapping)]
+        elif src_n and len(merged_lines) != src_n:
+            _log.warning(
+                "PDF line count after merge: cart=%s calc=%s merged=%s",
+                src_n,
+                len(calc_lines),
+                len(merged_lines),
+            )
+        result["lines"] = merged_lines
     except Exception:
         # Never 500 the export because a calculation edge-case failed — log the
         # real traceback and still print the live cart lines.
@@ -907,13 +963,14 @@ def _pdf_response(
         "version": version,
         "status": doc.get("status"),
         "quotationId": doc.get("quotationId") or doc.get("quoteNumber") or doc.get("quoteId"),
+        "quoteNumber": doc.get("quotationId") or doc.get("quoteNumber") or doc.get("quoteId"),
         "companyGst": doc.get("companyGst"),
         # Per-quote description + terms (terms override the company default).
         "description": doc.get("description"),
         "terms": doc.get("terms"),
         # Absolute base + stable ref so the PDF QR opens the quote from the DB.
         "publicBaseUrl": _public_base_url(request),
-        "quoteRef": doc.get("quoteId") or doc.get("quoteNumber") or project_id,
+        "quoteRef": doc.get("quotationId") or doc.get("quoteNumber") or doc.get("quoteId") or project_id,
     }
     try:
         from WEOS.factory.company_store import company_branding, load_company, load_company_by_gst
@@ -951,7 +1008,10 @@ def _pdf_response(
         token = ensure_project_share_token(doc, persist=True)
         payload["shareToken"] = token
         payload["quoteShareToken"] = token
-        payload["quoteRef"] = token
+        # Keep quoteRef as the human quote number shown on the PDF; shareToken is
+        # still on the payload for legacy scans that encoded the opaque token.
+        if not payload.get("quoteRef"):
+            payload["quoteRef"] = token
     except Exception:
         _log.debug("share token mint during PDF skipped", exc_info=True)
     if kind == "customer" and not payload.get("templateId"):

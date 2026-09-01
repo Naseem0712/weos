@@ -129,6 +129,8 @@ a{color:inherit}
 .chip-row button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:.15rem .55rem;font-size:.72rem;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:background-color .15s ease,border-color .15s ease,color .15s ease,transform .08s ease}
 .chip-row button:hover{border-color:var(--green);color:var(--green);background:#eef6f2}
 .chip-row button:active{transform:scale(.96);background:#dceee6;box-shadow:inset 0 1px 4px rgba(10,90,72,.18)}
+.quote-copy-textarea{width:100%;min-height:7.5rem;resize:vertical;border:1px solid var(--line);border-radius:10px;padding:.55rem .65rem;font:inherit;line-height:1.45}
+@media (min-width:768px){.quote-copy-textarea{min-height:9rem}}
 h1{font-family:var(--serif);font-size:clamp(1.5rem,2.5vw,2rem);margin:0;letter-spacing:-.02em}
 .sub{color:var(--muted);margin:.15rem 0 0;font-size:.92rem}
 .grid{display:grid;gap:1rem}
@@ -530,12 +532,12 @@ textarea{max-width:100%}
         <div id="setupImportPreview" class="muted" style="font-size:.78rem;margin:0 0 .55rem"></div>
         <div class="row" style="margin-bottom:.6rem;flex-wrap:wrap;gap:.5rem .7rem">
           <div class="grow" style="flex-basis:100%"><label class="l">Quote description (prints on quote)</label>
-            <textarea id="projDescription" rows="2" placeholder="Optional note that prints on the customer quotation — or tap a suggestion" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea>
+            <textarea id="projDescription" class="quote-copy-textarea" rows="4" placeholder="Optional note that prints on the customer quotation — or tap a suggestion"></textarea>
             <div class="chip-row" id="projDescChips"></div>
             <button class="btn ghost sm" id="btnProjDescSuggest" type="button" style="margin-top:.25rem">AI suggest description</button>
           </div>
           <div class="grow" style="flex-basis:100%"><label class="l">Terms &amp; Conditions override (optional — defaults from Company Setup)</label>
-            <textarea id="projTerms" rows="3" placeholder="Leave blank to use the company default terms — or tap Regular / past-quote terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea>
+            <textarea id="projTerms" class="quote-copy-textarea" rows="6" placeholder="Leave blank to use the company default terms — or tap Regular / past-quote terms"></textarea>
             <div class="chip-row" id="projTermsChips"></div>
             <button class="btn ghost sm" id="btnProjTermsSuggest" type="button" style="margin-top:.25rem">AI suggest terms</button>
           </div>
@@ -1427,10 +1429,10 @@ textarea{max-width:100%}
               <div id="printCopyPanel" class="hidden" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;padding:.55rem .65rem;background:#fff">
                 <p class="muted" style="margin:0 0 .45rem;font-size:.75rem">This is what the Quote PDF will print. Read it, edit if needed, then generate the PDF.</p>
                 <label class="l">Description</label>
-                <textarea id="printDescription" rows="2" placeholder="Optional note that prints on the customer quotation" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit"></textarea>
+                <textarea id="printDescription" class="quote-copy-textarea" rows="4" placeholder="Optional note that prints on the customer quotation"></textarea>
                 <div class="chip-row" id="printDescChips"></div>
                 <label class="l" style="margin-top:.45rem">Terms</label>
-                <textarea id="printTerms" rows="3" placeholder="Leave blank to use company default terms" style="width:100%;border:1px solid var(--line);border-radius:10px;padding:.5rem;font:inherit;margin-top:.2rem"></textarea>
+                <textarea id="printTerms" class="quote-copy-textarea" rows="6" placeholder="Leave blank to use company default terms"></textarea>
                 <div class="chip-row" id="printTermsChips"></div>
               </div>
               <div class="actions-inline">
@@ -5388,27 +5390,29 @@ async function refreshExportSetupSelect(){
   }
 }
 
-/** Copy bill-to / quote-text from a setup project onto the active cart project (for PDF print). */
-async function applySetupFromProject(setupId){
+/** Copy bill-to from a setup project for PDF print. Never overwrites description/terms
+ *  from another project — those stay on the active quote unless it is the same project. */
+async function applySetupFromProject(setupId, opts){
+  opts = opts || {};
   if (!setupId) return false;
+  const sameProject = String(setupId) === String(state.projectId || '');
   const doc = await api('/api/projects/'+setupId);
-  // Always take bill-to / quote text from the chosen setup.
   if ($('projCustName')) $('projCustName').value = doc.customer || '';
   if ($('projMobile')) $('projMobile').value = doc.customerMobile || '';
   if ($('projCustAddress')) $('projCustAddress').value = doc.customerAddress || '';
   if ($('projCustGst')) $('projCustGst').value = doc.customerGst || '';
-  if ($('projQuoteNo')) $('projQuoteNo').value = doc.quotationId || '';
-  if ($('projDescription')) $('projDescription').value = doc.description || '';
-  if ($('projTerms')) $('projTerms').value = doc.terms || '';
-  syncPrintCopyTwins('proj');
-  // Print-setup customer is the account this quote belongs to — keep Active setup in sync.
-  if ($('cartName') && (doc.name || '').trim() && setupId === state.projectId) {
+  if (sameProject || opts.includeQuoteText) {
+    if ($('projQuoteNo')) $('projQuoteNo').value = doc.quotationId || '';
+    if ($('projDescription')) $('projDescription').value = doc.description || '';
+    if ($('projTerms')) $('projTerms').value = doc.terms || '';
+    syncPrintCopyTwins('proj');
+  }
+  if ($('cartName') && (doc.name || '').trim() && sameProject) {
     $('cartName').value = doc.name;
   }
   syncProjectCustomer();
   refreshSetupSummary();
-  if (state.projectId) {
-    // Persist bill-to onto the *active* cart project so PDF endpoints read the selected details.
+  if (state.projectId && (sameProject || opts.persist)) {
     await api('/api/projects/'+state.projectId, {method:'PUT', body:{
       name: ($('cartName') && $('cartName').value) || undefined,
       customer: ($('cartCustomer') && $('cartCustomer').value) || '',
@@ -5430,13 +5434,16 @@ async function ensureExportSetupApplied(){
 // Project-setup bill-to + quote text that must persist and print on the quote.
 function projectBillTo() {
   const val = id => ($(id) && $(id).value.trim()) || '';
-  // Send empty strings (not null) so clearing a field also persists/clears it.
+  const printDesc = $('printDescription');
+  const printTerms = $('printTerms');
+  const desc = (printDesc && printDesc.value) || val('projDescription');
+  const terms = (printTerms && printTerms.value) || val('projTerms');
   const out = {
     customerMobile: val('projMobile'),
     customerAddress: val('projCustAddress'),
     customerGst: val('projCustGst'),
-    description: ($('projDescription') && $('projDescription').value) || '',
-    terms: ($('projTerms') && $('projTerms').value) || '',
+    description: desc,
+    terms: terms,
   };
   const qno = val('projQuoteNo');
   if (qno) out.quotationId = qno;
@@ -9627,6 +9634,7 @@ async function openProjectPdf(kind, opts) {
   await ensureProject();
   updatePdfMachineStep('design', 'Collecting saved 2D designs and product drawings...');
   try { await ensureExportSetupApplied(); } catch (_) {}
+  if (typeof syncPrintCopyTwins === 'function') syncPrintCopyTwins('print');
   updatePdfLinks();
   const brand = (typeof activePdfBrand === 'function' && activePdfBrand()) || 'marqt';
   const body = _liveExportBody(brand);

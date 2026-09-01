@@ -1015,7 +1015,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     website = branding.get("website") or ""
     gst = branding.get("gstNo") or ""
     logo_path = branding.get("logoPath")
-    qid = payload.get("quotationId") or payload.get("projectId") or "WEOS-QT"
+    qid = payload.get("quotationId") or payload.get("quoteNumber") or payload.get("projectId") or "WEOS-QT"
     qdate = payload.get("quoteDate") or payload.get("createdOn") or date.today().strftime("%d-%m-%Y")
     updated_on = payload.get("updatedOn")
     customer = payload.get("customer") or "—"
