@@ -133,39 +133,23 @@ def _flow_paragraphs(
     para_gap: float = 4.0,
     bold: bool = False,
 ) -> float:
-    """Draw wrapping paragraphs; call on_new_page() when y hits bottom. Returns y."""
-    for para in str(text or "").split("\n"):
-        words = para.split()
-        if not words:
-            y -= para_gap
-            if y < bottom:
-                y = on_new_page()
-            continue
-        line = ""
-        set_font(c, font_size, bold=bold)
-        for word in words:
-            trial = (line + " " + word).strip()
-            try:
-                too_wide = c.stringWidth(trial, c._fontname, font_size) > max_width
-            except Exception:
-                too_wide = len(trial) * (font_size * 0.5) > max_width
-            if too_wide and line:
-                if y < bottom:
-                    y = on_new_page()
-                    set_font(c, font_size, bold=bold)
-                c.drawString(x, y, line)
-                y -= line_h
-                line = word
-            else:
-                line = trial
-        if line:
-            if y < bottom:
-                y = on_new_page()
-                set_font(c, font_size, bold=bold)
-            c.drawString(x, y, line)
-            y -= line_h
-        y -= para_gap
-    return y
+    """Draw wrapping paragraphs; supports inline **bold** when present."""
+    from WEOS.factory.pdf_rich_text import flow_rich_paragraphs
+
+    return flow_rich_paragraphs(
+        c,
+        text,
+        x=x,
+        y=y,
+        max_width=max_width,
+        font_size=font_size,
+        line_h=line_h,
+        bottom=bottom,
+        set_font=set_font,
+        on_new_page=on_new_page,
+        para_gap=para_gap,
+        bold=bold,
+    )
 
 
 def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: float, *, track_count: int = 2):

@@ -8784,6 +8784,50 @@ function syncPrintCopyTwins(source) {
   }
 }
 
+/** Preserve bold from Word / ChatGPT rich paste as **markdown** in quote textareas. */
+function htmlPasteToMarkdown(html) {
+  if (!html) return '';
+  let s = String(html);
+  s = s.replace(/<\s*br\s*\/?>/gi, '\n');
+  s = s.replace(/<\/\s*(?:p|div|li|tr|h[1-6])\s*>/gi, '\n');
+  s = s.replace(/<\s*(?:p|div|li|tr|h[1-6])\b[^>]*>/gi, '');
+  s = s.replace(/<\s*(?:b|strong)\b[^>]*>([\s\S]*?)<\/\s*(?:b|strong)\s*>/gi, (_, t) => `**${String(t).trim()}**`);
+  s = s.replace(/<\s*(?:i|em)\b[^>]*>([\s\S]*?)<\/\s*(?:i|em)\s*>/gi, (_, t) => `*${String(t).trim()}*`);
+  s = s.replace(/<[^>]+>/g, '');
+  const el = document.createElement('textarea');
+  el.innerHTML = s;
+  s = el.value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  s = s.replace(/\n{3,}/g, '\n\n');
+  return s.trim();
+}
+
+function insertTextAtCursor(el, text) {
+  if (!el || text == null) return;
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? start;
+  const before = el.value.slice(0, start);
+  const after = el.value.slice(end);
+  el.value = before + text + after;
+  const pos = start + text.length;
+  el.selectionStart = el.selectionEnd = pos;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function attachRichPaste(el) {
+  if (!el || el._richPasteBound) return;
+  el._richPasteBound = true;
+  el.addEventListener('paste', (e) => {
+    const html = e.clipboardData && e.clipboardData.getData('text/html');
+    if (!html || !/<(?:b|strong|i|em|p|div|br)\b/i.test(html)) return;
+    const md = htmlPasteToMarkdown(html);
+    if (!md) return;
+    e.preventDefault();
+    insertTextAtCursor(el, md);
+  });
+}
+
+['projDescription', 'projTerms', 'printDescription', 'printTerms', 'coTerms'].forEach(id => attachRichPaste($(id)));
+
 function stampSelectedDraftAmount() {
   const ln = state.lines[state.selectedLine];
   const draft = (typeof currentLineDraft === 'function') ? currentLineDraft() : null;
