@@ -640,6 +640,12 @@ textarea{max-width:100%}
             <div><label class="l">W (mm)</label><input id="lineW" type="number" value="2050" style="width:90px"/></div>
             <div><label class="l">H (mm)</label><input id="lineH" type="number" value="1970" style="width:90px"/></div>
             <div><label class="l">Qty</label><input id="lineQty" type="number" value="1" min="1" style="width:70px"/></div>
+            <div id="wrapCurvedTop" style="display:flex;gap:.35rem;align-items:flex-end;flex-wrap:wrap">
+              <label class="chk" style="font-size:.82rem;display:flex;align-items:center;gap:.35rem;cursor:pointer;margin:0 0 .15rem" title="Draw an arched / curved head on the elevation">
+                <input id="lineCurvedTop" type="checkbox"/> Curved top
+              </label>
+              <div id="wrapCurveRise" style="display:none"><label class="l">Rise mm</label><input id="lineCurveRise" type="number" min="40" step="10" value="200" style="width:72px" title="Arch rise above the rectangular head"/></div>
+            </div>
             <div class="grow" id="wrapLineGlass"><label class="l">Glass</label>
               <div style="display:flex;gap:.35rem;align-items:flex-end;flex-wrap:wrap">
                 <select id="lineGlass" title="Full catalogue — Engines → Glass Library to add more" style="min-width:160px;flex:1"><option value="5mm_clear">5mm Clear</option><option value="8mm_toughened" selected>8mm Toughened</option><option value="10mm_toughened">10mm Toughened</option></select>
@@ -778,6 +784,15 @@ textarea{max-width:100%}
               <input id="lineDesc" placeholder="Customer-facing description — AI can suggest"/>
               <div class="chip-row" id="lineDescChips"></div>
             </div>
+          </div>
+          <div id="wrapSeriesDesigns" class="row" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
+            <div class="grow"><label class="l">Saved designs (per series)</label>
+              <select id="lineSavedDesign" style="min-width:180px;width:100%" title="Reuse glass, hardware, notes and layout for this series on later floors"></select>
+            </div>
+            <div><label class="l">Design name</label><input id="lineSavedDesignName" type="text" placeholder="e.g. Bedroom casement" style="width:150px"/></div>
+            <button class="btn ghost sm" type="button" id="btnSaveSeriesDesign" title="Save this series design for reuse">Save design</button>
+            <button class="btn ghost sm" type="button" id="btnLoadSeriesDesign" title="Load the selected saved design">Load</button>
+            <button class="btn ghost sm" type="button" id="btnDeleteSeriesDesign" title="Delete the selected saved design">Delete</button>
           </div>
           <!-- Composable add-on: glass replacement (louvers / sheet) — not a product-type change -->
           <div id="addFeatureBox" style="margin-top:.55rem;padding:.55rem .65rem;border:1px dashed var(--line);border-radius:10px;background:rgba(0,0,0,.015)">
@@ -3237,14 +3252,27 @@ function initPreviewZoom() {
 function lineIdentityKey(ln) {
   if (!ln || typeof ln !== 'object') return '';
   const world = productWorldOf(null, ln);
+  const parts = Array.isArray(ln.partitions) ? ln.partitions : [];
+  const partSig = parts.map(p => `${p.side || ''}:${Math.round(Number(p.sizeMm || p.size || 0) || 0)}`).join(',');
+  const topShape = String(ln.topShape || (ln.options && ln.options.topShape) || 'flat').toLowerCase();
+  const rise = topShape === 'curved'
+    ? String(Math.round(Number(ln.curveRiseMm || (ln.options && ln.options.curveRiseMm) || 0) || 0))
+    : '';
   return [
     world || '',
     String(ln.product || ln.productId || ''),
     String(ln.system || ''),
+    String(ln.sectionSeries || (ln.options && ln.options.sectionSeries) || ''),
     String(Math.round(Number(ln.width || ln.widthMm || 0) || 0)),
     String(Math.round(Number(ln.height || ln.heightMm || 0) || 0)),
     ln.trackCount != null && ln.trackCount !== '' ? String(ln.trackCount) : '',
     ln.glassShutters != null && ln.glassShutters !== '' ? String(ln.glassShutters) : '',
+    String(ln.opening || ''),
+    ln.foldLeft != null ? String(ln.foldLeft) : '',
+    ln.foldRight != null ? String(ln.foldRight) : '',
+    partSig,
+    topShape,
+    rise,
     String(ln.frameMaterial || (ln.options && ln.options.frameMaterial) || ''),
     String(ln.glass || ''),
   ].join('|');
@@ -3271,6 +3299,249 @@ function invalidatePdfCache() {
     try { URL.revokeObjectURL(state._custPdfCache.url); } catch (_) {}
   }
   state._custPdfCache = { key: '', url: '', blob: null };
+}
+
+const WEOS_SERIES_DESIGNS_KEY = 'weos.seriesDesigns.v1';
+function loadSeriesDesignMap() {
+  try { return JSON.parse(localStorage.getItem(WEOS_SERIES_DESIGNS_KEY) || '{}') || {}; }
+  catch (_) { return {}; }
+}
+function saveSeriesDesignMap(map) {
+  try { localStorage.setItem(WEOS_SERIES_DESIGNS_KEY, JSON.stringify(map || {})); } catch (_) {}
+}
+function seriesDesignBucketKey(src) {
+  const ln = src || {};
+  const product = String(ln.product || ln.productId || '').trim();
+  if (!product) return '';
+  const system = String(ln.system || '').trim().toLowerCase() || 'sliding';
+  const series = String(ln.sectionSeries || '').trim();
+  return [product, system, series].join('|');
+}
+function seriesDesignEntryKey(bucket, name) {
+  const n = String(name || 'default').trim() || 'default';
+  return bucket + '::' + n.toLowerCase();
+}
+function seriesDesignLabel(entry) {
+  if (!entry) return '';
+  const rawName = String(entry.name || 'default');
+  const nice = rawName.toLowerCase() === 'last' ? 'Last used' : rawName;
+  const bits = [nice];
+  if (entry.product || entry.productId) bits.push(entry.displayName || entry.product || entry.productId);
+  if (entry.sectionSeries) bits.push(entry.sectionSeries);
+  return bits.filter(Boolean).join(' · ');
+}
+function captureSeriesDesignFromForm(opts) {
+  opts = opts || {};
+  const draft = (typeof currentLineDraft === 'function') ? currentLineDraft() : {};
+  const p = (typeof selectedProductMeta === 'function') ? selectedProductMeta() : null;
+  const name = String(opts.name || ($('lineSavedDesignName') && $('lineSavedDesignName').value) || 'default').trim() || 'default';
+  return {
+    name,
+    product: draft.product,
+    productId: draft.productId || draft.product,
+    displayName: (p && p.displayName) || draft.displayName || draft.product,
+    system: draft.system,
+    sectionSeries: draft.sectionSeries || null,
+    width: draft.width,
+    height: draft.height,
+    glass: draft.glass,
+    colour: draft.colour,
+    handle: draft.handle,
+    handleFinish: draft.handleFinish,
+    handleName: draft.handleName,
+    hardwareBrand: draft.hardwareBrand,
+    meshName: draft.meshName,
+    description: draft.description,
+    mesh: !!draft.mesh,
+    trackCount: draft.trackCount,
+    glassShutters: draft.glassShutters,
+    meshShutters: draft.meshShutters,
+    fixShutters: draft.fixShutters,
+    opening: draft.opening,
+    openingExplicit: !!draft.openingExplicit,
+    partitions: (draft.partitions || []).map(x => ({ ...x })),
+    foldLeft: draft.foldLeft,
+    foldRight: draft.foldRight,
+    sectionSizes: draft.sectionSizes ? { ...draft.sectionSizes } : null,
+    handleLevel: draft.handleLevel,
+    handleOverrides: draft.handleOverrides ? { ...draft.handleOverrides } : null,
+    grid: draft.grid ? JSON.parse(JSON.stringify(draft.grid)) : null,
+    frameMaterial: draft.frameMaterial,
+    reinforcement: draft.reinforcement,
+    reinforcementMaterial: draft.reinforcementMaterial,
+    panelFill: draft.panelFill ? { ...draft.panelFill } : null,
+    casementPanels: Array.isArray(draft.casementPanels) ? draft.casementPanels.map(x => ({ ...x })) : null,
+    sashOverlapMm: draft.sashOverlapMm,
+    mullionGapMm: draft.mullionGapMm,
+    topShape: draft.topShape || 'flat',
+    curveRiseMm: draft.curveRiseMm,
+    saleUnit: draft.saleUnit,
+    sellingRate: draft.sellingRate,
+    savedAt: new Date().toISOString(),
+  };
+}
+function applySeriesDesignToForm(entry, opts) {
+  if (!entry || typeof entry !== 'object') return false;
+  opts = opts || {};
+  const keepDims = !!opts.keepDims;
+  if ($('lineProduct') && entry.product) {
+    ensureProductOptionFromLine(entry);
+    $('lineProduct').value = entry.productId || entry.product;
+  }
+  if (!keepDims) {
+    if ($('lineW') && entry.width != null) $('lineW').value = entry.width;
+    if ($('lineH') && entry.height != null) $('lineH').value = entry.height;
+  }
+  if ($('lineGlass') && entry.glass) $('lineGlass').value = entry.glass;
+  if ($('lineColour') && entry.colour) $('lineColour').value = entry.colour;
+  if ($('lineHandle') && entry.handle) $('lineHandle').value = entry.handle;
+  if ($('lineHandleFinish')) $('lineHandleFinish').value = entry.handleFinish || 'auto';
+  if ($('lineHandleName')) $('lineHandleName').value = entry.handleName || '';
+  if ($('lineHwBrand')) $('lineHwBrand').value = entry.hardwareBrand || '';
+  if ($('lineMeshName')) $('lineMeshName').value = entry.meshName || '';
+  if ($('lineDesc')) $('lineDesc').value = entry.description || '';
+  if ($('lineSeries')) $('lineSeries').value = entry.sectionSeries || '';
+  if ($('lineSystem') && entry.system) $('lineSystem').value = entry.system;
+  if ($('lineSaleUnit') && entry.saleUnit) $('lineSaleUnit').value = entry.saleUnit;
+  if ($('lineSellRate') && entry.sellingRate != null) $('lineSellRate').value = entry.sellingRate;
+  if ($('lineCurvedTop')) $('lineCurvedTop').checked = String(entry.topShape || '').toLowerCase() === 'curved';
+  if ($('lineCurveRise') && entry.curveRiseMm != null) $('lineCurveRise').value = entry.curveRiseMm;
+  syncCurvedTopUi();
+  syncDraftFromLine(Object.assign({}, entry, {
+    partitions: entry.partitions || [],
+    handleOverrides: entry.handleOverrides || {},
+    panelFill: entry.panelFill || null,
+    casementPanels: entry.casementPanels || null,
+  }));
+  if ($('lineSavedDesignName')) $('lineSavedDesignName').value = entry.name || '';
+  return true;
+}
+function refreshSeriesDesignSelect(preferredKey) {
+  const sel = $('lineSavedDesign');
+  if (!sel) return;
+  const map = loadSeriesDesignMap();
+  const bucket = seriesDesignBucketKey(typeof currentLineDraft === 'function' ? currentLineDraft() : {});
+  const entries = Object.keys(map).map(k => ({ key: k, entry: map[k] }))
+    .filter(x => x.entry && typeof x.entry === 'object');
+  // Prefer same series bucket, then same product, then all.
+  entries.sort((a, b) => {
+    const ab = seriesDesignBucketKey(a.entry);
+    const bb = seriesDesignBucketKey(b.entry);
+    const as = ab === bucket ? 0 : (String(a.entry.product || '') === String(($('lineProduct') && $('lineProduct').value) || '') ? 1 : 2);
+    const bs = bb === bucket ? 0 : (String(b.entry.product || '') === String(($('lineProduct') && $('lineProduct').value) || '') ? 1 : 2);
+    if (as !== bs) return as - bs;
+    return String(a.entry.name || '').localeCompare(String(b.entry.name || ''));
+  });
+  const cur = preferredKey || sel.value || '';
+  sel.innerHTML = '<option value="">— pick a saved design —</option>' +
+    entries.map(x => `<option value="${esc(x.key)}">${esc(seriesDesignLabel(x.entry))}</option>`).join('');
+  if (cur && Array.from(sel.options).some(o => o.value === cur)) sel.value = cur;
+  else {
+    const match = entries.find(x => seriesDesignBucketKey(x.entry) === bucket);
+    sel.value = match ? match.key : '';
+  }
+}
+function saveCurrentSeriesDesign(opts) {
+  opts = opts || {};
+  const entry = captureSeriesDesignFromForm(opts);
+  const bucket = seriesDesignBucketKey(entry);
+  if (!bucket) { toast('Pick a product first'); return null; }
+  const key = seriesDesignEntryKey(bucket, entry.name);
+  const map = loadSeriesDesignMap();
+  map[key] = entry;
+  saveSeriesDesignMap(map);
+  refreshSeriesDesignSelect(key);
+  if ($('lineSavedDesign')) $('lineSavedDesign').value = key;
+  if (!opts.silent) toast('Design saved for ' + (entry.displayName || entry.product) + (entry.sectionSeries ? (' · ' + entry.sectionSeries) : ''));
+  return key;
+}
+function loadSelectedSeriesDesign(opts) {
+  const sel = $('lineSavedDesign');
+  const key = (opts && opts.key) || (sel && sel.value) || '';
+  const map = loadSeriesDesignMap();
+  if (!key || !map[key]) { toast('Pick a saved design'); return false; }
+  state.selectedLine = null;
+  state._previewLineId = null;
+  state._previewKey = null;
+  const entry = map[key];
+  applySeriesDesignToForm(entry, { keepDims: !!(opts && opts.keepDims) });
+  applyProductWorld({ rebuildPreview: false });
+  if ($('lineSeries') && entry.sectionSeries != null) $('lineSeries').value = entry.sectionSeries || '';
+  if ($('lineCurvedTop')) $('lineCurvedTop').checked = String(entry.topShape || '').toLowerCase() === 'curved';
+  if ($('lineCurveRise') && entry.curveRiseMm != null) $('lineCurveRise').value = entry.curveRiseMm;
+  syncCurvedTopUi();
+  forceCanvasRebuild('saved-design');
+  scheduleLivePrice();
+  toast('Loaded saved design');
+  return true;
+}
+function deleteSelectedSeriesDesign() {
+  const sel = $('lineSavedDesign');
+  const key = sel && sel.value;
+  if (!key) { toast('Pick a saved design'); return; }
+  const map = loadSeriesDesignMap();
+  delete map[key];
+  saveSeriesDesignMap(map);
+  refreshSeriesDesignSelect('');
+  toast('Saved design deleted');
+}
+function findSeriesDesignKeyForBucket(bucket) {
+  if (!bucket) return '';
+  const map = loadSeriesDesignMap();
+  const keys = Object.keys(map).filter(k => seriesDesignBucketKey(map[k]) === bucket);
+  if (!keys.length) return '';
+  const named = keys.find(k => String((map[k] && map[k].name) || '').toLowerCase() !== 'last');
+  return named || keys[0];
+}
+function autosnapSeriesDesignForBucket(bucket) {
+  if (!bucket) return;
+  try {
+    const map = loadSeriesDesignMap();
+    const snap = captureSeriesDesignFromForm({ name: 'last' });
+    const parts = String(bucket).split('|');
+    snap.name = 'last';
+    snap.product = parts[0] || snap.product;
+    snap.productId = snap.product;
+    snap.system = parts[1] || snap.system;
+    snap.sectionSeries = parts[2] || null;
+    map[seriesDesignEntryKey(bucket, 'last')] = snap;
+    saveSeriesDesignMap(map);
+  } catch (_) {}
+}
+function maybeAutoloadSeriesDesign() {
+  const bucket = seriesDesignBucketKey(typeof currentLineDraft === 'function' ? currentLineDraft() : {});
+  if (!bucket) return false;
+  const matchKey = findSeriesDesignKeyForBucket(bucket);
+  if (!matchKey) {
+    refreshSeriesDesignSelect('');
+    return false;
+  }
+  const map = loadSeriesDesignMap();
+  applySeriesDesignToForm(map[matchKey], { keepDims: true });
+  refreshSeriesDesignSelect(matchKey);
+  return true;
+}
+function syncCurvedTopUi() {
+  const on = !!($('lineCurvedTop') && $('lineCurvedTop').checked);
+  if ($('wrapCurveRise')) $('wrapCurveRise').style.display = on ? '' : 'none';
+}
+function forceCanvasRebuild(reason) {
+  state._previewLineId = null;
+  state._previewKey = null;
+  if ($('livePreview')) $('livePreview').innerHTML = '<span class="muted">Drawing…</span>';
+  if (typeof refreshPreview === 'function') refreshPreview();
+}
+function deselectCartIfSeriesChanged(prevBucket) {
+  const ln = state.lines[state.selectedLine];
+  if (!ln) return;
+  const nextBucket = seriesDesignBucketKey(typeof currentLineDraft === 'function' ? currentLineDraft() : {});
+  const lineBucket = seriesDesignBucketKey(ln);
+  if (prevBucket && prevBucket === nextBucket && lineBucket === nextBucket) return;
+  if (lineBucket !== nextBucket) {
+    state.selectedLine = null;
+    state._previewLineId = null;
+    state._previewKey = null;
+  }
 }
 function money(n){
   if (n == null || n === '') return '—';
@@ -4243,12 +4514,23 @@ function setSpecialProductToolMode(world) {
     if (title) title.textContent = world === 'louver' ? 'Louver design' : 'Add feature';
   }
 }
-function applyProductWorld() {
+function applyProductWorld(opts) {
+  opts = opts || {};
   const p = selectedProductMeta();
   const world = productWorldOf(p, null);
   const win = $('windowCartTools');
   const addBtn = $('btnAddLine');
   setSpecialProductToolMode(world);
+  // Always clear live canvas association when the product world / tools change,
+  // including early-return specialty worlds (prevents stale SVG sticking).
+  if (opts.rebuildPreview !== false) {
+    state._previewLineId = null;
+    state._previewKey = null;
+    if ($('livePreview') && (world === 'window' || world === 'louver' || world === 'pergola' || world === 'surface'
+      || world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator')) {
+      $('livePreview').innerHTML = '<span class="muted">Drawing…</span>';
+    }
+  }
   if (world === 'louver' || world === 'pergola' || world === 'surface') {
     state.railingMode = false;
     state.showerMode = false;
@@ -4300,10 +4582,6 @@ function applyProductWorld() {
   state.ventMode = false;
   showShowerTools(false);
   showVentTools(false);
-  if (world === 'window' || world === 'louver' || world === 'pergola' || world === 'surface') {
-    state._previewLineId = null;
-    if ($('livePreview')) $('livePreview').innerHTML = '<span class="muted">Drawing…</span>';
-  }
   if (world === 'railing' || world === 'staircase_railing') {
     state.railingMode = true;
     // Product-type lock: staircase_railing forces stairs. Generic railing must NOT
@@ -4332,26 +4610,37 @@ function applyProductWorld() {
   if (addBtn) addBtn.textContent = 'Add to cart';
   const sysEl = $('lineSystem');
   const sys = systemForProduct(p) || 'sliding';
-  const curSys = String((sysEl && sysEl.value) || '').toLowerCase();
-  if (sysEl && (sysEl.value !== sys || curSys === 'ventilator' || curSys === 'shower' || curSys === 'railing')) {
-    sysEl.value = sys;
-    state.draftHandleOverrides = {};
-    applySystemUiRules({ applyFoldPreset: sys === 'bifold' });
+  // Always sync implied system from the selected product so canvas regenerates
+  // for casement ↔ sliding ↔ bifold switches (not only when the control was empty).
+  if (sysEl) {
+    const prevSys = String(sysEl.value || '').toLowerCase();
+    if (sysEl.value !== sys || ['ventilator', 'shower', 'railing', 'louver', 'pergola', 'surface'].includes(prevSys)) {
+      sysEl.value = sys;
+      state.draftHandleOverrides = {};
+      applySystemUiRules({ applyFoldPreset: sys === 'bifold' });
+    } else {
+      applySystemUiRules();
+    }
   } else {
     applySystemUiRules();
   }
-  // Catalogue / series products: auto-bind section series so preview gets track options.
+  // Catalogue / series products: rebind section series from the product so a
+  // stale series from the previous product cannot stick on the canvas.
   if (p && $('lineSeries')) {
     const sid = p.sectionSeries || (p.catalogue && p.catalogue.sectionSeries) || null;
-    if (sid && !$('lineSeries').value) {
+    if (sid) {
       const has = Array.from($('lineSeries').options || []).some(o => o.value === sid);
-      if (has) $('lineSeries').value = sid;
+      if (opts.rebindSeries || !$('lineSeries').value) {
+        $('lineSeries').value = has ? sid : '';
+      }
+    } else if (opts.rebindSeries) {
+      $('lineSeries').value = '';
     }
   }
   // Default track from catalogue when present.
   if (p && $('lineTrack')) {
     const tc = (p.catalogue && (p.catalogue.trackCount || (p.catalogue.trackOptions || [])[0])) || null;
-    if (tc != null && (!$('lineTrack').value || $('lineTrack').value === '2')) {
+    if (tc != null && (opts.rebindSeries || !$('lineTrack').value || $('lineTrack').value === '2')) {
       $('lineTrack').value = String(tc);
     }
   }
@@ -4360,12 +4649,12 @@ function applyProductWorld() {
     const map = { secTop: 'topRail', secBottom: 'bottomRail', secJamb: 'leftJamb', secLeaf: 'leafStile' };
     for (const id in map) {
       const el = $(id);
-      if (el && (el.value === '' || el.value == null) && sizes[map[id]]) el.value = sizes[map[id]];
+      if (el && (opts.rebindSeries || el.value === '' || el.value == null) && sizes[map[id]]) el.value = sizes[map[id]];
     }
   }
 }
-function applyProductSystem() {
-  applyProductWorld();
+function applyProductSystem(opts) {
+  applyProductWorld(opts || {});
 }
 
 function currentSectionSizes() {
@@ -4481,6 +4770,11 @@ function syncDraftFromLine(ln) {
     $('lineLocation').value = ln.locationName || ln.positionName
       || (ln.options && (ln.options.locationName || ln.options.positionName)) || '';
   }
+  const topShape = String(ln.topShape || (ln.options && ln.options.topShape) || 'flat').toLowerCase();
+  if ($('lineCurvedTop')) $('lineCurvedTop').checked = topShape === 'curved';
+  const rise = ln.curveRiseMm != null ? ln.curveRiseMm : (ln.options && ln.options.curveRiseMm);
+  if ($('lineCurveRise') && rise != null && rise !== '') $('lineCurveRise').value = rise;
+  syncCurvedTopUi();
   renderPartChips();
   applyMeshTrackRules();
   applySystemUiRules(); // visibility only — do not re-apply fold preset over saved values
@@ -4605,6 +4899,16 @@ function currentLineDraft() {
         });
       });
       return ov;
+    })(),
+    topShape: (function(){
+      const on = !!($('lineCurvedTop') && $('lineCurvedTop').checked);
+      return on ? 'curved' : 'flat';
+    })(),
+    curveRiseMm: (function(){
+      const on = !!($('lineCurvedTop') && $('lineCurvedTop').checked);
+      if (!on) return null;
+      const n = $('lineCurveRise') ? parseFloat($('lineCurveRise').value) : 200;
+      return Math.max(40, isFinite(n) ? n : 200);
     })(),
   };
 }
@@ -5210,6 +5514,8 @@ async function refreshPreview() {
       category: ln.category || null,
       shower: null,
       ventilator: null,
+      topShape: ln.topShape || 'flat',
+      curveRiseMm: ln.curveRiseMm != null ? ln.curveRiseMm : null,
     }});
     if (prev.meshTrack && prev.meshTrack.shifted && $('lineTrack')) {
       $('lineTrack').value = String(prev.trackCount || 3);
@@ -6575,12 +6881,19 @@ $('btnAddLine').onclick = () => {
   }
   stampLineAmount(draft);
   stampItemSnapshot(draft, true);
+  if (draft.topShape === 'curved') {
+    draft.options = Object.assign({}, draft.options || {}, {
+      topShape: 'curved',
+      curveRiseMm: draft.curveRiseMm,
+    });
+  }
   const added = ensureLineId(draft);
   const liveSvg = captureLivePreviewSvg();
   if (liveSvg && state._previewKey && state._previewKey === lineIdentityKey(added)) {
     stampLinePreviewSvg(added, liveSvg);
   }
   state.lines.push(added);
+  try { saveCurrentSeriesDesign({ silent: true, name: ($('lineSavedDesignName') && $('lineSavedDesignName').value) || 'default' }); } catch (_) {}
   invalidatePdfCache();
   resetDraftPlacementAfterAdd();
   renderCart(); scheduleSave(); refreshPreview(); scheduleLivePrice();
@@ -8633,6 +8946,45 @@ if ($('btnRailHwLoad')) $('btnRailHwLoad').onclick = () => {
   railingCalc();
   toast('Preset loaded');
 };
+if ($('btnSaveSeriesDesign')) $('btnSaveSeriesDesign').onclick = () => saveCurrentSeriesDesign();
+if ($('btnLoadSeriesDesign')) $('btnLoadSeriesDesign').onclick = () => loadSelectedSeriesDesign({ keepDims: true });
+if ($('btnDeleteSeriesDesign')) $('btnDeleteSeriesDesign').onclick = () => deleteSelectedSeriesDesign();
+if ($('lineSavedDesign')) $('lineSavedDesign').addEventListener('change', () => {
+  if ($('lineSavedDesign').value) loadSelectedSeriesDesign({ keepDims: true });
+});
+if ($('lineCurvedTop')) {
+  $('lineCurvedTop').addEventListener('change', () => {
+    syncCurvedTopUi();
+    const ln = state.lines[state.selectedLine];
+    if (ln && productWorldOf(null, ln) === 'window') {
+      ln.topShape = $('lineCurvedTop').checked ? 'curved' : 'flat';
+      ln.curveRiseMm = $('lineCurvedTop').checked ? (parseFloat(($('lineCurveRise') && $('lineCurveRise').value) || '200') || 200) : null;
+      ln.options = Object.assign({}, ln.options || {}, {
+        topShape: ln.topShape,
+        curveRiseMm: ln.curveRiseMm,
+      });
+      if (ln.preview) delete ln.preview;
+    }
+    forceCanvasRebuild('curved-top');
+    scheduleLivePrice();
+  });
+}
+if ($('lineCurveRise')) {
+  $('lineCurveRise').addEventListener('change', () => {
+    const ln = state.lines[state.selectedLine];
+    if (ln && $('lineCurvedTop') && $('lineCurvedTop').checked) {
+      ln.curveRiseMm = parseFloat($('lineCurveRise').value) || 200;
+      ln.options = Object.assign({}, ln.options || {}, { topShape: 'curved', curveRiseMm: ln.curveRiseMm });
+      if (ln.preview) delete ln.preview;
+    }
+    forceCanvasRebuild('curve-rise');
+  });
+  $('lineCurveRise').addEventListener('input', () => {
+    clearTimeout(state._curveRiseT);
+    state._curveRiseT = setTimeout(() => forceCanvasRebuild('curve-rise'), 280);
+  });
+}
+try { refreshSeriesDesignSelect(); syncCurvedTopUi(); } catch (_) {}
 ['rLenMm','rHtMm','rLenFt','rHtFt','rPanels','rPanelsStair','rBlocks','rGap','rWallL','rWallR','rHandrail','rHandrailStair','rPillar','rAnchPer','rSaleUnit',
  'rLegA','rLegB','rLegC','rArchSpan','rArchRise','rSteps','rRise','rRun','rStud','rSegments',
  'rFloorH','rGlassH','rSheetW','rSheetH','rWastePct','rBasis','rOverhead','rMarkup','rInstall','rTransport',
@@ -8854,20 +9206,45 @@ function stampSelectedDraftAmount() {
 }
 ['lineW','lineH','lineQty','lineColour','lineGlass','lineProduct','lineSeries','lineSaleUnit','lineSellRate','lineHandle','lineDesc','cartCustomer','lineTrack','partSize','lineFrameMaterial','lineReinfPresent','lineReinfMaterial','lineHwBrand'].forEach(id => {
   const el = $(id); if (!el) return;
+  el.addEventListener('focus', () => {
+    if (id === 'lineProduct' || id === 'lineSeries') {
+      try { state._seriesDesignBucketBefore = seriesDesignBucketKey(currentLineDraft()); } catch (_) { state._seriesDesignBucketBefore = ''; }
+    }
+  });
   el.addEventListener('input', () => {
-    if (id === 'lineProduct') { applyProductSystem(); loadCartGlassOptions(); loadCartColourOptions(); }
+    if (id === 'lineProduct') {
+      // Select fires change for the real switch; avoid double rebuild on input.
+      return;
+    }
     if (['lineW','lineH','lineQty','lineSaleUnit','lineSellRate'].includes(id)) stampSelectedDraftAmount();
     if (isRailingMode() || isShowerMode() || isVentMode()) {
       if (['lineW','lineH','lineProduct','lineFrameMaterial','lineColour'].includes(id)) refreshPreview();
       return;
     }
     scheduleLivePrice();
-    if (['lineW','lineH','lineColour','lineGlass','lineProduct','lineTrack','partSize','lineFrameMaterial'].includes(id)) refreshPreview();
+    if (['lineW','lineH','lineColour','lineGlass','lineTrack','partSize','lineFrameMaterial','lineSeries'].includes(id)) refreshPreview();
   });
   el.addEventListener('change', () => {
     if (id === 'lineProduct') {
-      applyProductSystem(); loadCartGlassOptions(); loadCartColourOptions();
+      const prevBucket = state._seriesDesignBucketBefore || '';
+      autosnapSeriesDesignForBucket(prevBucket);
+      applyProductSystem({ rebindSeries: true });
+      loadCartGlassOptions(); loadCartColourOptions();
       if (typeof suggestLineDescription === 'function') suggestLineDescription({ fillIfEmpty: true });
+      deselectCartIfSeriesChanged(prevBucket);
+      invalidatePdfCache();
+      // Never mutate a selected cart line's product — that overwrote series A when designing series B.
+      maybeAutoloadSeriesDesign();
+      refreshSeriesDesignSelect();
+      forceCanvasRebuild('product-change');
+    }
+    if (id === 'lineSeries') {
+      const prevBucket = state._seriesDesignBucketBefore || '';
+      autosnapSeriesDesignForBucket(prevBucket);
+      deselectCartIfSeriesChanged(prevBucket);
+      maybeAutoloadSeriesDesign();
+      refreshSeriesDesignSelect();
+      forceCanvasRebuild('series-change');
     }
     if (id === 'lineFrameMaterial') applyFrameMaterialUi();
     if (['lineW','lineH','lineQty','lineSaleUnit','lineSellRate'].includes(id)) stampSelectedDraftAmount();
@@ -8877,23 +9254,9 @@ function stampSelectedDraftAmount() {
       stampGlassSnapshot(ln, true);
       stampItemSnapshot(ln, false);
     }
-    if (ln && id === 'lineProduct') {
-      const p = selectedProductMeta();
-      const newWorld = productWorldOf(p, null);
-      const oldWorld = productWorldOf(null, ln);
-      if (oldWorld !== newWorld) {
-        invalidatePdfCache();
-      } else {
-        ln.product = $('lineProduct').value;
-        ln.productId = ln.product;
-        if (p) {
-          ln.displayName = p.displayName || ln.displayName;
-          ln.category = p.category || ln.category;
-          ln.productType = p.productType || ln.productType;
-        }
-        stampItemSnapshot(ln, true);
-      }
-    }
+    // Intentionally do NOT rewrite ln.product when the product picker changes.
+    // Editing a cart line's product is done by selecting it and using Add (new line)
+    // or by loading a saved series design — mutating the selected line caused Bug 2.
     if (isRailingMode() || isShowerMode() || isVentMode()) {
       if (['lineW','lineH','lineProduct','lineSeries','lineFrameMaterial','lineColour'].includes(id)) refreshPreview();
       if (id === 'cartCustomer') maybeAskCustomerMemory();

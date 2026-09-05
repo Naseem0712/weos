@@ -120,6 +120,8 @@ def _persist_window_options(
         "glassBrand",
         "glassColour",
         "glassMakeup",
+        "topShape",
+        "curveRiseMm",
     ):
         _v = lo.get(_k) or line.get(_k) or (_opts_in or {}).get(_k)
         if _v is not None and _v != "":
@@ -1121,6 +1123,13 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
                 from WEOS.factory.panel_fills import attach_fill_to_drawing
 
                 attach_fill_to_drawing(job.drawing, lo.get("panelFill"))
+            from WEOS.factory.svg_export import attach_top_shape_to_drawing
+
+            attach_top_shape_to_drawing(
+                job.drawing,
+                top_shape=lo.get("topShape") or line.get("topShape"),
+                curve_rise_mm=lo.get("curveRiseMm") or line.get("curveRiseMm"),
+            )
             result["preview"] = (
                 preview_svgs_for_drawing(
                     job.drawing,
@@ -1215,6 +1224,13 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
         from WEOS.factory.panel_fills import attach_fill_to_drawing
 
         attach_fill_to_drawing(job.drawing, lo.get("panelFill"))
+    from WEOS.factory.svg_export import attach_top_shape_to_drawing
+
+    attach_top_shape_to_drawing(
+        job.drawing,
+        top_shape=lo.get("topShape") or line.get("topShape"),
+        curve_rise_mm=lo.get("curveRiseMm") or line.get("curveRiseMm"),
+    )
     quote = job.quotation.as_dict() if job.quotation else {}
     weight = job.weight.as_dict() if job.weight else {}
     colour = (line.get("colour") or "white")

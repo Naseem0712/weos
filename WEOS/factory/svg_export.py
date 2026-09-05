@@ -663,6 +663,49 @@ def _draw_plan_bifold(parts: list[str], *, tx, ty, shutters, W: float, y_mid: fl
         )
 
 
+def attach_top_shape_to_drawing(
+    drawing: Any,
+    *,
+    top_shape: Any = None,
+    curve_rise_mm: Any = None,
+) -> None:
+    """Stamp curved/flat top metadata onto a drawing for SVG elevation render."""
+    if drawing is None:
+        return
+    meta = dict(getattr(drawing, "metadata", None) or {})
+    shape = str(top_shape if top_shape is not None else meta.get("topShape") or "flat").strip().lower()
+    if shape in ("curved", "curve", "arch", "arched", "bow"):
+        meta["topShape"] = "curved"
+        try:
+            rise = float(curve_rise_mm if curve_rise_mm is not None else meta.get("curveRiseMm") or 0)
+        except (TypeError, ValueError):
+            rise = 0.0
+        if rise <= 0:
+            try:
+                rise = max(80.0, float(getattr(drawing, "width", 0) or 0) * 0.12)
+            except (TypeError, ValueError):
+                rise = 120.0
+        meta["curveRiseMm"] = round(rise, 1)
+    else:
+        meta["topShape"] = "flat"
+        meta.pop("curveRiseMm", None)
+    drawing.metadata = meta
+
+
+def _curve_rise_from_meta(meta: Mapping[str, Any] | None, *, width: float) -> float:
+    m = meta or {}
+    shape = str(m.get("topShape") or "").strip().lower()
+    if shape not in ("curved", "curve", "arch", "arched", "bow"):
+        return 0.0
+    try:
+        rise = float(m.get("curveRiseMm") or 0)
+    except (TypeError, ValueError):
+        rise = 0.0
+    if rise <= 0:
+        rise = max(80.0, float(width or 0) * 0.12)
+    return float(rise)
+
+
 def render_svg_string(
     model: DrawingModel,
     *,
@@ -696,8 +739,12 @@ def render_svg_string(
     if pdf:
         margin = min(margin, 100.0 * k)
 
+    curve_rise = _curve_rise_from_meta(model.metadata, width=float(model.width or 0))
+
     xs: list[float] = [0.0, model.width]
     ys: list[float] = [0.0, model.height]
+    if curve_rise > 0:
+        ys.append(float(model.height) + curve_rise)
     for pl in model.polylines:
         for p in pl.points:
             xs.append(p.x)
@@ -844,6 +891,28 @@ def render_svg_string(
             parts.append(
                 f'<polyline points="{pts}" fill="none" stroke="{frame_stroke}" {_solid_sw(sw_pl * 0.9)}/>'
             )
+
+    # Curved / arched top: lunette glass + outer/inner arcs above the rectangular head.
+    if curve_rise > 0:
+        W = float(model.width or 0)
+        H = float(model.height or 0)
+        # Quadratic peak = H+rise ⇒ control point at H + 2*rise
+        ctrl_y = H + (2.0 * curve_rise)
+        parts.append(
+            f'<path d="M {tx(0):.2f},{ty(H):.2f} Q {tx(W * 0.5):.2f},{ty(ctrl_y):.2f} '
+            f'{tx(W):.2f},{ty(H):.2f} Z" fill="{glass_fill}" stroke="none"/>'
+        )
+        parts.append(
+            f'<path d="M {tx(0):.2f},{ty(H):.2f} Q {tx(W * 0.5):.2f},{ty(ctrl_y):.2f} '
+            f'{tx(W):.2f},{ty(H):.2f}" fill="none" stroke="{frame_stroke}" {_solid_sw(sw_outer)}/>'
+        )
+        inset = max(18.0 * k, sw_outer * 4.0)
+        rise_inner = max(curve_rise - inset * 0.55, curve_rise * 0.72)
+        ctrl_inner = H + (2.0 * rise_inner)
+        parts.append(
+            f'<path d="M {tx(inset):.2f},{ty(H):.2f} Q {tx(W * 0.5):.2f},{ty(ctrl_inner):.2f} '
+            f'{tx(W - inset):.2f},{ty(H):.2f}" fill="none" stroke="{frame_stroke}" {_solid_sw(sw_inner)}/>'
+        )
 
     for seg in model.segments:
         lname = (seg.name or "").lower()
@@ -1267,6 +1336,13 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
             from WEOS.factory.panel_fills import attach_fill_to_drawing
 
             attach_fill_to_drawing(job.drawing, lo.get("panelFill"))
+        from WEOS.factory.svg_export import attach_top_shape_to_drawing
+
+        attach_top_shape_to_drawing(
+            job.drawing,
+            top_shape=lo.get("topShape") or line.get("topShape"),
+            curve_rise_mm=lo.get("curveRiseMm") or line.get("curveRiseMm"),
+        )
         return render_svg_string(
             job.drawing,
             colour=str(colour).lower().replace(" ", "_"),

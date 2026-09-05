@@ -441,6 +441,8 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
         "glassBrand": pick("glassBrand", "glass_brand"),
         "glassColour": pick("glassColour", "glass_colour", "glassColor"),
         "glassMakeup": pick("glassMakeup", "glass_makeup"),
+        "topShape": pick("topShape", "top_shape", "headShape"),
+        "curveRiseMm": pick("curveRiseMm", "curve_rise_mm", "archRiseMm", "arch_rise_mm"),
     }
 
 

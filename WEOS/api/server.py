@@ -348,6 +348,8 @@ class PreviewRequest(BaseModel):
     casementPanels: list[dict[str, Any]] | None = None
     sashOverlapMm: float | None = None
     mullionGapMm: float | None = None
+    topShape: str | None = None
+    curveRiseMm: float | None = None
 
 
 class FormulaPreviewRequest(BaseModel):
@@ -1589,6 +1591,13 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             from WEOS.factory.panel_fills import attach_fill_to_drawing
 
             attach_fill_to_drawing(job.drawing, pf)
+        from WEOS.factory.svg_export import attach_top_shape_to_drawing, layout_summary_for_job, render_svg_string
+
+        attach_top_shape_to_drawing(
+            job.drawing,
+            top_shape=getattr(body, "topShape", None),
+            curve_rise_mm=getattr(body, "curveRiseMm", None),
+        )
         colour_raw = str(body.colour or "white")
         svg = render_svg_string(
             job.drawing,
