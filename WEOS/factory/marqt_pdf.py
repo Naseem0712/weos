@@ -980,7 +980,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas
 
-    from WEOS.factory.line_kind import is_railing_cart_line
+    from WEOS.factory.line_kind import is_railing_cart_line, line_quote_group, sort_lines_by_quote_group
     from WEOS.factory.pdf_fonts import ensure_rupee_font, money_text, rupee_prefix, set_font
 
     ensure_rupee_font()  # register before any drawString with ₹
@@ -1005,7 +1005,10 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     customer = payload.get("customer") or "—"
     cust_profile = payload.get("customerProfile") or {}
     project_name = payload.get("name") or ""
-    lines = list(payload.get("lines") or [])
+    group_order = payload.get("cartQuoteGroups") or []
+    if not isinstance(group_order, (list, tuple)):
+        group_order = []
+    lines = sort_lines_by_quote_group(payload.get("lines") or [], group_order)
     _rs = rupee_prefix()
     try:
         from WEOS.factory.media_assets import resolve_doc_images
@@ -1244,8 +1247,30 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
 
     # Per-line elevations only (no prefetch of all rasters). Windows = ReportLab
     # vectors; railing/shower/vent = canvas SVG (photo else sanitized PNG).
+    distinct_groups = {line_quote_group(ln) for ln in lines if isinstance(ln, Mapping)}
+    show_group_headers = len(distinct_groups) > 1
+    last_quote_group = None
 
     for idx, line in enumerate(lines):
+        gname = line_quote_group(line) if isinstance(line, Mapping) else "Main"
+        if show_group_headers and gname != last_quote_group:
+            # Room for section title strip (~22pt) before the line block.
+            if y < bottom_limit + min(draw_h, 80) + 60:
+                set_font(c, 7)
+                c.setFillColorRGB(0.5, 0.5, 0.5)
+                c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
+                c.showPage()
+                page_no += 1
+                y = header(page_no)
+            c.setFillColorRGB(*primary)
+            set_font(c, 10, bold=True)
+            c.drawString(M, y, str(gname).upper())
+            c.setStrokeColorRGB(0.75, 0.75, 0.75)
+            c.line(M, y - 4, W - M, y - 4)
+            y -= 18
+            c.setFillColorRGB(0, 0, 0)
+            last_quote_group = gname
+
         # Specs first so we know how tall the text block is (wrap may exceed draw_h).
         try:
             spec_rows = _spec_rows(line)

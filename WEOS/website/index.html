@@ -293,6 +293,14 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
 .pkg-tabs{display:flex;flex-wrap:wrap;gap:.3rem;margin:.35rem 0 .45rem}
 .pkg-tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:.18rem .65rem;font-size:.75rem;cursor:pointer}
 .pkg-tabs button.active{background:var(--green);color:#fff;border-color:var(--green)}
+.quote-group-bar{display:flex;flex-wrap:wrap;gap:.4rem .55rem;align-items:center;margin:.55rem 0 .35rem;padding:.4rem .55rem;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.015)}
+.quote-group-bar .pkg-tabs{margin:0}
+.bulk-sizes-box{margin-top:.55rem;padding:.55rem .65rem;border:1px dashed var(--line);border-radius:10px;background:rgba(0,0,0,.015)}
+.bulk-sizes-box table{width:100%;border-collapse:collapse;font-size:.8rem;margin-top:.35rem}
+.bulk-sizes-box th,.bulk-sizes-box td{padding:.2rem .25rem;text-align:left;vertical-align:middle}
+.bulk-sizes-box input{width:100%;min-width:0;box-sizing:border-box}
+.cart-group-row td{background:#f3f6f4;font-weight:600;font-size:.78rem;letter-spacing:.02em;padding:.4rem .5rem;border-top:1px solid var(--line)}
+.cart-group-row .cart-group-meta{font-weight:500;color:var(--muted);font-size:.72rem;margin-left:.35rem}
 .pkg-item{display:grid;grid-template-columns:minmax(7.5rem,1.1fr) 4.5rem minmax(6rem,1fr) 4.8rem 5.5rem minmax(6.5rem,1fr) auto;gap:.35rem;align-items:end;margin-bottom:.35rem}
 .pkg-item .pkg-note{grid-column:1/-1}
 @media(max-width:820px){.pkg-item{grid-template-columns:1fr 1fr}}
@@ -1417,6 +1425,26 @@ textarea{max-width:100%}
               <button class="btn" id="btnAddLine" type="button">Add to cart</button>
             </div>
           </div>
+          <div class="bulk-sizes-box" id="bulkSizesBox">
+            <div class="row" style="align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap">
+              <div>
+                <strong style="font-size:.82rem">Multi-size for this design</strong>
+                <div class="muted" style="font-size:.72rem;margin-top:.1rem">Configure once above, then add many W×H / qty / location / rate rows as separate quote lines.</div>
+              </div>
+              <div class="row" style="gap:.35rem;margin:0;flex-wrap:wrap">
+                <button class="btn ghost sm" type="button" id="btnBulkAddRow" title="Add another size row">+ row</button>
+                <button class="btn ghost sm" type="button" id="btnBulkClearRows" title="Clear all size rows">Clear</button>
+                <button class="btn sm" type="button" id="btnAddAllSizes" title="Add every size row using the current design">Add all sizes to cart</button>
+              </div>
+            </div>
+            <div style="overflow:auto;max-height:220px">
+              <table>
+                <thead><tr><th style="width:78px">W mm</th><th style="width:78px">H mm</th><th style="width:56px">Qty</th><th>Location / name</th><th style="width:88px">Rate</th><th style="width:40px"></th></tr></thead>
+                <tbody id="bulkSizesBody"></tbody>
+              </table>
+            </div>
+            <div class="muted" id="bulkSizesHint" style="font-size:.7rem;margin-top:.3rem">Uses glass, colour, hardware, series design and notes from the form. Empty rate → form selling rate.</div>
+          </div>
           <div class="row" style="margin-top:.75rem">
             <button class="btn" id="btnCalc" title="Price the cart, save the quote, then download PDFs below">Calculate price</button>
             <button class="btn ghost sm" id="btnAutosave" title="Save this project">Save</button>
@@ -1424,6 +1452,13 @@ textarea{max-width:100%}
             <button class="btn ghost sm" id="btnRedo" title="Redo">Redo</button>
             <label class="btn ghost sm" style="margin:0" title="Import lines from CSV/Excel">Import<input id="importFile" type="file" accept=".csv,.xlsx" hidden/></label>
             <label class="btn ghost sm" style="margin:0" title="Import DETA windows section catalogue">Sections Excel<input id="sectionsFile" type="file" accept=".xlsx" hidden/></label>
+          </div>
+          <div class="quote-group-bar" id="quoteGroupBar">
+            <span class="muted" style="font-size:.75rem">Quote sections</span>
+            <div class="pkg-tabs" id="quoteGroupTabs" role="tablist" aria-label="Quote sections"></div>
+            <button class="btn ghost sm" type="button" id="btnQuoteGroupAdd" title="Add Premium / Budget / UPVC / Grills style section">+ section</button>
+            <button class="btn ghost sm" type="button" id="btnQuoteGroupRename" title="Rename the active section">Rename</button>
+            <span class="muted" id="quoteGroupHint" style="font-size:.72rem;flex:1;min-width:12rem">New cart lines go into the active section. PDF prints section headers.</span>
           </div>
           <div style="overflow:auto;margin-top:.8rem">
             <table>
@@ -2525,6 +2560,10 @@ const state = {
   packageQuoteIndex: 0,
   masterJobId: null,
   quoteDiscount: { mode: 'off', percent: 0, amount: 0, note: '' },
+  cartQuoteGroups: ['Main', 'Premium', 'Budget', 'UPVC', 'Grills'],
+  activeQuoteGroup: 'Main',
+  quoteGroupFilter: 'All',
+  bulkSizeRows: [{ width: '', height: '', qty: 1, location: '', rate: '' }],
 };
 const $ = (id) => document.getElementById(id);
 const toast = (m) => {
@@ -3604,15 +3643,18 @@ function stampLineAmount(ln) {
 }
 function updateLiveCartTotal() {
   let sum = 0, any = false;
+  const filt = String(state.quoteGroupFilter || 'All');
   (state.lines || []).forEach((ln) => {
+    if (filt !== 'All' && lineQuoteGroup(ln) !== filt) return;
     stampLineAmount(ln);
     const a = lineLiveAmount(ln);
     if (a != null && a > 0) { sum += a; any = true; }
   });
   if (!$('cartTotal')) return;
   if (any) $('cartTotal').textContent = money(sum);
-  else if (state.lastResult && state.lastResult.price && state.lastResult.price.total != null)
+  else if (filt === 'All' && state.lastResult && state.lastResult.price && state.lastResult.price.total != null)
     $('cartTotal').textContent = money(state.lastResult.price.total);
+  else $('cartTotal').textContent = money(0);
 }
 function mm(n){
   if (n == null || n === '') return '—';
@@ -4405,6 +4447,151 @@ function designSerialLabel(index, ln) {
   const loc = lineLocationName(ln) || currentLocationName();
   return loc ? (code + ' · ' + loc) : code;
 }
+
+const DEFAULT_CART_QUOTE_GROUPS = ['Main', 'Premium', 'Budget', 'UPVC', 'Grills'];
+function normalizeQuoteGroupName(name) {
+  const n = String(name || '').trim();
+  return n || 'Main';
+}
+function ensureCartQuoteGroups() {
+  if (!Array.isArray(state.cartQuoteGroups) || !state.cartQuoteGroups.length) {
+    state.cartQuoteGroups = DEFAULT_CART_QUOTE_GROUPS.slice();
+  }
+  state.cartQuoteGroups = state.cartQuoteGroups
+    .map(normalizeQuoteGroupName)
+    .filter((v, i, arr) => v && arr.indexOf(v) === i);
+  if (!state.cartQuoteGroups.length) state.cartQuoteGroups = ['Main'];
+  state.activeQuoteGroup = normalizeQuoteGroupName(state.activeQuoteGroup || state.cartQuoteGroups[0]);
+  if (!state.cartQuoteGroups.includes(state.activeQuoteGroup)) {
+    state.cartQuoteGroups.push(state.activeQuoteGroup);
+  }
+  const filt = String(state.quoteGroupFilter || 'All');
+  if (filt !== 'All' && !state.cartQuoteGroups.includes(filt)) state.quoteGroupFilter = 'All';
+  return state.cartQuoteGroups;
+}
+function lineQuoteGroup(ln) {
+  const g = normalizeQuoteGroupName(
+    (ln && (ln.quoteGroup || ln.quote_group || (ln.options && ln.options.quoteGroup))) || 'Main'
+  );
+  return g;
+}
+function stampQuoteGroup(ln, group) {
+  if (!ln || typeof ln !== 'object') return ln;
+  const g = normalizeQuoteGroupName(group != null ? group : (state.activeQuoteGroup || 'Main'));
+  ln.quoteGroup = g;
+  ln.options = Object.assign({}, ln.options || {}, { quoteGroup: g });
+  if (!state.cartQuoteGroups) state.cartQuoteGroups = DEFAULT_CART_QUOTE_GROUPS.slice();
+  if (!state.cartQuoteGroups.includes(g)) state.cartQuoteGroups.push(g);
+  return ln;
+}
+function targetQuoteGroupForAdd() {
+  ensureCartQuoteGroups();
+  if (state.quoteGroupFilter && state.quoteGroupFilter !== 'All') {
+    state.activeQuoteGroup = state.quoteGroupFilter;
+  }
+  return normalizeQuoteGroupName(state.activeQuoteGroup || 'Main');
+}
+function quoteGroupLineCount(group) {
+  const g = normalizeQuoteGroupName(group);
+  return (state.lines || []).filter(ln => lineQuoteGroup(ln) === g).length;
+}
+function visibleCartLineEntries() {
+  ensureCartQuoteGroups();
+  const filt = String(state.quoteGroupFilter || 'All');
+  const order = state.cartQuoteGroups || [];
+  const entries = (state.lines || []).map((ln, i) => ({ ln, i }));
+  const filtered = filt === 'All' ? entries : entries.filter(e => lineQuoteGroup(e.ln) === filt);
+  if (filt !== 'All') return filtered;
+  return filtered.slice().sort((a, b) => {
+    const ga = lineQuoteGroup(a.ln), gb = lineQuoteGroup(b.ln);
+    const ia = order.indexOf(ga), ib = order.indexOf(gb);
+    const ra = ia < 0 ? 999 : ia, rb = ib < 0 ? 999 : ib;
+    if (ra !== rb) return ra - rb;
+    return a.i - b.i;
+  });
+}
+function renderQuoteGroupTabs() {
+  const tabs = $('quoteGroupTabs');
+  if (!tabs) return;
+  ensureCartQuoteGroups();
+  const filt = String(state.quoteGroupFilter || 'All');
+  const bits = [{ id: 'All', label: 'All' }].concat(
+    state.cartQuoteGroups.map(g => ({ id: g, label: g + (quoteGroupLineCount(g) ? ` (${quoteGroupLineCount(g)})` : '') }))
+  );
+  tabs.innerHTML = bits.map(b =>
+    `<button type="button" class="${b.id === filt ? 'active' : ''}" data-qg="${esc(b.id)}" title="${b.id === 'All' ? 'Show every section' : 'Show / add into ' + esc(b.id)}">${esc(b.label)}</button>`
+  ).join('');
+  tabs.querySelectorAll('[data-qg]').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.qg || 'All';
+      state.quoteGroupFilter = id;
+      if (id !== 'All') state.activeQuoteGroup = id;
+      renderQuoteGroupTabs();
+      renderCart();
+      const hint = $('quoteGroupHint');
+      if (hint) {
+        hint.textContent = id === 'All'
+          ? 'Viewing all sections. Pick a section tab so new lines land there.'
+          : `Active section: ${id}. New cart lines (and bulk sizes) go here. PDF prints section headers.`;
+      }
+    };
+  });
+  const hint = $('quoteGroupHint');
+  if (hint && filt !== 'All') {
+    hint.textContent = `Active section: ${filt}. New cart lines (and bulk sizes) go here. PDF prints section headers.`;
+  }
+}
+function addCartQuoteGroup() {
+  ensureCartQuoteGroups();
+  const name = prompt('New quote section name (e.g. Premium, Budget, UPVC, Grills)', '');
+  if (name == null) return;
+  const g = normalizeQuoteGroupName(name);
+  if (!state.cartQuoteGroups.includes(g)) state.cartQuoteGroups.push(g);
+  state.activeQuoteGroup = g;
+  state.quoteGroupFilter = g;
+  renderQuoteGroupTabs();
+  renderCart();
+  scheduleSave();
+  toast('Section “' + g + '” ready — new lines go here');
+}
+function renameActiveQuoteGroup() {
+  ensureCartQuoteGroups();
+  const cur = state.quoteGroupFilter !== 'All' ? state.quoteGroupFilter : state.activeQuoteGroup;
+  const name = prompt('Rename section', cur || 'Main');
+  if (name == null) return;
+  const next = normalizeQuoteGroupName(name);
+  if (!next || next === cur) return;
+  (state.lines || []).forEach(ln => {
+    if (lineQuoteGroup(ln) === cur) stampQuoteGroup(ln, next);
+  });
+  state.cartQuoteGroups = state.cartQuoteGroups.map(g => g === cur ? next : g);
+  if (!state.cartQuoteGroups.includes(next)) state.cartQuoteGroups.push(next);
+  state.activeQuoteGroup = next;
+  if (state.quoteGroupFilter === cur) state.quoteGroupFilter = next;
+  renderQuoteGroupTabs();
+  renderCart();
+  invalidatePdfCache();
+  scheduleSave();
+  toast('Renamed to “' + next + '”');
+}
+function adoptCartQuoteGroups(doc) {
+  const fromDoc = doc && Array.isArray(doc.cartQuoteGroups) ? doc.cartQuoteGroups : null;
+  const fromLines = [];
+  (doc && doc.lines || state.lines || []).forEach(ln => {
+    const g = lineQuoteGroup(ln);
+    if (g && !fromLines.includes(g)) fromLines.push(g);
+  });
+  const merged = [];
+  (fromDoc || DEFAULT_CART_QUOTE_GROUPS).concat(fromLines).forEach(g => {
+    const n = normalizeQuoteGroupName(g);
+    if (n && !merged.includes(n)) merged.push(n);
+  });
+  state.cartQuoteGroups = merged.length ? merged : DEFAULT_CART_QUOTE_GROUPS.slice();
+  if (doc && doc.activeQuoteGroup) state.activeQuoteGroup = normalizeQuoteGroupName(doc.activeQuoteGroup);
+  ensureCartQuoteGroups();
+  renderQuoteGroupTabs();
+}
+
 function quoteQtyBreakdown(lines) {
   const order = ['Windows','Doors','Showers','Bathroom ventilators','Railings','Staircase railings','Louvers','ACP','HPL','Pergolas','Other'];
   const counts = {};
@@ -4520,6 +4707,11 @@ function applyProductWorld(opts) {
   const world = productWorldOf(p, null);
   const win = $('windowCartTools');
   const addBtn = $('btnAddLine');
+  const bulk = $('bulkSizesBox');
+  if (bulk) {
+    const hideBulk = world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator';
+    bulk.style.display = hideBulk ? 'none' : '';
+  }
   setSpecialProductToolMode(world);
   // Always clear live canvas association when the product world / tools change,
   // including early-return specialty worlds (prevents stale SVG sticking).
@@ -5190,10 +5382,37 @@ function cartLineProductLabel(ln) {
 function renderCart() {
   state.lines = hydrateCartLines(state.lines);
   (state.lines || []).forEach(stampLineAmount);
-  $('cartBody').innerHTML = state.lines.map((ln,i) => `
+  ensureCartQuoteGroups();
+  const visible = visibleCartLineEntries();
+  const showHeaders = String(state.quoteGroupFilter || 'All') === 'All'
+    && state.cartQuoteGroups.some(g => quoteGroupLineCount(g) > 0)
+    && new Set((state.lines || []).map(lineQuoteGroup)).size > 1;
+  let html = '';
+  let lastGroup = null;
+  if (!visible.length) {
+    html = '<tr><td colspan="7" class="muted">Cart empty — add products' +
+      (state.quoteGroupFilter && state.quoteGroupFilter !== 'All' ? ' to section “' + esc(state.quoteGroupFilter) + '”' : '') +
+      '</td></tr>';
+  } else {
+    let rowNo = 0;
+    visible.forEach(({ ln, i }) => {
+      const g = lineQuoteGroup(ln);
+      if (showHeaders && g !== lastGroup) {
+        const gQty = (state.lines || []).filter(x => lineQuoteGroup(x) === g).reduce((s, x) => s + (+x.qty || 0), 0);
+        let gAmt = 0, gAny = false;
+        (state.lines || []).filter(x => lineQuoteGroup(x) === g).forEach(x => {
+          const a = lineLiveAmount(x);
+          if (a != null && a > 0) { gAmt += a; gAny = true; }
+        });
+        html += `<tr class="cart-group-row"><td colspan="7">${esc(g)}` +
+          `<span class="cart-group-meta">${gQty} items${gAny ? ' · ' + money(gAmt) : ''}</span></td></tr>`;
+        lastGroup = g;
+      }
+      rowNo += 1;
+      html += `
     <tr style="${i===state.selectedLine?'background:#f3faf6':''}">
-      <td>${i+1}</td>
-      <td>${cartLineProductLabel(ln)}${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${ln.locationName||ln.positionName}</div>`:''}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}</td>
+      <td>${rowNo}</td>
+      <td>${cartLineProductLabel(ln)}${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${esc(ln.locationName||ln.positionName)}</div>`:''}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}${showHeaders?'':`<div class="muted" style="font-size:.68rem">${esc(g)}</div>`}</td>
       <td><input data-f="width" data-i="${i}" type="number" value="${ln.width != null ? ln.width : ''}" style="width:70px"/>×<input data-f="height" data-i="${i}" type="number" value="${ln.height != null ? ln.height : ''}" style="width:70px"/></td>
       <td><input data-f="qty" data-i="${i}" type="number" min="1" value="${ln.qty != null ? ln.qty : ''}" style="width:56px"/></td>
       <td style="font-size:.8rem">${ln.glass||''}<br>${ln.colour||''}</td>
@@ -5203,7 +5422,10 @@ function renderCart() {
         <button class="btn ghost sm" data-dup="${i}">Dup</button>
         <button class="btn ghost sm" data-del="${i}">Del</button>
       </td>
-    </tr>`).join('') || '<tr><td colspan="7" class="muted">Cart empty — add products</td></tr>';
+    </tr>`;
+    });
+  }
+  $('cartBody').innerHTML = html;
   $('cartBody').querySelectorAll('input[data-f]').forEach(inp => {
     inp.onchange = () => {
       const i = +inp.dataset.i; const f = inp.dataset.f;
@@ -5255,6 +5477,11 @@ function renderCart() {
       if ($('lineDesc')) $('lineDesc').value = ln.description || '';
       if ($('lineSeries')) $('lineSeries').value = ln.sectionSeries || '';
       if ($('lineLocation')) $('lineLocation').value = ln.locationName || ln.positionName || (ln.options && (ln.options.locationName || ln.options.positionName)) || '';
+      if (ln.quoteGroup) {
+        state.activeQuoteGroup = lineQuoteGroup(ln);
+        if (state.quoteGroupFilter !== 'All') state.quoteGroupFilter = state.activeQuoteGroup;
+        renderQuoteGroupTabs();
+      }
       syncDraftFromLine(ln);
       applyProductWorld();
       if (ln.options && ln.options.railing) populateRailTools(ln.options.railing);
@@ -5277,17 +5504,23 @@ function renderCart() {
     const copy = { ...state.lines[i] };
     delete copy.lineId;
     if (copy.preview && typeof copy.preview === 'object') copy.preview = { ...copy.preview };
+    stampQuoteGroup(copy, lineQuoteGroup(state.lines[i]));
     state.lines.splice(i + 1, 0, ensureLineId(copy));
     invalidatePdfCache();
     renderCart(); scheduleSave();
   });
   $('cartBody').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { state.lines.splice(+b.dataset.del,1); invalidatePdfCache(); renderCart(); scheduleSave(); });
-  const items = state.lines.reduce((s,l)=>s+(+l.qty||0),0);
-  const groups = quoteQtyBreakdown(state.lines);
+  const filtEntries = visible;
+  const items = filtEntries.reduce((s,e)=>s+(+e.ln.qty||0),0);
+  const groups = quoteQtyBreakdown(filtEntries.map(e => e.ln));
   const groupTxt = groups.length ? ' · ' + groups.map(([lab, n]) => `${lab} ${n}`).join(' · ') : '';
-  $('cartMeta').textContent = `${state.lines.length} lines · ${items} items${groupTxt}` + (state.projectId?` · ${state.projectId}`:'');
+  const sectionTxt = (state.quoteGroupFilter && state.quoteGroupFilter !== 'All')
+    ? ` · section ${state.quoteGroupFilter}`
+    : (showHeaders ? ` · ${new Set((state.lines||[]).map(lineQuoteGroup)).size} sections` : '');
+  $('cartMeta').textContent = `${filtEntries.length} lines · ${items} items${groupTxt}${sectionTxt}` + (state.projectId?` · ${state.projectId}`:'');
   updateLiveCartTotal();
   updatePdfLinks();
+  renderQuoteGroupTabs();
 }
 
 function updateLocalTotalHint(){
@@ -6535,6 +6768,8 @@ function persistCartSession() {
       bill: typeof projectBillTo === 'function' ? projectBillTo() : {},
       packageQuotes: state.packageQuotes || [],
       masterJobId: state.masterJobId || null,
+      cartQuoteGroups: state.cartQuoteGroups || DEFAULT_CART_QUOTE_GROUPS.slice(),
+      activeQuoteGroup: state.activeQuoteGroup || 'Main',
     };
     const payload = JSON.stringify(pack);
     sessionStorage.setItem(WEOS_CART_KEY, payload);
@@ -6571,6 +6806,7 @@ function restoreCartSession() {
       state.packageQuoteIndex = 0;
     }
     if (d.masterJobId) state.masterJobId = d.masterJobId;
+    adoptCartQuoteGroups(d);
     return !!(state.projectId || hasLines);
   } catch (_) { return false; }
 }
@@ -6635,6 +6871,8 @@ async function ensureProject() {
     packageQuotes: packageQuotesPayload(),
     masterJobId: state.masterJobId || undefined,
     quoteDiscount: state.quoteDiscount || emptyQuoteDiscount(),
+    cartQuoteGroups: ensureCartQuoteGroups(),
+    activeQuoteGroup: state.activeQuoteGroup || 'Main',
     ...projectBillTo()
   }});
   state.projectId = doc.projectId;
@@ -6678,6 +6916,8 @@ async function saveProject(silent) {
           masterJobId: state.masterJobId || undefined,
           quoteKind: 'package',
           quoteDiscount: state.quoteDiscount || emptyQuoteDiscount(),
+          cartQuoteGroups: ensureCartQuoteGroups(),
+          activeQuoteGroup: state.activeQuoteGroup || 'Main',
           ...projectBillTo()
         };
         try {
@@ -6727,6 +6967,7 @@ async function openProject(id) {
   if ($('projTerms')) $('projTerms').value = doc.terms || '';
   adoptPackageQuotes(doc);
   adoptQuoteDiscount(doc);
+  adoptCartQuoteGroups(doc);
   lookupSetupClient().catch(() => {});
   state.memoryAskedFor = null;
   if (doc.lastCalculation?.price) {
@@ -6830,7 +7071,28 @@ $('btnAddLine').onclick = () => {
   if (isRailingMode()) { railingAdd(); return; }
   if (isVentMode() || state.ventMode) { ventAdd(); return; }
   if (isShowerMode() || state.showerMode) { showerAdd(); return; }
+  addDraftLineToCart(null, { toastMsg: 'Line added — location cleared for the next design' });
+};
+
+/** Build a cart line from the current design form, optionally overriding size/qty/location/rate. */
+function addDraftLineToCart(overrides, opts) {
+  opts = opts || {};
   const draft = currentLineDraft();
+  if (overrides && typeof overrides === 'object') {
+    if (overrides.width != null && overrides.width !== '') draft.width = +overrides.width;
+    if (overrides.height != null && overrides.height !== '') draft.height = +overrides.height;
+    if (overrides.qty != null && overrides.qty !== '') draft.qty = Math.max(1, +overrides.qty || 1);
+    if (overrides.location != null || overrides.locationName != null) {
+      const loc = String(overrides.location != null ? overrides.location : overrides.locationName).trim();
+      draft.locationName = loc || null;
+      draft.positionName = loc || null;
+    }
+    if (overrides.rate != null && overrides.rate !== '') {
+      draft.sellingRate = +overrides.rate;
+    } else if (overrides.sellingRate != null && overrides.sellingRate !== '') {
+      draft.sellingRate = +overrides.sellingRate;
+    }
+  }
   const p = selectedProductMeta();
   if (p && p.productType) draft.productType = p.productType;
   if (p && p.category) draft.category = p.category;
@@ -6879,26 +7141,166 @@ $('btnAddLine').onclick = () => {
     delete draft.fixShutters;
     delete draft.sectionSeries;
   }
+  stampQuoteGroup(draft, opts.quoteGroup || targetQuoteGroupForAdd());
   stampLineAmount(draft);
   stampItemSnapshot(draft, true);
   if (draft.topShape === 'curved') {
     draft.options = Object.assign({}, draft.options || {}, {
       topShape: 'curved',
       curveRiseMm: draft.curveRiseMm,
+      quoteGroup: draft.quoteGroup,
     });
   }
   const added = ensureLineId(draft);
-  const liveSvg = captureLivePreviewSvg();
-  if (liveSvg && state._previewKey && state._previewKey === lineIdentityKey(added)) {
-    stampLinePreviewSvg(added, liveSvg);
+  if (!opts.skipLivePreview) {
+    const liveSvg = captureLivePreviewSvg();
+    if (liveSvg && state._previewKey && state._previewKey === lineIdentityKey(added)) {
+      stampLinePreviewSvg(added, liveSvg);
+    }
   }
   state.lines.push(added);
+  if (!opts.silentSeries) {
+    try { saveCurrentSeriesDesign({ silent: true, name: ($('lineSavedDesignName') && $('lineSavedDesignName').value) || 'default' }); } catch (_) {}
+  }
+  if (!opts.skipReset) resetDraftPlacementAfterAdd();
+  if (!opts.skipRender) {
+    invalidatePdfCache();
+    renderCart(); scheduleSave(); refreshPreview(); scheduleLivePrice();
+  }
+  if (opts.toastMsg) toast(opts.toastMsg);
+  return added;
+}
+
+function emptyBulkSizeRow(seed) {
+  seed = seed || {};
+  return {
+    width: seed.width != null ? seed.width : '',
+    height: seed.height != null ? seed.height : '',
+    qty: seed.qty != null ? seed.qty : 1,
+    location: seed.location != null ? seed.location : '',
+    rate: seed.rate != null ? seed.rate : '',
+  };
+}
+function ensureBulkSizeRows() {
+  if (!Array.isArray(state.bulkSizeRows) || !state.bulkSizeRows.length) {
+    state.bulkSizeRows = [emptyBulkSizeRow({
+      width: ($('lineW') && $('lineW').value) || '',
+      height: ($('lineH') && $('lineH').value) || '',
+      qty: ($('lineQty') && $('lineQty').value) || 1,
+      location: ($('lineLocation') && $('lineLocation').value) || '',
+      rate: ($('lineSellRate') && $('lineSellRate').value) || '',
+    })];
+  }
+  return state.bulkSizeRows;
+}
+function syncBulkSizeRowsFromDom() {
+  const body = $('bulkSizesBody');
+  if (!body) return ensureBulkSizeRows();
+  const rows = [];
+  body.querySelectorAll('tr[data-bulk]').forEach(tr => {
+    const q = (sel) => {
+      const el = tr.querySelector(sel);
+      return el ? el.value : '';
+    };
+    rows.push(emptyBulkSizeRow({
+      width: q('[data-bf="width"]'),
+      height: q('[data-bf="height"]'),
+      qty: q('[data-bf="qty"]') || 1,
+      location: q('[data-bf="location"]'),
+      rate: q('[data-bf="rate"]'),
+    }));
+  });
+  state.bulkSizeRows = rows.length ? rows : [emptyBulkSizeRow()];
+  return state.bulkSizeRows;
+}
+function renderBulkSizeRows() {
+  const body = $('bulkSizesBody');
+  if (!body) return;
+  const rows = ensureBulkSizeRows();
+  body.innerHTML = rows.map((r, i) => `
+    <tr data-bulk="${i}">
+      <td><input data-bf="width" type="number" value="${r.width !== '' && r.width != null ? r.width : ''}" placeholder="W" style="width:74px"/></td>
+      <td><input data-bf="height" type="number" value="${r.height !== '' && r.height != null ? r.height : ''}" placeholder="H" style="width:74px"/></td>
+      <td><input data-bf="qty" type="number" min="1" value="${r.qty != null ? r.qty : 1}" style="width:52px"/></td>
+      <td><input data-bf="location" type="text" value="${esc(r.location || '')}" placeholder="e.g. Bedroom 1" style="width:100%"/></td>
+      <td><input data-bf="rate" type="number" step="0.01" value="${r.rate !== '' && r.rate != null ? r.rate : ''}" placeholder="form" style="width:84px"/></td>
+      <td><button class="btn ghost sm" type="button" data-bulk-del="${i}" title="Remove row">×</button></td>
+    </tr>`).join('');
+  body.querySelectorAll('input[data-bf]').forEach(inp => {
+    inp.addEventListener('change', () => syncBulkSizeRowsFromDom());
+    inp.addEventListener('input', () => { clearTimeout(state._bulkSyncT); state._bulkSyncT = setTimeout(syncBulkSizeRowsFromDom, 200); });
+  });
+  body.querySelectorAll('[data-bulk-del]').forEach(btn => {
+    btn.onclick = () => {
+      syncBulkSizeRowsFromDom();
+      const i = +btn.dataset.bulkDel;
+      state.bulkSizeRows.splice(i, 1);
+      if (!state.bulkSizeRows.length) state.bulkSizeRows = [emptyBulkSizeRow()];
+      renderBulkSizeRows();
+    };
+  });
+}
+function addBulkSizeRow() {
+  syncBulkSizeRowsFromDom();
+  const last = state.bulkSizeRows[state.bulkSizeRows.length - 1] || {};
+  state.bulkSizeRows.push(emptyBulkSizeRow({
+    width: last.width || (($('lineW') && $('lineW').value) || ''),
+    height: last.height || (($('lineH') && $('lineH').value) || ''),
+    qty: 1,
+    location: '',
+    rate: last.rate != null ? last.rate : (($('lineSellRate') && $('lineSellRate').value) || ''),
+  }));
+  renderBulkSizeRows();
+  const body = $('bulkSizesBody');
+  if (body) {
+    const lastLoc = body.querySelector('tr:last-child [data-bf="location"]');
+    if (lastLoc) lastLoc.focus();
+  }
+}
+function clearBulkSizeRows() {
+  state.bulkSizeRows = [emptyBulkSizeRow({
+    width: ($('lineW') && $('lineW').value) || '',
+    height: ($('lineH') && $('lineH').value) || '',
+    qty: ($('lineQty') && $('lineQty').value) || 1,
+    rate: ($('lineSellRate') && $('lineSellRate').value) || '',
+  })];
+  renderBulkSizeRows();
+}
+function addAllBulkSizesToCart() {
+  if (isRailingMode() || isVentMode() || state.ventMode || isShowerMode() || state.showerMode) {
+    toast('Multi-size works for windows / louvers / ACP-style products — switch product first');
+    return;
+  }
+  syncBulkSizeRowsFromDom();
+  const rows = (state.bulkSizeRows || []).filter(r => +r.width > 0 && +r.height > 0);
+  if (!rows.length) {
+    toast('Enter at least one row with W and H');
+    return;
+  }
+  const group = targetQuoteGroupForAdd();
+  let n = 0;
+  rows.forEach((r, idx) => {
+    addDraftLineToCart({
+      width: +r.width,
+      height: +r.height,
+      qty: Math.max(1, +r.qty || 1),
+      location: r.location || '',
+      rate: r.rate,
+    }, {
+      quoteGroup: group,
+      skipLivePreview: true,
+      silentSeries: idx > 0,
+      skipReset: true,
+      skipRender: true,
+    });
+    n += 1;
+  });
   try { saveCurrentSeriesDesign({ silent: true, name: ($('lineSavedDesignName') && $('lineSavedDesignName').value) || 'default' }); } catch (_) {}
-  invalidatePdfCache();
   resetDraftPlacementAfterAdd();
+  invalidatePdfCache();
   renderCart(); scheduleSave(); refreshPreview(); scheduleLivePrice();
-  toast('Line added — location cleared for the next design');
-};
+  toast(`Added ${n} size${n === 1 ? '' : 's'} to “${group}”`);
+}
 $('btnSaveRate').onclick = async () => {
   const draft = currentLineDraft();
   const customer = ($('cartCustomer').value || '').trim();
@@ -8295,6 +8697,7 @@ async function railingAdd(){
   };
   stampLineAmount(railLine);
   stampItemSnapshot(railLine, true);
+  stampQuoteGroup(railLine, targetQuoteGroupForAdd());
   const addedRail = ensureLineId(railLine);
   if (res && res.svg) stampLinePreviewSvg(addedRail, res.svg);
   state.lines.push(addedRail);
@@ -8499,6 +8902,7 @@ async function showerAdd() {
   };
   stampLineAmount(shLine);
   stampItemSnapshot(shLine, true);
+  stampQuoteGroup(shLine, targetQuoteGroupForAdd());
   const addedSh = ensureLineId(shLine);
   if (res && res.svg) stampLinePreviewSvg(addedSh, res.svg);
   state.lines.push(addedSh);
@@ -8699,6 +9103,7 @@ async function ventAdd() {
     ventilator: cfg,
   };
   stampItemSnapshot(ventLine, true);
+  stampQuoteGroup(ventLine, targetQuoteGroupForAdd());
   const addedVent = ensureLineId(ventLine);
   if (res && res.svg) stampLinePreviewSvg(addedVent, res.svg);
   state.lines.push(addedVent);
@@ -8952,6 +9357,12 @@ if ($('btnDeleteSeriesDesign')) $('btnDeleteSeriesDesign').onclick = () => delet
 if ($('lineSavedDesign')) $('lineSavedDesign').addEventListener('change', () => {
   if ($('lineSavedDesign').value) loadSelectedSeriesDesign({ keepDims: true });
 });
+if ($('btnBulkAddRow')) $('btnBulkAddRow').onclick = () => addBulkSizeRow();
+if ($('btnBulkClearRows')) $('btnBulkClearRows').onclick = () => clearBulkSizeRows();
+if ($('btnAddAllSizes')) $('btnAddAllSizes').onclick = () => addAllBulkSizesToCart();
+if ($('btnQuoteGroupAdd')) $('btnQuoteGroupAdd').onclick = () => addCartQuoteGroup();
+if ($('btnQuoteGroupRename')) $('btnQuoteGroupRename').onclick = () => renameActiveQuoteGroup();
+try { renderBulkSizeRows(); renderQuoteGroupTabs(); } catch (_) {}
 if ($('lineCurvedTop')) {
   $('lineCurvedTop').addEventListener('change', () => {
     syncCurvedTopUi();
@@ -9443,6 +9854,10 @@ function resetSetupFormForNew() {
   state.lastResult = null;
   state.customerMemory = null;
   state.memoryAskedFor = null;
+  state.cartQuoteGroups = DEFAULT_CART_QUOTE_GROUPS.slice();
+  state.activeQuoteGroup = 'Main';
+  state.quoteGroupFilter = 'All';
+  state.bulkSizeRows = [emptyBulkSizeRow()];
   if (typeof hideMemoryBanner === 'function') hideMemoryBanner(false);
   if ($('cartName')) $('cartName').value = 'WEOS Project';
   if ($('cartCustomer')) $('cartCustomer').value = '';
@@ -9998,7 +10413,7 @@ function _exportFingerprint(kind) {
       lines: (state.lines || []).map(l => ({
         id: l.lineId, p: l.product, w: l.width, h: l.height, q: l.qty,
         g: l.glass, c: l.colour, sr: l.sellingRate, su: l.saleUnit,
-        loc: l.locationName,
+        loc: l.locationName, qg: l.quoteGroup || (l.options && l.options.quoteGroup),
         photo: l.designPhoto && l.designPhoto.key,
         pv: (l.preview && l.preview.svg && l.preview.svg.length) || 0,
         rs: l.options && l.options.railing && [
@@ -10006,6 +10421,7 @@ function _exportFingerprint(kind) {
           l.options.railing.anchorSpacingFt, l.options.railing.handrailBarLengthFt,
         ].join('|'),
       })),
+      groups: state.cartQuoteGroups || [],
     });
   } catch (e) { return String(Date.now()); }
 }
@@ -10017,6 +10433,8 @@ function _liveExportBody(brand) {
     ...projectBillTo(),
     brand,
     persist: true,
+    cartQuoteGroups: ensureCartQuoteGroups(),
+    activeQuoteGroup: state.activeQuoteGroup || 'Main',
   };
 }
 async function openProjectPdf(kind, opts) {

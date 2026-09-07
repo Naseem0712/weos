@@ -562,6 +562,38 @@ def design_serial_label(index: int, line: Mapping[str, Any] | None = None, *, pr
     return f"{code} · {loc}" if loc else code
 
 
+def line_quote_group(line: Mapping[str, Any] | None) -> str:
+    """Optional cart section label (Premium / Budget / UPVC / Grills / …)."""
+    if not isinstance(line, Mapping):
+        return "Main"
+    raw = line.get("quoteGroup") or line.get("quote_group")
+    if raw is None and isinstance(line.get("options"), Mapping):
+        raw = line["options"].get("quoteGroup") or line["options"].get("quote_group")
+    name = str(raw or "").strip()
+    return name or "Main"
+
+
+def sort_lines_by_quote_group(
+    lines: Any,
+    group_order: list[str] | tuple[str, ...] | None = None,
+) -> list[Any]:
+    """Stable sort so PDF / cart sections print contiguously."""
+    src = list(lines or [])
+    order_map = {
+        str(g).strip(): i
+        for i, g in enumerate(group_order or [])
+        if str(g or "").strip()
+    }
+    indexed = list(enumerate(src))
+    indexed.sort(
+        key=lambda pair: (
+            order_map.get(line_quote_group(pair[1] if isinstance(pair[1], Mapping) else {}), 900),
+            pair[0],
+        )
+    )
+    return [ln for _, ln in indexed]
+
+
 def format_qty_totals_lines(groups: list[tuple[str, int]] | None, *, fallback_qty: int = 0) -> list[str]:
     """Wrapped TOTALS qty rows, e.g. ``Windows: 4 Nos    Doors: 2 Nos``."""
     if not groups:

@@ -904,6 +904,8 @@ def _pdf_response(
             "terms",
             "quotationId",
             "companyGst",
+            "cartQuoteGroups",
+            "activeQuoteGroup",
         ):
             if overlay.get(_fld) is not None:
                 doc[_fld] = overlay[_fld]
@@ -970,6 +972,8 @@ def _pdf_response(
         # Per-quote description + terms (terms override the company default).
         "description": doc.get("description"),
         "terms": doc.get("terms"),
+        "cartQuoteGroups": doc.get("cartQuoteGroups") or [],
+        "activeQuoteGroup": doc.get("activeQuoteGroup"),
         # Absolute base + stable ref so the PDF QR opens the quote from the DB.
         "publicBaseUrl": _public_base_url(request),
         "quoteRef": doc.get("quotationId") or doc.get("quoteNumber") or doc.get("quoteId") or project_id,
