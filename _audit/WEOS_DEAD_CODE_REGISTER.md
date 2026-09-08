@@ -33,6 +33,9 @@
 | `WEOS/factory/ledger_store.py` / `master_ledger.py` | ACTIVE LEGACY | Advances → ProjectPaymentLedger later | No |
 | `WEOS/factory/quote_share.py` / `pdf_*` / `marqt_pdf.py` | ACTIVE | PDF + public scan | No |
 | `WEOS/db/models.py` / `quote_store.py` / `durable_store.py` | ACTIVE LEGACY | Dual PRJ + SQL quotes; merge later | No |
+| `WEOS/db/models.py` `Customer.mobile` unique global | ACTIVE LEGACY | Agent-path table; **not** V2 canonical FK. Canonical identities are company-scoped unique | No |
+| `WEOS/factory/canonical_customer.py` / `canonical_project.py` | ACTIVE | V2 Batch 3–4 spine (additive) | No |
+| `WEOS/db/models.py` CanonicalCustomer / CustomerIdentity / CanonicalProject | ACTIVE | Additive SoT tables via create_all | No |
 | `WEOS/agent/*` | ACTIVE LEGACY | Product AI dock — **retire later**, not mass-delete yet | No |
 | `WEOS/brain/*` | ACTIVE LEGACY | Brain APIs — retire later | No |
 | `WEOS/memory/*` | ACTIVE LEGACY | Deterministic memory libs + mutating APIs; strip product surfaces later | No |
@@ -43,7 +46,8 @@
 | Root `cad_engine/` / `app/` (if present) | UNKNOWN / KEEP EXTERNAL | Separate entry points — do not delete for name overlap | No |
 | `knowledge_base/memories`, brain cache, commercial agent observations | UNKNOWN | AI out of product scope; archive after validation | No |
 | `knowledge_base/libraries/*` | ACTIVE / KEEP EXTERNAL | Seed libraries | No |
-| Product stubs `*_stub/` | ACTIVE LEGACY | Placeholder products in tree; user dirty edits preserved | No |
+| `WEOS/factory/canonical_customer.py` / `canonical_project.py` | ACTIVE | V2 identity spine (B3/B4) | No |
+| Old Agent `customers.mobile` global unique | ACTIVE LEGACY | Still present; new path uses company-scoped identities — do not delete yet | No |
 | `_tmp_*` directories | UNKNOWN | Local QA artifacts — never commit | N/A |
 
 ---
