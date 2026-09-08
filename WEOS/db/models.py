@@ -606,3 +606,169 @@ class CanonicalProject(Base):
             "createdAt": _iso(self.created_at),
             "updatedAt": _iso(self.updated_at),
         }
+
+
+# ── WEOS V2 design hierarchy (Batch 5) — Floor → Location → DesignDocument ──
+
+
+class Floor(Base):
+    """Project-owned floor. Arbitrary names; system ``Unassigned`` for legacy mapping."""
+
+    __tablename__ = "floors"
+    __table_args__ = (
+        UniqueConstraint("project_id", "code", name="uq_floor_project_code"),
+    )
+
+    floor_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("canonical_projects.project_id"), index=True, nullable=False
+    )
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    code: Mapped[str | None] = mapped_column(String(80), index=True)
+    level_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    elevation_mm: Mapped[float | None] = mapped_column(Float)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    locations: Mapped[list["Location"]] = relationship(back_populates="floor")
+
+    def to_dict(self) -> dict:
+        return {
+            "floorId": self.floor_id,
+            "projectId": self.project_id,
+            "companyGst": self.company_gst,
+            "name": self.name,
+            "code": self.code,
+            "levelIndex": self.level_index,
+            "elevationMm": self.elevation_mm,
+            "isSystem": bool(self.is_system),
+            "status": self.status,
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+        }
+
+
+class Location(Base):
+    """Structured location under a Floor — not free-text ``locationName`` alone."""
+
+    __tablename__ = "locations"
+    __table_args__ = (
+        UniqueConstraint("floor_id", "normalized_name", name="uq_location_floor_normalized_name"),
+    )
+
+    location_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    floor_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("floors.floor_id"), index=True, nullable=False
+    )
+    project_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(200), index=True, nullable=False, default="")
+    code: Mapped[str | None] = mapped_column(String(80))
+    notes: Mapped[str | None] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    legacy_location_name: Mapped[str | None] = mapped_column(String(200), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    floor: Mapped["Floor"] = relationship(back_populates="locations")
+
+    def to_dict(self) -> dict:
+        return {
+            "locationId": self.location_id,
+            "floorId": self.floor_id,
+            "projectId": self.project_id,
+            "companyGst": self.company_gst,
+            "name": self.name,
+            "normalizedName": self.normalized_name,
+            "code": self.code,
+            "notes": self.notes,
+            "sortOrder": self.sort_order,
+            "legacyLocationName": self.legacy_location_name,
+            "status": self.status,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+        }
+
+
+class DesignDocument(Base):
+    """SQL SoT for a project engineering scene — not SVG/browser storage."""
+
+    __tablename__ = "design_documents"
+
+    design_document_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("canonical_projects.project_id"), index=True, nullable=False
+    )
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False, default="Main Design")
+    status: Mapped[str] = mapped_column(String(30), default="draft", index=True)
+    current_revision_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    payload: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    revisions: Mapped[list["GeometryRevision"]] = relationship(
+        back_populates="design_document", cascade="all, delete-orphan"
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "designDocumentId": self.design_document_id,
+            "projectId": self.project_id,
+            "companyGst": self.company_gst,
+            "name": self.name,
+            "status": self.status,
+            "currentRevisionId": self.current_revision_id,
+            "payload": self.payload,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+        }
+
+
+class GeometryRevision(Base):
+    """Immutable snapshot of DesignDocument content once explicitly created."""
+
+    __tablename__ = "geometry_revisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "design_document_id",
+            "revision_number",
+            name="uq_geometry_revision_doc_number",
+        ),
+    )
+
+    revision_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    design_document_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("design_documents.design_document_id"), index=True, nullable=False
+    )
+    project_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    revision_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    label: Mapped[str | None] = mapped_column(String(200))
+    content_hash: Mapped[str | None] = mapped_column(String(80), index=True)
+    payload: Mapped[Any] = mapped_column(JSON, nullable=True)
+    immutable: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    design_document: Mapped["DesignDocument"] = relationship(back_populates="revisions")
+
+    def to_dict(self) -> dict:
+        return {
+            "revisionId": self.revision_id,
+            "designDocumentId": self.design_document_id,
+            "projectId": self.project_id,
+            "companyGst": self.company_gst,
+            "revisionNumber": self.revision_number,
+            "label": self.label,
+            "contentHash": self.content_hash,
+            "payload": self.payload,
+            "immutable": bool(self.immutable),
+            "createdAt": _iso(self.created_at),
+        }

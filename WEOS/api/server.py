@@ -82,6 +82,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Thin design hierarchy / scene routes (Batch 5+) — domain logic stays in factory/.
+from WEOS.api.design_routes import router as _design_router  # noqa: E402
+
+app.include_router(_design_router)
+
 
 @app.exception_handler(Exception)
 async def _weos_unhandled_exception(request: Request, exc: Exception) -> JSONResponse:

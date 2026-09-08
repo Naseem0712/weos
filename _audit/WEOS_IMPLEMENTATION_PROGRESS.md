@@ -183,16 +183,40 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 
 ---
 
+### BATCH 5 — Floor / Location / DesignDocument foundation
+
+| Field | Value |
+|---|---|
+| **ID** | B5 |
+| **Goal** | Project→Floor→Location→DesignDocument (+ GeometryRevision); legacy locationName → Unassigned system floor |
+| **Files committed** | `WEOS/db/models.py`, `WEOS/factory/design_hierarchy.py`, `WEOS/api/design_routes.py`, `WEOS/api/server.py` (router include), `WEOS/_smoke_design_hierarchy.py`, `_audit/WEOS_IMPLEMENTATION_PROGRESS.md` |
+| **Schema / migration** | Additive tables `floors`, `locations`, `design_documents`, `geometry_revisions` via create_all; `migrate_legacy_locations()` |
+| **Legacy rule** | Free-text `locationName` maps to system floor **Unassigned** (`code=UNASSIGNED`). Never invent Ground Floor without evidence. |
+| **Tests** | `_smoke_design_hierarchy.py` cases A–H **PASS**; B5 regression suite **PASS** |
+| **Migration counts (from smoke)** | projectsInspected: 1, floorsCreated: 0 (Unassigned already from G), locationsCreated: 1, legacyLocationNamesLinked: 2, unassignedItems: 1, conflicts: 0, rejected: 0, manualReview: 0, zeroSilentLoss: True |
+| **Issues** | None for B5 |
+| **Commit** | *(pending stamp)* — `feat(design): add floor location and design document foundation` |
+| **Push** | *(pending)* |
+| **Rollback** | Revert B5 commit |
+
+#### B5 notes
+
+- Thin APIs in `design_routes.py`; domain logic in `design_hierarchy.py`
+- GeometryRevision immutable once created; DesignDocument draft payload remains mutable
+- Company session → project ownership for Floor/Location/DesignDocument (isolation in smoke F)
+- Did **not** commit weos.db, product stubs, customers/, _tmp_*, or unrelated dirty files
+
+---
+
 ## Remaining batches (from user plan / target doc)
 
-Floor / DesignDocument / Canvas — **NOT STARTED** (hard stop after B4).
+Batch 6 Assembly/Element/Connection — **NEXT** (after B5 push). Universal Canvas UI — **NOT STARTED** (hard stop after B6).
 
 ## Checkpoint (current session)
 
-- **Starting HEAD:** 488d9170ffbb105305999a50881cf1175410e1b3 (B2)
-- **Ending HEAD:** 8fcf6f0c895bc44f1e8e63b6169f1f03316549ba (docs tip; B4 feature a69c1cd; B3 888bfd2)
+- **Starting HEAD:** 85efb66e9c6291b22418d3b23563cf316cf5a5f5
+- **Ending HEAD:** *(pending B5/B6 commits)*
 - **Branch:** weos-v2-foundation
-- B3/B4 committed and pushed to origin/weos-v2-foundation only
-- Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, blueprint/gap docs, etc.
 - Production deployment: **NOT PERFORMED**
-- Batch 5 / Floor: **NOT STARTED**
+- Batch 5: in progress / committing
+- Batch 6: **NOT STARTED**
