@@ -195,9 +195,9 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 | **Tests** | `_smoke_design_hierarchy.py` cases A–H **PASS**; B5 regression suite **PASS** |
 | **Migration counts (from smoke)** | projectsInspected: 1, floorsCreated: 0 (Unassigned already from G), locationsCreated: 1, legacyLocationNamesLinked: 2, unassignedItems: 1, conflicts: 0, rejected: 0, manualReview: 0, zeroSilentLoss: True |
 | **Issues** | None for B5 |
-| **Commit** | *(pending stamp)* — `feat(design): add floor location and design document foundation` |
-| **Push** | *(pending)* |
-| **Rollback** | Revert B5 commit |
+| **Commit** | `e3690dd` — `feat(design): add floor location and design document foundation` |
+| **Push** | Pushed to `origin/weos-v2-foundation` |
+| **Rollback** | Revert `e3690dd` |
 
 #### B5 notes
 
@@ -208,15 +208,48 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 
 ---
 
+### BATCH 6 — Assembly / Element / Connection domain
+
+| Field | Value |
+|---|---|
+| **ID** | B6 |
+| **Goal** | DesignDocument → Assembly → Element + Connection; cart-line adapter; scene read model (no Canvas UI) |
+| **Files committed** | `WEOS/db/models.py`, `WEOS/factory/design_scene.py`, `WEOS/api/design_routes.py`, `WEOS/_smoke_design_scene.py`, `_audit/WEOS_IMPLEMENTATION_PROGRESS.md` |
+| **Schema / migration** | Additive `assemblies`, `design_elements`, `connections`; `migrate_cart_lines_to_scene()` / `adapt_cart_line_to_assembly_element()` |
+| **Connection types** | adjacent_independent, frame_to_frame, coupler, shared_mullion, shared_transom, top_bottom_join, corner, custom |
+| **Tests** | `_smoke_design_scene.py` cases 1–7 **PASS**; combined B5+B6 gate **PASS** |
+| **Migration counts (from smoke)** | legacyLinesInspected: 1, assembliesMapped: 1, elementsMapped: 1, unmapped: 0, conflicts: 0, rejected: 0, manualReview: 0, zeroSilentLoss: True |
+| **Issues** | None for B6 — drawing engines / BOM / pricing untouched |
+| **Commit** | *(pending stamp)* — `feat(design): add assembly element and connection domain` |
+| **Push** | *(pending)* |
+| **Rollback** | Revert B6 commit (keeps B5) |
+
+#### B6 notes
+
+- Single product = Assembly + one Element; mixed products + unequal W/H/X/Y supported
+- Element geometry independent of series (series in `config_payload` only)
+- Connections explicit only — touching geometry does not imply Connection
+- Cart adapter does not mutate dims/product/location/qty/money/preview
+- Universal Canvas UI **NOT STARTED** (hard stop after B6)
+
+### Combined regression gate (after B5+B6)
+
+All PASS (exit 0): durability, canonical customer, canonical project, tenant ownership, design hierarchy, design scene, quote identity, quote totals, public scan, PDF cart, money specs, normal railing, stair railing, sliding, casement.
+
+---
+
 ## Remaining batches (from user plan / target doc)
 
-Batch 6 Assembly/Element/Connection — **NEXT** (after B5 push). Universal Canvas UI — **NOT STARTED** (hard stop after B6).
+Universal Canvas Host — **NEXT ELIGIBLE** (not started). Production deployment — **NOT PERFORMED**.
 
 ## Checkpoint (current session)
 
 - **Starting HEAD:** 85efb66e9c6291b22418d3b23563cf316cf5a5f5
-- **Ending HEAD:** *(pending B5/B6 commits)*
+- **Ending HEAD:** *(pending B6 push)*
 - **Branch:** weos-v2-foundation
+- B5: `e3690dd` pushed
+- B6: committing/pushing
+- Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, blueprint/gap docs, `_audit/_b5b6_prompt.txt`, etc.
 - Production deployment: **NOT PERFORMED**
-- Batch 5: in progress / committing
-- Batch 6: **NOT STARTED**
+- Next eligible batch: **Universal Canvas Host**
+- Hard stop after B6: **YES**

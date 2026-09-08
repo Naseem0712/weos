@@ -298,3 +298,203 @@ def api_migrate_legacy_locations(
         return dh.migrate_legacy_locations(company_gst=g, project_id=project_id)
     except Exception as exc:
         raise _map_err(exc) from exc
+
+
+# ── Batch 6 — Assembly / Element / Connection / scene read model ─────────────
+
+
+class AssemblyCreateBody(BaseModel):
+    name: str = ""
+    displayCode: str | None = None
+    locationId: str | None = None
+    bounds: dict[str, Any] | None = None
+    sortOrder: int = 0
+    status: str = "draft"
+
+
+class ElementCreateBody(BaseModel):
+    productType: str
+    widthMm: float
+    heightMm: float
+    xMm: float = 0.0
+    yMm: float = 0.0
+    displayCode: str | None = None
+    productId: str | None = None
+    orientation: str | None = None
+    sillHeightMm: float | None = None
+    parentElementId: str | None = None
+    quantity: int = 1
+    geometryPayload: dict[str, Any] | None = None
+    configPayload: dict[str, Any] | None = None
+    status: str = "draft"
+
+
+class ConnectionCreateBody(BaseModel):
+    elementAId: str
+    elementBId: str
+    connectionType: str
+    sideA: str | None = None
+    sideB: str | None = None
+    parameters: dict[str, Any] | None = None
+
+
+class CartLineAdaptBody(BaseModel):
+    model_config = {"extra": "allow"}
+
+    line: dict[str, Any]
+    xMm: float = 0.0
+    yMm: float = 0.0
+
+
+@router.get("/api/design-documents/{design_document_id}/scene")
+def api_get_design_scene(
+    design_document_id: str, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_scene as ds
+
+    g = require_company_gst(request, gst)
+    try:
+        return ds.build_scene_read_model(design_document_id, company_gst=g)
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.get("/api/design-documents/{design_document_id}/assemblies")
+def api_list_assemblies(
+    design_document_id: str, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_scene as ds
+
+    g = require_company_gst(request, gst)
+    try:
+        return {
+            "assemblies": ds.list_assemblies(design_document_id, company_gst=g),
+            "designDocumentId": design_document_id,
+        }
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/design-documents/{design_document_id}/assemblies")
+def api_create_assembly(
+    design_document_id: str,
+    body: AssemblyCreateBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_scene as ds
+
+    g = require_company_gst(request, gst)
+    try:
+        return ds.create_assembly(
+            design_document_id=design_document_id,
+            company_gst=g,
+            name=body.name,
+            display_code=body.displayCode,
+            location_id=body.locationId,
+            bounds=body.bounds,
+            sort_order=body.sortOrder,
+            status=body.status,
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/assemblies/{assembly_id}/elements")
+def api_create_element(
+    assembly_id: str,
+    body: ElementCreateBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_scene as ds
+
+    g = require_company_gst(request, gst)
+    try:
+        return ds.create_element(
+            assembly_id=assembly_id,
+            company_gst=g,
+            product_type=body.productType,
+            width_mm=body.widthMm,
+            height_mm=body.heightMm,
+            x_mm=body.xMm,
+            y_mm=body.yMm,
+            display_code=body.displayCode,
+            product_id=body.productId,
+            orientation=body.orientation,
+            sill_height_mm=body.sillHeightMm,
+            parent_element_id=body.parentElementId,
+            quantity=body.quantity,
+            geometry_payload=body.geometryPayload,
+            config_payload=body.configPayload,
+            status=body.status,
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/assemblies/{assembly_id}/connections")
+def api_create_connection(
+    assembly_id: str,
+    body: ConnectionCreateBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_scene as ds
+
+    g = require_company_gst(request, gst)
+    try:
+        return ds.create_connection(
+            assembly_id=assembly_id,
+            company_gst=g,
+            element_a_id=body.elementAId,
+            element_b_id=body.elementBId,
+            connection_type=body.connectionType,
+            side_a=body.sideA,
+            side_b=body.sideB,
+            parameters=body.parameters,
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/design-documents/{design_document_id}/adapt-cart-line")
+def api_adapt_cart_line(
+    design_document_id: str,
+    body: CartLineAdaptBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_scene as ds
+
+    g = require_company_gst(request, gst)
+    try:
+        return ds.adapt_cart_line_to_assembly_element(
+            design_document_id=design_document_id,
+            company_gst=g,
+            line=body.line,
+            x_mm=body.xMm,
+            y_mm=body.yMm,
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/projects/{project_id}/design/migrate-scene")
+def api_migrate_cart_lines_to_scene(
+    project_id: str, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
+    from WEOS.factory import design_scene as ds
+
+    g, _ = require_owned_project(request, project_id, gst)
+    try:
+        return ds.migrate_cart_lines_to_scene(company_gst=g, project_id=project_id)
+    except Exception as exc:
+        raise _map_err(exc) from exc

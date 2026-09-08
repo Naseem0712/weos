@@ -772,3 +772,184 @@ class GeometryRevision(Base):
             "immutable": bool(self.immutable),
             "createdAt": _iso(self.created_at),
         }
+
+
+# ── WEOS V2 design scene (Batch 6) — Assembly → Element + Connection ────────
+
+
+CONNECTION_TYPES = (
+    "adjacent_independent",
+    "frame_to_frame",
+    "coupler",
+    "shared_mullion",
+    "shared_transom",
+    "top_bottom_join",
+    "corner",
+    "custom",
+)
+
+
+class Assembly(Base):
+    """First-class grouping of Elements + Connections under a DesignDocument/Location."""
+
+    __tablename__ = "assemblies"
+    __table_args__ = (
+        UniqueConstraint(
+            "design_document_id",
+            "display_code",
+            name="uq_assembly_doc_display_code",
+        ),
+    )
+
+    assembly_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    design_document_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("design_documents.design_document_id"), index=True, nullable=False
+    )
+    location_id: Mapped[str | None] = mapped_column(
+        String(60), ForeignKey("locations.location_id"), index=True
+    )
+    project_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    display_code: Mapped[str] = mapped_column(String(40), nullable=False, default="A-01")
+    name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    bounds: Mapped[Any] = mapped_column(JSON, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="draft", index=True)
+    legacy_line_id: Mapped[str | None] = mapped_column(String(80), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    elements: Mapped[list["DesignElement"]] = relationship(
+        back_populates="assembly", cascade="all, delete-orphan"
+    )
+    connections: Mapped[list["Connection"]] = relationship(
+        back_populates="assembly", cascade="all, delete-orphan"
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "assemblyId": self.assembly_id,
+            "designDocumentId": self.design_document_id,
+            "locationId": self.location_id,
+            "projectId": self.project_id,
+            "companyGst": self.company_gst,
+            "displayCode": self.display_code,
+            "name": self.name,
+            "bounds": self.bounds,
+            "sortOrder": self.sort_order,
+            "status": self.status,
+            "legacyLineId": self.legacy_line_id,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+        }
+
+
+class DesignElement(Base):
+    """Typed leaf geometry under an Assembly — product identity preserved; geometry ≠ series."""
+
+    __tablename__ = "design_elements"
+    __table_args__ = (
+        UniqueConstraint(
+            "assembly_id",
+            "display_code",
+            name="uq_element_assembly_display_code",
+        ),
+    )
+
+    element_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    assembly_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("assemblies.assembly_id"), index=True, nullable=False
+    )
+    design_document_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    project_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    display_code: Mapped[str] = mapped_column(String(40), nullable=False, default="W-01")
+    product_type: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    product_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    width_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    height_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    x_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    y_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    orientation: Mapped[str | None] = mapped_column(String(40))
+    sill_height_mm: Mapped[float | None] = mapped_column(Float)
+    parent_element_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    geometry_payload: Mapped[Any] = mapped_column(JSON, nullable=True)
+    config_payload: Mapped[Any] = mapped_column(JSON, nullable=True)
+    legacy_line_id: Mapped[str | None] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="draft", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    assembly: Mapped["Assembly"] = relationship(back_populates="elements")
+
+    def to_dict(self) -> dict:
+        return {
+            "elementId": self.element_id,
+            "assemblyId": self.assembly_id,
+            "designDocumentId": self.design_document_id,
+            "projectId": self.project_id,
+            "companyGst": self.company_gst,
+            "displayCode": self.display_code,
+            "productType": self.product_type,
+            "productId": self.product_id,
+            "widthMm": self.width_mm,
+            "heightMm": self.height_mm,
+            "xMm": self.x_mm,
+            "yMm": self.y_mm,
+            "orientation": self.orientation,
+            "sillHeightMm": self.sill_height_mm,
+            "parentElementId": self.parent_element_id,
+            "quantity": self.quantity,
+            "geometryPayload": self.geometry_payload,
+            "configPayload": self.config_payload,
+            "legacyLineId": self.legacy_line_id,
+            "status": self.status,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+        }
+
+
+class Connection(Base):
+    """Explicit engineered join between two Elements — never implied by touching geometry."""
+
+    __tablename__ = "connections"
+
+    connection_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    assembly_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("assemblies.assembly_id"), index=True, nullable=False
+    )
+    design_document_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    project_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    element_a_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("design_elements.element_id"), index=True, nullable=False
+    )
+    element_b_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("design_elements.element_id"), index=True, nullable=False
+    )
+    side_a: Mapped[str | None] = mapped_column(String(40))
+    side_b: Mapped[str | None] = mapped_column(String(40))
+    connection_type: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    parameters: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    assembly: Mapped["Assembly"] = relationship(back_populates="connections")
+
+    def to_dict(self) -> dict:
+        return {
+            "connectionId": self.connection_id,
+            "assemblyId": self.assembly_id,
+            "designDocumentId": self.design_document_id,
+            "projectId": self.project_id,
+            "companyGst": self.company_gst,
+            "elementAId": self.element_a_id,
+            "elementBId": self.element_b_id,
+            "sideA": self.side_a,
+            "sideB": self.side_b,
+            "connectionType": self.connection_type,
+            "parameters": self.parameters,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+        }
