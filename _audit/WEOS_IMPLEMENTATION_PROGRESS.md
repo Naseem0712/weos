@@ -238,18 +238,47 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 
 ---
 
+### BATCH 7 — Universal Engineering Canvas Host
+
+| Field | Value |
+|---|---|
+| **ID** | B7 |
+| **Goal** | One UniversalCanvas host: viewport/zoom/pan/selection/labels/scene load/adapters; keep `#livePreview` via `WEOS_UNIVERSAL_CANVAS` flag |
+| **Files committed** | `WEOS/factory/universal_canvas.py`, `WEOS/website/canvas/{universal_canvas,viewport,scene_renderer,selection,adapters}.js`, `WEOS/api/design_routes.py`, `WEOS/website/index.html`, `WEOS/_smoke_universal_canvas.py`, `_audit/WEOS_IMPLEMENTATION_PROGRESS.md` |
+| **Schema / migration** | None (uses B5/B6 DesignDocument/Element SQL); pose via `PATCH /api/elements/{id}/pose` |
+| **Feature flag** | `WEOS_UNIVERSAL_CANVAS` default **OFF**; `/api/flags`; URL `?universalCanvas=1` |
+| **Tests** | `_smoke_universal_canvas.py` A–H **PASS**; B7 regression suite **PASS** (16/16) |
+| **Issues** | Element drag-to-move deferred (`ELEMENT_DRAG_ENABLED=False`); pose save via API only |
+| **Commit** | (see git) — `feat(canvas): introduce universal engineering canvas host` |
+| **Push** | `origin/weos-v2-foundation` |
+| **Rollback** | Flag OFF restores `#livePreview`; revert B7 commit |
+
+#### B7 notes
+
+- ONE host — no WindowCanvas/RailingCanvas split
+- Zoom/pan display-only; engineering W/H never mutated by viewport
+- Adapters: preview-SVG for known product types; placeholder fallback (ID + type + W×H)
+- Floor/Location selectors use canonical IDs; labels from scene displayCode
+- Product forms / engines / BOM / cost / GST / PDF untouched
+- Hard stop: no product plugin migration; old preview/forms not deleted
+
+### Combined regression gate (after B7)
+
+All PASS (exit 0): durability, canonical customer, canonical project, tenant ownership, design hierarchy, design scene, universal canvas, quote identity, quote totals, public scan, PDF cart, money specs, normal railing, stair railing, sliding, casement.
+
+---
+
 ## Remaining batches (from user plan / target doc)
 
-Universal Canvas Host — **NEXT ELIGIBLE** (not started). Production deployment — **NOT PERFORMED**.
+Product Plugin Adapters / Contextual Property Panel — **NEXT ELIGIBLE**. Production deployment — **NOT PERFORMED**.
 
 ## Checkpoint (current session)
 
-- **Starting HEAD:** 85efb66e9c6291b22418d3b23563cf316cf5a5f5
-- **Ending HEAD:** 680a0ab8982ed4e97f3f558b93682df6fe07d8c8 (docs tip; B6 feature `12c585b`; B5 `e3690dd`)
+- **Starting HEAD:** `9da83186504ff25bec730e1608b87301fd85ade1`
+- **Ending HEAD:** (after B7 commits — see git log)
 - **Branch:** weos-v2-foundation
-- B5: `e3690dd` pushed
-- B6: `12c585b` pushed
+- B7 feature + docs pushed to `origin/weos-v2-foundation`
 - Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, blueprint/gap docs, etc.
 - Production deployment: **NOT PERFORMED**
-- Next eligible batch: **Universal Canvas Host**
-- Hard stop after B6: **YES**
+- Next eligible batch: **Product Plugin Adapters / Contextual Property Panel**
+- Hard stop after B7: **YES**
