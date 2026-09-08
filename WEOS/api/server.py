@@ -36,6 +36,7 @@ from WEOS.factory.pdf_engine import build_customer_pdf_bytes, build_factory_pdf_
 from WEOS.factory.product_admin import create_product, delete_product, get_admin_product, update_product
 from WEOS.factory.project_engine import calculate_project
 from WEOS.factory.project_store import (
+    DurableSaveError,
     archive_project,
     dashboard_stats,
     delete_project,
@@ -1798,6 +1799,8 @@ def api_create_project(body: ProjectCreate, request: Request, gst: str | None = 
         return save_project(doc, action="create")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except DurableSaveError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/api/projects/{project_id}")
@@ -1886,6 +1889,8 @@ def api_update_project(
         return save_project(doc, action="update")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except DurableSaveError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/api/ledger/master")
@@ -2388,6 +2393,8 @@ def api_project_calculate(
             saved = save_project(doc, action="calculate")
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except DurableSaveError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
     # If quote-number versioning folded into another project, surface the live id.
     live_id = saved.get("projectId") or project_id
     if persist:

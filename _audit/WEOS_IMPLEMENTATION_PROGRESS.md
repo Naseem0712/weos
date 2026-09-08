@@ -83,6 +83,34 @@
 
 ---
 
+### BATCH 2 — Save / Durability Honesty
+
+| Field | Value |
+|---|---|
+| **ID** | B2 |
+| **Goal** | SQL authoritative project save; UI never claims “saved” for browser-only draft; fail closed on SQL write failure |
+| **Files** | `WEOS/factory/project_store.py`, `WEOS/api/server.py`, `WEOS/website/index.html`, `WEOS/_smoke_persistence_durability.py` |
+| **Schema / migration** | None |
+| **Tests** | `_smoke_persistence_durability.py` PASS; regressions PASS (tenant, identity, snapshot, totals, PDF, scan, master ledger, money) |
+| **Acceptance** | Local=`Local recovery`; durable flags + 503 on SQL fail; FS not written on failed durable path; crash backup via `persistCartSession` retained |
+| **Commit** | *(filled after commit)* |
+| **Push** | *(filled after push)* |
+| **Rollback** | Revert B2 commit |
+
+---
+
+### Pre-existing smoke failures (classification)
+
+| Smoke | Symptom | Classification | Root / status | Blocks B3/B4? |
+|---|---|---|---|---|
+| `_smoke_company_login.py` scanner last-6 | `apply_scanner_status(... mobile=...)` raises “Customer Mobile number is not saved for verification” | **DATA/FIXTURE ISSUE** (+ mild **TEST EXPECTATION STALE**) | Smoke creates project with `customer="Pin Cust"` but never sets `customerMobile` on the doc; verifier reads expected mobile from project | **DOES NOT BLOCK** |
+| `_smoke_gst_workspace.py` billed/balance | expects billed 125000 (latest) got sum of versions / multi-quote | **ARCHITECTURAL ISSUE** / **EXISTING APPLICATION BUG** | Workspace totals not “latest_per_quotation_number”; drafts/extra versions inflate billed | **DOES NOT BLOCK** B3/B4; **BLOCKS** later ledger/budget batches |
+| `_smoke_project_import.py` ledger advances | import commit OK but `ledger advances 0` | **EXISTING APPLICATION BUG** | Advances committed on import path not visible to ledger query for that customer/GST | **DOES NOT BLOCK** B3/B4; **BLOCKS** payment-ledger migration |
+| `_smoke_company_ledger.py` billed/balance | billed 177000 vs expected 150000 | **ARCHITECTURAL ISSUE** / **EXISTING APPLICATION BUG** | Same totals-basis drift as GST workspace (drafts / multi-version inclusion) | **DOES NOT BLOCK** B3/B4; **BLOCKS** financial SoT cutover |
+| `_smoke_quote_lifecycle.py` draft billed | draft included in billed (240000 vs 80000) | **EXISTING APPLICATION BUG** | Draft status not excluded from turnover/billed aggregates | **DOES NOT BLOCK** B3/B4; **BLOCKS** budget/approval accounting |
+
+---
+
 ## Remaining batches (from user plan / target doc)
 
-B2+ (architecture): feature flags, Customer/Project SQL tables, DesignDocument adapter, QuoteFamily SoT, Universal Canvas extract, PDF snapshot immutability, ledger migration, AI surface retirement, etc. — only after B0–B1 healthy.
+B3 Customer identity → B4 Project identity → then Floor/DesignDocument/Canvas (hard stop before Floor in this session).

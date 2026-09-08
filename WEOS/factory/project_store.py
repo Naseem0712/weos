@@ -1,8 +1,9 @@
 """Project persistence — save / reload / version / archive WEOS projects.
 
-Filesystem under ``projects_dir()`` is a working cache. When DATABASE_URL is
-available, every project JSON (and the ID counter) is mirrored to Postgres so
-Project Setup / quotes survive Railway redeploys.
+Filesystem under ``projects_dir()`` is a **working cache only**. The SQL
+``durable_records`` store is authoritative when the DB is reachable: a failed
+SQL write must not report success (fail closed). Browser/localStorage drafts
+are crash recovery only — never authoritative.
 """
 
 from __future__ import annotations
@@ -26,6 +27,10 @@ COUNTER_FILE = PROJECTS_DIR / "_counter.json"
 HISTORY_DIR = PROJECTS_DIR / "history"
 
 _COUNTER_KEY = "projects:counter"
+
+
+class DurableSaveError(RuntimeError):
+    """Authoritative SQL project write failed — caller must not report success."""
 
 
 def _project_db_key(project_id: str, *, archived: bool = False) -> str:
@@ -265,7 +270,10 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
 
     if path.is_file() and bump_version:
         snap = PROJECTS_DIR / "versions" / f"{pid}_v{ver - 1}.json"
-        shutil.copy2(path, snap)
+        try:
+            shutil.copy2(path, snap)
+        except Exception:
+            _log.debug("version snapshot copy skipped for %s", pid, exc_info=True)
 
     # strip runtime
     out = {k: v for k, v in doc.items() if k != "_path"}
@@ -276,10 +284,18 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
         doc["lines"] = out["lines"]
     except Exception:
         _log.exception("quote item snapshot freeze failed for %s", pid)
-    path.write_text(json.dumps(out, indent=2), encoding="utf-8")
+
+    # Authoritative SQL write first — FS is cache only. Fail closed when DB is up.
     archived = str(doc.get("status") or "") == "archived"
-    _db_put_project(out, archived=archived)
-    if archived:
+    from WEOS.db.durable_store import db_ready
+
+    durable_ok = bool(_db_put_project(out, archived=archived))
+    if not durable_ok and db_ready():
+        raise DurableSaveError(
+            f"Durable database save failed for {pid}. "
+            "Project was not confirmed on the server store — not reporting success."
+        )
+    if archived and durable_ok:
         # Active key must not linger after archive.
         try:
             from WEOS.db.durable_store import delete_key
@@ -287,6 +303,20 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
             delete_key(_project_db_key(pid, archived=False))
         except Exception:
             pass
+
+    # Filesystem cache (best-effort after durable confirmation, or when DB unavailable).
+    try:
+        path.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    except Exception:
+        _log.exception("project FS cache write failed for %s (durable=%s)", pid, durable_ok)
+        if durable_ok:
+            # SQL succeeded — still a successful durable save; cache miss is recoverable.
+            pass
+        else:
+            raise DurableSaveError(
+                f"Project save failed for {pid}: no durable database and filesystem write failed."
+            ) from None
+
     _append_history(pid, action, ver)
     try:
         from WEOS.factory.company_index import upsert_project
@@ -305,6 +335,11 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
     doc["_path"] = path.as_posix()
     if versioned:
         doc["quoteNumberVersioned"] = True
+    # Honest persistence flags for API / UI (never imply durable when SQL failed).
+    doc["persisted"] = bool(durable_ok)
+    doc["durable"] = bool(durable_ok)
+    doc["saveKind"] = "server_draft" if durable_ok else "local_cache_only"
+    doc["fsCache"] = path.is_file()
     # Keep customer profile in sync so Project Setup and Customers tab share one record.
     _sync_customer_from_project(out)
     return doc

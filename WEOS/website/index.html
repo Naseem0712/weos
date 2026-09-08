@@ -436,6 +436,7 @@ textarea{max-width:100%}
       <button type="button" class="pill" id="enginePill" title="Click to retry backend health" style="margin-right:.5rem;background:#6b7280;color:#fff">● Engine…</button>
       <span class="pill" id="wsPill" title="Company login">Not logged in</span>
       <span class="pill" id="projPill">No project</span>
+      <span class="pill" id="savePill" title="Save status">Local recovery</span>
     </div>
 
     <!-- DASHBOARD -->
@@ -6876,11 +6877,13 @@ async function ensureProject() {
     activeQuoteGroup: state.activeQuoteGroup || 'Main',
     ...projectBillTo()
   }});
+  assertDurableSave(doc);
   state.projectId = doc.projectId;
   if (doc.masterJobId) state.masterJobId = doc.masterJobId;
   persistCartSession();
   updatePdfLinks();
-  toast('Created '+(doc.quotationId || doc.projectId));
+  setSaveStatus('server_draft', 'Server draft created — durable SQL confirmed');
+  toast('Server draft created · '+(doc.quotationId || doc.projectId));
   return doc.projectId;
 }
 
@@ -6893,6 +6896,33 @@ function adoptSavedProject(doc) {
   if (doc.quotationId && $('projQuoteNo')) $('projQuoteNo').value = doc.quotationId;
   persistCartSession();
   updatePdfLinks();
+  return doc;
+}
+
+/** Honest save status — never imply server save from browser-only backup. */
+function setSaveStatus(kind, detail) {
+  const el = $('savePill');
+  if (!el) return;
+  const labels = {
+    local: 'Local recovery',
+    unsaved: 'Unsaved',
+    server_draft: 'Server draft saved',
+    revision: 'Revision saved',
+    error: 'Save failed',
+  };
+  el.textContent = labels[kind] || String(kind || 'Unsaved');
+  el.title = detail || el.textContent;
+  el.dataset.kind = kind || '';
+  if (kind === 'error') el.style.background = '#b91c1c';
+  else if (kind === 'server_draft' || kind === 'revision') el.style.background = '';
+  else el.style.background = '';
+}
+
+function assertDurableSave(doc) {
+  if (!doc) throw new Error('Save returned no project document');
+  if (doc.persisted === false || doc.durable === false) {
+    throw new Error('Server database did not confirm the save');
+  }
   return doc;
 }
 
@@ -6931,13 +6961,23 @@ async function saveProject(silent) {
           await ensureProject();
           doc = await api('/api/projects/'+state.projectId, {method:'PUT', body});
         }
+        assertDurableSave(doc);
         adoptSavedProject(doc);
-        if (!silent) toast('Saved v'+doc.version+(doc.quoteNumberVersioned ? ' · quote versioned' : ''));
+        state._dirty = false;
+        const verLabel = 'v' + (doc.version || '?');
+        setSaveStatus('server_draft', 'Server draft saved ' + verLabel + ' — durable SQL confirmed');
+        if (!silent) {
+          toast('Server draft saved · ' + verLabel + (doc.quoteNumberVersioned ? ' · quote versioned' : ''));
+        }
         refreshSetupSummary();
         adoptPackageQuotes(doc);
         adoptQuoteDiscount(doc);
       } while (state._saveAgain);
       return doc;
+    } catch (e) {
+      setSaveStatus('error', String((e && e.message) || e || 'Save failed'));
+      if (!silent) toast('Save failed: ' + ((e && e.message) || e));
+      throw e;
     } finally {
       state._saving = false;
     }
@@ -6946,7 +6986,10 @@ async function saveProject(silent) {
 }
 
 function scheduleSave() {
+  // Browser crash-recovery backup only — never report as saved to WEOS.
   persistCartSession();
+  state._dirty = true;
+  setSaveStatus('local', 'Local recovery only — not saved to server yet');
 }
 
 async function openProject(id) {
@@ -7058,10 +7101,14 @@ async function calculate() {
       ms
     }, null, 2);
     updatePdfLinks();
-    saveProject(true).catch(() => {});
-    toast(result.quoteNumberVersioned
-      ? 'Quote number matched — saved as a new version'
-      : 'Quote saved · priced in '+ms+' ms — reopen from Saved Projects or Quote PDF anytime');
+    try {
+      await saveProject(true);
+      toast(result.quoteNumberVersioned
+        ? 'Server draft saved as a new version · priced in ' + ms + ' ms'
+        : 'Server draft saved · priced in ' + ms + ' ms');
+    } catch (saveErr) {
+      toast('Priced in ' + ms + ' ms — server save failed: ' + ((saveErr && saveErr.message) || saveErr));
+    }
     refreshAgent();
   } catch(e) { $('cartErr').textContent = e.message; }
 }
@@ -9902,7 +9949,7 @@ if ($('btnSaveSetup')) $('btnSaveSetup').onclick = async () => {
     await refreshExportSetupSelect();
     if (state.companyGst) refreshCompanyHub(state.companyGst);
     resetSetupFormForNew();
-    toast('Project saved. Form cleared for the next job — open it from Saved setups to edit.');
+    toast('Server draft saved. Form cleared for the next job — open it from Saved setups to edit.');
   } catch(e) { if ($('setupErr')) $('setupErr').textContent = e.message; toast(e.message); }
 };
 async function upsertCustomerFromSetup() {
