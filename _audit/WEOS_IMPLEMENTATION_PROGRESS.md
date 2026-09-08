@@ -132,7 +132,7 @@ git push origin weos-v2-foundation
 | **Tests** | _smoke_canonical_customer.py PASS; _smoke_tenant_ownership.py PASS; durability PASS before commit |
 | **Migration counts (from smoke)** | MIGRATE_CUSTOMER_COUNTS {before: 2, created: 0, linked: 1, conflicts: 0, rejected: 0, skipped: 1, after: 1, manualReview: 0} — zeroSilentLoss: True |
 | **Issues** | None for B3 |
-| **Commit** | 888bfd2 — eat(customer): add canonical company-scoped customer identity |
+| **Commit** | 888bfd2 — feat(customer): add canonical company-scoped customer identity |
 | **Push** | Pushed with B4 to origin/weos-v2-foundation |
 | **Rollback** | Revert 888bfd2 (before B4) or both B3+B4 commits |
 
@@ -155,9 +155,9 @@ git push origin weos-v2-foundation
 | **Tests** | _smoke_canonical_project.py PASS; durability PASS; tenant ownership PASS |
 | **Migration counts (from smoke)** | MIGRATE_PROJECT_COUNTS {before: 1, created: 0, linked: 1, unmatched: 0, ambiguous: 0, rejected: 0, after: 1, manualReview: 0, zeroSilentLoss: True} |
 | **Issues** | None for B4 |
-| **Commit** | 69c1cd — eat(project): canonicalize project ownership and identity |
+| **Commit** | a69c1cd — feat(project): canonicalize project ownership and identity |
 | **Push** | Pushed to origin/weos-v2-foundation |
-| **Rollback** | Revert 69c1cd (keeps B3) or revert B3+B4 |
+| **Rollback** | Revert a69c1cd (keeps B3) or revert B3+B4 |
 
 #### B4 notes
 
@@ -174,7 +174,7 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 
 | Smoke | Status | Exact failure | Root cause (summary) | Changed by B3/B4? | Blocks next phase (Floor)? |
 |---|---|---|---|---|---|
-| _smoke_company_login.py | FAIL | ValueError: Customer Mobile number is not saved for verification. in pply_scanner_status → _verify_last6 | Scanner approve path requires saved customer mobile / last-6; smoke fixture does not persist mobile for verification | No | No |
+| _smoke_company_login.py | FAIL | ValueError: Customer Mobile number is not saved for verification. in apply_scanner_status → _verify_last6 | Scanner approve path requires saved customer mobile / last-6; smoke fixture does not persist mobile for verification | No | No |
 | _smoke_gst_hub_persist.py | FAIL | billed/balance/taxable/grand mismatch + missing customer/project restore | GST hub ledger aggregation / persist restore against polluted or wrong basis totals | No | No |
 | _smoke_gst_workspace.py | FAIL | billed 125000→324500; balance 100000→299500; workspace customers missing | Latest-version billing basis + workspace customer listing | No | No |
 | _smoke_project_import.py | FAIL | FAIL: ledger advances 0 (import advances OK; ledger sync miss) | Import commits advances on project but company/master ledger does not receive them | No | No |
@@ -191,7 +191,7 @@ Floor / DesignDocument / Canvas — **NOT STARTED** (hard stop after B4).
 ## Checkpoint (current session)
 
 - **Starting HEAD:** 488d9170ffbb105305999a50881cf1175410e1b3 (B2)
-- **Ending HEAD:** 69c1cd3c52076a8956ab2f8f5b37c494b89dba7 (B4) after 888bfd2 (B3)
+- **Ending HEAD:** 2e0a9038a0a99d0cb5cb236596d60efaf42ff0fc (docs) after a69c1cd (B4) / 888bfd2 (B3)
 - **Branch:** weos-v2-foundation
 - B3/B4 committed and pushed to origin/weos-v2-foundation only
 - Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, blueprint/gap docs, etc.
