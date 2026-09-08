@@ -275,7 +275,7 @@ Product Plugin Adapters / Contextual Property Panel — **NEXT ELIGIBLE**. Produ
 ## Checkpoint (current session)
 
 - **Starting HEAD:** `9da83186504ff25bec730e1608b87301fd85ade1`
-- **Ending HEAD:** (after B7 commits — see git log)
+- **Ending HEAD:** 33e2e6e7d06bb2df97f83965196047a9dd5f2006
 - **Branch:** weos-v2-foundation
 - B7 feature + docs pushed to `origin/weos-v2-foundation`
 - Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, blueprint/gap docs, etc.
