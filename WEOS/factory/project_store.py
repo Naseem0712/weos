@@ -284,18 +284,37 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
         doc["lines"] = out["lines"]
     except Exception:
         _log.exception("quote item snapshot freeze failed for %s", pid)
+    # Additive V2 canonical identity spine before the authoritative write so
+    # reloads keep the same canonical ids, not just the response payload.
+    try:
+        from WEOS.factory.canonical_project import link_project_document
 
-    # Authoritative SQL write first — FS is cache only. Fail closed when DB is up.
+        linked = link_project_document(out)
+        if linked and linked.get("ok"):
+            customer_id = linked.get("customerId") or out.get("customerId") or doc.get("customerId")
+            if customer_id:
+                out["customerId"] = customer_id
+                doc["customerId"] = customer_id
+            proj_wrap = linked.get("project") or {}
+            proj = proj_wrap.get("project") if isinstance(proj_wrap, dict) else None
+            if not isinstance(proj, dict):
+                proj = proj_wrap if isinstance(proj_wrap, dict) else {}
+            canonical_project_id = proj.get("projectId")
+            if canonical_project_id:
+                out["canonicalProjectId"] = canonical_project_id
+                doc["canonicalProjectId"] = canonical_project_id
+    except Exception:
+        _log.debug("canonical project link skipped for %s", pid, exc_info=True)
+
+    # Authoritative SQL write first — FS is cache only. Fail closed on SQL miss.
     archived = str(doc.get("status") or "") == "archived"
-    from WEOS.db.durable_store import db_ready
-
     durable_ok = bool(_db_put_project(out, archived=archived))
-    if not durable_ok and db_ready():
+    if not durable_ok:
         raise DurableSaveError(
             f"Durable database save failed for {pid}. "
             "Project was not confirmed on the server store — not reporting success."
         )
-    if archived and durable_ok:
+    if archived:
         # Active key must not linger after archive.
         try:
             from WEOS.db.durable_store import delete_key
@@ -304,18 +323,11 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
         except Exception:
             pass
 
-    # Filesystem cache (best-effort after durable confirmation, or when DB unavailable).
+    # Filesystem cache (best-effort after durable confirmation).
     try:
         path.write_text(json.dumps(out, indent=2), encoding="utf-8")
     except Exception:
-        _log.exception("project FS cache write failed for %s (durable=%s)", pid, durable_ok)
-        if durable_ok:
-            # SQL succeeded — still a successful durable save; cache miss is recoverable.
-            pass
-        else:
-            raise DurableSaveError(
-                f"Project save failed for {pid}: no durable database and filesystem write failed."
-            ) from None
+        _log.exception("project FS cache write failed for %s (durable ok)", pid)
 
     _append_history(pid, action, ver)
     try:
@@ -336,9 +348,9 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
     if versioned:
         doc["quoteNumberVersioned"] = True
     # Honest persistence flags for API / UI (never imply durable when SQL failed).
-    doc["persisted"] = bool(durable_ok)
-    doc["durable"] = bool(durable_ok)
-    doc["saveKind"] = "server_draft" if durable_ok else "local_cache_only"
+    doc["persisted"] = True
+    doc["durable"] = True
+    doc["saveKind"] = "server_draft"
     doc["fsCache"] = path.is_file()
     # Keep customer profile in sync so Project Setup and Customers tab share one record.
     _sync_customer_from_project(out)

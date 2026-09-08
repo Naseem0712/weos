@@ -89,16 +89,15 @@ def main() -> None:
     fs_mtime_before = project_path(pid).stat().st_mtime if project_path(pid).is_file() else None
 
     with mock.patch("WEOS.factory.project_store._db_put_project", return_value=False):
-        with mock.patch("WEOS.db.durable_store.db_ready", return_value=True):
-            failed = False
-            try:
-                boom = dict(before)
-                boom["name"] = "SHOULD_NOT_PERSIST"
-                save_project(boom, action="update")
-            except DurableSaveError as exc:
-                failed = True
-                _ok("Durable database save failed" in str(exc), f"error message: {exc}")
-            _ok(failed, "SQL failure raises DurableSaveError")
+        failed = False
+        try:
+            boom = dict(before)
+            boom["name"] = "SHOULD_NOT_PERSIST"
+            save_project(boom, action="update")
+        except DurableSaveError as exc:
+            failed = True
+            _ok("Durable database save failed" in str(exc), f"error message: {exc}")
+        _ok(failed, "SQL failure raises DurableSaveError")
 
     after = load_project(pid)
     _ok(after.get("name") == before_name, f"name unchanged after failed save got {after.get('name')}")
