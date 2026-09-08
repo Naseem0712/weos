@@ -498,3 +498,72 @@ def api_migrate_cart_lines_to_scene(
         return ds.migrate_cart_lines_to_scene(company_gst=g, project_id=project_id)
     except Exception as exc:
         raise _map_err(exc) from exc
+
+
+# ── Batch 7 — Universal Canvas Host ──────────────────────────────────────────
+
+
+class ElementPoseBody(BaseModel):
+    xMm: float | None = None
+    yMm: float | None = None
+
+
+@router.get("/api/flags")
+def api_feature_flags() -> dict[str, Any]:
+    """Public feature flags — Universal Canvas defaults OFF for rollback."""
+    from WEOS.factory import universal_canvas as uc
+
+    return {
+        "WEOS_UNIVERSAL_CANVAS": uc.is_universal_canvas_enabled(),
+        "universalCanvas": uc.is_universal_canvas_enabled(),
+        "elementDragEnabled": uc.ELEMENT_DRAG_ENABLED,
+    }
+
+
+@router.get("/api/design-documents/{design_document_id}/canvas")
+def api_get_canvas_view(
+    design_document_id: str,
+    request: Request,
+    gst: str | None = None,
+    floorId: str | None = None,
+    locationId: str | None = None,
+    selectedElementId: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_scene as ds
+    from WEOS.factory import universal_canvas as uc
+
+    g = require_company_gst(request, gst)
+    try:
+        scene = ds.build_scene_read_model(design_document_id, company_gst=g)
+        sel = [selectedElementId] if selectedElementId else None
+        return uc.build_canvas_view_model(
+            scene,
+            floor_id=floorId,
+            location_id=locationId,
+            selected_element_ids=sel,
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.patch("/api/elements/{element_id}/pose")
+def api_patch_element_pose(
+    element_id: str,
+    body: ElementPoseBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    """Durable x/y pose only — does not mutate engineering width/height."""
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import universal_canvas as uc
+
+    g = require_company_gst(request, gst)
+    if body.xMm is None and body.yMm is None:
+        raise HTTPException(status_code=400, detail="xMm or yMm required")
+    try:
+        return uc.update_element_pose(
+            element_id, company_gst=g, x_mm=body.xMm, y_mm=body.yMm
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc

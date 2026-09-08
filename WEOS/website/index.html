@@ -204,6 +204,14 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
   max-width:none;max-height:none;width:auto;height:auto;display:block;flex-shrink:0
 }
 #view-cart .cart-preview #wrapDesignPhoto,#view-cart .cart-preview #lineSpecs{flex:0 0 auto}
+/* Universal Canvas Host (Batch 7) — large workspace when flag on; old preview preserved */
+#view-cart .cart-preview.uc-active{min-height:0}
+#view-cart .cart-preview.uc-active #universalCanvasHost{
+  flex:1 1 auto;min-height:0;height:clamp(560px,74vh,920px)
+}
+#view-cart .cart-preview.uc-active .uc-viewport{min-height:480px}
+#view-cart .cart-preview.uc-active .preview[data-uc-compat="1"]{display:none!important}
+.uc-el-svg svg{max-width:none;max-height:none}
 .admin-split{align-items:stretch}
 .admin-split > div:first-child{min-height:0;display:flex;flex-direction:column}
 .admin-split .canvas-wrap{flex:1 1 auto;min-height:280px;max-height:calc(100vh - 12rem);overscroll-behavior:contain}
@@ -13882,6 +13890,52 @@ async function pingEngine(){
   persistCartSession();
   scheduleLivePrice();
   try { weosMountAgentDock(); } catch(e){ console.warn('WEOS Agent dock failed to mount', e); }
+})();
+</script>
+<!-- Universal Canvas Host modules (Batch 7) — progressive; gated by WEOS_UNIVERSAL_CANVAS -->
+<script src="/static/canvas/viewport.js"></script>
+<script src="/static/canvas/selection.js"></script>
+<script src="/static/canvas/adapters.js"></script>
+<script src="/static/canvas/scene_renderer.js"></script>
+<script src="/static/canvas/universal_canvas.js"></script>
+<script>
+(function () {
+  async function bootUniversalCanvas() {
+    if (!window.WEOSCanvas || !window.WEOSCanvas.UniversalCanvas) return;
+    var serverEnabled = false;
+    try {
+      var flags = await fetch('/api/flags').then(function (r) { return r.json(); });
+      serverEnabled = !!(flags && (flags.universalCanvas || flags.WEOS_UNIVERSAL_CANVAS));
+    } catch (e) {}
+    var host = window.WEOSCanvas.UniversalCanvas.tryMount({ serverEnabled: serverEnabled });
+    if (!host) return;
+    window.WEOS_UNIVERSAL_CANVAS = true;
+    // Optional: load scene when a durable design document id is known on state.
+    try {
+      if (window.state && state.designDocumentId && typeof api === 'function') {
+        var scene = await api('/api/design-documents/' + state.designDocumentId + '/scene');
+        host.loadScene(scene);
+      }
+    } catch (e) { console.warn('Universal Canvas scene load deferred', e); }
+    // Bridge: when legacy refreshPreview injects SVG into #livePreview, mirror into selection.
+    var live = document.getElementById('livePreview');
+    if (live && window.MutationObserver) {
+      new MutationObserver(function () {
+        try {
+          var svg = live.querySelector('svg');
+          var sel = host.getViewModel().selected;
+          if (svg && sel && sel.elementId) {
+            host.setElementPreviewSvg(sel.elementId, svg.outerHTML);
+          }
+        } catch (e) {}
+      }).observe(live, { childList: true, subtree: true });
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { bootUniversalCanvas(); });
+  } else {
+    bootUniversalCanvas();
+  }
 })();
 </script>
 </body>
