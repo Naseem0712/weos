@@ -220,9 +220,9 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 | **Tests** | `_smoke_design_scene.py` cases 1–7 **PASS**; combined B5+B6 gate **PASS** |
 | **Migration counts (from smoke)** | legacyLinesInspected: 1, assembliesMapped: 1, elementsMapped: 1, unmapped: 0, conflicts: 0, rejected: 0, manualReview: 0, zeroSilentLoss: True |
 | **Issues** | None for B6 — drawing engines / BOM / pricing untouched |
-| **Commit** | *(pending stamp)* — `feat(design): add assembly element and connection domain` |
-| **Push** | *(pending)* |
-| **Rollback** | Revert B6 commit (keeps B5) |
+| **Commit** | `12c585b` — `feat(design): add assembly element and connection domain` |
+| **Push** | Pushed to `origin/weos-v2-foundation` |
+| **Rollback** | Revert `12c585b` (keeps B5) |
 
 #### B6 notes
 
@@ -245,11 +245,11 @@ Universal Canvas Host — **NEXT ELIGIBLE** (not started). Production deployment
 ## Checkpoint (current session)
 
 - **Starting HEAD:** 85efb66e9c6291b22418d3b23563cf316cf5a5f5
-- **Ending HEAD:** *(pending B6 push)*
+- **Ending HEAD:** 12c585b6e8adca84611698ee4f4697020f9fc897
 - **Branch:** weos-v2-foundation
 - B5: `e3690dd` pushed
-- B6: committing/pushing
-- Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, blueprint/gap docs, `_audit/_b5b6_prompt.txt`, etc.
+- B6: `12c585b` pushed
+- Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, blueprint/gap docs, etc.
 - Production deployment: **NOT PERFORMED**
 - Next eligible batch: **Universal Canvas Host**
 - Hard stop after B6: **YES**
