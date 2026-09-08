@@ -245,7 +245,7 @@ Universal Canvas Host — **NEXT ELIGIBLE** (not started). Production deployment
 ## Checkpoint (current session)
 
 - **Starting HEAD:** 85efb66e9c6291b22418d3b23563cf316cf5a5f5
-- **Ending HEAD:** 12c585b6e8adca84611698ee4f4697020f9fc897
+- **Ending HEAD:** 680a0ab8982ed4e97f3f558b93682df6fe07d8c8 (docs tip; B6 feature `12c585b`; B5 `e3690dd`)
 - **Branch:** weos-v2-foundation
 - B5: `e3690dd` pushed
 - B6: `12c585b` pushed
