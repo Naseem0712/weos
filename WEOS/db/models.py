@@ -26,6 +26,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -477,5 +478,131 @@ def _iso(dt: datetime | None) -> str | None:
     if dt is None:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=timezone.utc).isoformat()
     return dt.isoformat()
+
+
+# ── WEOS V2 canonical identity (additive — does not replace Agent `customers`) ─
+
+
+class CanonicalCustomer(Base):
+    """Company-scoped customer master with immutable ``customer_id`` PK.
+
+    Discovery fields (mobile / GST / name) live in ``CustomerIdentity`` rows —
+    they are never foreign keys into quotes/projects.
+    """
+
+    __tablename__ = "canonical_customers"
+
+    customer_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(200))
+    address: Mapped[str | None] = mapped_column(Text)
+    email: Mapped[str | None] = mapped_column(String(200))
+    contact_person: Mapped[str | None] = mapped_column(String(200))
+    state: Mapped[str | None] = mapped_column(String(80))
+    state_code: Mapped[str | None] = mapped_column(String(10))
+    site: Mapped[str | None] = mapped_column(String(200))
+    notes: Mapped[str | None] = mapped_column(Text)
+    legacy_slug: Mapped[str | None] = mapped_column(String(200), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    identities: Mapped[list["CustomerIdentity"]] = relationship(
+        back_populates="customer", cascade="all, delete-orphan"
+    )
+    projects: Mapped[list["CanonicalProject"]] = relationship(back_populates="customer")
+
+    def to_dict(self, *, include_identities: bool = False) -> dict:
+        data = {
+            "customerId": self.customer_id,
+            "companyGst": self.company_gst,
+            "displayName": self.display_name,
+            "address": self.address,
+            "email": self.email,
+            "contactPerson": self.contact_person,
+            "state": self.state,
+            "stateCode": self.state_code,
+            "site": self.site,
+            "notes": self.notes,
+            "legacySlug": self.legacy_slug,
+            "status": self.status,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+        }
+        if include_identities:
+            data["identities"] = [i.to_dict() for i in (self.identities or [])]
+        return data
+
+
+class CustomerIdentity(Base):
+    """Searchable identity for a canonical customer — unique per company + kind."""
+
+    __tablename__ = "customer_identities"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_gst",
+            "kind",
+            "normalized_value",
+            name="uq_customer_identity_company_kind_value",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    customer_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("canonical_customers.customer_id"), index=True, nullable=False
+    )
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), index=True, nullable=False)  # mobile|gst|email|name_key
+    raw_value: Mapped[str] = mapped_column(String(200), nullable=False)
+    normalized_value: Mapped[str] = mapped_column(String(200), index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    customer: Mapped["CanonicalCustomer"] = relationship(back_populates="identities")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "customerId": self.customer_id,
+            "companyGst": self.company_gst,
+            "kind": self.kind,
+            "rawValue": self.raw_value,
+            "normalizedValue": self.normalized_value,
+            "createdAt": _iso(self.created_at),
+        }
+
+
+class CanonicalProject(Base):
+    """Company → Customer → Project spine with immutable ``project_id`` (PRJ-…)."""
+
+    __tablename__ = "canonical_projects"
+
+    project_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    customer_id: Mapped[str] = mapped_column(
+        String(40), ForeignKey("canonical_customers.customer_id"), index=True, nullable=False
+    )
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    normalized_name: Mapped[str] = mapped_column(String(200), index=True, nullable=False, default="")
+    site_address: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="draft", index=True)
+    quotation_id: Mapped[str | None] = mapped_column(String(80), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    customer: Mapped["CanonicalCustomer"] = relationship(back_populates="projects")
+
+    def to_dict(self) -> dict:
+        return {
+            "projectId": self.project_id,
+            "customerId": self.customer_id,
+            "companyGst": self.company_gst,
+            "name": self.name,
+            "normalizedName": self.normalized_name,
+            "siteAddress": self.site_address,
+            "status": self.status,
+            "quotationId": self.quotation_id,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+        }

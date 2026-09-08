@@ -175,6 +175,18 @@ def save_customer_profile(customer: str, payload: Mapping[str, Any]) -> dict[str
     else:
         doc["companyGst"] = _norm_company_gst(doc.get("companyGst"))
     doc["updatedAt"] = datetime.now(timezone.utc).isoformat()
+    # Additive V2 canonical identity (non-fatal; never blocks legacy profile save).
+    # Stamp the canonical id before writing so reloads keep the same identity.
+    try:
+        from WEOS.factory.canonical_customer import ensure_customer_from_profile
+
+        linked = ensure_customer_from_profile(doc)
+        if linked and linked.get("customerId"):
+            doc["customerId"] = linked["customerId"]
+            if linked.get("created") is not None:
+                doc["canonicalCreated"] = bool(linked.get("created"))
+    except Exception:
+        _log.debug("canonical customer link skipped", exc_info=True)
     profile_path(name).write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     ok = _db_put(doc)
     doc["persisted"] = ok
