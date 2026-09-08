@@ -190,7 +190,7 @@ Floor / DesignDocument / Canvas — **NOT STARTED** (hard stop after B4).
 ## Checkpoint (current session)
 
 - **Starting HEAD:** 488d9170ffbb105305999a50881cf1175410e1b3 (B2)
-- **Ending HEAD:** (see tip after docs push; B4 feature = a69c1cd3c52076a8956ab2f8f5b37c494b89dba7)
+- **Ending HEAD:** 8fcf6f0c895bc44f1e8e63b6169f1f03316549ba (docs tip; B4 feature a69c1cd; B3 888bfd2)
 - **Branch:** weos-v2-foundation
 - B3/B4 committed and pushed to origin/weos-v2-foundation only
 - Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, blueprint/gap docs, etc.
