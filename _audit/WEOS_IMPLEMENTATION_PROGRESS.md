@@ -65,8 +65,8 @@
 | **Schema / migration** | None |
 | **Tests** | New `_smoke_tenant_ownership.py` + re-run B0 key smokes that must not regress |
 | **Issues** | PDF/xlsx browser tabs need `?session=` (header-only would break print links); query session accepted by `require_company_gst` |
-| **Commit** | *(filled after commit)* |
-| **Push** | *(filled after push)* |
+| **Commit** | `f16beec` — `fix(security): enforce tenant ownership on project and customer routes` |
+| **Push** | Pushed to `origin/weos-v2-foundation` |
 | **Rollback** | Revert B1 commit; UI session query is additive |
 
 #### B1 verification
