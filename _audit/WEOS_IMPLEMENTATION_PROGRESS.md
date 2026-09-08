@@ -170,17 +170,16 @@ git push origin weos-v2-foundation
 
 All PASS (exit 0): durability, canonical customer, canonical project, tenant ownership, quote identity, quote totals, public scan, quote PDF cart, money specs, normal railing, stair railing, sliding track opening, casement mullion.
 
-### Pre-existing failures (not fixed this pass; unrelated ledger/login)
+### Pre-existing smoke failures (classification)
 
-| Smoke | Status | Exact failure | Root cause (summary) | Changed by B3/B4? | Blocks next phase (Floor)? |
-|---|---|---|---|---|---|
-| _smoke_company_login.py | FAIL | ValueError: Customer Mobile number is not saved for verification. in apply_scanner_status → _verify_last6 | Scanner approve path requires saved customer mobile / last-6; smoke fixture does not persist mobile for verification | No | No |
-| _smoke_gst_hub_persist.py | FAIL | billed/balance/taxable/grand mismatch + missing customer/project restore | GST hub ledger aggregation / persist restore against polluted or wrong basis totals | No | No |
-| _smoke_gst_workspace.py | FAIL | billed 125000→324500; balance 100000→299500; workspace customers missing | Latest-version billing basis + workspace customer listing | No | No |
-| _smoke_project_import.py | FAIL | FAIL: ledger advances 0 (import advances OK; ledger sync miss) | Import commits advances on project but company/master ledger does not receive them | No | No |
-| _smoke_company_ledger.py | FAIL | billed 150000→177000; balance 85000→112000 | Company ledger billed includes GST or wrong quote set vs smoke expectation | No | No |
-| _smoke_quote_lifecycle.py | FAIL | illed must ignore draft, expected 80000 got 240000.0 | Draft quotes incorrectly included in billed totals | No | No |
-| _smoke_master_ledger.py | PASS | — | — | No | No |
+| Smoke | Symptom | Classification | Root / status | Blocks B3/B4? |
+|---|---|---|---|---|
+| `_smoke_company_login.py` scanner last-6 | `apply_scanner_status(... mobile=...)` raises “Customer Mobile number is not saved for verification” | **DATA/FIXTURE ISSUE** (+ mild **TEST EXPECTATION STALE**) | Smoke creates project with `customer="Pin Cust"` but never sets `customerMobile` on the doc; verifier reads expected mobile from project | **DOES NOT BLOCK** |
+| `_smoke_gst_workspace.py` billed/balance | expects billed 125000 (latest) got sum of versions / multi-quote | **ARCHITECTURAL ISSUE** / **EXISTING APPLICATION BUG** | Workspace totals not “latest_per_quotation_number”; drafts/extra versions inflate billed | **DOES NOT BLOCK** B3/B4; **BLOCKS** later ledger/budget batches |
+| `_smoke_gst_hub_persist.py` | billed/balance/taxable/grand mismatch + missing customer/project restore | **EXISTING APPLICATION BUG** | GST hub ledger aggregation / persist restore against wrong basis totals | **DOES NOT BLOCK** |
+| `_smoke_project_import.py` ledger advances | import commit OK but `ledger advances 0` | **EXISTING APPLICATION BUG** | Advances committed on import path not visible to ledger query for that customer/GST | **DOES NOT BLOCK** B3/B4; **BLOCKS** payment-ledger migration |
+| `_smoke_company_ledger.py` billed/balance | billed 177000 vs expected 150000 | **ARCHITECTURAL ISSUE** / **EXISTING APPLICATION BUG** | Same totals-basis drift as GST workspace (drafts / multi-version inclusion) | **DOES NOT BLOCK** B3/B4; **BLOCKS** financial SoT cutover |
+| `_smoke_quote_lifecycle.py` draft billed | draft included in billed (240000 vs 80000) | **EXISTING APPLICATION BUG** | Draft status not excluded from turnover/billed aggregates | **DOES NOT BLOCK** B3/B4; **BLOCKS** budget/approval accounting |
 
 ---
 
@@ -191,7 +190,7 @@ Floor / DesignDocument / Canvas — **NOT STARTED** (hard stop after B4).
 ## Checkpoint (current session)
 
 - **Starting HEAD:** 488d9170ffbb105305999a50881cf1175410e1b3 (B2)
-- **Ending HEAD:** 2e0a9038a0a99d0cb5cb236596d60efaf42ff0fc (docs) after a69c1cd (B4) / 888bfd2 (B3)
+- **Ending HEAD:** (see tip after docs push; B4 feature = a69c1cd3c52076a8956ab2f8f5b37c494b89dba7)
 - **Branch:** weos-v2-foundation
 - B3/B4 committed and pushed to origin/weos-v2-foundation only
 - Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, blueprint/gap docs, etc.
