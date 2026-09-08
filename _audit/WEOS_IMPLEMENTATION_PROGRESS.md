@@ -20,8 +20,8 @@
 | **Schema / migration** | None |
 | **Tests** | See smoke matrix below |
 | **Issues** | Pre-existing FAIL on several ledger/login smokes (recorded, not treated as regressions) |
-| **Commit** | *(filled after commit)* |
-| **Push** | *(filled after push)* |
+| **Commit** | `32012d6` — `docs(audit): WEOS v2 batch 0 progress and dead code register` |
+| **Push** | Pushed to `origin/weos-v2-foundation` |
 | **Rollback** | Delete/revert these two audit docs only |
 
 #### Dirty tree at start (preserved, not committed)
@@ -64,10 +64,22 @@
 | **Files** | `WEOS/factory/company_workspace.py`, `WEOS/api/server.py`, `WEOS/website/index.html` (session on PDF links), `WEOS/_smoke_tenant_ownership.py` |
 | **Schema / migration** | None |
 | **Tests** | New `_smoke_tenant_ownership.py` + re-run B0 key smokes that must not regress |
-| **Issues** | *(filled during impl)* |
-| **Commit** | `fix(security): enforce tenant ownership on project and customer routes` |
+| **Issues** | PDF/xlsx browser tabs need `?session=` (header-only would break print links); query session accepted by `require_company_gst` |
+| **Commit** | *(filled after commit)* |
 | **Push** | *(filled after push)* |
 | **Rollback** | Revert B1 commit; UI session query is additive |
+
+#### B1 verification
+
+| Test | Result |
+|---|---|
+| `_smoke_tenant_ownership.py` | **PASS** — unauth 401; cross-tenant 404; owner R/W + PDF/ledger OK; companyGst spoof ignored |
+| `_smoke_quote_identity_flow.py` | **PASS** (regression) |
+| `_smoke_quote_totals.py` | **PASS** (regression) |
+| `_smoke_public_scan_security.py` | **PASS** (regression) |
+| `_smoke_quote_pdf_cart.py` | **PASS** (regression) |
+| `_smoke_master_ledger.py` | **PASS** (regression) |
+| `_smoke_money_specs.py` | **PASS** (regression) |
 
 ---
 

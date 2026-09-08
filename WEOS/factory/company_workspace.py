@@ -191,16 +191,30 @@ def open_workspace(
     }
 
 
+def _session_token_from_request(request: Any) -> str:
+    """Session from header, else query (for browser PDF/xlsx tab opens)."""
+    token = ""
+    if request is None:
+        return ""
+    try:
+        token = str(request.headers.get("X-WEOS-Session") or "").strip()
+    except Exception:
+        token = ""
+    if token:
+        return token
+    try:
+        qp = request.query_params
+        token = str(qp.get("session") or qp.get("sessionToken") or "").strip()
+    except Exception:
+        token = ""
+    return token
+
+
 def require_company_gst(request: Any, gst: str | None = None) -> str:
     """GST of the logged-in workspace. Query GST alone is never enough."""
     from fastapi import HTTPException
 
-    token = ""
-    if request is not None:
-        try:
-            token = str(request.headers.get("X-WEOS-Session") or "").strip()
-        except Exception:
-            token = ""
+    token = _session_token_from_request(request)
     session_gst = gst_for_session_token(token) if token else None
     if not session_gst:
         raise HTTPException(status_code=401, detail="Log in to a company workspace first.")
@@ -211,6 +225,52 @@ def require_company_gst(request: Any, gst: str | None = None) -> str:
             detail="Log in with GST / name / mobile and the 4-digit PIN.",
         )
     return session_gst
+
+
+def require_owned_project(
+    request: Any,
+    project_id: str,
+    gst: str | None = None,
+    *,
+    include_unscoped: bool = False,
+) -> tuple[str, dict[str, Any]]:
+    """Session + project must belong to the same company. 404 on cross-tenant."""
+    from fastapi import HTTPException
+    from WEOS.factory.project_store import _belongs_to_company, load_project
+
+    g = require_company_gst(request, gst)
+    try:
+        doc = load_project(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not _belongs_to_company(doc, g, include_unscoped=include_unscoped):
+        raise HTTPException(status_code=404, detail="Project not found")
+    return g, doc
+
+
+def require_owned_customer(
+    request: Any,
+    customer: str,
+    gst: str | None = None,
+    *,
+    include_unscoped: bool = True,
+    for_write: bool = False,
+) -> tuple[str, dict[str, Any]]:
+    """Session-gated customer profile. Other company's profile → 404."""
+    from fastapi import HTTPException
+    from WEOS.factory.customer_store import _belongs_to_company, load_customer_profile
+
+    g = require_company_gst(request, gst)
+    profile = load_customer_profile(customer)
+    row_gst = normalise_gstin(str(profile.get("companyGst") or ""))
+    # Empty / new profile: allow for write (will stamp); deny cross-tenant reads/writes.
+    if row_gst and row_gst != g:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    if not row_gst and not include_unscoped and not for_write:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    if not _belongs_to_company(profile, g, include_unscoped=include_unscoped) and row_gst:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    return g, profile
 
 
 def logout_workspace(gst_no: str | None = None, session_token: str | None = None) -> dict[str, Any]:

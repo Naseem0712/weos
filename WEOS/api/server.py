@@ -882,9 +882,17 @@ def _pdf_response(
     request: Request | None = None,
     inline: bool = False,
     overlay: dict[str, Any] | None = None,
+    require_owner: bool = True,
 ) -> Response:
-    # load_project raises FileNotFoundError → 404 (handled by the caller).
-    doc = load_project(project_id)
+    # Private exports require workspace session + company ownership.
+    # Public scan/token paths pass require_owner=False after token resolution.
+    if require_owner:
+        from WEOS.factory.company_workspace import require_owned_project
+
+        _, doc = require_owned_project(request, project_id)
+    else:
+        # load_project raises FileNotFoundError → 404 (handled by the caller).
+        doc = load_project(project_id)
     if overlay:
         # PDF must print the live cart payload, not a stale autosave snapshot.
         if overlay.get("lines") is not None:
@@ -1767,14 +1775,19 @@ def api_list_projects(
 
 
 @app.post("/api/projects")
-def api_create_project(body: ProjectCreate) -> dict[str, Any]:
+def api_create_project(body: ProjectCreate, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+
+    g = require_company_gst(request, gst)
     doc = empty_project(name=body.name, customer=body.customer)
     doc["status"] = body.status or "draft"
     doc["lines"] = _coerce_cart_lines(body.lines)
-    for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms", "quotationId", "companyGst"):
+    for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms", "quotationId"):
         _val = getattr(body, _fld, None)
         if _val is not None:
             doc[_fld] = _val
+    # Tenant stamp is always the logged-in workspace — never trust body.companyGst.
+    doc["companyGst"] = g
     from WEOS.factory.package_quote import apply_package_fields
 
     dumped = body.model_dump(exclude_none=True)
@@ -1789,16 +1802,9 @@ def api_create_project(body: ProjectCreate) -> dict[str, Any]:
 
 @app.get("/api/projects/{project_id}")
 def api_get_project(project_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
-    from WEOS.factory.company_workspace import require_company_gst
-    from WEOS.factory.project_store import _belongs_to_company
+    from WEOS.factory.company_workspace import require_owned_project
 
-    g = require_company_gst(request, gst)
-    try:
-        doc = load_project(project_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    if not _belongs_to_company(doc, g, include_unscoped=False):
-        raise HTTPException(status_code=404, detail="Project not found")
+    _, doc = require_owned_project(request, project_id, gst)
     return doc
 
 
@@ -1824,13 +1830,33 @@ def api_project_follow_up(
 
 
 @app.put("/api/projects/{project_id}")
-def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
+def api_update_project(
+    project_id: str,
+    body: ProjectUpdate,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst, require_owned_project
+    from WEOS.factory.project_store import _belongs_to_company
+
+    g = require_company_gst(request, gst)
     try:
-        doc = load_project(project_id)
-    except FileNotFoundError:
-        # Stale browser id (deleted / never persisted / merged away) — start a new job.
-        doc = empty_project(name=body.name or "WEOS Project", customer=body.customer or "")
-        doc["status"] = body.status or "draft"
+        _, doc = require_owned_project(request, project_id, gst)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        # Stale browser id (deleted / never persisted / merged away) — start a new job
+        # only when the id is truly missing, never when it belongs to another company.
+        try:
+            existing = load_project(project_id)
+        except FileNotFoundError:
+            doc = empty_project(name=body.name or "WEOS Project", customer=body.customer or "")
+            doc["status"] = body.status or "draft"
+            doc["projectId"] = project_id
+        else:
+            if not _belongs_to_company(existing, g, include_unscoped=False):
+                raise HTTPException(status_code=404, detail="Project not found") from exc
+            raise
     if body.name is not None:
         doc["name"] = body.name
     if body.customer is not None:
@@ -1844,10 +1870,12 @@ def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
             doc["lines"] = incoming
         else:
             _log.warning("PUT %s ignored empty lines (saved cart has %s rows)", project_id, len(doc.get("lines") or []))
-    for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms", "quotationId", "companyGst"):
+    for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms", "quotationId"):
         _val = getattr(body, _fld, None)
         if _val is not None:
             doc[_fld] = _val
+    # Keep / stamp tenant; ignore body.companyGst spoofing.
+    doc["companyGst"] = g
     dumped = body.model_dump(exclude_unset=True)
     from WEOS.factory.package_quote import apply_package_fields
 
@@ -1862,14 +1890,17 @@ def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
 
 @app.get("/api/ledger/master")
 def api_master_ledger_search(
+    request: Request,
     q: str | None = Query(None),
     projectId: str | None = Query(None),
     gst: str | None = Query(None),
 ) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
     from WEOS.factory.master_ledger import build_master_ledger
 
+    g = require_company_gst(request, gst)
     try:
-        return build_master_ledger(q=q, project_id=projectId, company_gst=gst)
+        return build_master_ledger(q=q, project_id=projectId, company_gst=g)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -1879,11 +1910,17 @@ def api_master_ledger_search(
 
 
 @app.get("/api/projects/{project_id}/master-ledger")
-def api_project_master_ledger(project_id: str, gst: str | None = Query(None)) -> dict[str, Any]:
+def api_project_master_ledger(
+    project_id: str,
+    request: Request,
+    gst: str | None = Query(None),
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
     from WEOS.factory.master_ledger import build_master_ledger
 
+    g, _ = require_owned_project(request, project_id, gst)
     try:
-        return build_master_ledger(project_id=project_id, company_gst=gst)
+        return build_master_ledger(project_id=project_id, company_gst=g)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -1894,17 +1931,16 @@ def api_project_master_ledger(project_id: str, gst: str | None = Query(None)) ->
 def api_append_package_quote(
     project_id: str,
     body: PackageQuoteBody,
+    request: Request,
     gst: str | None = Query(None),
 ) -> dict[str, Any]:
     """Append an outside / finalized quote onto an existing job. Cart lines stay."""
+    from WEOS.factory.company_workspace import require_owned_project
     from WEOS.factory.master_ledger import build_master_ledger
     from WEOS.factory.package_quote import MAX_QUOTES, apply_package_fields, normalize_package_quote
-    from WEOS.factory.project_store import load_project, save_project
+    from WEOS.factory.project_store import save_project
 
-    try:
-        doc = load_project(project_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    g, doc = require_owned_project(request, project_id, gst)
     quotes = list(doc.get("packageQuotes") or [])
     incoming = body.model_dump(exclude_none=True)
     q = normalize_package_quote(incoming, index=len(quotes), project_id=project_id)
@@ -1922,7 +1958,7 @@ def api_append_package_quote(
     saved = save_project(doc, action="package_quote_add")
     wrap: dict[str, Any] = {}
     try:
-        wrap = build_master_ledger(project_id=project_id, company_gst=gst)
+        wrap = build_master_ledger(project_id=project_id, company_gst=g)
     except Exception:
         wrap = {}
     return {"ok": True, "quote": q, "projectId": saved.get("projectId"), "ledger": wrap.get("ledger")}
@@ -1932,22 +1968,16 @@ def api_append_package_quote(
 async def api_package_quote_file(
     project_id: str,
     quote_id: str,
+    request: Request,
     file: UploadFile = File(...),
     kind: str | None = Query(None),
     gst: str | None = Query(None),
 ) -> dict[str, Any]:
-    from WEOS.factory.master_ledger import build_master_ledger
+    from WEOS.factory.company_workspace import require_owned_project
     from WEOS.factory.package_quote import MAX_ATTACHMENTS, apply_package_fields, store_package_file
-    from WEOS.factory.project_store import load_project, save_project
+    from WEOS.factory.project_store import save_project
 
-    try:
-        doc = load_project(project_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    if gst:
-        wrap = build_master_ledger(project_id=project_id, company_gst=gst)
-        if not wrap.get("ledger"):
-            raise HTTPException(status_code=403, detail="Project is not in this company workspace")
+    _, doc = require_owned_project(request, project_id, gst)
     qid = str(quote_id or "").strip()
     if not qid:
         raise HTTPException(status_code=400, detail="Quote id required")
@@ -1984,14 +2014,17 @@ async def api_package_quote_file(
 
 
 @app.get("/api/projects/{project_id}/package-quotes/{quote_id}/files/{file_id}")
-def api_get_package_quote_file_id(project_id: str, quote_id: str, file_id: str) -> Response:
+def api_get_package_quote_file_id(
+    project_id: str,
+    quote_id: str,
+    file_id: str,
+    request: Request,
+    gst: str | None = Query(None),
+) -> Response:
+    from WEOS.factory.company_workspace import require_owned_project
     from WEOS.factory.package_quote import load_package_file
-    from WEOS.factory.project_store import load_project
 
-    try:
-        load_project(project_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    require_owned_project(request, project_id, gst)
     raw, ctype, fname = load_package_file(project_id, quote_id, file_id)
     if raw is None:
         raise HTTPException(status_code=404, detail="No file attached")
@@ -2000,14 +2033,16 @@ def api_get_package_quote_file_id(project_id: str, quote_id: str, file_id: str) 
 
 
 @app.get("/api/projects/{project_id}/package-quotes/{quote_id}/file")
-def api_get_package_quote_file(project_id: str, quote_id: str) -> Response:
+def api_get_package_quote_file(
+    project_id: str,
+    quote_id: str,
+    request: Request,
+    gst: str | None = Query(None),
+) -> Response:
+    from WEOS.factory.company_workspace import require_owned_project
     from WEOS.factory.package_quote import load_package_file
-    from WEOS.factory.project_store import load_project
 
-    try:
-        load_project(project_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    require_owned_project(request, project_id, gst)
     raw, ctype, fname = load_package_file(project_id, quote_id, None)
     if raw is None:
         raise HTTPException(status_code=404, detail="No file attached")
@@ -2064,7 +2099,10 @@ def api_delete_project_post(project_id: str, body: QuoteDeleteBody) -> dict[str,
 
 
 @app.post("/api/projects/{project_id}/duplicate")
-def api_duplicate(project_id: str) -> dict[str, Any]:
+def api_duplicate(project_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
+
+    require_owned_project(request, project_id, gst)
     try:
         return duplicate_project(project_id)
     except FileNotFoundError as exc:
@@ -2072,7 +2110,10 @@ def api_duplicate(project_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/projects/{project_id}/archive")
-def api_archive(project_id: str) -> dict[str, Any]:
+def api_archive(project_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
+
+    require_owned_project(request, project_id, gst)
     try:
         return archive_project(project_id)
     except FileNotFoundError as exc:
@@ -2080,7 +2121,10 @@ def api_archive(project_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/projects/{project_id}/restore")
-def api_restore(project_id: str) -> dict[str, Any]:
+def api_restore(project_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
+
+    require_owned_project(request, project_id, gst)
     try:
         return restore_project(project_id)
     except FileNotFoundError as exc:
@@ -2088,10 +2132,17 @@ def api_restore(project_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/projects/{project_id}/status")
-def api_project_set_status(project_id: str, body: ProjectStatusBody) -> dict[str, Any]:
+def api_project_set_status(
+    project_id: str,
+    body: ProjectStatusBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
     """Mark a project/quote status (draft → approved → rejected/cancelled)."""
+    from WEOS.factory.company_workspace import require_owned_project
     from WEOS.factory.project_store import set_project_status
 
+    require_owned_project(request, project_id, gst)
     try:
         return set_project_status(project_id, body.status)
     except FileNotFoundError as exc:
@@ -2101,9 +2152,11 @@ def api_project_set_status(project_id: str, body: ProjectStatusBody) -> dict[str
 
 
 @app.post("/api/projects/{project_id}/approve")
-def api_project_approve(project_id: str) -> dict[str, Any]:
+def api_project_approve(project_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
     from WEOS.factory.project_store import set_project_status
 
+    require_owned_project(request, project_id, gst)
     try:
         return set_project_status(project_id, "approved", source="admin", by_name="Admin")
     except FileNotFoundError as exc:
@@ -2113,11 +2166,19 @@ def api_project_approve(project_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/projects/{project_id}/reject")
-def api_project_reject(project_id: str, body: QuoteRejectBody | None = None) -> dict[str, Any]:
+def api_project_reject(
+    project_id: str,
+    request: Request,
+    body: QuoteRejectBody | None = None,
+    gst: str | None = None,
+) -> dict[str, Any]:
     """Un-approve: status=rejected, excluded from turnover; history + advances kept."""
+    from WEOS.factory.company_workspace import require_owned_project
+
     body = body or QuoteRejectBody()
     if not body.confirm:
         raise HTTPException(status_code=400, detail="Confirm reject to un-approve this quote.")
+    require_owned_project(request, project_id, gst)
     from WEOS.factory.project_store import load_project, set_project_status
 
     try:
@@ -2139,11 +2200,13 @@ def api_project_reject(project_id: str, body: QuoteRejectBody | None = None) -> 
 
 
 @app.get("/api/projects/{project_id}/pack")
-def api_project_pack(project_id: str, gst: str | None = Query(None)) -> dict[str, Any]:
+def api_project_pack(project_id: str, request: Request, gst: str | None = Query(None)) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
     from WEOS.factory.project_pack import list_pack
 
+    g, _ = require_owned_project(request, project_id, gst)
     try:
-        return list_pack(project_id, company_gst=gst)
+        return list_pack(project_id, company_gst=g)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -2151,21 +2214,28 @@ def api_project_pack(project_id: str, gst: str | None = Query(None)) -> dict[str
 
 
 @app.post("/api/projects/{project_id}/pack/updates")
-def api_project_pack_update(project_id: str, body: PackUpdateBody, gst: str | None = Query(None)) -> dict[str, Any]:
+def api_project_pack_update(
+    project_id: str,
+    body: PackUpdateBody,
+    request: Request,
+    gst: str | None = Query(None),
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
     from WEOS.factory.project_pack import add_update
 
+    g, _ = require_owned_project(request, project_id, gst)
     try:
         item = add_update(
             project_id,
             body.text,
             date=body.date,
-            company_gst=gst or body.gstNo,
+            company_gst=g or body.gstNo,
         )
         return {"ok": True, "item": item}
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -2175,14 +2245,17 @@ def api_project_pack_update(project_id: str, body: PackUpdateBody, gst: str | No
 @app.post("/api/projects/{project_id}/pack/files")
 async def api_project_pack_file(
     project_id: str,
+    request: Request,
     file: UploadFile = File(...),
     kind: str = Query("photo"),
     note: str | None = Query(None),
     date: str | None = Query(None),
     gst: str | None = Query(None),
 ) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
     from WEOS.factory.project_pack import add_file
 
+    g, _ = require_owned_project(request, project_id, gst)
     raw = await file.read()
     try:
         item = add_file(
@@ -2193,13 +2266,13 @@ async def api_project_pack_file(
             content_type=file.content_type,
             note=note,
             date=date,
-            company_gst=gst,
+            company_gst=g,
         )
         return {"ok": True, "item": item}
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -2207,21 +2280,37 @@ async def api_project_pack_file(
 
 
 @app.delete("/api/projects/{project_id}/pack/{item_id}")
-def api_project_pack_delete(project_id: str, item_id: str, gst: str | None = Query(None)) -> dict[str, Any]:
+def api_project_pack_delete(
+    project_id: str,
+    item_id: str,
+    request: Request,
+    gst: str | None = Query(None),
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
     from WEOS.factory.project_pack import delete_item
 
+    g, _ = require_owned_project(request, project_id, gst)
     try:
-        return delete_item(project_id, item_id, company_gst=gst)
+        return delete_item(project_id, item_id, company_gst=g)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/projects/{project_id}/pack/files/{item_id}")
-def api_project_pack_get_file(project_id: str, item_id: str) -> Response:
+def api_project_pack_get_file(
+    project_id: str,
+    item_id: str,
+    request: Request,
+    gst: str | None = Query(None),
+) -> Response:
+    from WEOS.factory.company_workspace import require_owned_project
     from WEOS.factory.project_pack import get_file
 
+    require_owned_project(request, project_id, gst)
     raw, ct, fname, item = get_file(project_id, item_id)
     if not raw:
         raise HTTPException(status_code=404, detail="File not found")
@@ -2234,7 +2323,10 @@ def api_project_pack_get_file(project_id: str, item_id: str) -> Response:
 
 
 @app.post("/api/projects/{project_id}/undo")
-def api_undo(project_id: str) -> dict[str, Any]:
+def api_undo(project_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
+
+    require_owned_project(request, project_id, gst)
     try:
         return undo_project(project_id)
     except Exception as exc:
@@ -2242,7 +2334,10 @@ def api_undo(project_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/projects/{project_id}/redo")
-def api_redo(project_id: str) -> dict[str, Any]:
+def api_redo(project_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
+
+    require_owned_project(request, project_id, gst)
     try:
         return redo_project(project_id)
     except Exception as exc:
@@ -2250,16 +2345,23 @@ def api_redo(project_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/projects/{project_id}/history")
-def api_history(project_id: str) -> dict[str, Any]:
+def api_history(project_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
+
+    require_owned_project(request, project_id, gst)
     return {"projectId": project_id, "history": project_history(project_id)}
 
 
 @app.post("/api/projects/{project_id}/calculate")
-def api_project_calculate(project_id: str, body: ProjectCalculateOpts | None = None) -> dict[str, Any]:
-    try:
-        doc = load_project(project_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+def api_project_calculate(
+    project_id: str,
+    request: Request,
+    body: ProjectCalculateOpts | None = None,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
+
+    _, doc = require_owned_project(request, project_id, gst)
     optimize = True if body is None else body.optimize
     persist = True if body is None else bool(getattr(body, "persist", True))
     if body is not None and body.quotationId:
@@ -2340,11 +2442,10 @@ def api_project_calculate(project_id: str, body: ProjectCalculateOpts | None = N
 
 
 @app.get("/api/projects/{project_id}/quotation")
-def api_quotation(project_id: str) -> dict[str, Any]:
-    try:
-        doc = load_project(project_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+def api_quotation(project_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project
+
+    _, doc = require_owned_project(request, project_id, gst)
     result = calculate_project(doc, optimize=True, include_preview=False)
     return {
         "projectId": project_id,
@@ -2582,7 +2683,7 @@ def _public_scan_response(ref: str, request: Request, *, fmt: str | None = None)
         pid = str(record.get("projectId") or "").strip()
         if pid:
             try:
-                return _pdf_response(pid, "customer", request=request, inline=True)
+                return _pdf_response(pid, "customer", request=request, inline=True, require_owner=False)
             except FileNotFoundError:
                 pass
     # Legacy: quote_store / project id PDF fallback when live HTML cannot build.
@@ -2626,7 +2727,7 @@ def _public_scan_response(ref: str, request: Request, *, fmt: str | None = None)
         except Exception:
             _log.exception("public quote PDF build failed for %s", ref)
     try:
-        return _pdf_response(ref, "customer", request=request, inline=True)
+        return _pdf_response(ref, "customer", request=request, inline=True, require_owner=False)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"Quote not found: {ref}") from exc
 
@@ -3504,19 +3605,30 @@ def api_list_customers(
 
 
 @app.get("/api/customers/{customer}/profile")
-def api_get_customer_profile(customer: str) -> dict[str, Any]:
-    from WEOS.factory.customer_store import load_customer_profile
+def api_get_customer_profile(customer: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_customer
 
-    return load_customer_profile(customer)
+    _, profile = require_owned_customer(request, customer, gst, include_unscoped=True)
+    return profile
 
 
 @app.put("/api/customers/{customer}/profile")
 @app.post("/api/customers/{customer}/profile")
-def api_save_customer_profile(customer: str, body: CustomerProfileBody) -> dict[str, Any]:
+def api_save_customer_profile(
+    customer: str,
+    body: CustomerProfileBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_customer
     from WEOS.factory.customer_store import save_customer_profile
 
+    g, _ = require_owned_customer(request, customer, gst, include_unscoped=True, for_write=True)
+    payload = body.model_dump(exclude_none=True)
+    # Tenant stamp is always the session company — never trust body.companyGst.
+    payload["companyGst"] = g
     try:
-        return save_customer_profile(customer, body.model_dump(exclude_none=True))
+        return save_customer_profile(customer, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -3608,9 +3720,16 @@ def api_add_customer_advance(customer: str, body: AdvanceBody, request: Request,
 
 
 @app.delete("/api/customers/{customer}/advances/{advance_id}")
-def api_delete_customer_advance(customer: str, advance_id: int) -> dict[str, Any]:
+def api_delete_customer_advance(
+    customer: str,
+    advance_id: int,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_customer
     from WEOS.factory.ledger_store import delete_advance
 
+    require_owned_customer(request, customer, gst, include_unscoped=True)
     try:
         return delete_advance(customer, advance_id)
     except FileNotFoundError as exc:
@@ -3620,16 +3739,23 @@ def api_delete_customer_advance(customer: str, advance_id: int) -> dict[str, Any
 
 
 @app.post("/api/projects/{project_id}/master-advances")
-def api_master_advance(project_id: str, body: AdvanceBody, gst: str | None = Query(None)) -> dict[str, Any]:
+def api_master_advance(
+    project_id: str,
+    body: AdvanceBody,
+    request: Request,
+    gst: str | None = Query(None),
+) -> dict[str, Any]:
     """Record an advance against one quote on this Master Ledger job only."""
+    from WEOS.factory.company_workspace import require_owned_project
     from WEOS.factory.ledger_store import add_advance
     from WEOS.factory.master_ledger import build_master_ledger
 
+    g, _ = require_owned_project(request, project_id, gst)
     qid = str(body.quoteId or "").strip()
     from WEOS.factory.ledger_store import is_any_quote_id
 
     try:
-        wrap = build_master_ledger(project_id=project_id, company_gst=gst)
+        wrap = build_master_ledger(project_id=project_id, company_gst=g)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -3649,6 +3775,7 @@ def api_master_advance(project_id: str, body: AdvanceBody, gst: str | None = Que
     payload["projectId"] = str((row or {}).get("projectId") or project_id)
     payload["quoteId"] = "any" if any_quote else qid
     payload["customerName"] = customer
+    payload["companyGst"] = g
     payload["allowUnscoped"] = True
     try:
         created = add_advance(customer, payload)
@@ -3656,22 +3783,24 @@ def api_master_advance(project_id: str, body: AdvanceBody, gst: str | None = Que
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    created["ledger"] = build_master_ledger(project_id=project_id, company_gst=gst).get("ledger")
+    created["ledger"] = build_master_ledger(project_id=project_id, company_gst=g).get("ledger")
     return created
 
 
 @app.get("/api/customers/{customer}/ledger.html")
 def api_customer_ledger_html(customer: str, request: Request, gst: str | None = Query(None)) -> HTMLResponse:
-    from WEOS.factory.company_store import company_branding, load_company, load_company_by_gst
+    from WEOS.factory.company_store import company_branding, load_company_by_gst
+    from WEOS.factory.company_workspace import require_owned_customer
     from WEOS.factory.ledger_pdf import render_ledger_html
     from WEOS.factory.ledger_store import build_ledger
 
+    g, _ = require_owned_customer(request, customer, gst, include_unscoped=True)
     try:
-        ledger = build_ledger(customer, company_gst=gst)
+        ledger = build_ledger(customer, company_gst=g)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    co = dict((load_company_by_gst(gst) if gst else None) or load_company() or {})
-    branding = company_branding(gst=gst)
+    co = dict(load_company_by_gst(g) or {})
+    branding = company_branding(gst=g)
     co.update({k: v for k, v in branding.items() if v})
     if branding.get("companyName") and not co.get("companyName"):
         co["companyName"] = branding["companyName"]
@@ -3679,17 +3808,19 @@ def api_customer_ledger_html(customer: str, request: Request, gst: str | None = 
 
 
 @app.get("/api/customers/{customer}/ledger.pdf")
-def api_customer_ledger_pdf(customer: str, gst: str | None = Query(None)) -> Response:
-    from WEOS.factory.company_store import company_branding, load_company, load_company_by_gst, logo_file
+def api_customer_ledger_pdf(customer: str, request: Request, gst: str | None = Query(None)) -> Response:
+    from WEOS.factory.company_store import company_branding, load_company_by_gst, logo_file
+    from WEOS.factory.company_workspace import require_owned_customer
     from WEOS.factory.ledger_pdf import ledger_filename, render_ledger_pdf
     from WEOS.factory.ledger_store import build_ledger
 
+    g, _ = require_owned_customer(request, customer, gst, include_unscoped=True)
     try:
-        ledger = build_ledger(customer, company_gst=gst)
+        ledger = build_ledger(customer, company_gst=g)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    co = dict((load_company_by_gst(gst) if gst else None) or load_company() or {})
-    branding = company_branding(gst=gst)
+    co = dict(load_company_by_gst(g) or {})
+    branding = company_branding(gst=g)
     co.update({k: v for k, v in branding.items() if v})
     lf = logo_file()
     if lf:
@@ -3704,17 +3835,19 @@ def api_customer_ledger_pdf(customer: str, gst: str | None = Query(None)) -> Res
 
 
 @app.get("/api/customers/{customer}/ledger.xlsx")
-def api_customer_ledger_xlsx(customer: str, gst: str | None = Query(None)) -> Response:
-    from WEOS.factory.company_store import company_branding, load_company, load_company_by_gst, logo_file
+def api_customer_ledger_xlsx(customer: str, request: Request, gst: str | None = Query(None)) -> Response:
+    from WEOS.factory.company_store import company_branding, load_company_by_gst, logo_file
+    from WEOS.factory.company_workspace import require_owned_customer
     from WEOS.factory.export_xlsx import export_ledger_xlsx, safe_xlsx_name
     from WEOS.factory.ledger_store import build_ledger
 
+    g, _ = require_owned_customer(request, customer, gst, include_unscoped=True)
     try:
-        ledger = build_ledger(customer, company_gst=gst)
+        ledger = build_ledger(customer, company_gst=g)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    co = dict((load_company_by_gst(gst) if gst else None) or load_company() or {})
-    co.update({k: v for k, v in company_branding(gst=gst).items() if v})
+    co = dict(load_company_by_gst(g) or {})
+    co.update({k: v for k, v in company_branding(gst=g).items() if v})
     lf = logo_file()
     if lf:
         co["logoPath"] = str(lf)
@@ -3728,9 +3861,16 @@ def api_customer_ledger_xlsx(customer: str, gst: str | None = Query(None)) -> Re
 
 
 @app.post("/api/customers/{customer}/stamp")
-async def api_upload_customer_stamp(customer: str, file: UploadFile = File(...)) -> dict[str, Any]:
+async def api_upload_customer_stamp(
+    customer: str,
+    request: Request,
+    file: UploadFile = File(...),
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_customer
     from WEOS.factory.media_assets import save_media
 
+    require_owned_customer(request, customer, gst, include_unscoped=True, for_write=True)
     raw = await file.read()
     try:
         return save_media(
@@ -3741,14 +3881,24 @@ async def api_upload_customer_stamp(customer: str, file: UploadFile = File(...))
 
 
 @app.get("/api/customers/{customer}/stamp")
-def api_get_customer_stamp(customer: str) -> Response:
+def api_get_customer_stamp(customer: str, request: Request, gst: str | None = None) -> Response:
+    from WEOS.factory.company_workspace import require_owned_customer
+
+    require_owned_customer(request, customer, gst, include_unscoped=True)
     return _media_response("customer", "stamp", customer)
 
 
 @app.post("/api/customers/{customer}/signature")
-async def api_upload_customer_signature(customer: str, file: UploadFile = File(...)) -> dict[str, Any]:
+async def api_upload_customer_signature(
+    customer: str,
+    request: Request,
+    file: UploadFile = File(...),
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_customer
     from WEOS.factory.media_assets import save_media
 
+    require_owned_customer(request, customer, gst, include_unscoped=True, for_write=True)
     raw = await file.read()
     try:
         return save_media(
@@ -3764,7 +3914,10 @@ async def api_upload_customer_signature(customer: str, file: UploadFile = File(.
 
 
 @app.get("/api/customers/{customer}/signature")
-def api_get_customer_signature(customer: str) -> Response:
+def api_get_customer_signature(customer: str, request: Request, gst: str | None = None) -> Response:
+    from WEOS.factory.company_workspace import require_owned_customer
+
+    require_owned_customer(request, customer, gst, include_unscoped=True)
     return _media_response("customer", "signature", customer)
 
 
@@ -3810,22 +3963,29 @@ def _advance_share_payload(adv: dict[str, Any], ledger: Mapping[str, Any], reque
 
 
 @app.get("/api/customers/{customer}/advances/{advance_id}/slip.pdf")
-def api_advance_slip_pdf(customer: str, advance_id: int, request: Request) -> Response:
+def api_advance_slip_pdf(
+    customer: str,
+    advance_id: int,
+    request: Request,
+    gst: str | None = None,
+) -> Response:
     from WEOS.factory.advance_slip_pdf import advance_slip_filename, render_advance_slip_pdf
-    from WEOS.factory.company_store import company_branding, load_company, logo_file
+    from WEOS.factory.company_store import company_branding, load_company_by_gst, logo_file
+    from WEOS.factory.company_workspace import require_owned_customer
     from WEOS.factory.ledger_store import build_ledger, scope_ledger
 
+    g, _ = require_owned_customer(request, customer, gst, include_unscoped=True)
     try:
         adv = _find_advance(customer, advance_id)
-        ledger = build_ledger(customer)
+        ledger = build_ledger(customer, company_gst=g)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    co = dict(load_company() or {})
-    co.update({k: v for k, v in company_branding().items() if v})
+    co = dict(load_company_by_gst(g) or {})
+    co.update({k: v for k, v in company_branding(gst=g).items() if v})
     lf = logo_file()
     if lf:
         co["logoPath"] = str(lf)
@@ -3850,22 +4010,29 @@ def api_advance_slip_pdf(customer: str, advance_id: int, request: Request) -> Re
 
 
 @app.get("/api/customers/{customer}/advances/{advance_id}/slip.xlsx")
-def api_advance_slip_xlsx(customer: str, advance_id: int) -> Response:
-    from WEOS.factory.company_store import company_branding, load_company, logo_file
+def api_advance_slip_xlsx(
+    customer: str,
+    advance_id: int,
+    request: Request,
+    gst: str | None = None,
+) -> Response:
+    from WEOS.factory.company_store import company_branding, load_company_by_gst, logo_file
+    from WEOS.factory.company_workspace import require_owned_customer
     from WEOS.factory.export_xlsx import export_advance_xlsx, safe_xlsx_name
     from WEOS.factory.ledger_store import build_ledger, scope_ledger
 
+    g, _ = require_owned_customer(request, customer, gst, include_unscoped=True)
     try:
         adv = _find_advance(customer, advance_id)
-        ledger = build_ledger(customer)
+        ledger = build_ledger(customer, company_gst=g)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    co = dict(load_company() or {})
-    co.update({k: v for k, v in company_branding().items() if v})
+    co = dict(load_company_by_gst(g) or {})
+    co.update({k: v for k, v in company_branding(gst=g).items() if v})
     lf = logo_file()
     if lf:
         co["logoPath"] = str(lf)
@@ -3879,7 +4046,7 @@ def api_advance_slip_xlsx(customer: str, advance_id: int) -> Response:
         quote_id=str(adv.get("quoteId") or adv.get("quotationId") or "") or None,
     )
     raw = export_advance_xlsx(adv, company=co, ledger=ledger, customer=customer)
-    fname = safe_xlsx_name(customer, "advance", str(advance_id))
+    fname = safe_xlsx_name(customer, f"advance_{advance_id}")
     return Response(
         content=raw,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -3890,17 +4057,24 @@ def api_advance_slip_xlsx(customer: str, advance_id: int) -> Response:
 def _customer_xlsx_response(
     project_id: str,
     *,
+    request: Request | None = None,
     brand: str | None = None,
     overlay: dict[str, Any] | None = None,
     embed_drawings: str = "thumb",
+    require_owner: bool = True,
 ) -> Response:
     from WEOS.factory.export_xlsx import export_quote_xlsx, prepare_customer_export_payload, safe_xlsx_name
     from WEOS.factory.project_store import load_project
 
-    try:
-        doc = load_project(project_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if require_owner:
+        from WEOS.factory.company_workspace import require_owned_project
+
+        _, doc = require_owned_project(request, project_id)
+    else:
+        try:
+            doc = load_project(project_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
     if overlay:
         if overlay.get("lines") is not None:
             overlay_lines = _coerce_cart_lines(
@@ -3962,16 +4136,20 @@ def _customer_xlsx_response(
 @app.get("/api/projects/{project_id}/customer.xlsx")
 def api_customer_quote_xlsx(
     project_id: str,
+    request: Request,
     brand: str | None = Query(None),
     drawings: str | None = Query(None),
 ) -> Response:
     """Excel export mirroring the customer quote PDF (A4 + formulas, no factory BOM)."""
-    return _customer_xlsx_response(project_id, brand=brand, embed_drawings=drawings or "thumb")
+    return _customer_xlsx_response(
+        project_id, request=request, brand=brand, embed_drawings=drawings or "thumb"
+    )
 
 
 @app.post("/api/projects/{project_id}/customer.xlsx")
 def api_customer_quote_xlsx_post(
     project_id: str,
+    request: Request,
     body: PdfExportBody | None = None,
     brand: str | None = Query(None),
     drawings: str | None = Query(None),
@@ -3981,6 +4159,7 @@ def api_customer_quote_xlsx_post(
     embed = drawings or overlay.get("embedDrawings") or overlay.get("drawings") or "thumb"
     return _customer_xlsx_response(
         project_id,
+        request=request,
         brand=brand or overlay.get("brand"),
         overlay=overlay,
         embed_drawings=str(embed or "thumb"),

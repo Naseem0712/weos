@@ -5858,8 +5858,9 @@ function updatePdfLinks(){
   }
   if (!id) return;
   const brand = (typeof activePdfBrand === 'function' && activePdfBrand()) || 'marqt';
-  const q = '?brand='+encodeURIComponent(brand);
-  if ($('linkQuote')) $('linkQuote').href = `${API_BASE}/api/projects/${id}/quotation`;
+  const tok = (typeof savedSessionToken === 'function' && savedSessionToken()) || '';
+  const q = '?brand='+encodeURIComponent(brand)+(tok ? '&session='+encodeURIComponent(tok) : '');
+  if ($('linkQuote')) $('linkQuote').href = `${API_BASE}/api/projects/${id}/quotation`+(tok ? '?session='+encodeURIComponent(tok) : '');
   if ($('linkCust')) $('linkCust').href = `${API_BASE}/api/projects/${id}/customer-pdf`+q;
   if ($('linkCustPrint')) $('linkCustPrint').href = `${API_BASE}/api/projects/${id}/customer-pdf`+q;
   if ($('linkCustXlsx')) $('linkCustXlsx').href = `${API_BASE}/api/projects/${id}/customer.xlsx`+q;
