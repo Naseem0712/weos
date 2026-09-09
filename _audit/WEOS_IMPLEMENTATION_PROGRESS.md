@@ -417,8 +417,9 @@ Engineering Master Data / BOM Foundation remains on the architecture track (sepa
 ## Checkpoint (current session)
 
 - **Starting HEAD (Batch A finish):** `5a8a91eace4aa2bf534c82c4bcefd2cf2cfa9fd9` (Pergola plan docs)
+- **Ending HEAD (Batch A):** `19df8bca5658e18087d973aba2cdb58e94c2983b`
 - **Branch:** `weos-v2-foundation`
-- Batch A: PDF Reliability **PASS** — committed + pushed this session
+- Batch A: PDF Reliability **PASS** — committed `19df8bc` + pushed to `origin/weos-v2-foundation`
 - Production deployment: **NOT PERFORMED**
 - **Next eligible:** **Batch 8.5 / 9.5 — Pergola** (then UX/PDF Batch B — PDF Viewer Redesign)
 - Hard stop: do **not** start Pergola or PDF Viewer Redesign in this Batch A finish turn
