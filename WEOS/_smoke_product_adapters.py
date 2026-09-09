@@ -144,6 +144,30 @@ def main() -> None:
     shape = str((calc_stair or {}).get("shape") or "").lower()
     _ok(shape == "staircase" or isinstance((calc_stair or {}).get("stairGeometry"), dict), "Stair geometry preserved")
 
+    # --- Pergola first-class (Batch 8.5) ---
+    perg_ad = reg.resolve("PERGOLA")
+    _ok(perg_ad.adapter_id == "pergola", "Pergola first-class adapter")
+    el_p = {
+        "elementId": "ELM-P",
+        "productType": "PERGOLA",
+        "widthMm": 3000,
+        "heightMm": 2400,
+        "configPayload": {
+            "postHeightMm": 2700,
+            "structure": {"postCount": 4, "rafterCount": 6},
+            "sides": {"front": {"treatment": "open"}, "back": {"treatment": "louvers"}},
+            "roof": {"cover": "polycarbonate"},
+            "finish": {"colour": "Black"},
+        },
+    }
+    prev_p = perg_ad.render_preview(el_p)
+    _ok(prev_p.get("productType") == "PERGOLA", "Pergola identity")
+    _ok(prev_p.get("usedFallback") is False, "Pergola engine preview")
+    _ok("<svg" in str(prev_p.get("svg") or "") and 'data-role="post"' in str(prev_p.get("svg") or ""), "Pergola SVG posts")
+    pschema = perg_ad.get_property_schema()
+    pgroups = {g.get("id") for g in (pschema.get("groups") or [])}
+    _ok("side_treatments" in pgroups and "floor_deck" in pgroups and "summary" in pgroups, "Pergola property groups")
+
     # --- Unknown → fallback ---
     unk = reg.resolve("CUSTOM_WIDGET")
     _ok(unk.adapter_id == "fallback", "Unknown uses fallback")

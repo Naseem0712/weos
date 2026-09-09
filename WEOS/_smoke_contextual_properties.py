@@ -70,6 +70,16 @@ def main() -> None:
     _ok("widthMm" in vent_keys, "Ventilator width")
     _ok("mountType" not in vent_keys, "No railing mount on ventilator")
 
+    # --- Pergola schema (Batch 8.5 / 9.5) ---
+    perg_schema = pa.property_schema_for("PERGOLA")
+    _ok(perg_schema.get("adapterId") == "pergola", "Pergola schema loads")
+    perg_keys = _field_keys(perg_schema)
+    _ok("depthMm" in perg_keys and "sides.front.treatment" in perg_keys, "Pergola geometry + front side")
+    _ok("sides.left.treatment" in perg_keys and "sides.right.treatment" in perg_keys and "sides.back.treatment" in perg_keys, "Pergola four side zones")
+    _ok("sectionSeries" not in perg_keys and "mountType" not in perg_keys, "No window/railing on Pergola")
+    _ok(not cp.schemas_cross_pollute(perg_schema, win_schema), "Pergola vs window no pollution")
+    _ok(not cp.schemas_cross_pollute(perg_schema, rail_schema), "Pergola vs railing no pollution")
+
     # --- Assembly / Connection schemas ---
     asm_schema = pa.property_schema_for("ASSEMBLY")
     _ok(asm_schema.get("adapterId") == "assembly", "Assembly schema loads")
