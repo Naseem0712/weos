@@ -290,7 +290,7 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 - Exact product types preserved — WINDOW collapse refused
 - Mixed A-01 Sliding+Fixed+Ventilator on same Universal Canvas
 - Hard stop: Contextual Property Panel is B9
-- **PARITY PENDING: Pergola** — B8 shipped with pergola as thin schematic only; tools/schema insufficient for first-class PERGOLA (posts/beams/rafters/louvers/side zones/roof/deck). Completion queued as **Batch 8.5 / 9.5** (not a separate canvas).
+- **PARITY PENDING: Pergola** — B8 shipped with pergola as thin schematic only; tools/schema insufficient for first-class PERGOLA (posts/beams/rafters/louvers/side zones/roof/deck). Completion queued as **Batch 8.5 / 9.5** (not a separate canvas). **(Cleared in Batch 8.5/9.5 — see below.)**
 
 ### Combined regression gate (after B8)
 
@@ -318,7 +318,7 @@ Re-run after B9 with contextual properties smoke.
 - Window / Railing / Ventilator / Assembly / Connection schemas — no cross-product pollution
 - When `WEOS_UNIVERSAL_CANVAS` ON: `#railTools` / `#showerTools` / `#ventTools` / `#windowCartTools` hidden (PARITY PENDING — not deleted)
 - Property updates: Panel → geometry/config split → SQL save → preview; fail closed
-- **PARITY PENDING: Pergola** — B9 property schemas do not cover first-class Pergola groups; unfinished B8/B9 product surface (see Batch 8.5 / 9.5)
+- **PARITY PENDING: Pergola** — B9 property schemas do not cover first-class Pergola groups; unfinished B8/B9 product surface (see Batch 8.5 / 9.5). **(Cleared in Batch 8.5/9.5.)**
 - Hard stop after B9: next *architecture* eligible was Engineering Master Data / BOM Foundation; **product gap** Pergola completion is inserted in the UX/PDF queue below (not a new architecture)
 
 ### Combined regression gate (after B8+B9)
@@ -327,35 +327,39 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 
 ---
 
-### BATCH 8.5 / 9.5 — Pergola Product Adapter + Property Panel + Print/PDF *(upcoming)*
+### BATCH 8.5 / 9.5 — Pergola Product Adapter + Property Panel + Print/PDF
 
 | Field | Value |
 |---|---|
 | **ID** | B8.5 / B9.5 |
 | **Goal** | First-class **PERGOLA** on Universal Canvas: adapter registry + contextual property panel + quote/print design summary + PDF preflight — **no** PergolaCanvas / separate viewport |
-| **Status** | **QUEUED** — B8/B9 pushed without Pergola parity (**PARITY PENDING: Pergola tools/schema insufficient**) |
-| **Scope** | Product-specific B8/B9 completion requirement only — **not** a separate canvas architecture |
+| **Status** | **DONE** |
+| **Scope** | Product-specific B8/B9 completion — not a separate canvas architecture |
+| **Files committed** | `WEOS/factory/pergola_model.py`, `WEOS/factory/product_adapters.py`, `WEOS/factory/special_schematics.py`, `WEOS/factory/project_engine.py`, `WEOS/factory/window_specs.py`, `WEOS/factory/pdf_preflight.py`, `WEOS/factory/contextual_properties.py`, `WEOS/factory/design_scene.py`, `WEOS/products/pergola_stub/*`, `WEOS/_smoke_pergola_adapter.py`, `WEOS/_smoke_product_adapters.py`, `WEOS/_smoke_contextual_properties.py`, `_audit/WEOS_IMPLEMENTATION_PROGRESS.md`, `_audit/WEOS_DEAD_CODE_REGISTER.md` |
 | **Geometry** | W / D / H / qty; posts, beams, rafters, louvers; Front / Left / Right / Back side zones; roof; optional deck |
-| **UI** | Property panel groups per user Pergola spec; save/reload round-trip; print design summary |
-| **PDF** | PDF preflight includes Pergola; design summary in quote/print path |
-| **Tests** | Adapter cases A–G + PDF coverage for Pergola |
-| **Suggested commits** | (1) adapter / schema / render · (2) property panel · (3) quote / print / PDF summary |
-| **Schema / migration** | TBD (prefer additive config only; no giant domain rewrite) |
-| **Commit / Push** | Not started |
+| **UI** | Property panel groups: Geometry, Structure, Louvers, Roof, Side Treatments, Floor/Deck, Finish, Summary |
+| **PDF** | Design summary in quote/print specs; preflight requires Pergola summary fields and refuses silent omit |
+| **Tests** | `_smoke_pergola_adapter.py` + extended product adapters / contextual properties |
+| **Schema / migration** | Additive config only (`configPayload` / `options.pergola`) — no giant domain rewrite |
+| **Commit / Push** | See commits below; pushed to `origin/weos-v2-foundation` |
 | **Rollback** | Revert B8.5/B9.5 commits only; leave B7–B9 host + other adapters intact |
+
+#### B8.5 / B9.5 notes
+
+- Root cause: B8/B9 registered Pergola as thin schematic only (`schematic_pergola`) with colour/notes schema — insufficient for sides/roof/deck/structure and print summary
+- `PergolaAdapter` (`adapter_id=pergola`) replaces thin path; reuses `special_schematics.pergola_svg`
+- ONE Universal Canvas only — no `PergolaCanvas`
+- Geometry independent of materials; Front/Left/Right/Back are distinct zones
+- Save/reload via SQL design_scene + property panel APIs (not DOM-only)
+- **PARITY PENDING: Pergola** cleared for adapter/panel/print surface; full structural engineering / BOM still out of scope
+- Hard stop: do **not** start PDF Viewer Redesign (Batch B) or Engineering Master Data/BOM in this batch
 
 #### Queue order (strict)
 
-1. ~~UX/PDF **Batch A — PDF reliability**~~ **DONE** (this session)
-2. **Next product completion:** **Batch 8.5 / 9.5 — Pergola** (unfinished B8/B9 surface) — run **after** Batch A completes, **before** PDF Viewer Redesign
-3. **Then:** UX/PDF **Batch B — PDF Viewer Redesign**
-4. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains separate and must not absorb Pergola into a new canvas plan
-
-#### Hard constraints
-
-- ONE Universal Canvas only — **NO** `PergolaCanvas` / separate viewport
-- Reuse adapter registry + contextual panel patterns from B8/B9
-- Do not start a giant new architecture under Pergola cover
+1. ~~UX/PDF **Batch A — PDF reliability**~~ **DONE**
+2. ~~**Batch 8.5 / 9.5 — Pergola**~~ **DONE**
+3. **Next:** UX/PDF **Batch B — PDF Viewer Redesign**
+4. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains separate
 
 ---
 
@@ -411,16 +415,45 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 
 ## Remaining batches (from user plan / target doc)
 
-**Immediate UX/PDF queue:** ~~Batch A (PDF reliability)~~ **DONE** → **Batch 8.5/9.5 Pergola** → Batch B (PDF Viewer Redesign).  
+**Immediate UX/PDF queue:** ~~Batch A (PDF reliability)~~ **DONE** → ~~Batch 8.5/9.5 Pergola~~ **DONE** → Batch B (PDF Viewer Redesign).  
 Engineering Master Data / BOM Foundation remains on the architecture track (separate from Pergola product completion). Production deployment — **NOT PERFORMED**.
 
 ## Checkpoint (current session)
 
-- **Starting HEAD (Batch A finish):** `5a8a91eace4aa2bf534c82c4bcefd2cf2cfa9fd9` (Pergola plan docs)
-- **Ending HEAD (Batch A):** `19df8bca5658e18087d973aba2cdb58e94c2983b`
+- **Starting HEAD (Batch 8.5/9.5):** `a906e191010424b9278abd4b64e6a92159ae00ad` (matches expected ~`a906e19`)
+- **Ending HEAD:** *(set after docs stamp push)*
 - **Branch:** `weos-v2-foundation`
-- Batch A: PDF Reliability **PASS** — committed `19df8bc` + pushed to `origin/weos-v2-foundation`
+- Batch 8.5/9.5: Pergola adapter + property panel + quote/PDF **DONE** (committed + pushed)
+- **Fixes during gate:** `_bool(*vals)` in `pergola_model.py`; smoke calls `build_customer_pdf_bytes(payload)` without invalid `template=` kwarg
+- **Regression gate:** **PASS** (2026-09-10 retry; shell OK with elevated permissions)
+
+| Smoke | Result |
+|---|---|
+| `_smoke_pergola_adapter.py` | **PASS** |
+| `_smoke_product_adapters.py` | **PASS** |
+| `_smoke_contextual_properties.py` | **PASS** |
+| `_smoke_pdf_reliability.py` | **PASS** |
+| `_smoke_universal_canvas.py` | **PASS** |
+| `_smoke_special_catalogue_products.py` | **PASS** |
+| `_smoke_quote_pdf_cart.py` | **PASS** |
+| `_smoke_persistence_durability.py` | **PASS** |
+| `_smoke_canonical_customer.py` | **PASS** |
+| `_smoke_canonical_project.py` | **PASS** |
+| `_smoke_tenant_ownership.py` | **PASS** |
+| `_smoke_design_hierarchy.py` | **PASS** |
+| `_smoke_design_scene.py` | **PASS** |
+| `_smoke_quote_identity_flow.py` | **PASS** |
+| `_smoke_quote_totals.py` | **PASS** |
+| `_smoke_public_scan_security.py` | **PASS** |
+| `_smoke_money_specs.py` | **PASS** |
+| `_smoke_railing_pdf.py` | **PASS** |
+| `_smoke_normal_railing.py` | **PASS** |
+| `_smoke_stair_railing.py` | **PASS** |
+| `_smoke_sliding_track_opening.py` | **PASS** |
+| `_smoke_casement_mullion.py` | **PASS** |
+
+- Known non-Pergola: `_smoke_gst_hub_persist.py` still FAIL (finance totals / restore) — left untouched
 - Production deployment: **NOT PERFORMED**
-- **Next eligible:** **Batch 8.5 / 9.5 — Pergola** (then UX/PDF Batch B — PDF Viewer Redesign)
-- Hard stop: do **not** start Pergola or PDF Viewer Redesign in this Batch A finish turn
-- Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, etc.
+- **Next eligible:** UX/PDF **Batch B — PDF Viewer Redesign**
+- Hard stop: do **not** start Batch B or Engineering Master Data / BOM in this turn
+- Unrelated dirty left untouched: other product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, etc.
