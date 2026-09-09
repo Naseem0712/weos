@@ -1,6 +1,7 @@
 /**
- * WEOS Universal Canvas — Adapter registry.
- * No giant product calc in the canvas; adapters supply SVG or placeholder.
+ * WEOS Universal Canvas — Adapter registry (Batch 8).
+ * ONE canvas host; product engines via registry (no WindowCanvas/RailingCanvas).
+ * Server-side ProductAdapter contract owns calculate/preview; JS mirrors types.
  */
 (function (global) {
   "use strict";
@@ -52,6 +53,7 @@
         .trim()
         .toUpperCase();
       if (!key) throw new Error("productType required");
+      if (key === "WINDOW") throw new Error("Do not register collapsed WINDOW — use SLIDING_WINDOW / …");
       map[key] = fn;
     }
 
@@ -95,11 +97,12 @@
       return Object.keys(map).sort();
     }
 
-    // Default: use supplied preview SVG when available (existing engine path).
+    // Prefer engine SVG from server canvas view / preview API; else placeholder.
     function previewSvgAdapter(el, context) {
       var svg =
         (context && context.previewSvg) ||
         el.previewSvg ||
+        (el.render && el.render.svg) ||
         (context && context.previewByElementId && context.previewByElementId[el.elementId]);
       if (svg) {
         return {
@@ -135,6 +138,7 @@
       "GRILL",
       "PERGOLA",
       "LOUVER",
+      "SURFACE",
     ].forEach(function (pt) {
       register(pt, previewSvgAdapter);
     });

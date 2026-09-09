@@ -316,6 +316,99 @@ def get_element(element_id: str, *, company_gst: str) -> dict[str, Any] | None:
         return row.to_dict()
 
 
+def update_element(
+    element_id: str,
+    *,
+    company_gst: str,
+    width_mm: float | None = None,
+    height_mm: float | None = None,
+    x_mm: float | None = None,
+    y_mm: float | None = None,
+    orientation: str | None = None,
+    sill_height_mm: float | None = None,
+    geometry_payload: dict[str, Any] | None = None,
+    config_payload: dict[str, Any] | None = None,
+    merge_config: bool = True,
+    name: str | None = None,
+    status: str | None = None,
+) -> dict[str, Any]:
+    """Durable element update — geometry vs config_payload kept separate.
+
+    Does not allow collapsing product_type to WINDOW. Series/glass/hardware
+    belong in config_payload only.
+    """
+    _require_db()
+    gst = _norm_company_gst(company_gst)
+    from WEOS.db.models import DesignElement
+
+    with session_scope() as s:
+        row = s.get(DesignElement, str(element_id).strip())
+        if row is None or _norm_company_gst(row.company_gst) != gst:
+            raise PermissionError("element not found for company")
+        if width_mm is not None:
+            row.width_mm = float(width_mm)
+        if height_mm is not None:
+            row.height_mm = float(height_mm)
+        if x_mm is not None:
+            row.x_mm = float(x_mm)
+        if y_mm is not None:
+            row.y_mm = float(y_mm)
+        if orientation is not None:
+            row.orientation = orientation
+        if sill_height_mm is not None:
+            row.sill_height_mm = float(sill_height_mm)
+        if geometry_payload is not None:
+            row.geometry_payload = dict(geometry_payload)
+        if config_payload is not None:
+            if merge_config and isinstance(row.config_payload, dict):
+                merged = dict(row.config_payload)
+                merged.update(dict(config_payload))
+                row.config_payload = merged
+            else:
+                row.config_payload = dict(config_payload)
+        if status is not None:
+            row.status = str(status)
+        # name is not a DesignElement column — ignore safely for API compat
+        _ = name
+        s.flush()
+        return row.to_dict()
+
+
+def update_assembly(
+    assembly_id: str,
+    *,
+    company_gst: str,
+    name: str | None = None,
+    location_id: str | None = None,
+    bounds: dict[str, Any] | None = None,
+    status: str | None = None,
+) -> dict[str, Any]:
+    """Simple assembly metadata edit — no complex resize."""
+    _require_db()
+    gst = _norm_company_gst(company_gst)
+    from WEOS.db.models import Assembly, Location
+
+    with session_scope() as s:
+        row = s.get(Assembly, str(assembly_id).strip())
+        if row is None or _norm_company_gst(row.company_gst) != gst:
+            raise PermissionError("assembly not found for company")
+        if name is not None:
+            row.name = str(name).strip() or row.name
+        if location_id is not None:
+            loc = s.get(Location, str(location_id).strip())
+            if loc is None or _norm_company_gst(loc.company_gst) != gst:
+                raise PermissionError("location not found for company")
+            if loc.project_id != row.project_id:
+                raise ValueError("location not in assembly project")
+            row.location_id = loc.location_id
+        if bounds is not None:
+            row.bounds = dict(bounds)
+        if status is not None:
+            row.status = str(status)
+        s.flush()
+        return row.to_dict()
+
+
 def list_elements(assembly_id: str, *, company_gst: str) -> list[dict[str, Any]]:
     _require_db()
     gst = _norm_company_gst(company_gst)

@@ -49,9 +49,11 @@
 | `WEOS/factory/canonical_customer.py` / `canonical_project.py` | ACTIVE | V2 identity spine (B3/B4) | No |
 | Old Agent `customers.mobile` global unique | ACTIVE LEGACY | Still present; new path uses company-scoped identities — do not delete yet | No |
 | `_tmp_*` directories | UNKNOWN | Local QA artifacts — never commit | N/A |
+| `index.html` `#railTools` / `#showerTools` / `#ventTools` / stacked window controls | ACTIVE LEGACY — **PARITY PENDING** | Still required when `WEOS_UNIVERSAL_CANVAS` OFF; B9 wraps/hides when ON — do **not** delete until parity proven | No |
+| `#livePreview` legacy preview host | ACTIVE LEGACY — **PARITY PENDING** | Rollback path for Universal Canvas flag OFF | No |
 
 ---
 
 ## Deletion log
 
-*(empty — no CONFIRMED UNUSED deletions in Batch 0/1)*
+*(empty — no CONFIRMED UNUSED deletions in Batch 0–8)*

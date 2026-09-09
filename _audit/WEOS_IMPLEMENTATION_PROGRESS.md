@@ -268,17 +268,45 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 
 ---
 
+### BATCH 8 — Product Plugin Adapters
+
+| Field | Value |
+|---|---|
+| **ID** | B8 |
+| **Goal** | Connect product engines to ONE Universal Canvas via registry adapters (no WindowCanvas/RailingCanvas) |
+| **Files committed** | `WEOS/factory/product_adapters.py`, `WEOS/factory/universal_canvas.py`, `WEOS/factory/design_scene.py` (`update_element`/`update_assembly`), `WEOS/api/design_routes.py`, `WEOS/website/canvas/adapters.js`, `WEOS/_smoke_product_adapters.py`, `_audit/WEOS_IMPLEMENTATION_PROGRESS.md` |
+| **Schema / migration** | None |
+| **Tests** | `_smoke_product_adapters.py` **PASS**; `_smoke_universal_canvas.py` **PASS** |
+| **Issues** | None — engines reused; unknown → placeholder fallback |
+| **Commit** | (see git) — `feat(canvas): connect product engines through universal adapters` |
+| **Push** | `origin/weos-v2-foundation` |
+| **Rollback** | Revert B8 commit; B7 canvas host remains |
+
+#### B8 notes
+
+- Adapter contract: supports / loadConfiguration / renderPreview / validate / getPropertySchema / updateConfiguration / calculate
+- Window family: Sliding/Fixed/Casement/Door/Fold via existing `generate_job` + SVG (no geometry_engine rewrite)
+- Railing/Ventilator/Shower via existing engines; louvers/pergola/grill/surface thin schematics
+- Exact product types preserved — WINDOW collapse refused
+- Mixed A-01 Sliding+Fixed+Ventilator on same Universal Canvas
+- Hard stop: Contextual Property Panel is B9
+
+### Combined regression gate (after B8)
+
+Re-run after B9 with contextual properties smoke.
+
+---
+
 ## Remaining batches (from user plan / target doc)
 
-Product Plugin Adapters / Contextual Property Panel — **NEXT ELIGIBLE**. Production deployment — **NOT PERFORMED**.
+Contextual Property Panel — **NEXT ELIGIBLE**. Production deployment — **NOT PERFORMED**.
 
 ## Checkpoint (current session)
 
-- **Starting HEAD:** `9da83186504ff25bec730e1608b87301fd85ade1`
-- **Ending HEAD:** 33e2e6e7d06bb2df97f83965196047a9dd5f2006
+- **Starting HEAD:** `2020822640ef85c63f7b76db04bf2c569aee3703`
+- **Ending HEAD:** (B8 commit)
 - **Branch:** weos-v2-foundation
-- B7 feature + docs pushed to `origin/weos-v2-foundation`
 - Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, blueprint/gap docs, etc.
 - Production deployment: **NOT PERFORMED**
-- Next eligible batch: **Product Plugin Adapters / Contextual Property Panel**
-- Hard stop after B7: **YES**
+- Next eligible batch: **Contextual Property Panel (B9)**
+- Hard stop after B8 alone: no — B9 authorized in same session after B8 PASS+push

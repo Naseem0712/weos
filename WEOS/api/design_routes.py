@@ -567,3 +567,214 @@ def api_patch_element_pose(
         )
     except Exception as exc:
         raise _map_err(exc) from exc
+
+
+# ── Batch 8 — Product Plugin Adapters ─────────────────────────────────────────
+
+
+class ElementUpdateBody(BaseModel):
+    widthMm: float | None = None
+    heightMm: float | None = None
+    xMm: float | None = None
+    yMm: float | None = None
+    orientation: str | None = None
+    sillHeightMm: float | None = None
+    geometryPayload: dict[str, Any] | None = None
+    configPayload: dict[str, Any] | None = None
+    mergeConfig: bool = True
+    status: str | None = None
+
+
+class AssemblyUpdateBody(BaseModel):
+    name: str | None = None
+    locationId: str | None = None
+    bounds: dict[str, Any] | None = None
+    status: str | None = None
+
+
+@router.get("/api/adapters")
+def api_list_adapters() -> dict[str, Any]:
+    from WEOS.factory import product_adapters as pa
+
+    reg = pa.DEFAULT_PRODUCT_REGISTRY
+    return {
+        "host": "UniversalCanvas",
+        "adapters": reg.registered_product_types(),
+        "contract": [
+            "supports",
+            "loadConfiguration",
+            "renderPreview",
+            "validate",
+            "getPropertySchema",
+            "updateConfiguration",
+            "calculate",
+        ],
+    }
+
+
+@router.get("/api/adapters/{product_type}/schema")
+def api_adapter_schema(product_type: str) -> dict[str, Any]:
+    from WEOS.factory import product_adapters as pa
+
+    pt = str(product_type or "").strip().upper()
+    if pt == "WINDOW":
+        raise HTTPException(
+            status_code=400,
+            detail="product type must not collapse to WINDOW — use SLIDING_WINDOW / CASEMENT_WINDOW / …",
+        )
+    return pa.property_schema_for(pt)
+
+
+@router.post("/api/adapters/{product_type}/preview")
+def api_adapter_preview(product_type: str, body: dict[str, Any]) -> dict[str, Any]:
+    """Stateless adapter preview — element geometry + config → engine SVG."""
+    from WEOS.factory import product_adapters as pa
+
+    pt = str(product_type or "").strip().upper()
+    if pt == "WINDOW":
+        raise HTTPException(
+            status_code=400,
+            detail="product type must not collapse to WINDOW",
+        )
+    el = dict(body or {})
+    el["productType"] = pt
+    cfg = el.pop("config", None) or el.get("configPayload")
+    return pa.render_element_preview(el, cfg if isinstance(cfg, dict) else None)
+
+
+@router.get("/api/elements/{element_id}")
+def api_get_element(
+    element_id: str,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_scene as ds
+
+    g = require_company_gst(request, gst)
+    row = ds.get_element(element_id, company_gst=g)
+    if not row:
+        raise HTTPException(status_code=404, detail="element not found")
+    return row
+
+
+@router.patch("/api/elements/{element_id}")
+def api_patch_element(
+    element_id: str,
+    body: ElementUpdateBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    """Durable geometry and/or ProductConfiguration update (SQL SoT)."""
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_scene as ds
+    from WEOS.factory import product_adapters as pa
+
+    g = require_company_gst(request, gst)
+    try:
+        existing = ds.get_element(element_id, company_gst=g)
+        if not existing:
+            raise PermissionError("element not found for company")
+        cfg_patch = body.configPayload
+        if cfg_patch is not None:
+            ad = pa.resolve_adapter(existing.get("productType") or "")
+            cfg_patch = ad.update_configuration(existing, cfg_patch)
+        updated = ds.update_element(
+            element_id,
+            company_gst=g,
+            width_mm=body.widthMm,
+            height_mm=body.heightMm,
+            x_mm=body.xMm,
+            y_mm=body.yMm,
+            orientation=body.orientation,
+            sill_height_mm=body.sillHeightMm,
+            geometry_payload=body.geometryPayload,
+            config_payload=cfg_patch,
+            merge_config=bool(body.mergeConfig),
+            status=body.status,
+        )
+        return {"ok": True, "persisted": True, "element": updated}
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/elements/{element_id}/preview")
+def api_element_preview(
+    element_id: str,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_scene as ds
+    from WEOS.factory import product_adapters as pa
+
+    g = require_company_gst(request, gst)
+    el = ds.get_element(element_id, company_gst=g)
+    if not el:
+        raise HTTPException(status_code=404, detail="element not found")
+    return pa.render_element_preview(el)
+
+
+@router.post("/api/elements/{element_id}/calculate")
+def api_element_calculate(
+    element_id: str,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_scene as ds
+    from WEOS.factory import product_adapters as pa
+
+    g = require_company_gst(request, gst)
+    el = ds.get_element(element_id, company_gst=g)
+    if not el:
+        raise HTTPException(status_code=404, detail="element not found")
+    ad = pa.resolve_adapter(el.get("productType") or "")
+    cfg = ad.load_configuration(el)
+    out = ad.calculate(el, cfg)
+    return {"ok": out is not None, "adapterId": ad.adapter_id, "productType": el.get("productType"), "result": out}
+
+
+@router.get("/api/elements/{element_id}/property-schema")
+def api_element_property_schema(
+    element_id: str,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_scene as ds
+    from WEOS.factory import product_adapters as pa
+
+    g = require_company_gst(request, gst)
+    el = ds.get_element(element_id, company_gst=g)
+    if not el:
+        raise HTTPException(status_code=404, detail="element not found")
+    schema = pa.property_schema_for(el.get("productType") or "")
+    schema["elementId"] = el.get("elementId")
+    schema["assemblyId"] = el.get("assemblyId")
+    return schema
+
+
+@router.patch("/api/assemblies/{assembly_id}")
+def api_patch_assembly(
+    assembly_id: str,
+    body: AssemblyUpdateBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_scene as ds
+
+    g = require_company_gst(request, gst)
+    try:
+        updated = ds.update_assembly(
+            assembly_id,
+            company_gst=g,
+            name=body.name,
+            location_id=body.locationId,
+            bounds=body.bounds,
+            status=body.status,
+        )
+        return {"ok": True, "persisted": True, "assembly": updated}
+    except Exception as exc:
+        raise _map_err(exc) from exc

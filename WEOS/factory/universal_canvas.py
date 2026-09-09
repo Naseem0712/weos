@@ -166,8 +166,17 @@ def _preview_svg_adapter(element: Mapping[str, Any], context: Mapping[str, Any] 
 
 
 def build_default_registry() -> AdapterRegistry:
+    """B8: registry dispatches to product engine adapters (still ONE canvas host)."""
+
+    def _engine_or_preview(
+        element: Mapping[str, Any], context: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
+        # Lazy import — product_adapters imports placeholder_render from this module.
+        from WEOS.factory.product_adapters import canvas_adapter_fn
+
+        return canvas_adapter_fn(element, context)
+
     reg = AdapterRegistry()
-    # B7: thin preview-SVG adapters for known product types (no geometry engines).
     for pt in (
         "SLIDING_WINDOW",
         "CASEMENT_WINDOW",
@@ -180,8 +189,9 @@ def build_default_registry() -> AdapterRegistry:
         "GRILL",
         "PERGOLA",
         "LOUVER",
+        "SURFACE",
     ):
-        reg.register(pt, _preview_svg_adapter)
+        reg.register(pt, _engine_or_preview)
     return reg
 
 
