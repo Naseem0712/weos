@@ -398,16 +398,9 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
             add("GAP", f"{_mm_txt(gap)} mm")
             add("MATERIAL", "Aluminium louver blades and outer frame")
         elif world == "pergola":
-            pergola = opts.get("pergola") if isinstance(opts.get("pergola"), Mapping) else {}
-            fixing = pergola.get("fixing") or pergola.get("mount") or opts.get("fixing") or "Floor / wall / garden as specified"
-            post = pergola.get("post") or pergola.get("postSection") or "Posts as specified"
-            rafter = pergola.get("rafter") or pergola.get("rafterSection") or "Rafters as specified"
-            cover = pergola.get("cover") or pergola.get("roofFill") or "Louvers / glass / polycarbonate as specified"
-            add("TYPE", "Pergola catalogue design")
-            add("FIXING", fixing)
-            add("POSTS", post)
-            add("RAFTERS", rafter)
-            add("ROOF", cover)
+            from WEOS.factory import pergola_model as pm
+
+            return pm.design_summary_spec_rows(line)
         else:
             blob = " ".join(str(x or "").lower() for x in (line.get("productType"), line.get("product"), line.get("productId"), title))
             if "acp" in blob:

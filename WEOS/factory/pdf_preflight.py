@@ -126,17 +126,37 @@ def drawing_source_status(line: Mapping[str, Any]) -> tuple[str, str]:
         return "READY", "regenerable-geometry"
     # Specials sometimes encode size in options only.
     opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
-    for nest_key in ("railing", "shower", "ventilator"):
+    for nest_key in ("railing", "shower", "ventilator", "pergola"):
         nest = opts.get(nest_key) if isinstance(opts, Mapping) else None
         if not isinstance(nest, Mapping):
             continue
         try:
-            nw = float(nest.get("widthMm") or nest.get("lengthMm") or nest.get("width") or 0)
-            nh = float(nest.get("heightMm") or nest.get("height") or 0)
+            nw = float(
+                nest.get("widthMm")
+                or nest.get("lengthMm")
+                or nest.get("width")
+                or 0
+            )
+            nh = float(
+                nest.get("heightMm")
+                or nest.get("depthMm")
+                or nest.get("postHeightMm")
+                or nest.get("height")
+                or 0
+            )
         except (TypeError, ValueError):
             nw = nh = 0.0
         if nw > 0 or nh > 0:
             return "READY", f"regenerable-{nest_key}"
+    # Explicit pergola product without nested size must still not be silently omitted
+    # when the line is identifiable as pergola with any footprint.
+    try:
+        from WEOS.factory.line_kind import is_pergola_cart_line
+
+        if is_pergola_cart_line(line) and (w > 0 or h > 0 or product):
+            return "READY", "regenerable-pergola"
+    except Exception:
+        pass
     return "MISSING", "no-photo-svg-or-geometry"
 
 
@@ -284,6 +304,27 @@ def preflight_customer_pdf(
                 continue
             if not rows:
                 errors.append(f"Specs empty for line {lid}")
+            # Pergola must not be silently omitted from design summary content.
+            try:
+                from WEOS.factory.line_kind import is_pergola_cart_line
+
+                if is_pergola_cart_line(ln):
+                    labels = {str(a or "").upper() for a, _ in rows}
+                    required = {"SIZE", "ROOF", "SIDES", "DECK"}
+                    missing_labels = sorted(required - labels)
+                    if missing_labels:
+                        errors.append(
+                            f"Pergola design summary incomplete for line {lid}: missing {', '.join(missing_labels)}"
+                        )
+                    summary = ln.get("designSummary")
+                    if not isinstance(summary, Mapping):
+                        opts = ln.get("options") if isinstance(ln.get("options"), Mapping) else {}
+                        nest = opts.get("pergola") if isinstance(opts, Mapping) else None
+                        summary = (nest or {}).get("designSummary") if isinstance(nest, Mapping) else None
+                    if not isinstance(summary, Mapping):
+                        errors.append(f"Pergola designSummary missing for line {lid}")
+            except Exception as exc:
+                errors.append(f"Pergola preflight check failed for line {lid}: {exc}")
             # If a description exists on the line, it must survive into NOTE or display.
             desc = str(ln.get("description") or "").strip()
             title = str(ln.get("displayName") or ln.get("product") or "").strip()

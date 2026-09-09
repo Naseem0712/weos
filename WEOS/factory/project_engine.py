@@ -312,6 +312,7 @@ def _louver_line_result(line: Mapping[str, Any], *, include_preview: bool = True
 def _pergola_line_result(line: Mapping[str, Any], *, include_preview: bool = True) -> dict[str, Any]:
     """Pergola product: catalogue-style drawing/specs. Never window sections."""
     from WEOS.factory.live_pricing import apply_selling_to_line_result
+    from WEOS.factory import pergola_model as pm
     from WEOS.factory.quote_item_snapshot import attach_snapshot, product_id_of
 
     frozen = attach_snapshot(dict(line) if isinstance(line, Mapping) else {})
@@ -337,25 +338,52 @@ def _pergola_line_result(line: Mapping[str, Any], *, include_preview: bool = Tru
     result["trackRail"] = []
     result["cutList"] = []
     result["bom"] = []
-    w = float(frozen.get("width") or 0)
-    h = float(frozen.get("height") or 0)
+    w = float(frozen.get("width") or frozen.get("widthMm") or 0)
+    h = float(frozen.get("height") or frozen.get("heightMm") or 0)
+    # Merge cart options.pergola + top-level dims into canonical config.
+    seed = dict(frozen)
+    opts_in = dict(frozen.get("options") or {})
+    if isinstance(opts_in.get("pergola"), Mapping):
+        seed = {**opts_in["pergola"], **seed}
+    cfg = pm.normalize_pergola_config(
+        seed,
+        width_mm=w or None,
+        depth_mm=h or float(opts_in.get("depthMm") or 0) or None,
+        height_mm=float(
+            (opts_in.get("pergola") or {}).get("postHeightMm")
+            if isinstance(opts_in.get("pergola"), Mapping)
+            else 0
+        )
+        or float(frozen.get("postHeightMm") or 0)
+        or None,
+    )
+    if w <= 0:
+        w = float(cfg.get("widthMm") or 0)
+    if h <= 0:
+        h = float(cfg.get("depthMm") or 0)
     opts = dict(result.get("options") or {})
     opts["productType"] = "pergolas"
-    opts.setdefault("pergola", {})
+    opts["pergola"] = cfg
     opts.pop("system", None)
     result["options"] = opts
+    result["designSummary"] = cfg.get("designSummary")
     result["layout"] = {
         "kind": "pergola",
         "system": "pergola",
-        "widthMm": w,
-        "heightMm": h,
-        "depthMm": h,
+        "widthMm": w or cfg.get("widthMm"),
+        "heightMm": h or cfg.get("depthMm"),
+        "depthMm": cfg.get("depthMm"),
+        "postHeightMm": cfg.get("postHeightMm"),
         "trackCount": None,
     }
+    if cfg.get("finish") and cfg["finish"].get("colour") and not result.get("colour"):
+        result["colour"] = cfg["finish"]["colour"]
     try:
         from WEOS.factory.special_schematics import pergola_svg
 
-        svg = _special_line_preview_svg(result, include_preview=include_preview, builder=lambda: pergola_svg(result))
+        svg = _special_line_preview_svg(
+            result, include_preview=include_preview, builder=lambda: pergola_svg(pm.svg_line_payload(cfg))
+        )
         result["preview"] = {"svg": svg, "pdfSvg": svg} if svg else {"svg": None}
     except Exception:
         result["preview"] = {"svg": None}

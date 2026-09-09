@@ -740,8 +740,118 @@ class ShowerAdapter:
         return compute_shower(cfg)
 
 
+class PergolaAdapter:
+    """First-class PERGOLA on Universal Canvas — Batch 8.5 / 9.5.
+
+    Reuses special_schematics.pergola_svg; config via pergola_model.
+    No PergolaCanvas / separate viewport. Geometry independent of materials.
+    """
+
+    adapter_id = "pergola"
+
+    def supports(self, product_type: str) -> bool:
+        return str(product_type or "").strip().upper() == ELEMENT_PRODUCT_PERGOLA
+
+    def load_configuration(self, element: Mapping[str, Any]) -> dict[str, Any]:
+        from WEOS.factory import pergola_model as pm
+
+        return pm.normalize_pergola_config(
+            _cfg(element) or element,
+            width_mm=_w(element) or None,
+            depth_mm=_h(element) or None,
+        )
+
+    def render_preview(
+        self, element: Mapping[str, Any], config: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
+        from WEOS.factory import pergola_model as pm
+        from WEOS.factory import special_schematics as ss
+
+        cfg = pm.normalize_pergola_config(
+            config or self.load_configuration(element),
+            width_mm=_w(element) or None,
+            depth_mm=_h(element) or None,
+        )
+        try:
+            svg = ss.pergola_svg(pm.svg_line_payload(cfg))
+            return {
+                "kind": "schematic_svg",
+                "adapterId": self.adapter_id,
+                "elementId": element.get("elementId") or element.get("element_id"),
+                "productType": ELEMENT_PRODUCT_PERGOLA,
+                "widthMm": cfg.get("widthMm") or _w(element),
+                "heightMm": cfg.get("depthMm") or _h(element),
+                "depthMm": cfg.get("depthMm"),
+                "postHeightMm": cfg.get("postHeightMm"),
+                "displayCode": element.get("displayCode") or element.get("display_code"),
+                "svg": svg,
+                "usedFallback": False,
+                "designSummary": cfg.get("designSummary"),
+            }
+        except Exception:
+            out = _placeholder_render(element)
+            out["adapterId"] = self.adapter_id
+            out["usedFallback"] = True
+            return out
+
+    def validate(
+        self, element: Mapping[str, Any], config: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
+        from WEOS.factory import pergola_model as pm
+
+        cfg = pm.normalize_pergola_config(config or self.load_configuration(element))
+        errors: list[str] = []
+        if float(cfg.get("widthMm") or 0) <= 0:
+            errors.append("widthMm must be > 0")
+        if float(cfg.get("depthMm") or 0) <= 0:
+            errors.append("depthMm must be > 0")
+        if float(cfg.get("postHeightMm") or 0) <= 0:
+            errors.append("postHeightMm must be > 0")
+        sides = cfg.get("sides") if isinstance(cfg.get("sides"), Mapping) else {}
+        for key in pm.SIDE_KEYS:
+            if key not in sides:
+                errors.append(f"side zone missing: {key}")
+        return {"ok": not errors, "errors": errors, "warnings": []}
+
+    def get_property_schema(self) -> dict[str, Any]:
+        from WEOS.factory import pergola_model as pm
+
+        return pm.property_schema()
+
+    def update_configuration(
+        self, element: Mapping[str, Any], patch: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        from WEOS.factory import pergola_model as pm
+
+        base = self.load_configuration(element)
+        return pm.apply_pergola_patch(base, patch)
+
+    def calculate(
+        self, element: Mapping[str, Any], config: Mapping[str, Any] | None = None
+    ) -> dict[str, Any] | None:
+        from WEOS.factory import pergola_model as pm
+
+        cfg = pm.normalize_pergola_config(config or self.load_configuration(element))
+        return {
+            "productType": ELEMENT_PRODUCT_PERGOLA,
+            "widthMm": cfg.get("widthMm"),
+            "depthMm": cfg.get("depthMm"),
+            "postHeightMm": cfg.get("postHeightMm"),
+            "qty": cfg.get("qty"),
+            "designSummary": cfg.get("designSummary"),
+            "structure": cfg.get("structure"),
+            "roof": cfg.get("roof"),
+            "sides": cfg.get("sides"),
+            "deck": cfg.get("deck"),
+            "finish": cfg.get("finish"),
+        }
+
+
 class ThinSchematicAdapter:
-    """Louvers / pergola / grill / surface — thin preview via special_schematics."""
+    """Louvers / grill / surface — thin preview via special_schematics.
+
+    Pergola is first-class via PergolaAdapter (Batch 8.5) — not this thin path.
+    """
 
     adapter_id = "schematic"
 
@@ -770,8 +880,6 @@ class ThinSchematicAdapter:
         try:
             if self._kind == "louver":
                 svg = ss.louver_svg(cfg)
-            elif self._kind == "pergola":
-                svg = ss.pergola_svg(cfg)
             elif self._kind == "surface":
                 svg = ss.surface_svg(cfg)
             else:
@@ -999,8 +1107,8 @@ def build_product_adapter_registry() -> ProductAdapterRegistry:
     reg.register(VentilatorAdapter())
     reg.register(RailingAdapter())
     reg.register(ShowerAdapter())
+    reg.register(PergolaAdapter())
     reg.register(ThinSchematicAdapter(frozenset({ELEMENT_PRODUCT_LOUVER}), "louver"))
-    reg.register(ThinSchematicAdapter(frozenset({ELEMENT_PRODUCT_PERGOLA}), "pergola"))
     reg.register(ThinSchematicAdapter(frozenset({ELEMENT_PRODUCT_GRILL}), "grill"))
     reg.register(ThinSchematicAdapter(SURFACE_TYPES, "surface"))
     reg.register(AssemblyPropertyAdapter())

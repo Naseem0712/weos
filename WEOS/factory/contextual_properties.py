@@ -40,6 +40,7 @@ def _field_keys(schema: Mapping[str, Any]) -> set[str]:
 def schemas_cross_pollute(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
     """True if active config keys from A appear as railing-only keys in B (smoke helper)."""
     rail_only = {"mountType", "handrail", "bottomRail", "stairSteps", "brackets", "studs", "anchors"}
+    window_only = {"sectionSeries", "trackCount", "glassShutters", "handle"}
     a_keys = _field_keys(a)
     b_keys = _field_keys(b)
     # Window schema must not expose railing-only active fields
@@ -49,6 +50,13 @@ def schemas_cross_pollute(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
     if b.get("productType") in pa.WINDOW_FAMILY or b.get("adapterId") == "window_family":
         if b_keys & rail_only:
             return True
+    # Pergola must not leak window / railing controls
+    if a.get("productType") == "PERGOLA" or a.get("adapterId") == "pergola":
+        if a_keys & (rail_only | window_only):
+            return True
+    if b.get("productType") == "PERGOLA" or b.get("adapterId") == "pergola":
+        if b_keys & (rail_only | window_only):
+            return True
     return False
 
 
@@ -57,6 +65,31 @@ def panel_for_element(element: Mapping[str, Any]) -> dict[str, Any]:
     schema = pa.property_schema_for(pt)
     ad = pa.resolve_adapter(pt)
     cfg = ad.load_configuration(element)
+    if pt == "PERGOLA" or getattr(ad, "adapter_id", "") == "pergola":
+        from WEOS.factory import pergola_model as pm
+
+        values = {
+            "elementId": element.get("elementId"),
+            "assemblyId": element.get("assemblyId"),
+            "productType": pt,
+            "orientation": element.get("orientation"),
+            **pm.panel_values(element, cfg),
+        }
+        return {
+            "kind": "element",
+            "title": f"{element.get('displayCode') or element.get('elementId')} · {pt}",
+            "schema": schema,
+            "values": values,
+            "selection": {
+                "kind": "element",
+                "elementId": element.get("elementId"),
+                "assemblyId": element.get("assemblyId"),
+                "connectionId": None,
+                "productType": pt,
+            },
+            "geometryKeys": ["widthMm", "depthMm", "xMm", "yMm"],
+            "configDomain": "configPayload",
+        }
     values = {
         "elementId": element.get("elementId"),
         "assemblyId": element.get("assemblyId"),
@@ -142,7 +175,7 @@ def split_geometry_and_config(patch: Mapping[str, Any] | None) -> tuple[dict[str
     patch = patch or {}
     geom: dict[str, Any] = {}
     cfg: dict[str, Any] = {}
-    geom_keys = {"widthMm", "heightMm", "xMm", "yMm", "orientation", "sillHeightMm"}
+    geom_keys = {"widthMm", "heightMm", "depthMm", "xMm", "yMm", "orientation", "sillHeightMm"}
     for k, v in patch.items():
         if k in geom_keys:
             geom[k] = v
@@ -150,6 +183,9 @@ def split_geometry_and_config(patch: Mapping[str, Any] | None) -> tuple[dict[str
             continue
         else:
             cfg[k] = v
+    # Pergola plan depth maps to element heightMm (canvas footprint).
+    if "depthMm" in geom and "heightMm" not in geom:
+        geom["heightMm"] = geom["depthMm"]
     return geom, cfg
 
 
@@ -167,7 +203,15 @@ def apply_element_property_update(
         raise PermissionError("element not found for company")
     geom, cfg = split_geometry_and_config(patch)
     ad = pa.resolve_adapter(existing.get("productType") or "")
+    # Keep depthMm inside pergola config as well as footprint heightMm.
+    if str(existing.get("productType") or "").upper() == "PERGOLA" and "depthMm" in geom:
+        cfg = dict(cfg or {})
+        cfg.setdefault("depthMm", geom["depthMm"])
     cfg_out = ad.update_configuration(existing, cfg) if cfg else None
+    # Pergola saves a full normalized ProductConfiguration — replace, don't shallow-merge leftovers.
+    merge = True
+    if str(existing.get("productType") or "").upper() == "PERGOLA" and cfg_out is not None:
+        merge = False
     updated = ds.update_element(
         element_id,
         company_gst=company_gst,
@@ -178,7 +222,7 @@ def apply_element_property_update(
         orientation=geom.get("orientation"),
         sill_height_mm=geom.get("sillHeightMm"),
         config_payload=cfg_out,
-        merge_config=True,
+        merge_config=merge,
     )
     preview = pa.render_element_preview(updated)
     return {

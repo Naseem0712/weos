@@ -133,14 +133,42 @@ def pergola_svg(line: Mapping[str, Any] | None, *, quote: Mapping[str, Any] | No
     pergola = opts.get("pergola") if isinstance(opts.get("pergola"), Mapping) else {}
     src: Mapping[str, Any] = pergola if pergola else (line if isinstance(line, Mapping) else {})
     width = _num((quote or {}).get("widthMm") if isinstance(quote, Mapping) else None, src.get("widthMm"), src.get("width"), default=3000)
-    depth = _num((quote or {}).get("depthMm") if isinstance(quote, Mapping) else None, src.get("depthMm"), src.get("heightMm"), src.get("height"), default=2400)
-    height = _num((quote or {}).get("heightMm") if isinstance(quote, Mapping) else None, src.get("postHeightMm"), src.get("pergolaHeightMm"), default=2700)
+    depth = _num(
+        (quote or {}).get("depthMm") if isinstance(quote, Mapping) else None,
+        src.get("depthMm"),
+        src.get("heightMm"),
+        src.get("height"),
+        default=2400,
+    )
+    height = _num(
+        (quote or {}).get("heightMm") if isinstance(quote, Mapping) else None,
+        src.get("postHeightMm"),
+        src.get("pergolaHeightMm"),
+        (src.get("heightMm") if src.get("depthMm") is not None else None),
+        default=2700,
+    )
     fixing = str(src.get("fixing") or src.get("mount") or src.get("installType") or opts.get("fixing") or "floor / wall / garden").strip()
     cover = str(src.get("cover") or src.get("roofFill") or src.get("material") or "louvers / glass / polycarbonate").strip()
     post = str(src.get("post") or src.get("postSection") or "posts").strip()
     rafter = str(src.get("rafter") or src.get("rafterSection") or "rafters").strip()
+    structure = src.get("structure") if isinstance(src.get("structure"), Mapping) else {}
+    if structure:
+        fixing = str(structure.get("fixing") or fixing).strip()
+        post = str(structure.get("postSection") or structure.get("post") or post).strip()
+        rafter = str(structure.get("rafterSection") or structure.get("rafter") or rafter).strip()
+    roof = src.get("roof") if isinstance(src.get("roof"), Mapping) else {}
+    if roof:
+        if roof.get("enabled") is False:
+            cover = "open / none"
+        else:
+            cover = str(roof.get("cover") or roof.get("material") or cover).strip()
+    louvers = src.get("louvers") if isinstance(src.get("louvers"), Mapping) else {}
+    sides = src.get("sides") if isinstance(src.get("sides"), Mapping) else {}
+    deck = src.get("deck") if isinstance(src.get("deck"), Mapping) else {}
+    finish = src.get("finish") if isinstance(src.get("finish"), Mapping) else {}
+    colour = str(finish.get("colour") or src.get("colour") or "").strip()
 
-    vb_w, vb_h = 640.0, 420.0
+    vb_w, vb_h = 640.0, 460.0
     px, py, pw, ph = 38.0, 58.0, 372.0, 236.0
     plan_ratio = max(width / max(depth, 1.0), 0.35)
     if plan_ratio > 1.65:
@@ -152,8 +180,23 @@ def pergola_svg(line: Mapping[str, Any] | None, *, quote: Mapping[str, Any] | No
     ex, ey, ew, eh = 452.0, 88.0, 138.0, 152.0
     post_size = max(10.0, min(18.0, min(pw, ph) * 0.06))
     plate_w, plate_h = post_size * 1.7, post_size * 1.25
-    rafter_count = max(3, min(14, int(round(width / 450.0)) if width else 6))
-    fill_count = max(3, min(18, int(round(depth / 250.0)) if depth else 8))
+    rafter_count = max(
+        3,
+        min(
+            14,
+            int(structure.get("rafterCount") or src.get("rafterCount") or round(width / 450.0) or 6),
+        ),
+    )
+    if louvers.get("enabled") is False:
+        fill_count = 0
+    else:
+        fill_count = max(
+            0,
+            min(
+                18,
+                int(louvers.get("count") or src.get("louverCount") or round(depth / 250.0) or 8),
+            ),
+        )
     parts: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb_w:g} {vb_h:g}" data-model-system="pergola" role="img">',
         '<rect width="100%" height="100%" fill="#fff"/>',
@@ -187,6 +230,27 @@ def pergola_svg(line: Mapping[str, Any] | None, *, quote: Mapping[str, Any] | No
         ly = py + ph * t
         parts.append(f'<line x1="{px + 8:g}" y1="{ly:g}" x2="{px + pw - 8:g}" y2="{ly:g}" stroke="#94a3b8" stroke-width=".75" data-role="roof-fill"/>')
 
+    # Side-zone markers (Front / Left / Right / Back) — distinct, not one generic side.
+    side_labels = (
+        ("front", px + pw / 2, py + ph + 14, "middle"),
+        ("back", px + pw / 2, py - 2, "middle"),
+        ("left", px - 10, py + ph / 2, "end"),
+        ("right", px + pw + 10, py + ph / 2, "start"),
+    )
+    for key, tx, ty, anchor in side_labels:
+        zone = sides.get(key) if isinstance(sides.get(key), Mapping) else {}
+        treat = str((zone or {}).get("treatment") or "open").strip()
+        parts.append(
+            f'<text x="{tx:g}" y="{ty:g}" font-family="Arial" font-size="9" text-anchor="{anchor}" '
+            f'fill="#0f766e" data-role="side-zone" data-side="{key}">{escape(key.title())}: {escape(treat)}</text>'
+        )
+
+    if isinstance(deck, Mapping) and deck.get("enabled"):
+        parts.append(
+            f'<rect x="{px + 14:g}" y="{py + 14:g}" width="{pw - 28:g}" height="{ph - 28:g}" '
+            f'fill="none" stroke="#a16207" stroke-width=".9" stroke-dasharray="4 3" data-role="deck"/>'
+        )
+
     # Side elevation: same 2D language as windows - thin outlines only.
     roof_y = ey + 18.0
     floor_y = ey + eh
@@ -209,11 +273,15 @@ def pergola_svg(line: Mapping[str, Any] | None, *, quote: Mapping[str, Any] | No
         ("Roof", cover),
         ("Height", f"{_fmt(height)} mm"),
     ]
+    if colour:
+        callouts.append(("Colour", colour))
+    if isinstance(deck, Mapping) and deck.get("enabled"):
+        callouts.append(("Deck", str(deck.get("material") or deck.get("type") or "deck")))
     cy = 322.0
     for label, value in callouts:
         parts.append(f'<text x="38" y="{cy:g}" font-family="Arial" font-size="11" font-weight="700" fill="#0f172a">{escape(label)}</text>')
         parts.append(f'<text x="104" y="{cy:g}" font-family="Arial" font-size="11" fill="#334155">{escape(value)}</text>')
-        cy += 18.0
+        cy += 16.0
     parts.extend([
         '<text x="452" y="268" font-family="Arial" font-size="10" font-weight="700" fill="#334155">Fixing plate detail</text>',
         '<rect x="452" y="280" width="42" height="28" fill="none" stroke="#0f766e" stroke-width="1"/>',

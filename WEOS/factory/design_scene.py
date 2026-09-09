@@ -276,6 +276,12 @@ def create_element(
             prefix = "D"
         elif pt == ELEMENT_PRODUCT_FIXED:
             prefix = "F"
+        elif pt == ELEMENT_PRODUCT_PERGOLA:
+            prefix = "P"
+        elif pt == ELEMENT_PRODUCT_LOUVER:
+            prefix = "L"
+        elif pt == ELEMENT_PRODUCT_SHOWER:
+            prefix = "S"
         code = (display_code or "").strip() or _next_display_code(codes, prefix)
         row = DesignElement(
             element_id=new_element_id(),
