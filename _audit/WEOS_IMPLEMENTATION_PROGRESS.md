@@ -421,7 +421,8 @@ Engineering Master Data / BOM Foundation remains on the architecture track (sepa
 ## Checkpoint (current session)
 
 - **Starting HEAD (Batch 8.5/9.5):** `a906e191010424b9278abd4b64e6a92159ae00ad` (matches expected ~`a906e19`)
-- **Ending HEAD:** *(set after docs stamp push)*
+- **Ending HEAD:** `8eed62f06f9c2c9b840b007c39be90dea98f2407` (`8eed62f`)
+- **Commits:** `bce5234` feat(pergola) · `5df4f47` test(pergola) · `8eed62f` docs(audit) stamp
 - **Branch:** `weos-v2-foundation`
 - Batch 8.5/9.5: Pergola adapter + property panel + quote/PDF **DONE** (committed + pushed)
 - **Fixes during gate:** `_bool(*vals)` in `pergola_model.py`; smoke calls `build_customer_pdf_bytes(payload)` without invalid `template=` kwarg
