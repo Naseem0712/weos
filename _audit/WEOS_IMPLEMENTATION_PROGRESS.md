@@ -332,9 +332,11 @@ Engineering Master Data / BOM Foundation — **NEXT ELIGIBLE**. Production deplo
 ## Checkpoint (current session)
 
 - **Starting HEAD:** `2020822640ef85c63f7b76db04bf2c569aee3703`
-- **Ending HEAD:** (B9 commit)
+- **Ending HEAD:** `c8395ed514336a3b68ae2e0685d2545c3a2c4bf6`
 - **Branch:** weos-v2-foundation
-- B8+B9 feature + docs pushed to `origin/weos-v2-foundation`
+- B8 commit: `c7fd585` — `feat(canvas): connect product engines through universal adapters`
+- B9 commit: `c8395ed` — `feat(ui): add contextual product property panel`
+- B8+B9 pushed to `origin/weos-v2-foundation`
 - Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, blueprint/gap docs, etc.
 - Production deployment: **NOT PERFORMED**
 - Next eligible batch: **Engineering Master Data / BOM Foundation**
