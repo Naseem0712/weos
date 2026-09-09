@@ -26,7 +26,8 @@
 | `WEOS/factory/pipeline.py` + geometry/svg/bom/quotation engines | ACTIVE | Window/door engineering plugins | No |
 | `WEOS/factory/railing_*.py` | ACTIVE | Railing plugin | No |
 | `WEOS/factory/ventilator_engine.py` / `shower_engine.py` | ACTIVE | Product plugins | No |
-| `WEOS/factory/panel_fills.py` / `special_schematics.py` | ACTIVE | Louvers/pergola/ACP-style | No |
+| `WEOS/factory/panel_fills.py` / `special_schematics.py` | ACTIVE | Louvers/pergola/ACP-style thin schematics | No |
+| Pergola first-class adapter / property schema / print summary | **PARITY PENDING** | B8/B9 shipped thin schematic only — tools/schema insufficient; complete in **Batch 8.5 / 9.5** on Universal Canvas (no PergolaCanvas). Do not delete stub/schematic paths until parity proven | No |
 | `WEOS/factory/project_store.py` | ACTIVE LEGACY | FS+SQL mirror SoT today; migrate later | No |
 | `WEOS/factory/customer_store.py` | ACTIVE LEGACY | Name-slug profiles; migrate to immutable customer_id | No |
 | `WEOS/factory/company_store.py` / `company_workspace.py` / `company_index.py` | ACTIVE | Tenant session + hub | No |

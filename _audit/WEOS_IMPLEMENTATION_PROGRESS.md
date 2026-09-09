@@ -290,6 +290,7 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 - Exact product types preserved — WINDOW collapse refused
 - Mixed A-01 Sliding+Fixed+Ventilator on same Universal Canvas
 - Hard stop: Contextual Property Panel is B9
+- **PARITY PENDING: Pergola** — B8 shipped with pergola as thin schematic only; tools/schema insufficient for first-class PERGOLA (posts/beams/rafters/louvers/side zones/roof/deck). Completion queued as **Batch 8.5 / 9.5** (not a separate canvas).
 
 ### Combined regression gate (after B8)
 
@@ -317,7 +318,8 @@ Re-run after B9 with contextual properties smoke.
 - Window / Railing / Ventilator / Assembly / Connection schemas — no cross-product pollution
 - When `WEOS_UNIVERSAL_CANVAS` ON: `#railTools` / `#showerTools` / `#ventTools` / `#windowCartTools` hidden (PARITY PENDING — not deleted)
 - Property updates: Panel → geometry/config split → SQL save → preview; fail closed
-- Hard stop after B9: next eligible Engineering Master Data / BOM Foundation
+- **PARITY PENDING: Pergola** — B9 property schemas do not cover first-class Pergola groups; unfinished B8/B9 product surface (see Batch 8.5 / 9.5)
+- Hard stop after B9: next *architecture* eligible was Engineering Master Data / BOM Foundation; **product gap** Pergola completion is inserted in the UX/PDF queue below (not a new architecture)
 
 ### Combined regression gate (after B8+B9)
 
@@ -325,19 +327,54 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 
 ---
 
+### BATCH 8.5 / 9.5 — Pergola Product Adapter + Property Panel + Print/PDF *(upcoming)*
+
+| Field | Value |
+|---|---|
+| **ID** | B8.5 / B9.5 |
+| **Goal** | First-class **PERGOLA** on Universal Canvas: adapter registry + contextual property panel + quote/print design summary + PDF preflight — **no** PergolaCanvas / separate viewport |
+| **Status** | **QUEUED** — B8/B9 pushed without Pergola parity (**PARITY PENDING: Pergola tools/schema insufficient**) |
+| **Scope** | Product-specific B8/B9 completion requirement only — **not** a separate canvas architecture |
+| **Geometry** | W / D / H / qty; posts, beams, rafters, louvers; Front / Left / Right / Back side zones; roof; optional deck |
+| **UI** | Property panel groups per user Pergola spec; save/reload round-trip; print design summary |
+| **PDF** | PDF preflight includes Pergola; design summary in quote/print path |
+| **Tests** | Adapter cases A–G + PDF coverage for Pergola |
+| **Suggested commits** | (1) adapter / schema / render · (2) property panel · (3) quote / print / PDF summary |
+| **Schema / migration** | TBD (prefer additive config only; no giant domain rewrite) |
+| **Commit / Push** | Not started |
+| **Rollback** | Revert B8.5/B9.5 commits only; leave B7–B9 host + other adapters intact |
+
+#### Queue order (strict)
+
+1. **Current:** UX/PDF **Batch A — PDF reliability** (do **not** interrupt / rewrite mid-batch)
+2. **Next product completion:** **Batch 8.5 / 9.5 — Pergola** (unfinished B8/B9 surface) — run **after** Batch A completes, **before** PDF Viewer Redesign
+3. **Then:** UX/PDF **Batch B — PDF Viewer Redesign**
+4. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains separate and must not absorb Pergola into a new canvas plan
+
+#### Hard constraints
+
+- ONE Universal Canvas only — **NO** `PergolaCanvas` / separate viewport
+- Reuse adapter registry + contextual panel patterns from B8/B9
+- Do not start a giant new architecture under Pergola cover
+
+---
+
 ## Remaining batches (from user plan / target doc)
 
-Engineering Master Data / BOM Foundation — **NEXT ELIGIBLE**. Production deployment — **NOT PERFORMED**.
+**Immediate UX/PDF queue:** Batch A (PDF reliability) → **Batch 8.5/9.5 Pergola** → Batch B (PDF Viewer Redesign).  
+Engineering Master Data / BOM Foundation remains on the architecture track (separate from Pergola product completion). Production deployment — **NOT PERFORMED**.
 
 ## Checkpoint (current session)
 
-- **Starting HEAD:** `2020822640ef85c63f7b76db04bf2c569aee3703`
-- **Ending HEAD:** `ece96835e731e7ade2df3e94bb7e1a4ed820499e`
-- **Branch:** weos-v2-foundation
+- **Branch:** `weos-v2-foundation`
 - B8 commit: `c7fd585` — `feat(canvas): connect product engines through universal adapters`
 - B9 commit: `c8395ed` — `feat(ui): add contextual product property panel`
-- B8+B9 pushed to `origin/weos-v2-foundation`
+- B8+B9 already on `origin/weos-v2-foundation`
+- **This pass (docs only):** queue Batch 8.5 / 9.5 Pergola; commit message `docs(audit): queue Pergola adapter panel and print completion`
+- **Gap documented:** **PARITY PENDING: Pergola tools/schema insufficient** after B8/B9 — queued as Batch 8.5 / 9.5
 - Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, blueprint/gap docs, etc.
 - Production deployment: **NOT PERFORMED**
-- Next eligible batch: **Engineering Master Data / BOM Foundation**
-- Hard stop after B9: **YES**
+- **Do not interrupt** active PDF reliability (Batch A) work
+- Next *product* batch after Batch A: **Batch 8.5 / 9.5 — Pergola Product Adapter + Property Panel + Print/PDF**
+- Next *architecture* batch (separate track): Engineering Master Data / BOM Foundation
+- Hard stop after B9 (architecture): **YES** — Pergola is B8/B9 product parity, not a new architecture kickoff
