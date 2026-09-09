@@ -791,12 +791,13 @@ def _public_base_url(request: Request | None) -> str:
 
 
 def _coerce_cart_lines(
-    raw: Any, existing: Any = None, *, keep_preview_svg: bool = False
+    raw: Any, existing: Any = None, *, keep_preview_svg: bool = False, strict: bool = False
 ) -> list[dict[str, Any]]:
     """Keep every cart row. Saves strip giant preview.svg; Quote PDF keeps it.
 
     Frontend must send full line dicts. If a slot is accidentally a line-id string,
-    resolve it from existing project lines instead of dropping the row or 422-ing.
+    resolve it from existing project lines. With ``strict=True`` (PDF path),
+    unresolved IDs / non-mapping slots raise — never silently omit.
     """
     by_id: dict[str, dict[str, Any]] = {}
     for prev_ln in existing or []:
@@ -808,16 +809,24 @@ def _coerce_cart_lines(
             if lid:
                 by_id[lid] = d0
     out: list[dict[str, Any]] = []
+    missing_ids: list[str] = []
+    bad_slots = 0
     for ln in raw or []:
         if isinstance(ln, str):
             hit = by_id.get(ln.strip())
             if not hit:
+                if strict:
+                    missing_ids.append(ln.strip())
+                    continue
                 _log.warning("Dropped cart line id with no matching object: %s", ln)
                 continue
             d = dict(hit)
         elif isinstance(ln, Mapping):
             d = dict(ln)
         else:
+            if strict:
+                bad_slots += 1
+                continue
             continue
         prev = d.get("preview")
         if isinstance(prev, Mapping):
@@ -829,6 +838,19 @@ def _coerce_cart_lines(
         if not d.get("product") and d.get("productId"):
             d["product"] = d.get("productId")
         out.append(d)
+    if strict and (missing_ids or bad_slots):
+        from WEOS.factory.pdf_preflight import PdfCompletenessError
+
+        errs = []
+        if missing_ids:
+            errs.append(f"unresolved cart line ids: {', '.join(missing_ids[:12])}")
+        if bad_slots:
+            errs.append(f"non-mapping cart slots: {bad_slots}")
+        raise PdfCompletenessError(
+            "Cart lines incomplete for PDF",
+            errors=errs,
+            missing_ids=missing_ids,
+        )
     return out
 
 
@@ -862,6 +884,24 @@ def _merge_calc_lines(doc_lines: list[Any], calc_lines: list[Any]) -> list[dict[
             for key in ("designPhoto", "locationName", "positionName", "description"):
                 if src.get(key) and not out.get(key):
                     out[key] = src[key]
+            # Durable design: keep cart SVG when calculate omitted preview.
+            src_prev = src.get("preview") if isinstance(src.get("preview"), Mapping) else {}
+            out_prev = out.get("preview") if isinstance(out.get("preview"), Mapping) else {}
+            src_svg = str((src_prev or {}).get("svg") or (src_prev or {}).get("pdfSvg") or "").strip()
+            out_svg = str((out_prev or {}).get("svg") or (out_prev or {}).get("pdfSvg") or "").strip()
+            if src_svg and "<svg" in src_svg.lower() and (
+                not out_svg or "<svg" not in out_svg.lower()
+            ):
+                merged_prev = dict(out_prev or {})
+                if src_prev.get("svg"):
+                    merged_prev["svg"] = src_prev["svg"]
+                if src_prev.get("pdfSvg"):
+                    merged_prev["pdfSvg"] = src_prev["pdfSvg"]
+                elif src_prev.get("svg") and not merged_prev.get("pdfSvg"):
+                    merged_prev.setdefault("svg", src_prev["svg"])
+                if src_prev.get("key"):
+                    merged_prev["key"] = src_prev["key"]
+                out["preview"] = merged_prev
             merged.append(out)
         else:
             merged.append(src)
@@ -902,12 +942,31 @@ def _pdf_response(
     if overlay:
         # PDF must print the live cart payload, not a stale autosave snapshot.
         if overlay.get("lines") is not None:
-            overlay_lines = _coerce_cart_lines(
-                overlay["lines"], existing=doc.get("lines"), keep_preview_svg=True
-            )
+            from WEOS.factory.pdf_preflight import PdfCompletenessError
+
+            try:
+                overlay_lines = _coerce_cart_lines(
+                    overlay["lines"],
+                    existing=doc.get("lines"),
+                    keep_preview_svg=True,
+                    strict=(kind == "customer"),
+                )
+            except PdfCompletenessError as exc:
+                raise HTTPException(status_code=422, detail=exc.as_detail()) from exc
+            raw_n = len(overlay["lines"] or [])
             # Empty overlay must not wipe a saved cart. Non-empty overlay is the live cart (incl. deletes).
             if overlay_lines:
                 doc["lines"] = overlay_lines
+            elif raw_n > 0 and kind == "customer":
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "status": "Error",
+                        "message": "Cart overlay had lines but none resolved for PDF",
+                        "errors": ["overlay_lines_empty_after_coerce"],
+                        "missingIds": [],
+                    },
+                )
         for _fld in (
             "customer",
             "name",
@@ -933,6 +992,38 @@ def _pdf_response(
             except Exception:
                 _log.exception("pdf-flush save failed for %s; continuing with in-memory lines", project_id)
     src_n = len(doc.get("lines") or [])
+    # Stamp stable lineIds before calc/merge so PDF never silently remints UUIDs mid-export.
+    if kind == "customer":
+        import hashlib as _hl
+
+        ensured: list[Any] = []
+        for i, ln in enumerate(list(doc.get("lines") or [])):
+            if not isinstance(ln, Mapping):
+                continue
+            d = dict(ln)
+            lid = str(d.get("lineId") or d.get("id") or "").strip()
+            if not lid:
+                seed = "|".join(
+                    str(x)
+                    for x in (
+                        i,
+                        d.get("product") or d.get("productId"),
+                        d.get("width"),
+                        d.get("height"),
+                        d.get("qty"),
+                        d.get("locationName"),
+                        d.get("displayName"),
+                    )
+                )
+                d["lineId"] = "PDF-" + _hl.sha1(seed.encode("utf-8")).hexdigest()[:12]
+            ensured.append(d)
+        doc["lines"] = ensured
+        src_n = len(ensured)
+    expected_line_ids = [
+        str(ln.get("lineId") or ln.get("id") or "").strip()
+        for ln in (doc.get("lines") or [])
+        if isinstance(ln, Mapping) and str(ln.get("lineId") or ln.get("id") or "").strip()
+    ]
     try:
         # Customer PDF does not need factory cut/glass nesting — that was a multi-second wait.
         result = calculate_project(
@@ -942,6 +1033,20 @@ def _pdf_response(
         )
         calc_lines = list(result.get("lines") or [])
         merged_lines = _merge_calc_lines(list(doc.get("lines") or []), calc_lines)
+        if kind == "customer" and src_n and len(merged_lines) != src_n:
+            from WEOS.factory.pdf_preflight import PdfCompletenessError
+
+            have = {
+                str(ln.get("lineId") or ln.get("id") or "").strip()
+                for ln in merged_lines
+                if isinstance(ln, Mapping)
+            }
+            missing = [eid for eid in expected_line_ids if eid not in have]
+            raise PdfCompletenessError(
+                "PDF merge dropped cart lines",
+                errors=[f"cart={src_n} merged={len(merged_lines)}"],
+                missing_ids=missing,
+            )
         if src_n and len(merged_lines) < src_n:
             _log.warning(
                 "PDF merge returned %s lines, cart had %s — keeping raw cart rows",
@@ -957,9 +1062,24 @@ def _pdf_response(
                 len(merged_lines),
             )
         result["lines"] = merged_lines
-    except Exception:
-        # Never 500 the export because a calculation edge-case failed — log the
-        # real traceback and still print the live cart lines.
+    except Exception as exc:
+        from WEOS.factory.pdf_preflight import PdfCompletenessError
+
+        if isinstance(exc, PdfCompletenessError):
+            raise HTTPException(status_code=422, detail=exc.as_detail()) from exc
+        if kind == "customer":
+            # Fail closed — never print an incomplete customer PDF after calc failure.
+            _log.exception("calculate_project failed for %s during customer PDF export", project_id)
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "status": "Error",
+                    "message": f"Quote calculation failed before PDF: {exc}",
+                    "errors": ["calculate_project_failed"],
+                    "missingIds": [],
+                },
+            ) from exc
+        # Factory: log and continue with live cart lines.
         _log.exception("calculate_project failed for %s during %s PDF export", project_id, kind)
         result = {"lines": list(doc.get("lines") or []), "combined": {}, "price": {}}
     created_at = doc.get("createdAt")
@@ -991,6 +1111,9 @@ def _pdf_response(
         # Absolute base + stable ref so the PDF QR opens the quote from the DB.
         "publicBaseUrl": _public_base_url(request),
         "quoteRef": doc.get("quotationId") or doc.get("quoteNumber") or doc.get("quoteId") or project_id,
+        # Fail-closed customer commercial PDF (Batch A). Future QuoteSnapshot feeds same flags.
+        "pdfFailClosed": kind == "customer",
+        "pdfExpectedLineIds": expected_line_ids if kind == "customer" else None,
     }
     try:
         from WEOS.factory.company_store import company_branding, load_company, load_company_by_gst
@@ -1117,18 +1240,55 @@ def _pdf_response(
         kind,
         project_name=doc.get("name") or payload.get("name"),
     )
+    if kind == "customer":
+        from WEOS.factory.pdf_preflight import PdfCompletenessError, preflight_customer_pdf
+
+        try:
+            # Prefer company branding terms when quote terms empty (explicit source).
+            preflight_customer_pdf(
+                payload,
+                expected_line_ids=expected_line_ids,
+                require_terms=False,
+                allow_builtin_terms=False,
+                strict_drawings=True,
+            )
+        except PdfCompletenessError as exc:
+            # Soften: if only terms_missing and company branding later fills it — re-check
+            # after branding merge already happened above. Still refuse builtin demo.
+            raise HTTPException(status_code=422, detail=exc.as_detail()) from exc
     try:
         if kind == "factory":
             pdf = build_factory_pdf_bytes(payload)
         else:
             pdf = build_customer_pdf_bytes(payload)
-    except Exception:
-        # build_*_pdf_bytes already degrade internally; this is a final belt-and-
-        # suspenders guard so a PDF is ALWAYS returned instead of a bare 500.
+    except Exception as exc:
+        from WEOS.factory.pdf_preflight import PdfCompletenessError
+
+        if isinstance(exc, PdfCompletenessError):
+            raise HTTPException(status_code=422, detail=exc.as_detail()) from exc
+        if kind == "customer":
+            _log.exception("PDF build failed for %s (customer); refusing minimal stub", project_id)
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "status": "Error",
+                    "message": f"Customer PDF build failed: {exc}",
+                    "errors": ["customer_pdf_build_failed"],
+                    "missingIds": [],
+                },
+            ) from exc
+        # Factory: belt-and-suspenders minimal PDF.
         _log.exception("PDF build failed for %s (%s); returning minimal PDF", project_id, kind)
         from WEOS.factory.pdf_engine import _minimal_text_pdf
 
         pdf = _minimal_text_pdf(f"WEOS {kind.title()} PDF", payload)
+    if kind == "customer":
+        from WEOS.factory.pdf_preflight import PdfCompletenessError, assert_not_minimal_pdf
+
+        try:
+            assert_not_minimal_pdf(pdf)
+        except PdfCompletenessError as exc:
+            raise HTTPException(status_code=422, detail=exc.as_detail()) from exc
     if overlay and overlay.get("persist"):
         try:
             from datetime import datetime as _dt, timezone as _tz

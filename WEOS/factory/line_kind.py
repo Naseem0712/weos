@@ -267,6 +267,19 @@ def product_has_tracks(product_type: Any = None, *, system: Any = None, category
     return False
 
 
+def is_manual_cart_line(line: Mapping[str, Any] | None) -> bool:
+    """True for manual/commercial-only quote lines (drawing optional)."""
+    if not isinstance(line, Mapping):
+        return False
+    try:
+        from WEOS.factory.pdf_preflight import is_manual_commercial_line
+
+        return bool(is_manual_commercial_line(line))
+    except Exception:
+        kind = str(line.get("itemKind") or line.get("manufacturingMode") or "").upper()
+        return kind in ("MANUAL", "COMMERCIAL_MANUAL") or bool(line.get("manualProduct") or line.get("isManual"))
+
+
 def is_louver_cart_line(line: Mapping[str, Any] | None) -> bool:
     """True when the *product* is a louver — not a window with louvers fill."""
     if not isinstance(line, Mapping):

@@ -76,9 +76,10 @@ def line_export_fingerprint(line: Mapping[str, Any] | None, *, extra: str = "") 
             }
             if isinstance(rail, Mapping)
             else None,
-            "slim": "canvas-print-v4",
+            "slim": "canvas-print-v5",
+            # Full SVG hash — length/head alone collided across distinct drawings.
+            "svgHash": hashlib.sha1(svg.encode("utf-8", errors="replace")).hexdigest() if svg else "",
             "svgLen": len(svg),
-            "svgHead": svg[:240],
         }
     )
 

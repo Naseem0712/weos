@@ -400,8 +400,9 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
         or is_pergola_cart_line(line)
         or is_surface_cart_line(line)
     )
+    # Prefer durable cart SVG (stable design representation) before regenerating.
+    svg = _line_canvas_svg(line)
     if special:
-        svg = _line_canvas_svg(line)
         if svg:
             if _draw_canvas_svg(c, svg, x, y, box_w, box_h):
                 return True
@@ -410,6 +411,9 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
         if _draw_special_reportlab(c, line, x, y, box_w, box_h):
             return True
         return False
+
+    if svg and _draw_canvas_svg(c, svg, x, y, box_w, box_h):
+        return True
 
     try:
         from WEOS.factory.elevation_pdf import draw_line_model_elevation
@@ -422,8 +426,12 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
     layout = line.get("layout") if isinstance(line.get("layout"), Mapping) else {}
     panels = list((layout or {}).get("panels") or [])
     track_count = max(len(panels), 2)
-    draw_window_elevation(c, x, y, box_w, box_h, w, h, track_count=track_count)
-    return False
+    try:
+        draw_window_elevation(c, x, y, box_w, box_h, w, h, track_count=track_count)
+        return True
+    except Exception:
+        _log.exception("window schematic elevation failed")
+        return False
 
 
 def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[tuple[str, str]]:
@@ -455,6 +463,35 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         if not v:
             return
         rows.append((str(label or "").strip().upper(), v))
+
+    # ── Manual / commercial-only lines (drawing optional; structured commercial specs)
+    from WEOS.factory.line_kind import is_manual_cart_line
+
+    if is_manual_cart_line(line):
+        title = str(line.get("displayName") or line.get("name") or line.get("product") or "Manual product")
+        add("", title)
+        if w or h:
+            add("SIZE", f"{_mm(w)} × {_mm(h)} mm")
+        add("QTY", str(line.get("qty") or line.get("quantity") or 1))
+        unit = str(line.get("saleUnit") or (line.get("selling") or {}).get("saleUnit") or "").strip()
+        if unit:
+            add("UNIT", unit)
+        rate = line.get("sellingRate")
+        if rate in (None, "") and isinstance(line.get("selling"), Mapping):
+            rate = line["selling"].get("sellingRate")
+        if rate not in (None, ""):
+            add("RATE", rate)
+        desc = str(line.get("description") or "").strip()
+        if desc and desc != title:
+            add("NOTE", desc)
+        spec_note = ""
+        if isinstance(opts, Mapping):
+            spec_note = str(opts.get("specs") or opts.get("spec") or opts.get("specification") or "").strip()
+        if not spec_note:
+            spec_note = str(line.get("specs") or line.get("specification") or "").strip()
+        if spec_note:
+            add("SPEC", spec_note)
+        return rows
 
     # ── Railing lines: product → bottom → handrail → glass → hardware → qty → amount
     from WEOS.factory.line_kind import is_railing_cart_line
@@ -980,11 +1017,18 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas
 
-    from WEOS.factory.line_kind import is_railing_cart_line, line_quote_group, sort_lines_by_quote_group
+    from WEOS.factory.line_kind import (
+        is_manual_cart_line,
+        is_railing_cart_line,
+        line_quote_group,
+        sort_lines_by_quote_group,
+    )
     from WEOS.factory.pdf_fonts import ensure_rupee_font, money_text, rupee_prefix, set_font
+    from WEOS.factory.pdf_preflight import PdfCompletenessError, resolve_terms_text
 
     ensure_rupee_font()  # register before any drawString with ₹
 
+    fail_closed = bool(payload.get("pdfFailClosed"))
     buf = io.BytesIO()
     page = A4
     c = canvas.Canvas(buf, pagesize=page)
@@ -1009,6 +1053,22 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     if not isinstance(group_order, (list, tuple)):
         group_order = []
     lines = sort_lines_by_quote_group(payload.get("lines") or [], group_order)
+    drawing_failures: list[str] = []
+    expected_ids = payload.get("pdfExpectedLineIds")
+    if expected_ids is not None:
+        expected = [str(x).strip() for x in expected_ids if str(x).strip()]
+        have = {
+            str(ln.get("lineId") or ln.get("id") or "").strip()
+            for ln in lines
+            if isinstance(ln, Mapping)
+        }
+        missing = [eid for eid in expected if eid not in have]
+        if missing or len([ln for ln in lines if isinstance(ln, Mapping)]) != len(expected):
+            raise PdfCompletenessError(
+                "PDF line set incomplete vs expected cart",
+                errors=[f"expected {len(expected)} lines, renderer has {len(lines)}"],
+                missing_ids=missing,
+            )
     _rs = rupee_prefix()
     try:
         from WEOS.factory.media_assets import resolve_doc_images
@@ -1272,11 +1332,26 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             last_quote_group = gname
 
         # Specs first so we know how tall the text block is (wrap may exceed draw_h).
+        lid = str(line.get("lineId") or line.get("id") or f"idx-{idx}").strip()
         try:
             spec_rows = _spec_rows(line)
             spec_rows = [(a, b) for a, b in spec_rows if str(a or "").upper() not in ("QTY", "RATE", "AMOUNT")]
-        except Exception:
-            _log.exception("marqt spec build failed for line %d; using name only", idx)
+            if fail_closed and not spec_rows:
+                raise PdfCompletenessError(
+                    "Specs empty for line",
+                    errors=[f"specs_empty:{lid}"],
+                    missing_ids=[lid],
+                )
+        except PdfCompletenessError:
+            raise
+        except Exception as exc:
+            _log.exception("marqt spec build failed for line %d", idx)
+            if fail_closed:
+                raise PdfCompletenessError(
+                    "Specs build failed",
+                    errors=[f"specs_failed:{lid}:{exc}"],
+                    missing_ids=[lid],
+                ) from exc
             spec_rows = [("", str(line.get("displayName") or line.get("product") or "Window"))]
         text_h = _measure_spec_rows(c, spec_rows, max_width=spec_max_w, font_size=7.0, label_col=72.0)
         need = max(draw_h, text_h) + 24
@@ -1362,9 +1437,18 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             set_font(c, 9, bold=True)
             c.drawString(M + 2, y + 4, code)
         try:
-            draw_line_elevation(c, line, M, y - draw_h, draw_w, draw_h)
+            drew = bool(draw_line_elevation(c, line, M, y - draw_h, draw_w, draw_h))
         except Exception:
             _log.exception("marqt elevation draw failed for line %d; leaving cell blank", idx)
+            drew = False
+        if not drew and not is_manual_cart_line(line):
+            drawing_failures.append(lid)
+            if fail_closed:
+                raise PdfCompletenessError(
+                    "Drawing unavailable",
+                    errors=[f"drawing_unavailable:{lid}"],
+                    missing_ids=[lid],
+                )
 
         # Specs — tabular LABEL: / value; never overflow into QTY/RATE/AMOUNT
         c.setFillColorRGB(0, 0, 0)
@@ -1480,24 +1564,17 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     c.setFillColorRGB(*primary)
     set_font(c, 14, bold=True)
     c.drawString(M, H - (M + 14), "Terms & Conditions")
-    # Precedence: per-quote override → template block → Company Setup default → built-in.
-    terms_text = str(payload.get("terms") or "").strip()
-    if not terms_text:
-        for b in template.get("blocks") or []:
-            if b.get("type") == "terms":
-                terms_text = str(b.get("text") or "").strip()
-                break
-    if not terms_text:
-        terms_text = str(branding.get("terms") or "").strip()
-    if not terms_text:
-        terms_text = (
-            "1. Specs & sizes may differ 7–9 mm after site measurement.\n"
-            "2. Pricing Ex-Works unless noted. GST extra as applicable.\n"
-            "3. Payment as agreed. Order confirmation required.\n"
-            "4. Delivery typically 3+ weeks from confirmation.\n"
-            "5. Quotation valid 15 days.\n"
-            "6. Warranty: profile manufacturing defects as per policy."
-        )
+    # Precedence: per-quote → template block → company branding.
+    # Fail-closed: never inject built-in demo defaults (empty terms page is OK).
+    terms_text, terms_source = resolve_terms_text(
+        payload,
+        template=template,
+        branding=branding,
+        allow_builtin_default=not fail_closed,
+    )
+    _log.debug("marqt terms source=%s", terms_source if terms_text else "none")
+    if fail_closed and not terms_text:
+        terms_text = ""  # explicit empty — do not substitute demo copy
     y = H - (M + 40)
     terms_bottom = M + 48
 
@@ -1523,10 +1600,17 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
 
     c.setFillColorRGB(0, 0, 0)
     set_font(c, 9)
-    y = _flow_paragraphs(
-        c, terms_text, x=M, y=y, max_width=text_w, font_size=9, line_h=13,
-        bottom=terms_bottom, set_font=set_font, on_new_page=_terms_new_page, para_gap=4.0,
-    )
+    if terms_text:
+        y = _flow_paragraphs(
+            c, terms_text, x=M, y=y, max_width=text_w, font_size=9, line_h=13,
+            bottom=terms_bottom, set_font=set_font, on_new_page=_terms_new_page, para_gap=4.0,
+        )
+    else:
+        set_font(c, 8)
+        c.setFillColorRGB(0.45, 0.45, 0.45)
+        c.drawString(M, y, "(No terms supplied for this quotation.)")
+        c.setFillColorRGB(0, 0, 0)
+        y -= 14
 
     # —— Bank details (from Company Setup) ——
     bank = str(branding.get("bankDetails") or "").strip()

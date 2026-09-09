@@ -5445,7 +5445,6 @@ function renderCart() {
         <button class="btn ghost sm" data-sel="${i}">👁</button>
         <button class="btn ghost sm" data-dup="${i}">Dup</button>
         <button class="btn ghost sm" data-del="${i}">Del</button>
-      </td>
     </tr>`;
     });
   }
@@ -10487,6 +10486,10 @@ function _exportFingerprint(kind) {
         loc: l.locationName, qg: l.quoteGroup || (l.options && l.options.quoteGroup),
         photo: l.designPhoto && l.designPhoto.key,
         pv: (l.preview && l.preview.svg && l.preview.svg.length) || 0,
+        // Prefer a stable prefix hash when SVG is large (matches server svgHash intent).
+        ph: (l.preview && l.preview.svg)
+          ? String(l.preview.svg.length) + ':' + String(l.preview.svg).slice(0, 64)
+          : '',
         rs: l.options && l.options.railing && [
           l.options.railing.handrailSize, l.options.railing.bottomSize,
           l.options.railing.anchorSpacingFt, l.options.railing.handrailBarLengthFt,
@@ -10546,8 +10549,17 @@ async function openProjectPdf(kind, opts) {
     let msg = res.statusText;
     try {
       const j = await res.json();
-      msg = j.detail || msg;
+      const d = j.detail;
+      if (d && typeof d === 'object') {
+        const errs = Array.isArray(d.errors) ? d.errors.join('; ') : '';
+        const missing = Array.isArray(d.missingIds) && d.missingIds.length
+          ? ` Missing IDs: ${d.missingIds.slice(0, 8).join(', ')}` : '';
+        msg = `${d.message || d.status || 'PDF preflight failed'}${errs ? ' — ' + errs : ''}${missing}`;
+      } else {
+        msg = d || msg;
+      }
     } catch (_) {}
+    updatePdfMachineStep('pdf', typeof msg === 'string' ? msg : JSON.stringify(msg));
     throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
   }
   updatePdfMachineStep('pdf', 'Binding cover, drawings, tables and terms into one PDF...');

@@ -346,7 +346,7 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 
 #### Queue order (strict)
 
-1. **Current:** UX/PDF **Batch A — PDF reliability** (do **not** interrupt / rewrite mid-batch)
+1. ~~UX/PDF **Batch A — PDF reliability**~~ **DONE** (this session)
 2. **Next product completion:** **Batch 8.5 / 9.5 — Pergola** (unfinished B8/B9 surface) — run **after** Batch A completes, **before** PDF Viewer Redesign
 3. **Then:** UX/PDF **Batch B — PDF Viewer Redesign**
 4. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains separate and must not absorb Pergola into a new canvas plan
@@ -359,22 +359,67 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 
 ---
 
+### BATCH A — PDF Reliability (UX/PDF)
+
+| Field | Value |
+|---|---|
+| **ID** | UX-PDF-A |
+| **Goal** | Guarantee complete quotation content + drawing validation; no silent omit; no demo term substitutes; preflight before Download/Print |
+| **Files committed** | `WEOS/factory/pdf_preflight.py`, `WEOS/factory/pdf_engine.py`, `WEOS/factory/marqt_pdf.py`, `WEOS/factory/elevation_cache.py`, `WEOS/factory/line_kind.py`, `WEOS/api/server.py`, `WEOS/website/index.html`, `WEOS/_smoke_pdf_reliability.py`, `_audit/WEOS_IMPLEMENTATION_PROGRESS.md` |
+| **Schema / migration** | None |
+| **Architecture** | Live cart payload today; future `QuoteSnapshot` feeds same preflight + `render_marqt_pdf` (`pdfFailClosed` / `pdfExpectedLineIds`) — no second competing PDF architecture |
+| **Tests** | `_smoke_pdf_reliability.py` **PASS**; critical regression gate **PASS** (see below) |
+| **Issues** | Known finance/login smoke failures unchanged; smoke needles align with bathroom-vent PDF titles |
+| **Commit** | `fix(pdf): guarantee complete quotation content and drawing validation` |
+| **Push** | `origin/weos-v2-foundation` |
+| **Rollback** | Revert Batch A commit; Universal Canvas left alone |
+
+#### Batch A notes
+
+- Preflight: items, drawings, manual fields, specs, terms source, totals → READY or Error with missing IDs
+- Strict cart coerce on customer PDF (unresolved IDs → 422); merge preserves durable `preview.svg`
+- Fail-closed customer path: no minimal/demo PDF degrade; empty terms ≠ demo inject
+- Manual products: drawing optional; name/qty/unit/rate required
+- Universal Canvas / Engineering Master Data / BOM / QuoteFamily **not started**
+- Smoke assertion: bathroom vent lines match PDF formatter title (`Bathroom ventilator`), not cart `displayName` alone
+
+#### Batch A gate results (2026-09-10)
+
+| Smoke | Result |
+|---|---|
+| `_smoke_pdf_reliability.py` | **PASS** |
+| `_smoke_persistence_durability.py` | **PASS** |
+| `_smoke_canonical_customer.py` | **PASS** |
+| `_smoke_canonical_project.py` | **PASS** |
+| `_smoke_tenant_ownership.py` | **PASS** |
+| `_smoke_design_hierarchy.py` | **PASS** |
+| `_smoke_design_scene.py` | **PASS** |
+| `_smoke_universal_canvas.py` | **PASS** |
+| `_smoke_product_adapters.py` | **PASS** |
+| `_smoke_contextual_properties.py` | **PASS** |
+| `_smoke_quote_identity_flow.py` | **PASS** |
+| `_smoke_quote_totals.py` | **PASS** |
+| `_smoke_public_scan_security.py` | **PASS** |
+| `_smoke_quote_pdf_cart.py` | **PASS** |
+| `_smoke_money_specs.py` | **PASS** |
+| `_smoke_normal_railing.py` | **PASS** |
+| `_smoke_stair_railing.py` | **PASS** |
+| `_smoke_sliding_track_opening.py` | **PASS** |
+| `_smoke_casement_mullion.py` | **PASS** |
+
+---
+
 ## Remaining batches (from user plan / target doc)
 
-**Immediate UX/PDF queue:** Batch A (PDF reliability) → **Batch 8.5/9.5 Pergola** → Batch B (PDF Viewer Redesign).  
+**Immediate UX/PDF queue:** ~~Batch A (PDF reliability)~~ **DONE** → **Batch 8.5/9.5 Pergola** → Batch B (PDF Viewer Redesign).  
 Engineering Master Data / BOM Foundation remains on the architecture track (separate from Pergola product completion). Production deployment — **NOT PERFORMED**.
 
 ## Checkpoint (current session)
 
+- **Starting HEAD (Batch A finish):** `5a8a91eace4aa2bf534c82c4bcefd2cf2cfa9fd9` (Pergola plan docs)
 - **Branch:** `weos-v2-foundation`
-- B8 commit: `c7fd585` — `feat(canvas): connect product engines through universal adapters`
-- B9 commit: `c8395ed` — `feat(ui): add contextual product property panel`
-- B8+B9 already on `origin/weos-v2-foundation`
-- **This pass (docs only):** queue Batch 8.5 / 9.5 Pergola; commit message `docs(audit): queue Pergola adapter panel and print completion`
-- **Gap documented:** **PARITY PENDING: Pergola tools/schema insufficient** after B8/B9 — queued as Batch 8.5 / 9.5
-- Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, blueprint/gap docs, etc.
+- Batch A: PDF Reliability **PASS** — committed + pushed this session
 - Production deployment: **NOT PERFORMED**
-- **Do not interrupt** active PDF reliability (Batch A) work
-- Next *product* batch after Batch A: **Batch 8.5 / 9.5 — Pergola Product Adapter + Property Panel + Print/PDF**
-- Next *architecture* batch (separate track): Engineering Master Data / BOM Foundation
-- Hard stop after B9 (architecture): **YES** — Pergola is B8/B9 product parity, not a new architecture kickoff
+- **Next eligible:** **Batch 8.5 / 9.5 — Pergola** (then UX/PDF Batch B — PDF Viewer Redesign)
+- Hard stop: do **not** start Pergola or PDF Viewer Redesign in this Batch A finish turn
+- Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, etc.
