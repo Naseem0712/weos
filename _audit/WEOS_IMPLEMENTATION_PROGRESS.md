@@ -297,16 +297,45 @@ Re-run after B9 with contextual properties smoke.
 
 ---
 
+### BATCH 9 — Contextual Property Panel
+
+| Field | Value |
+|---|---|
+| **ID** | B9 |
+| **Goal** | ONE contextual property panel synced to selection IDs; wrap/hide legacy tool stacks when UC ON |
+| **Files committed** | `WEOS/factory/contextual_properties.py`, `WEOS/api/design_routes.py`, `WEOS/website/canvas/property_panel.js`, `WEOS/website/index.html`, `WEOS/_smoke_contextual_properties.py`, `_audit/WEOS_IMPLEMENTATION_PROGRESS.md`, `_audit/WEOS_DEAD_CODE_REGISTER.md` |
+| **Schema / migration** | None |
+| **Tests** | `_smoke_contextual_properties.py` **PASS**; combined gate 18/18 **PASS** |
+| **Issues** | Visual interactive cart login not fully exercised; static panel + API verified |
+| **Commit** | (see git) — `feat(ui): add contextual product property panel` |
+| **Push** | `origin/weos-v2-foundation` |
+| **Rollback** | Flag OFF restores legacy tools; revert B9 commit |
+
+#### B9 notes
+
+- Selection by elementId / assemblyId / connectionId (not DOM/row index)
+- Window / Railing / Ventilator / Assembly / Connection schemas — no cross-product pollution
+- When `WEOS_UNIVERSAL_CANVAS` ON: `#railTools` / `#showerTools` / `#ventTools` / `#windowCartTools` hidden (PARITY PENDING — not deleted)
+- Property updates: Panel → geometry/config split → SQL save → preview; fail closed
+- Hard stop after B9: next eligible Engineering Master Data / BOM Foundation
+
+### Combined regression gate (after B8+B9)
+
+All PASS (exit 0): durability, canonical customer, canonical project, tenant ownership, design hierarchy, design scene, universal canvas, product adapters, contextual properties, quote identity, quote totals, public scan, PDF cart, money specs, normal railing, stair railing, sliding, casement.
+
+---
+
 ## Remaining batches (from user plan / target doc)
 
-Contextual Property Panel — **NEXT ELIGIBLE**. Production deployment — **NOT PERFORMED**.
+Engineering Master Data / BOM Foundation — **NEXT ELIGIBLE**. Production deployment — **NOT PERFORMED**.
 
 ## Checkpoint (current session)
 
 - **Starting HEAD:** `2020822640ef85c63f7b76db04bf2c569aee3703`
-- **Ending HEAD:** (B8 commit)
+- **Ending HEAD:** (B9 commit)
 - **Branch:** weos-v2-foundation
+- B8+B9 feature + docs pushed to `origin/weos-v2-foundation`
 - Unrelated dirty left untouched: product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, blueprint/gap docs, etc.
 - Production deployment: **NOT PERFORMED**
-- Next eligible batch: **Contextual Property Panel (B9)**
-- Hard stop after B8 alone: no — B9 authorized in same session after B8 PASS+push
+- Next eligible batch: **Engineering Master Data / BOM Foundation**
+- Hard stop after B9: **YES**

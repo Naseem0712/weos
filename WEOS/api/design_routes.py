@@ -778,3 +778,107 @@ def api_patch_assembly(
         return {"ok": True, "persisted": True, "assembly": updated}
     except Exception as exc:
         raise _map_err(exc) from exc
+
+
+# ── Batch 9 — Contextual Property Panel ───────────────────────────────────────
+
+
+class PropertyUpdateBody(BaseModel):
+    """Mixed patch — server splits geometry vs configPayload."""
+
+    widthMm: float | None = None
+    heightMm: float | None = None
+    xMm: float | None = None
+    yMm: float | None = None
+    orientation: str | None = None
+    sillHeightMm: float | None = None
+    config: dict[str, Any] | None = None
+    # Flat keys also accepted (panel form posts)
+    extras: dict[str, Any] | None = None
+
+
+@router.get("/api/property-panel")
+def api_property_panel(
+    request: Request,
+    kind: str = "none",
+    id: str | None = None,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    """ONE contextual panel payload keyed by stable IDs — not DOM/row index."""
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import contextual_properties as cp
+    from WEOS.factory import design_scene as ds
+
+    k = str(kind or "none").strip().lower()
+    if k not in cp.SELECTION_KINDS:
+        raise HTTPException(status_code=400, detail="kind must be none|element|assembly|connection")
+    if k == "none" or not id:
+        return cp.empty_panel_guidance()
+
+    g = require_company_gst(request, gst)
+    try:
+        if k == "element":
+            el = ds.get_element(id, company_gst=g)
+            if not el:
+                raise PermissionError("element not found for company")
+            return cp.panel_for_element(el)
+        if k == "assembly":
+            asm = ds.get_assembly(id, company_gst=g)
+            if not asm:
+                raise PermissionError("assembly not found for company")
+            kids = ds.list_elements(id, company_gst=g)
+            # connections listed via scene helper if available
+            conn_n = 0
+            try:
+                from WEOS.db.engine import session_scope
+                from WEOS.db.models import Connection
+                from sqlalchemy import select, func
+
+                with session_scope() as s:
+                    conn_n = int(
+                        s.execute(
+                            select(func.count()).select_from(Connection).where(Connection.assembly_id == id)
+                        ).scalar()
+                        or 0
+                    )
+            except Exception:
+                conn_n = 0
+            return cp.panel_for_assembly(asm, child_count=len(kids), connection_count=conn_n)
+        # connection
+        from WEOS.db.engine import session_scope
+        from WEOS.db.models import Connection
+        from WEOS.factory.canonical_customer import _norm_company_gst
+
+        with session_scope() as s:
+            row = s.get(Connection, str(id).strip())
+            if row is None or _norm_company_gst(row.company_gst) != _norm_company_gst(g):
+                raise PermissionError("connection not found for company")
+            return cp.panel_for_connection(row.to_dict())
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/property-panel/element/{element_id}")
+def api_property_panel_update_element(
+    element_id: str,
+    body: dict[str, Any],
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    """Property Panel → config/element → SQL save → preview. Fail closed on save error."""
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import contextual_properties as cp
+
+    g = require_company_gst(request, gst)
+    raw = dict(body or {})
+    # Flatten nested config into patch
+    patch = {k: v for k, v in raw.items() if k not in ("config", "configPayload")}
+    nested = raw.get("config") if isinstance(raw.get("config"), dict) else None
+    if nested is None and isinstance(raw.get("configPayload"), dict):
+        nested = raw.get("configPayload")
+    if nested:
+        patch.update(nested)
+    try:
+        return cp.apply_element_property_update(element_id, company_gst=g, patch=patch)
+    except Exception as exc:
+        raise _map_err(exc) from exc

@@ -212,6 +212,21 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
 #view-cart .cart-preview.uc-active .uc-viewport{min-height:480px}
 #view-cart .cart-preview.uc-active .preview[data-uc-compat="1"]{display:none!important}
 .uc-el-svg svg{max-width:none;max-height:none}
+/* Batch 9 — contextual property panel; legacy tools wrapped when UC mode on */
+#ucPropertyPanel{
+  flex:0 0 auto;max-height:42vh;overflow:auto;margin-top:.55rem;
+  border:1px solid var(--line);border-radius:12px;padding:.55rem .7rem;background:#fff
+}
+.uc-pp-group{margin:.45rem 0 .65rem}
+.uc-pp-group-title{font-weight:600;font-size:.78rem;margin-bottom:.25rem}
+.uc-pp-field{display:grid;grid-template-columns:minmax(7rem,0.9fr) minmax(0,1.2fr);gap:.35rem;align-items:center;margin:.2rem 0}
+.uc-pp-field input{width:100%;max-width:14rem}
+.uc-pp-actions{gap:.35rem;align-items:center}
+#view-cart.uc-mode #railTools,
+#view-cart.uc-mode #showerTools,
+#view-cart.uc-mode #ventTools,
+#view-cart.uc-mode #windowCartTools,
+.uc-legacy-hidden{display:none!important}
 .admin-split{align-items:stretch}
 .admin-split > div:first-child{min-height:0;display:flex;flex-direction:column}
 .admin-split .canvas-wrap{flex:1 1 auto;min-height:280px;max-height:calc(100vh - 12rem);overscroll-behavior:contain}
@@ -13898,6 +13913,7 @@ async function pingEngine(){
 <script src="/static/canvas/adapters.js"></script>
 <script src="/static/canvas/scene_renderer.js"></script>
 <script src="/static/canvas/universal_canvas.js"></script>
+<script src="/static/canvas/property_panel.js"></script>
 <script>
 (function () {
   async function bootUniversalCanvas() {
@@ -13908,8 +13924,27 @@ async function pingEngine(){
       serverEnabled = !!(flags && (flags.universalCanvas || flags.WEOS_UNIVERSAL_CANVAS));
     } catch (e) {}
     var host = window.WEOSCanvas.UniversalCanvas.tryMount({ serverEnabled: serverEnabled });
-    if (!host) return;
+    if (!host) {
+      if (window.WEOSCanvas.propertyPanel) window.WEOSCanvas.propertyPanel.hideLegacyTools(false);
+      return;
+    }
     window.WEOS_UNIVERSAL_CANVAS = true;
+    // Contextual property panel (Batch 9) — ONE panel; hide legacy tool stacks.
+    try {
+      if (window.WEOSCanvas.propertyPanel) {
+        window.WEOS_PROPERTY_PANEL = window.WEOSCanvas.propertyPanel.tryMount(host, {
+          enabled: true,
+          api: typeof api === 'function' ? api : null,
+          onSaved: function (res) {
+            try {
+              if (res && res.preview && res.preview.svg && res.element && host.setElementPreviewSvg) {
+                host.setElementPreviewSvg(res.element.elementId, res.preview.svg);
+              }
+            } catch (e) {}
+          }
+        });
+      }
+    } catch (e) { console.warn('Property panel mount deferred', e); }
     // Optional: load scene when a durable design document id is known on state.
     try {
       if (window.state && state.designDocumentId && typeof api === 'function') {
