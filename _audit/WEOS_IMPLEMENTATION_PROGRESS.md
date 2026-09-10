@@ -712,7 +712,7 @@ Engineering Master Data / BOM Foundation remains on the architecture track **aft
 
 - **Branch:** weos-v2-foundation
 - **Starting HEAD:** db9096f74e74d3ce1b161ad7907747f4b2322de5
-- **Ending HEAD:** *(set after docs stamp commit)*
+- **Ending HEAD:** 37d4916824ef95d11af71aafe2876de9604f7a82 (37d4916) on weos-v2-foundation / origin/weos-v2-foundation
 - **Next eligible implementation:** **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**, not started)
 - **Do not start:** Canvas E automatically; Production deploy
 - **Preserved:** unrelated dirty product stubs / weos.db / customers / tmp files not committed
