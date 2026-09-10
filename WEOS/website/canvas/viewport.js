@@ -1,13 +1,20 @@
 /**
  * WEOS Universal Canvas — Viewport (world mm ↔ CSS px).
  * Zoom/pan are UI display state only — never mutate engineering W/H.
+ * Batch D: safe min/max; resize preserves world center (no zoom reset).
  */
 (function (global) {
   "use strict";
 
+  var DEFAULT_LO = 0.15;
+  var DEFAULT_HI = 6;
+
   function clampZoom(z, lo, hi) {
-    lo = lo == null ? 0.25 : lo;
-    hi = hi == null ? 4 : hi;
+    if (global.WEOSCanvas && global.WEOSCanvas.commands && global.WEOSCanvas.commands.clampZoom) {
+      return global.WEOSCanvas.commands.clampZoom(z);
+    }
+    lo = lo == null ? DEFAULT_LO : lo;
+    hi = hi == null ? DEFAULT_HI : hi;
     var n = Number(z);
     if (!isFinite(n) || n <= 0) n = 1;
     return Math.max(lo, Math.min(hi, Math.round(n * 100) / 100));
@@ -69,7 +76,7 @@
     }
 
     function fit(bounds, viewportW, viewportH, padding) {
-      padding = padding == null ? 40 : padding;
+      padding = padding == null ? 48 : padding;
       var ww = Math.max(1, Number(bounds && bounds.width) || 1000);
       var wh = Math.max(1, Number(bounds && bounds.height) || 1000);
       var minX = Number(bounds && bounds.minX) || 0;
@@ -82,6 +89,29 @@
       state.panX = padding;
       state.panY = padding;
       return state.zoom;
+    }
+
+    /** Preserve world center when stage size changes (panel toggle). Does not reset zoom. */
+    function preserveCenterOnResize(oldW, oldH, newW, newH) {
+      var ow = Math.max(1, Number(oldW) || 1);
+      var oh = Math.max(1, Number(oldH) || 1);
+      var nw = Math.max(1, Number(newW) || 1);
+      var nh = Math.max(1, Number(newH) || 1);
+      var z = state.zoom || 1;
+      var cx = (ow / 2 - state.panX) / z + state.worldOriginX;
+      var cy = (oh / 2 - state.panY) / z + state.worldOriginY;
+      state.panX = nw / 2 - (cx - state.worldOriginX) * z;
+      state.panY = nh / 2 - (cy - state.worldOriginY) * z;
+      return snapshot();
+    }
+
+    function applySnapshot(s) {
+      if (!s) return;
+      if (s.zoom != null) state.zoom = clampZoom(s.zoom);
+      if (s.panX != null) state.panX = Number(s.panX) || 0;
+      if (s.panY != null) state.panY = Number(s.panY) || 0;
+      if (s.worldOriginX != null) state.worldOriginX = Number(s.worldOriginX) || 0;
+      if (s.worldOriginY != null) state.worldOriginY = Number(s.worldOriginY) || 0;
     }
 
     function snapshot() {
@@ -102,6 +132,8 @@
       panBy: panBy,
       reset: reset,
       fit: fit,
+      preserveCenterOnResize: preserveCenterOnResize,
+      applySnapshot: applySnapshot,
       clampZoom: clampZoom,
       snapshot: snapshot,
       get zoom() {

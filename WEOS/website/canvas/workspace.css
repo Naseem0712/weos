@@ -1,0 +1,297 @@
+/**
+ * WEOS Canvas Batch D — Professional workspace layout styles.
+ * Uses Batch C design tokens (--weos-*). Does not invent a parallel theme.
+ */
+.uc-host--workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.uc-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  background: var(--weos-color-bg, #e8e3d8);
+  border: 1px solid var(--weos-color-line, rgba(20, 20, 16, 0.12));
+  border-radius: var(--weos-radius-lg, 12px);
+  overflow: hidden;
+}
+
+.uc-command-bar.weos-ds-toolbar {
+  flex: 0 0 auto;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  box-shadow: none;
+  gap: 0.35rem;
+  padding: 0.35rem 0.55rem;
+}
+
+.uc-cmd-title {
+  font-size: var(--weos-text-sm, 0.82rem);
+  color: var(--weos-color-ink, #141410);
+}
+.uc-cmd-design {
+  font-size: var(--weos-text-xs, 0.72rem);
+}
+.uc-zoom-label {
+  min-width: 3.2rem;
+  text-align: center;
+  font-size: var(--weos-text-xs, 0.72rem);
+  font-variant-numeric: tabular-nums;
+}
+.uc-save-pill {
+  font-size: var(--weos-text-xs, 0.72rem);
+}
+.uc-save-pill[data-kind="saved"],
+.uc-save-pill[data-kind="server_draft"] {
+  background: var(--weos-status-ok-bg, #e7f3ee);
+  color: var(--weos-status-ok-fg, #0a5a48);
+}
+.uc-save-pill[data-kind="saving"],
+.uc-save-pill[data-kind="unsaved"],
+.uc-save-pill[data-kind="local"] {
+  background: var(--weos-status-neutral-bg, #efeee9);
+  color: var(--weos-status-neutral-fg, #5c584f);
+}
+.uc-save-pill[data-kind="error"] {
+  background: var(--weos-status-err-bg, #f5e6e4);
+  color: var(--weos-status-err-fg, #8c1f18);
+}
+
+.uc-workspace-body {
+  display: grid;
+  grid-template-columns: 52px minmax(280px, 1fr) minmax(220px, 280px);
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.uc-tool-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.4rem 0.3rem;
+  background: var(--weos-color-panel, rgba(255, 252, 247, 0.94));
+  border-right: 1px solid var(--weos-color-line, rgba(20, 20, 16, 0.12));
+  overflow: auto;
+}
+.uc-tool-rail__sep {
+  height: 1px;
+  margin: 0.25rem 0.15rem;
+  background: var(--weos-color-line, rgba(20, 20, 16, 0.12));
+}
+.uc-tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  width: 100%;
+  min-height: 2.4rem;
+  padding: 0.25rem 0.15rem;
+  border: 1px solid transparent;
+  border-radius: var(--weos-radius-md, 8px);
+  background: transparent;
+  color: var(--weos-color-ink, #141410);
+  font: inherit;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.uc-tool:hover:not(:disabled) {
+  background: rgba(10, 90, 72, 0.08);
+  border-color: rgba(10, 90, 72, 0.2);
+}
+.uc-tool.is-active {
+  background: rgba(10, 90, 72, 0.14);
+  border-color: var(--weos-color-primary, #0a5a48);
+  color: var(--weos-color-primary, #0a5a48);
+}
+.uc-tool.is-reserved,
+.uc-tool:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.uc-tool__soon {
+  font-size: 0.55rem;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--weos-color-muted, #5c584f);
+}
+
+.uc-stage-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+.uc-viewport {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #d8dee6;
+  cursor: default;
+  outline: none;
+}
+.uc-viewport[data-tool="pan"] {
+  cursor: grab;
+}
+.uc-viewport[data-tool="pan"].is-panning {
+  cursor: grabbing;
+}
+.uc-viewport[data-tool="measure"] {
+  cursor: crosshair;
+}
+
+.uc-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.uc-layer--world {
+  pointer-events: auto;
+}
+.uc-empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  pointer-events: none;
+  text-align: center;
+  padding: 1.5rem;
+}
+.uc-empty-state__title {
+  font-family: var(--weos-font-display, Georgia, serif);
+  font-size: var(--weos-text-xl, 1.35rem);
+  color: var(--weos-color-ink, #141410);
+  margin: 0;
+}
+.uc-empty-state__text {
+  margin: 0;
+  max-width: 22rem;
+  color: var(--weos-color-muted, #5c584f);
+  font-size: var(--weos-text-sm, 0.82rem);
+}
+
+.uc-status-bar {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.25rem 0.55rem;
+  font-size: var(--weos-text-xs, 0.72rem);
+  background: var(--weos-color-panel, rgba(255, 252, 247, 0.94));
+  border-top: 1px solid var(--weos-color-line, rgba(20, 20, 16, 0.12));
+  font-variant-numeric: tabular-nums;
+}
+
+.uc-props-rail {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--weos-color-panel, rgba(255, 252, 247, 0.94));
+  border-left: 1px solid var(--weos-color-line, rgba(20, 20, 16, 0.12));
+  padding: 0.45rem 0.55rem;
+}
+.uc-workspace.is-props-collapsed .uc-workspace-body {
+  grid-template-columns: 52px minmax(0, 1fr) 0;
+}
+.uc-workspace.is-props-collapsed .uc-props-rail {
+  padding: 0;
+  border-left: 0;
+  overflow: hidden;
+}
+
+/* Selection / hover polish — outline stays light so drawings remain readable */
+.uc-el {
+  box-sizing: border-box;
+}
+.uc-el:hover:not(.uc-el-selected) {
+  outline: 2px solid rgba(10, 90, 72, 0.35);
+  outline-offset: 1px;
+}
+.uc-el-selected {
+  outline: 2px solid var(--weos-color-accent, #b45324);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 1px rgba(180, 83, 36, 0.25);
+}
+.uc-el-unsupported {
+  outline: 2px dashed var(--weos-color-danger, #8c1f18);
+}
+
+.uc-property-panel .weos-ds-prop-section {
+  margin: 0.4rem 0 0.55rem;
+}
+.uc-property-panel .weos-ds-prop-section__head {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.uc-property-panel .weos-ds-prop-section.is-collapsed .weos-ds-prop-section__body {
+  display: none;
+}
+.uc-property-panel .weos-ds-prop-section__chevron::before {
+  content: "▾";
+  font-size: 0.7rem;
+  color: var(--weos-color-muted, #5c584f);
+}
+.uc-property-panel .weos-ds-prop-section.is-collapsed .weos-ds-prop-section__chevron::before {
+  content: "▸";
+}
+
+/* Cart preview: canvas dominates when UC workspace is active */
+#view-cart .cart-preview.uc-active #universalCanvasHost {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: clamp(560px, 78vh, 960px);
+}
+#view-cart .cart-preview.uc-active #ucPropertyPanel:not(.uc-host--workspace #ucPropertyPanel) {
+  /* legacy bottom mount hidden when workspace hosts the panel */
+}
+#view-cart .cart-preview.uc-active > #ucPropertyPanel {
+  display: none !important;
+}
+
+@media (max-width: 1100px) {
+  .uc-workspace-body {
+    grid-template-columns: 44px minmax(0, 1fr) minmax(180px, 220px);
+  }
+  .uc-floor-label {
+    display: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .uc-workspace-body {
+    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .uc-props-rail {
+    grid-column: 1 / -1;
+    max-height: 38vh;
+    border-left: 0;
+    border-top: 1px solid var(--weos-color-line, rgba(20, 20, 16, 0.12));
+  }
+  .uc-workspace.is-props-collapsed .uc-workspace-body {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+}

@@ -137,10 +137,21 @@
 
       body.className = "uc-pp-body";
       body.innerHTML = "";
+      var collapsePref = state._collapsePref || (state._collapsePref = {});
       var groups = (state.schema && state.schema.groups) || [];
       groups.forEach(function (g) {
-        var box = el("div", { className: "uc-pp-group" });
-        box.appendChild(el("div", { className: "uc-pp-group-title", text: g.label || g.id || "" }));
+        var gid = String(g.id || g.label || "group");
+        var box = el("div", { className: "weos-ds-prop-section uc-pp-group" });
+        if (collapsePref[gid]) box.classList.add("is-collapsed");
+        var head = el("div", { className: "weos-ds-prop-section__head" });
+        head.appendChild(el("span", { text: g.label || g.id || "" }));
+        head.appendChild(el("span", { className: "weos-ds-prop-section__chevron", "aria-hidden": "true" }));
+        head.addEventListener("click", function () {
+          box.classList.toggle("is-collapsed");
+          collapsePref[gid] = box.classList.contains("is-collapsed");
+        });
+        box.appendChild(head);
+        var sectBody = el("div", { className: "weos-ds-prop-section__body" });
         (g.fields || []).forEach(function (f) {
           var row = el("div", { className: "uc-pp-field" });
           row.appendChild(el("label", { className: "l", text: f.label || f.key }));
@@ -153,11 +164,17 @@
               text: typeof val === "object" ? JSON.stringify(val) : String(val),
             });
           } else if (f.type === "boolean") {
-            input = el("input", { type: "checkbox", "data-pp-key": f.key, "data-pp-domain": f.domain || "config" });
+            input = el("input", {
+              type: "checkbox",
+              className: "weos-ds-input",
+              "data-pp-key": f.key,
+              "data-pp-domain": f.domain || "config",
+            });
             input.checked = !!val;
           } else if (f.type === "number") {
             input = el("input", {
               type: "number",
+              className: "weos-ds-input",
               "data-pp-key": f.key,
               "data-pp-domain": f.domain || "config",
               value: val === "" || val == null ? "" : String(val),
@@ -165,6 +182,7 @@
           } else {
             input = el("input", {
               type: "text",
+              className: "weos-ds-input",
               "data-pp-key": f.key,
               "data-pp-domain": f.domain || "config",
               value: String(val),
@@ -177,8 +195,9 @@
             });
           }
           row.appendChild(input);
-          box.appendChild(row);
+          sectBody.appendChild(row);
         });
+        box.appendChild(sectBody);
         body.appendChild(box);
       });
       if (actions) actions.style.display = state.kind === "element" ? "flex" : "none";
@@ -291,7 +310,9 @@
       return null;
     }
     hideLegacyTools(true);
+    // Prefer workspace right-rail panel (Batch D); fall back to legacy cart-preview mount.
     var mount =
+      (host && host.propertyPanelEl) ||
       document.getElementById("ucPropertyPanel") ||
       (function () {
         var preview = document.querySelector(".cart-preview");

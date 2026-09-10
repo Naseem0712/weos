@@ -1,5 +1,5 @@
 /**
- * WEOS Universal Canvas — Scene renderer (elements + explicit connections).
+ * WEOS Universal Canvas — Scene renderer (layered: grid / world / conn / dims / UI).
  */
 (function (global) {
   "use strict";
@@ -101,8 +101,27 @@
     };
   }
 
-  function renderInto(hostEl, model, viewport, selection, registry) {
+  function ensureLayers(hostEl) {
+    if (!hostEl.querySelector(".uc-layer--grid")) {
+      hostEl.innerHTML =
+        '<div class="uc-layer uc-layer--grid" data-layer="grid"></div>' +
+        '<div class="uc-layer uc-layer--world uc-world" data-layer="world"></div>' +
+        '<div class="uc-layer uc-layer--conn uc-conn" data-layer="conn"></div>' +
+        '<div class="uc-layer uc-layer--dims" data-layer="dims"></div>' +
+        '<div class="uc-layer uc-layer--ui" data-layer="ui"></div>';
+    }
+    return {
+      grid: hostEl.querySelector(".uc-layer--grid"),
+      world: hostEl.querySelector(".uc-layer--world"),
+      conn: hostEl.querySelector(".uc-layer--conn"),
+      dims: hostEl.querySelector(".uc-layer--dims"),
+      ui: hostEl.querySelector(".uc-layer--ui"),
+    };
+  }
+
+  function renderInto(hostEl, model, viewport, selection, registry, extras) {
     if (!hostEl) return;
+    extras = extras || {};
     var elements = model.elements || [];
     var connections = model.connections || [];
     var byId = Object.create(null);
@@ -110,29 +129,53 @@
       byId[e.elementId] = e;
     });
 
-    var layer = hostEl.querySelector(".uc-world");
-    if (!layer) {
-      hostEl.innerHTML =
-        '<div class="uc-world" style="position:absolute;left:0;top:0;transform-origin:0 0"></div>' +
-        '<div class="uc-conn" style="position:absolute;left:0;top:0;pointer-events:none;overflow:visible"></div>';
-      layer = hostEl.querySelector(".uc-world");
-    }
-    var connLayer = hostEl.querySelector(".uc-conn");
+    var layers = ensureLayers(hostEl);
     var snap = viewport.snapshot();
-    layer.style.transform =
+    var xform =
       "translate(" + snap.panX + "px," + snap.panY + "px) scale(" + snap.zoom + ")";
-    connLayer.style.transform = layer.style.transform;
+    layers.world.style.transform = xform;
+    layers.conn.style.transform = xform;
+
+    // Empty state (UI layer — not product SVG)
+    if (!elements.length) {
+      layers.world.innerHTML = "";
+      layers.conn.innerHTML = "";
+      layers.ui.innerHTML =
+        '<div class="uc-empty-state weos-ds-state">' +
+        '<p class="uc-empty-state__title">No design yet</p>' +
+        '<p class="uc-empty-state__text">Add a design from the project workflow, or select a product to begin. The canvas stays empty until you confirm an action.</p>' +
+        "</div>";
+    } else {
+      layers.ui.innerHTML = "";
+    }
+
+    // Grid layer (viewport-only)
+    if (extras.grid && typeof extras.grid.paintInto === "function") {
+      extras.grid.paintInto(layers.grid, viewport, boundsFor(elements));
+    } else {
+      layers.grid.innerHTML = "";
+    }
 
     var html = "";
+    var selSnap = selection.snapshot ? selection.snapshot() : {};
+    var hoverId = selSnap.hoverId || null;
     elements.forEach(function (el) {
       var rendered = registry.render(el, model.previewContext || {});
       var sel = selection.isSelected(el.elementId);
+      var hover = hoverId && hoverId === el.elementId && !sel;
+      var unsupported = rendered && rendered.usedFallback;
       var label = el.displayCode || el.elementId;
+      var cls = "uc-el";
+      if (sel) cls += " uc-el-selected";
+      if (hover) cls += " uc-el-hover";
+      if (unsupported) cls += " uc-el-unsupported";
       html +=
-        '<div class="uc-el' +
-        (sel ? " uc-el-selected" : "") +
+        '<div class="' +
+        cls +
         '" data-element-id="' +
         String(el.elementId).replace(/"/g, "") +
+        '" data-assembly-id="' +
+        String(el.assemblyId || "").replace(/"/g, "") +
         '" style="position:absolute;left:' +
         el.xMm +
         "px;top:" +
@@ -141,9 +184,7 @@
         el.widthMm +
         "px;height:" +
         el.heightMm +
-        'px;box-sizing:border-box;cursor:pointer;' +
-        (sel ? "outline:3px solid #c45c26;outline-offset:2px;" : "outline:1px solid rgba(0,0,0,.15);") +
-        '">' +
+        'px;box-sizing:border-box;cursor:pointer">' +
         '<div class="uc-el-svg" style="width:100%;height:100%;overflow:hidden">' +
         (rendered.svg || "") +
         "</div>" +
@@ -153,9 +194,9 @@
         "</div>" +
         "</div>";
     });
-    layer.innerHTML = html;
+    layers.world.innerHTML = html;
 
-    // Explicit connections only — simple line viz between element centers.
+    // Connections — separate overlay layer
     var svgParts = [];
     var bb = boundsFor(elements);
     var vbW = bb.width + 200;
@@ -194,10 +235,22 @@
       );
     });
     svgParts.push("</svg>");
-    connLayer.innerHTML = svgParts.join("");
+    layers.conn.innerHTML = svgParts.join("");
 
-    // Normalize nested SVG to fill box without mutating engineering dims.
-    Array.prototype.forEach.call(layer.querySelectorAll(".uc-el-svg svg"), function (svg) {
+    // Dimensions — separate overlay (engineering mm)
+    if (extras.dimensions && typeof extras.dimensions.paintInto === "function") {
+      var ids = selSnap.selectedIds || selSnap.selectedElementIds || [];
+      var overlays =
+        typeof extras.dimensions.buildForSelection === "function"
+          ? extras.dimensions.buildForSelection(elements, ids)
+          : [];
+      if (extras.showDimensions === false) overlays = [];
+      extras.dimensions.paintInto(layers.dims, overlays, viewport);
+    } else {
+      layers.dims.innerHTML = "";
+    }
+
+    Array.prototype.forEach.call(layers.world.querySelectorAll(".uc-el-svg svg"), function (svg) {
       svg.style.width = "100%";
       svg.style.height = "100%";
       svg.style.display = "block";
@@ -211,5 +264,6 @@
     flattenConnections: flattenConnections,
     boundsFor: boundsFor,
     renderInto: renderInto,
+    ensureLayers: ensureLayers,
   };
 })(typeof window !== "undefined" ? window : globalThis);

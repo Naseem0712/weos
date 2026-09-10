@@ -568,15 +568,46 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 ---
 
-### CANVAS BATCH D — Professional Universal Canvas Workspace (**QUEUED**)
+### CANVAS BATCH D — Professional Universal Canvas Workspace (**DONE**)
 
 | Field | Value |
 |---|---|
 | **ID** | CANVAS-D |
-| **Status** | **QUEUED** after Canvas D0 |
+| **Status** | **DONE** — tested locally; visually verified; pushed (Production NOT PERFORMED) |
 | **Goal** | Left tool rail, command toolbar, grid, selection improvements, snap foundation, dimensions, undo/redo foundation — on **ONE** Universal Canvas |
-| **Hard stop** | No FrameMember / Cell engine (Batch E); no second canvas |
+| **Files** | `WEOS/factory/canvas_workspace.py`, `WEOS/website/canvas/{commands,grid,snap,dimensions,workspace}.js`, `workspace.css`, updates to `universal_canvas.js`, `selection.js`, `viewport.js`, `scene_renderer.js`, `property_panel.js`, `index.html`, `WEOS/_smoke_canvas_workspace.py`, progress doc |
+| **Schema / migration** | None |
+| **Tests** | `_smoke_canvas_workspace.py` A–O + history **PASS**; critical regression gate **PASS** (24/24) |
+| **Issues** | Delete disabled (no safe backend delete); Member/Grid tools reserved disabled for Batch E; property API requires company login (expected) |
+| **Commit** | `feat(canvas): add professional universal workspace controls` |
+| **Push** | `origin/weos-v2-foundation` |
+| **Rollback** | Revert Canvas D commit(s); D0 + Batch C foundations retained |
+| **Hard stop** | **Do NOT auto-start Canvas Batch E** |
 | **Authority** | ACD.2–ACD.3, ACD.8, ACD.11 |
+
+#### Batch D notes
+
+- Workspace chrome: top command bar + left tool rail + central UC stage + right properties (Batch C `weos-ds-*`)
+- `CanvasCommandState` owns activeTool / selection / zoom / saveStatus / grid / snap
+- Grid viewport-only; snap returns world mm; dims from engineering mm on separate overlay layers
+- ResizeObserver preserves zoom when props panel toggles; Fit uses scene bounds + padding
+- History = domain before/after (not DOM); Delete disabled until backend exists
+- Save pill syncs from B2 `#savePill` durability kinds
+- Keyboard shortcuts guarded when focus is in input/textarea/select
+
+#### Queue order (strict)
+
+1. ~~UX/PDF **Batch A — PDF reliability**~~ **DONE**
+2. ~~**Batch 8.5 / 9.5 — Pergola**~~ **DONE**
+3. ~~UX/PDF **Batch B — PDF Viewer Redesign**~~ **DONE**
+4. ~~**UX Batch C — WEOS Design System foundation**~~ **DONE**
+5. ~~**Canvas D0 — Product Context parity**~~ **DONE**
+6. ~~**Canvas Batch D — Professional Universal Canvas Workspace**~~ **DONE**
+7. **Next eligible:** **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**)
+8. Then **Canvas Batch F** — Cell Product Assignment (**QUEUED**)
+9. Then **Canvas Batch G** — Design Management (**QUEUED**)
+10. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains **separate**
+11. Production deployment — **NOT AUTHORIZED / NOT PERFORMED**
 
 ---
 
@@ -618,29 +649,18 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 ## Remaining batches (from user plan / target doc)
 
-**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → **Next: Canvas D** → E → F → G.  
+**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → ~~Canvas D~~ **DONE** → **Next: Canvas E** → F → G.  
 Engineering Master Data / BOM Foundation remains on the architecture track **after** C–G foundations are stable.  
-**HARD STOP:** Canvas D/E/F/G **not started** (D0 complete). Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
+**HARD STOP:** Canvas E/F/G **not started** (D complete). Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
 
 ---
 
-## Session checkpoint (Canvas D0)
+## Session checkpoint (Canvas Batch D)
 
 - **Branch:** `weos-v2-foundation`
-- **Starting HEAD:** `8c023706c6eaf02134ac160460cb85101fdd1b0a`
-- **Ending HEAD:** 9d95e527d466aee62a84afab9ecda6fd4e480b8b (9d95e52) on weos-v2-foundation / origin/weos-v2-foundation
-- **Next eligible implementation:** **Canvas Batch D** — Professional Universal Canvas Workspace
-- **Do not start:** Canvas D automatically in this turn; Production deploy
-- **Preserved:** B5–B9, Pergola 8.5/9.5, PDF A/B, UX C foundations; unrelated dirty files not committed
-
-## Checkpoint (current session — Batch C COMPLETE)
-
-- **Starting HEAD:** `011b624d7e04235a49187a7b0d21463bc2461215` on `weos-v2-foundation`
-- **Ending HEAD:** 632b12b3f7969897dfa9a285df4469d6d3e2565c (632b12b) on weos-v2-foundation / origin/weos-v2-foundation
-- **Batch C:** **COMPLETE** — design system smoke PASS; critical regression 21/21 PASS; selective commit + push
-- **Canvas D–G:** not started (HARD STOP after C)
-- Production deployment: **NOT PERFORMED**
-- **Next eligible implementation:** **Canvas Batch D** — Professional Universal Canvas Workspace
-- Unrelated dirty tree left untouched
-- Recovery script `_tmp_batch_c_finish.ps1` left untracked (not committed)
+- **Starting HEAD:** `6f5dcbf638a554fdc44b5a25be5cdb2af8727171`
+- **Ending HEAD:** _(filled after commit/push)_
+- **Next eligible implementation:** **Canvas Batch E** — Member + Grid + Cell Engine
+- **Do not start:** Canvas E automatically; Production deploy
+- **Preserved:** B5–B9, Pergola, PDF A/B, UX C, Canvas D0; unrelated dirty files not committed
 

@@ -1,7 +1,8 @@
 /**
  * WEOS Universal Engineering Canvas Host — ONE canvas for all products.
+ * Batch D: professional workspace chrome (command bar + tool rail + stage + props).
  * Feature flag: WEOS_UNIVERSAL_CANVAS (env /api/flags or ?universalCanvas=1).
- * Does not rewrite product engines; preview SVG via adapters; drag deferred.
+ * Does not rewrite product engines; preview SVG via adapters; Member/Grid deferred to E.
  */
 (function (global) {
   "use strict";
@@ -31,10 +32,24 @@
     if (!C.viewport || !C.selection || !C.adapters || !C.sceneRenderer) {
       throw new Error("WEOSCanvas modules missing — load viewport/selection/adapters/scene_renderer first");
     }
+    if (!C.workspace || !C.commands || !C.grid || !C.snap || !C.dimensions) {
+      throw new Error("WEOSCanvas Batch D modules missing — load commands/grid/snap/dimensions/workspace first");
+    }
 
+    var shell = C.workspace.mountShell(rootEl);
+    var vpEl = shell.viewport;
     var viewport = C.viewport.create();
-    var selection = C.selection.create({ allowMulti: false });
+    var selection = C.selection.create({ allowMulti: true });
     var registry = C.adapters.createRegistry();
+    var history = C.commands.createHistory({ maxSize: 50 });
+    var grid = C.grid.create({ visible: true });
+    var snap = C.snap.create({ enabled: true });
+    var cmdState = C.commands.createCommandState({
+      activeTool: C.commands.TOOLS.SELECT,
+      gridVisible: true,
+      snapEnabled: true,
+    });
+
     var model = {
       elements: [],
       connections: [],
@@ -47,42 +62,92 @@
       selectedSync: null,
     };
     var panning = null;
+    var lastVpSize = { w: 0, h: 0 };
     var onSelectCbs = [];
+    var onCommandCbs = [];
 
-    rootEl.classList.add("uc-host");
-    rootEl.innerHTML =
-      '<div class="uc-toolbar" style="display:flex;gap:.35rem;align-items:center;flex-wrap:wrap;margin-bottom:.4rem">' +
-      '<strong style="margin-right:.4rem">Engineering Canvas</strong>' +
-      '<label class="muted" style="font-size:.78rem">Floor <select id="ucFloorSel"></select></label>' +
-      '<label class="muted" style="font-size:.78rem">Location <select id="ucLocSel"></select></label>' +
-      '<span style="flex:1"></span>' +
-      '<button type="button" class="btn ghost sm" data-uc="fit">Fit</button>' +
-      '<button type="button" class="btn ghost sm" data-uc="zoomOut">−</button>' +
-      '<span class="muted uc-zoom-label" style="min-width:3.2rem;text-align:center;font-size:.78rem">100%</span>' +
-      '<button type="button" class="btn ghost sm" data-uc="zoomIn">+</button>' +
-      '<button type="button" class="btn ghost sm" data-uc="reset">Reset</button>' +
-      "</div>" +
-      '<div class="uc-viewport" tabindex="0" style="position:relative;flex:1 1 auto;min-height:0;height:100%;' +
-      "overflow:hidden;background:#d8dee6;border:1px solid rgba(0,0,0,.12);border-radius:12px;cursor:grab\">" +
-      "</div>" +
-      '<div class="uc-selinfo muted" style="margin-top:.35rem;font-size:.78rem">No selection</div>';
-
-    var vpEl = rootEl.querySelector(".uc-viewport");
-    var zoomLabel = rootEl.querySelector(".uc-zoom-label");
-    var selInfo = rootEl.querySelector(".uc-selinfo");
+    var zoomLabel = rootEl.querySelector('[data-uc="zoomLabel"]');
+    var selInfo = rootEl.querySelector('[data-uc="selinfo"]');
+    var cursorStatus = rootEl.querySelector('[data-uc="cursorStatus"]');
+    var savePill = rootEl.querySelector('[data-uc="saveStatus"]');
     var floorSel = rootEl.querySelector("#ucFloorSel");
     var locSel = rootEl.querySelector("#ucLocSel");
+    var undoBtn = rootEl.querySelector('[data-uc="undo"]');
+    var redoBtn = rootEl.querySelector('[data-uc="redo"]');
+    var deleteBtn = rootEl.querySelector('[data-uc="delete"]');
+    var gridBtn = rootEl.querySelector('[data-uc="gridToggle"]');
+    var snapBtn = rootEl.querySelector('[data-uc="snapToggle"]');
+
+    function emitCommand() {
+      var snapCmd = getCommandState();
+      onCommandCbs.forEach(function (fn) {
+        try {
+          fn(snapCmd);
+        } catch (e) {}
+      });
+    }
+
+    function getCommandState() {
+      var hs = history.snapshot();
+      cmdState.canUndo = hs.canUndo;
+      cmdState.canRedo = hs.canRedo;
+      cmdState.zoom = viewport.zoom;
+      cmdState.gridVisible = grid.visible;
+      cmdState.snapEnabled = snap.enabled;
+      var sel = selection.snapshot();
+      cmdState.selection = {
+        selectedIds: sel.selectedIds.slice(),
+        primaryId: sel.primaryId,
+        kind: sel.kind,
+      };
+      return JSON.parse(JSON.stringify(cmdState));
+    }
+
+    function syncChrome() {
+      C.workspace.syncToolRail(shell.toolRail, cmdState.activeTool);
+      vpEl.setAttribute("data-tool", cmdState.activeTool);
+      if (undoBtn) undoBtn.disabled = !history.canUndo;
+      if (redoBtn) redoBtn.disabled = !history.canRedo;
+      if (deleteBtn) {
+        deleteBtn.disabled = true;
+        deleteBtn.title = "Delete unavailable — no safe backend delete in Batch D";
+      }
+      if (gridBtn) gridBtn.classList.toggle("is-active", grid.visible);
+      if (snapBtn) snapBtn.classList.toggle("is-active", snap.enabled);
+      C.workspace.syncSavePill(savePill, cmdState.saveStatus);
+      emitCommand();
+    }
 
     function updateZoomLabel() {
       if (zoomLabel) zoomLabel.textContent = Math.round(viewport.zoom * 100) + "%";
+      updateCursorStatus();
+    }
+
+    function updateCursorStatus(world) {
+      if (!cursorStatus) return;
+      var x = world && world.xMm != null ? Math.round(world.xMm) : "—";
+      var y = world && world.yMm != null ? Math.round(world.yMm) : "—";
+      cursorStatus.textContent =
+        "X " + x + " mm · Y " + y + " mm · Zoom " + Math.round(viewport.zoom * 100) + "%";
+      cmdState.cursor = {
+        xMm: world && world.xMm != null ? world.xMm : null,
+        yMm: world && world.yMm != null ? world.yMm : null,
+      };
     }
 
     function paint() {
-      C.sceneRenderer.renderInto(vpEl, model, viewport, selection, registry);
+      var showDims =
+        cmdState.activeTool === C.commands.TOOLS.MEASURE ||
+        !!(selection.snapshot().primaryId);
+      C.sceneRenderer.renderInto(vpEl, model, viewport, selection, registry, {
+        grid: grid,
+        dimensions: C.dimensions,
+        showDimensions: showDims,
+      });
       updateZoomLabel();
-      var snap = selection.snapshot();
+      var snapSel = selection.snapshot();
       var el = model.elements.filter(function (e) {
-        return e.elementId === snap.primaryElementId;
+        return e.elementId === snapSel.primaryElementId;
       })[0];
       model.selectedSync = el
         ? {
@@ -97,8 +162,9 @@
           }
         : null;
       if (selInfo) {
-        selInfo.textContent = el
-          ? el.displayCode +
+        if (el) {
+          selInfo.textContent =
+            el.displayCode +
             " · " +
             el.productType +
             " · " +
@@ -108,9 +174,12 @@
             " mm · " +
             (el.floorName || el.floorId || "—") +
             " / " +
-            (el.locationName || el.locationId || "—")
-          : "No selection";
+            (el.locationName || el.locationId || "—");
+        } else {
+          selInfo.textContent = "No selection";
+        }
       }
+      syncChrome();
     }
 
     function applyFilters() {
@@ -139,6 +208,7 @@
     }
 
     function fillSelectors() {
+      if (!floorSel) return;
       var floors = (model.scene && model.scene.floors) || [];
       floorSel.innerHTML = '<option value="">All floors</option>';
       floors.forEach(function (fl) {
@@ -154,6 +224,7 @@
     }
 
     function refillLocations() {
+      if (!locSel) return;
       var floors = (model.scene && model.scene.floors) || [];
       locSel.innerHTML = '<option value="">All locations</option>';
       floors.forEach(function (fl) {
@@ -182,6 +253,7 @@
     function fit() {
       var rect = vpEl.getBoundingClientRect();
       viewport.fit(model.bounds, rect.width || 800, rect.height || 600, 48);
+      lastVpSize = { w: rect.width || 800, h: rect.height || 600 };
       paint();
     }
 
@@ -202,23 +274,53 @@
       paint();
     }
 
+    function setActiveTool(tool) {
+      C.commands.setActiveTool(cmdState, tool);
+      syncChrome();
+      paint();
+    }
+
     function setElementPreviewSvg(elementId, svg) {
       model.previewContext.previewByElementId[elementId] = svg;
       paint();
     }
 
+    function setSaveStatus(status, detail) {
+      cmdState.saveStatus = status || "unsaved";
+      if (savePill && detail) savePill.title = detail;
+      C.workspace.syncSavePill(savePill, cmdState.saveStatus);
+      emitCommand();
+    }
+
+    function syncSaveFromApp() {
+      try {
+        var pill = global.document && global.document.getElementById("savePill");
+        if (pill && pill.dataset && pill.dataset.kind) {
+          var k = pill.dataset.kind;
+          if (k === "server_draft" || k === "revision") setSaveStatus("saved", pill.title || "");
+          else if (k === "error") setSaveStatus("error", pill.title || "");
+          else if (k === "unsaved") setSaveStatus("unsaved", pill.title || "");
+          else setSaveStatus("local", pill.title || "");
+        }
+      } catch (e) {}
+    }
+
     function getViewModel() {
       return {
         host: "UniversalCanvas",
+        batch: "CANVAS-D",
         elements: model.elements,
         connections: model.connections,
         bounds: model.bounds,
         selection: selection.snapshot(),
         selected: model.selectedSync,
         viewport: viewport.snapshot(),
+        commandState: getCommandState(),
         filterFloorId: model.filterFloorId,
         filterLocationId: model.filterLocationId,
         elementDragEnabled: false,
+        grid: grid.snapshot(),
+        snap: snap.snapshot(),
       };
     }
 
@@ -228,31 +330,90 @@
       return { widthMm: s.widthMm, heightMm: s.heightMm, elementId: s.elementId };
     }
 
+    function pushHistory(type, before, after, payload) {
+      return history.push({ type: type, before: before, after: after, payload: payload || {} });
+    }
+
+    function undo() {
+      var cmd = history.undo();
+      // Infrastructure-only in Batch D unless a safe domain apply exists.
+      paint();
+      return cmd;
+    }
+
+    function redo() {
+      var cmd = history.redo();
+      paint();
+      return cmd;
+    }
+
+    // Wire toolbar
     rootEl.querySelector('[data-uc="fit"]').onclick = fit;
     rootEl.querySelector('[data-uc="zoomIn"]').onclick = zoomIn;
     rootEl.querySelector('[data-uc="zoomOut"]').onclick = zoomOut;
     rootEl.querySelector('[data-uc="reset"]').onclick = resetView;
+    if (undoBtn)
+      undoBtn.onclick = function () {
+        undo();
+      };
+    if (redoBtn)
+      redoBtn.onclick = function () {
+        redo();
+      };
+    if (gridBtn)
+      gridBtn.onclick = function () {
+        grid.toggle();
+        cmdState.gridVisible = grid.visible;
+        paint();
+      };
+    if (snapBtn)
+      snapBtn.onclick = function () {
+        snap.toggle();
+        cmdState.snapEnabled = snap.enabled;
+        syncChrome();
+      };
+    var propsToggle = rootEl.querySelector('[data-uc="toggleProps"]');
+    if (propsToggle) {
+      propsToggle.onclick = function () {
+        shell.workspace.classList.toggle("is-props-collapsed");
+        // ResizeObserver preserves zoom — do not call fit()
+      };
+    }
 
-    floorSel.onchange = function () {
-      model.filterFloorId = floorSel.value || null;
-      model.filterLocationId = null;
-      refillLocations();
-      applyFilters();
-      fit();
-    };
-    locSel.onchange = function () {
-      model.filterLocationId = locSel.value || null;
-      applyFilters();
-      fit();
-    };
+    shell.toolRail.querySelectorAll("[data-uc-tool]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (btn.disabled) return;
+        setActiveTool(btn.getAttribute("data-uc-tool"));
+      });
+    });
 
-    selection.onChange(function (snap) {
+    if (floorSel) {
+      floorSel.onchange = function () {
+        model.filterFloorId = floorSel.value || null;
+        model.filterLocationId = null;
+        refillLocations();
+        applyFilters();
+        fit();
+      };
+    }
+    if (locSel) {
+      locSel.onchange = function () {
+        model.filterLocationId = locSel.value || null;
+        applyFilters();
+        fit();
+      };
+    }
+
+    selection.onChange(function (snapSel) {
       paint();
       onSelectCbs.forEach(function (fn) {
         try {
-          fn(model.selectedSync, snap);
+          fn(model.selectedSync, snapSel);
         } catch (e) {}
       });
+    });
+    history.onChange(function () {
+      syncChrome();
     });
 
     vpEl.addEventListener(
@@ -268,24 +429,56 @@
     );
 
     vpEl.addEventListener("pointerdown", function (ev) {
+      var tool = cmdState.activeTool;
       var t = ev.target;
       var elNode = t && t.closest ? t.closest("[data-element-id]") : null;
-      if (elNode) {
-        selection.select(elNode.getAttribute("data-element-id"));
-        return;
-      }
-      // Background / middle-button pan — never moves elements.
-      if (ev.button === 0 || ev.button === 1) {
+
+      if (tool === C.commands.TOOLS.PAN || ev.button === 1) {
         panning = { x: ev.clientX, y: ev.clientY, pointerId: ev.pointerId };
         try {
           vpEl.setPointerCapture(ev.pointerId);
         } catch (e) {}
-        vpEl.style.cursor = "grabbing";
-        selection.clear();
+        vpEl.classList.add("is-panning");
+        return;
+      }
+
+      if (elNode && (tool === C.commands.TOOLS.SELECT || tool === C.commands.TOOLS.MEASURE)) {
+        var additive = !!(ev.ctrlKey || ev.metaKey || ev.shiftKey);
+        selection.select(elNode.getAttribute("data-element-id"), additive, "element");
+        return;
+      }
+
+      if (tool === C.commands.TOOLS.SELECT && (ev.button === 0 || ev.button === 1)) {
+        // Background pan with select tool (legacy-friendly) OR clear selection
+        if (ev.button === 1) {
+          panning = { x: ev.clientX, y: ev.clientY, pointerId: ev.pointerId };
+          try {
+            vpEl.setPointerCapture(ev.pointerId);
+          } catch (e) {}
+          vpEl.classList.add("is-panning");
+        } else {
+          selection.clear();
+        }
       }
     });
 
     vpEl.addEventListener("pointermove", function (ev) {
+      var rect = vpEl.getBoundingClientRect();
+      var world = viewport.viewportToWorld(ev.clientX - rect.left, ev.clientY - rect.top);
+      if (snap.enabled) {
+        var sp = snap.snapPoint(world.xMm, world.yMm, {
+          zoom: viewport.zoom,
+          elements: model.elements,
+          gridMm: grid.spacingForZoom(viewport.zoom).minorMm,
+        });
+        updateCursorStatus({ xMm: sp.xMm, yMm: sp.yMm });
+      } else {
+        updateCursorStatus(world);
+      }
+
+      var hoverNode = ev.target && ev.target.closest ? ev.target.closest("[data-element-id]") : null;
+      selection.setHover(hoverNode ? hoverNode.getAttribute("data-element-id") : null);
+
       if (!panning) return;
       viewport.panBy(ev.clientX - panning.x, ev.clientY - panning.y);
       panning.x = ev.clientX;
@@ -296,7 +489,7 @@
     function endPan(ev) {
       if (!panning) return;
       panning = null;
-      vpEl.style.cursor = "grab";
+      vpEl.classList.remove("is-panning");
       try {
         if (ev && ev.pointerId != null) vpEl.releasePointerCapture(ev.pointerId);
       } catch (e) {}
@@ -304,23 +497,101 @@
     vpEl.addEventListener("pointerup", endPan);
     vpEl.addEventListener("pointercancel", endPan);
 
+    // ResizeObserver — preserve zoom/center when props panel toggles
+    if (typeof ResizeObserver !== "undefined") {
+      var ro = new ResizeObserver(function (entries) {
+        var entry = entries && entries[0];
+        if (!entry) return;
+        var cr = entry.contentRect;
+        var nw = cr.width;
+        var nh = cr.height;
+        if (lastVpSize.w > 0 && lastVpSize.h > 0 && nw > 0 && nh > 0) {
+          if (Math.abs(nw - lastVpSize.w) > 1 || Math.abs(nh - lastVpSize.h) > 1) {
+            viewport.preserveCenterOnResize(lastVpSize.w, lastVpSize.h, nw, nh);
+            paint();
+          }
+        }
+        lastVpSize = { w: nw, h: nh };
+      });
+      ro.observe(vpEl);
+    }
+
+    // Keyboard shortcuts with input-focus guard
+    function onKey(ev) {
+      if (!C.commands.keyboardShortcutAllowed(ev.target)) return;
+      var key = ev.key;
+      var mod = ev.ctrlKey || ev.metaKey;
+      if (key === "Escape") {
+        setActiveTool(C.commands.TOOLS.SELECT);
+        return;
+      }
+      if (key === "f" || key === "F") {
+        if (!mod) {
+          ev.preventDefault();
+          fit();
+        }
+        return;
+      }
+      if (mod && key.toLowerCase() === "z" && !ev.shiftKey) {
+        ev.preventDefault();
+        undo();
+        return;
+      }
+      if ((mod && key.toLowerCase() === "y") || (mod && ev.shiftKey && key.toLowerCase() === "z")) {
+        ev.preventDefault();
+        redo();
+        return;
+      }
+      // Delete intentionally no-op (disabled) — avoid browser-only deletion
+    }
+    vpEl.addEventListener("keydown", onKey);
+    rootEl.addEventListener("keydown", onKey);
+
+    // Observe app save pill for B2 durability honesty
+    try {
+      var appPill = global.document && global.document.getElementById("savePill");
+      if (appPill && global.MutationObserver) {
+        new MutationObserver(function () {
+          syncSaveFromApp();
+        }).observe(appPill, { attributes: true, childList: true, characterData: true, subtree: true });
+      }
+      syncSaveFromApp();
+    } catch (e) {}
+
+    syncChrome();
+    paint();
+
     return {
       loadScene: loadScene,
       fit: fit,
       resetView: resetView,
       zoomIn: zoomIn,
       zoomOut: zoomOut,
+      setActiveTool: setActiveTool,
       setElementPreviewSvg: setElementPreviewSvg,
+      setSaveStatus: setSaveStatus,
       getViewModel: getViewModel,
+      getCommandState: getCommandState,
       getSelectedDims: getSelectedDims,
+      pushHistory: pushHistory,
+      undo: undo,
+      redo: redo,
+      snap: snap,
+      grid: grid,
+      history: history,
       selection: selection,
       viewport: viewport,
       registry: registry,
+      propertyPanelEl: shell.propertyPanel,
       onSelect: function (fn) {
         if (typeof fn === "function") onSelectCbs.push(fn);
       },
+      onCommandState: function (fn) {
+        if (typeof fn === "function") onCommandCbs.push(fn);
+      },
       paint: paint,
       isUniversalCanvas: true,
+      batch: "CANVAS-D",
     };
   }
 
@@ -347,7 +618,7 @@
       mount.id = "universalCanvasHost";
       mount.className = "uc-mount";
       mount.style.cssText =
-        "display:flex;flex-direction:column;flex:1 1 auto;min-height:0;height:clamp(520px,72vh,880px)";
+        "display:flex;flex-direction:column;flex:1 1 auto;min-height:0;height:clamp(560px,78vh,960px)";
       live.style.display = "none";
       live.setAttribute("data-uc-compat", "1");
       panel.insertBefore(mount, live);
@@ -360,15 +631,18 @@
     var fitBtn = global.document.getElementById("btnPrevFit");
     var zin = global.document.getElementById("btnPrevZoomIn");
     var zout = global.document.getElementById("btnPrevZoomOut");
-    if (fitBtn) fitBtn.onclick = function () {
-      host.fit();
-    };
-    if (zin) zin.onclick = function () {
-      host.zoomIn();
-    };
-    if (zout) zout.onclick = function () {
-      host.zoomOut();
-    };
+    if (fitBtn)
+      fitBtn.onclick = function () {
+        host.fit();
+      };
+    if (zin)
+      zin.onclick = function () {
+        host.zoomIn();
+      };
+    if (zout)
+      zout.onclick = function () {
+        host.zoomOut();
+      };
 
     try {
       if (C.designContext && C.designContext.getActive) {

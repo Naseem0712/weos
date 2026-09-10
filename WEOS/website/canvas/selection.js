@@ -1,13 +1,16 @@
 /**
- * WEOS Universal Canvas — Selection (single-select now, multi-select-ready).
- * Selection keys are stable elementId values from the scene — not DOM order.
+ * WEOS Universal Canvas — Selection (multi-select foundation via selectedIds[]).
+ * Selection keys are stable elementId / assemblyId / connectionId — not DOM order.
  */
 (function (global) {
   "use strict";
 
   function createSelection(opts) {
     opts = opts || {};
+    var allowMulti = opts.allowMulti !== false;
     var selected = [];
+    var kind = "none"; // element | assembly | connection | none
+    var hoverId = null;
     var listeners = [];
 
     function emit() {
@@ -21,38 +24,60 @@
 
     function snapshot() {
       return {
-        mode: "single",
+        mode: selected.length > 1 ? "multi" : "single",
         multiSelectReady: true,
-        selectedElementIds: selected.slice(),
+        allowMulti: allowMulti,
+        selectedIds: selected.slice(),
+        selectedElementIds: selected.slice(), // back-compat
+        primaryId: selected.length ? selected[0] : null,
         primaryElementId: selected.length ? selected[0] : null,
+        kind: selected.length ? kind : "none",
+        hoverId: hoverId,
       };
     }
 
-    function select(elementId, additive) {
-      var id = String(elementId || "");
-      if (!id) {
+    function select(id, additive, nextKind) {
+      var sid = String(id || "");
+      if (!sid) {
         clear();
         return snapshot();
       }
-      if (additive && opts.allowMulti) {
-        var i = selected.indexOf(id);
+      kind = nextKind || "element";
+      if (additive && allowMulti) {
+        var i = selected.indexOf(sid);
         if (i >= 0) selected.splice(i, 1);
-        else selected.push(id);
+        else selected.push(sid);
       } else {
-        selected = [id];
+        selected = [sid];
       }
+      emit();
+      return snapshot();
+    }
+
+    function setIds(ids, nextKind) {
+      selected = (ids || []).map(String).filter(Boolean);
+      kind = selected.length ? nextKind || "element" : "none";
       emit();
       return snapshot();
     }
 
     function clear() {
       selected = [];
+      kind = "none";
       emit();
       return snapshot();
     }
 
-    function isSelected(elementId) {
-      return selected.indexOf(String(elementId || "")) >= 0;
+    function isSelected(id) {
+      return selected.indexOf(String(id || "")) >= 0;
+    }
+
+    function setHover(id) {
+      var next = id ? String(id) : null;
+      if (hoverId === next) return snapshot();
+      hoverId = next;
+      emit();
+      return snapshot();
     }
 
     function onChange(fn) {
@@ -66,8 +91,10 @@
 
     return {
       select: select,
+      setIds: setIds,
       clear: clear,
       isSelected: isSelected,
+      setHover: setHover,
       onChange: onChange,
       snapshot: snapshot,
     };
