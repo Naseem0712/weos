@@ -229,7 +229,12 @@
           if ((state.elementId || null) !== expectedElement) return null;
           var svg = res && res.svg ? String(res.svg) : "";
           if (!svg || svg.indexOf("<svg") < 0) return res;
-          host.setElementPreviewSvg(elementId, svg);
+          // D3: paint only — Fit happens iff host has pendingPreviewFit for this element
+          // (first resolve after Add Design / product switch). Property refreshes do not Fit.
+          host.setElementPreviewSvg(elementId, svg, {
+            renderRevision: state.renderRevision,
+            expectedRevision: state.renderRevision,
+          });
           try {
             if (host.selectElementById) host.selectElementById(elementId, { fit: false });
           } catch (eFit) {}
@@ -321,6 +326,15 @@
         sameType && sameElement ? opts.configPayload || state.configPayload : opts.configPayload || null
       );
       state.renderRevision = prev.renderRevision + 1;
+      // D3: product switch → Fit once when new adapter SVG resolves (not property tweaks).
+      if (!sameType || opts.forceClear) {
+        try {
+          var hostSw = global.WEOS_UNIVERSAL_CANVAS_HOST;
+          if (hostSw && typeof hostSw.markPendingPreviewFit === "function" && state.elementId) {
+            hostSw.markPendingPreviewFit(state.elementId);
+          }
+        } catch (ePend) {}
+      }
       emit();
 
       // Server authority when available.

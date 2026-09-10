@@ -251,9 +251,11 @@
       productType: productType,
       widthMm: w,
       heightMm: h,
-      xMm: 40 + (n - 1) * 40,
-      yMm: 40 + (n - 1) * 40,
+      // D3: deterministic world mm near origin; Fit uses widthMm×heightMm (not SVG viewBox).
+      xMm: 0,
+      yMm: 0,
     });
+    // Immediate Fit to engineering mm (placeholder shares W×H with final artwork).
     host.selectElementById(id, { fit: true });
     try {
       if (C.designContext && C.designContext.getActive) {
@@ -266,6 +268,7 @@
           })
         );
         // Critical: fetch adapter SVG onto UC (placeholder until this resolves).
+        // Property/SVG refresh must NOT re-Fit (no pendingPreviewFit here).
         if (typeof dc.refreshElementPreview === "function") {
           dc.refreshElementPreview(el, { widthMm: w, heightMm: h });
         }

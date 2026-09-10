@@ -136,11 +136,15 @@ def main() -> None:
             keys.append(str(f.get("key") or ""))
     _ok("trackCount" not in keys and "glassShutters" not in keys, "M: no window-only fields")
 
-    # ── N: fit uses actual scene/render bounds ───────────────────────────────
+    # ── N: fit uses engineering element/scene bounds (never SVG viewBox units) ─
     _ok("fitToSelectionOrScene" in uc_js, "N: fit helper")
-    _ok("viewBox" in uc_js and "model.bounds" in uc_js, "N: SVG/scene bounds considered")
+    _ok("element_mm" in uc_js, "N: element mm bounds source")
+    _ok("parts[2]" not in uc_js, "N: no viewBox width override in Fit")
     z = cw.fit_with_padding({"width": 1200, "height": 2000}, 900, 700, padding=40)
     _ok(0.15 <= z <= 6.0, f"N: fit zoom sensible {z}")
+    plan = cw.compute_fit({"width": 1200, "height": 1000, "minX": 0, "minY": 0}, 1200, 800, padding=48)
+    _ok(abs(plan["panX"] - (1200 / 2 - 600 * plan["zoom"])) < 1e-6, "N: Fit centers horizontally")
+    _ok(plan["worldOriginX"] == 0 and plan["worldOriginY"] == 0, "N: worldOrigin stays 0")
     _ok("uc-el-svg svg" in ws_css and "width: 100%" in ws_css, "N: SVG fills element box")
 
     # ── O: no second product canvas popup ────────────────────────────────────
@@ -148,7 +152,13 @@ def main() -> None:
     _ok("data-product-canvas-popup" in dc_js, "O: popup routing")
     _ok("routeLegacyIntoUc" in dc_js and "routeLegacyIntoUc" in uc_js, "O: legacy routed into UC")
     _ok("FrameMember" not in uc_js and "mullion" not in uc_js.lower(), "O: no member engine")
-    _ok("CANVAS-D1" in ws_js or "CANVAS-D1" in uc_js or "CANVAS-D1" in act_py, "O: D1 batch marker")
+    _ok(
+        "CANVAS-D1" in ws_js
+        or "CANVAS-D1" in uc_js
+        or "CANVAS-D3" in uc_js
+        or "CANVAS-D1" in act_py,
+        "O: D1/D3 batch marker",
+    )
 
     # Header / identity
     _ok("Engineering Workspace" in index or "Engineering Workspace" in ws_js, "header: neutral title")

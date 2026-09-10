@@ -38,8 +38,13 @@ def clamp_zoom(zoom: float, *, lo: float = ZOOM_MIN, hi: float = ZOOM_MAX) -> fl
         z = float(zoom)
     except (TypeError, ValueError):
         z = 1.0
-    if not (z == z) or z <= 0:
+    if not (z == z) or z <= 0:  # NaN or non-positive
         z = 1.0
+    # Infinity / extreme — clamp without overflowing round()
+    if z == float("inf") or z > hi * 10:
+        return float(hi)
+    if z == float("-inf"):
+        return float(lo)
     return max(lo, min(hi, round(z * 100) / 100))
 
 
@@ -345,8 +350,78 @@ def fit_with_padding(
     *,
     padding: float = 48.0,
 ) -> float:
-    ww = max(1.0, float(bounds.get("width") or 1000))
-    wh = max(1.0, float(bounds.get("height") or 1000))
-    avail_w = max(1.0, float(viewport_w) - 2 * float(padding))
-    avail_h = max(1.0, float(viewport_h) - 2 * float(padding))
-    return clamp_zoom(min(avail_w / ww, avail_h / wh))
+    """Compute centered Fit zoom (display-only). Matches JS viewport.computeFit."""
+    return float(compute_fit(bounds, viewport_w, viewport_h, padding=padding)["zoom"])
+
+
+def compute_fit(
+    bounds: Mapping[str, float],
+    viewport_w: float,
+    viewport_h: float,
+    *,
+    padding: float = 48.0,
+) -> dict[str, float]:
+    """Deterministic Fit: center engineering bounds in viewport with padding.
+
+    Never uses SVG viewBox units — callers pass widthMm/heightMm scene bounds.
+    Safe for tall/wide/tiny/invalid (falls back to 1000×1000).
+    """
+    try:
+        ww = float(bounds.get("width") or 0)
+    except (TypeError, ValueError):
+        ww = 0.0
+    try:
+        wh = float(bounds.get("height") or 0)
+    except (TypeError, ValueError):
+        wh = 0.0
+    if not (ww > 0) or ww != ww:
+        ww = 1000.0
+    if not (wh > 0) or wh != wh:
+        wh = 1000.0
+    try:
+        min_x = float(bounds.get("minX") if bounds.get("minX") is not None else 0)
+    except (TypeError, ValueError):
+        min_x = 0.0
+    try:
+        min_y = float(bounds.get("minY") if bounds.get("minY") is not None else 0)
+    except (TypeError, ValueError):
+        min_y = 0.0
+    if min_x != min_x:
+        min_x = 0.0
+    if min_y != min_y:
+        min_y = 0.0
+
+    pad = float(padding) if padding == padding and padding is not None else 48.0
+    if pad < 0 or pad != pad:
+        pad = 48.0
+    if wh > ww * 1.35:
+        pad = min(pad, 40.0)
+    elif ww > wh * 1.8:
+        pad = min(pad, 48.0)
+
+    vw = max(1.0, float(viewport_w) or 1.0)
+    vh = max(1.0, float(viewport_h) or 1.0)
+    avail_w = max(1.0, vw - 2 * pad)
+    avail_h = max(1.0, vh - 2 * pad)
+    raw = min(avail_w / ww, avail_h / wh)
+    if not (raw > 0) or raw != raw:
+        raw = 1.0
+    zoom = clamp_zoom(raw)
+    cx = min_x + ww / 2.0
+    cy = min_y + wh / 2.0
+    pan_x = vw / 2.0 - cx * zoom
+    pan_y = vh / 2.0 - cy * zoom
+    return {
+        "zoom": float(zoom),
+        "panX": float(pan_x),
+        "panY": float(pan_y),
+        "worldOriginX": 0.0,
+        "worldOriginY": 0.0,
+        "width": ww,
+        "height": wh,
+        "minX": min_x,
+        "minY": min_y,
+        "padding": pad,
+        "viewportW": vw,
+        "viewportH": vh,
+    }

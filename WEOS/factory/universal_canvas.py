@@ -62,12 +62,10 @@ def fit_zoom(
     *,
     padding: float = 40.0,
 ) -> float:
-    """Compute zoom so world bounds fit in viewport (display-only)."""
-    ww = max(1.0, float(world_bounds.get("width", 0) or 0))
-    wh = max(1.0, float(world_bounds.get("height", 0) or 0))
-    avail_w = max(1.0, float(viewport_w) - 2 * padding)
-    avail_h = max(1.0, float(viewport_h) - 2 * padding)
-    return clamp_zoom(min(avail_w / ww, avail_h / wh))
+    """Compute zoom so world bounds fit in viewport (display-only). Canvas D3 centered Fit."""
+    from WEOS.factory.canvas_workspace import compute_fit
+
+    return float(compute_fit(world_bounds, viewport_w, viewport_h, padding=padding)["zoom"])
 
 
 def placeholder_render(element: Mapping[str, Any]) -> dict[str, Any]:

@@ -1,9 +1,15 @@
 /**
  * WEOS Universal Engineering Canvas Host — ONE canvas for all products.
- * Batch D: professional workspace chrome (command bar + tool rail + stage + props).
+ * Batch D/D1/D2 workspace chrome; Canvas D3 viewport stability.
  * Feature flag: WEOS_UNIVERSAL_CANVAS (env /api/flags).
  * Canvas D1: default ON. Rollback: ?universalCanvas=0 or WEOS_UNIVERSAL_CANVAS=0.
  * Does not rewrite product engines; preview SVG via adapters; Member/Grid deferred to E.
+ *
+ * Fit priority (D3):
+ *   1) Fit Selected — Fit button / F when a selection exists (engineering mm bounds)
+ *   2) Fit Scene — loadScene, Reset View, floor/location filters, empty selection
+ *   3) Initial open / first async preview resolve — Fit ONCE (not every property change)
+ * Never Fit from SVG viewBox units — artwork is stretched into widthMm×heightMm.
  */
 (function (global) {
   "use strict";
@@ -75,6 +81,16 @@
     var lastVpSize = { w: 0, h: 0 };
     var onSelectCbs = [];
     var onCommandCbs = [];
+    /** Per-design viewport snapshots — switching W-01 → P-01 must not inherit nonsense zoom. */
+    var viewByDesignId = Object.create(null);
+    var activeDesignId = null;
+    /** elementId → true: Fit once when first real adapter SVG arrives (not placeholder). */
+    var pendingPreviewFit = Object.create(null);
+    var initialSceneFitDone = false;
+    try {
+      var _diagQs = new URL(global.location.href).searchParams.get("ucViewportDiag");
+      if (_diagQs && /^(1|true|yes|on)$/i.test(_diagQs) && viewport.setDiag) viewport.setDiag(true);
+    } catch (eDiag) {}
 
     var zoomLabel = rootEl.querySelector('[data-uc="zoomLabel"]');
     var designLabel = rootEl.querySelector('[data-uc="designLabel"]');
@@ -255,6 +271,11 @@
 
     function upsertLocalElement(el) {
       if (!el || !el.elementId) return null;
+      // Deterministic world placement near origin (engineering mm — never CSS/legacy coords).
+      var xMm = el.xMm != null ? Number(el.xMm) : 0;
+      var yMm = el.yMm != null ? Number(el.yMm) : 0;
+      if (!isFinite(xMm)) xMm = 0;
+      if (!isFinite(yMm)) yMm = 0;
       var next = {
         elementId: String(el.elementId),
         displayCode: el.displayCode || el.elementId,
@@ -262,8 +283,8 @@
         productId: el.productId || null,
         widthMm: Number(el.widthMm) || 1200,
         heightMm: Number(el.heightMm) || 1200,
-        xMm: Number(el.xMm) || 0,
-        yMm: Number(el.yMm) || 0,
+        xMm: xMm,
+        yMm: yMm,
         orientation: el.orientation || "elevation",
         assemblyId: el.assemblyId || null,
         floorId: el.floorId || null,
@@ -281,7 +302,9 @@
         }
         return e;
       });
-      if (!found) model.localElements.push(next);
+      if (!found) {
+        model.localElements.push(next);
+      }
       applyFilters();
       return next;
     }
@@ -289,6 +312,8 @@
     function selectElementById(elementId, opts) {
       opts = opts || {};
       if (!elementId) {
+        persistActiveView();
+        activeDesignId = null;
         selection.clear();
         paint();
         onSelectCbs.forEach(function (fn) {
@@ -298,12 +323,18 @@
         });
         return null;
       }
+      persistActiveView();
       selection.select(elementId, false, "element");
+      var restored = restoreViewFor(elementId);
+      activeDesignId = String(elementId);
       paint();
       var el = model.elements.filter(function (e) {
         return e.elementId === elementId;
       })[0];
-      if (opts.fit !== false) fitToSelectionOrScene();
+      // Restore per-design view when available; otherwise fit (unless caller opts out).
+      if (opts.fit === true || (opts.fit !== false && !restored)) {
+        fitSelected();
+      }
       onSelectCbs.forEach(function (fn) {
         try {
           fn(el || { elementId: elementId });
@@ -351,77 +382,122 @@
       model.floors = model.scene.floors || [];
       fillSelectors();
       applyFilters();
-      fit();
+      initialSceneFitDone = false;
+      fitScene();
+      initialSceneFitDone = true;
       return getViewModel();
     }
 
-    function fit() {
-      fitToSelectionOrScene();
+    function persistActiveView() {
+      if (!activeDesignId) return;
+      try {
+        viewByDesignId[activeDesignId] = viewport.snapshot();
+      } catch (e) {}
     }
 
-    function fitToSelectionOrScene() {
+    function restoreViewFor(designId) {
+      if (!designId) return false;
+      var snap = viewByDesignId[designId];
+      if (!snap) return false;
+      var z = Number(snap.zoom);
+      if (!isFinite(z) || z < 0.15 || z > 6) return false;
+      viewport.applySnapshot(snap);
+      return true;
+    }
+
+    function markPendingPreviewFit(elementId) {
+      if (elementId) pendingPreviewFit[String(elementId)] = true;
+    }
+
+    function elementBounds(el) {
+      if (!el) return null;
+      var w = Number(el.widthMm);
+      var h = Number(el.heightMm);
+      if (!(w > 0) || !(h > 0) || !isFinite(w) || !isFinite(h)) return null;
+      var x = Number(el.xMm) || 0;
+      var y = Number(el.yMm) || 0;
+      return {
+        minX: x,
+        minY: y,
+        maxX: x + w,
+        maxY: y + h,
+        width: w,
+        height: h,
+        source: "element_mm",
+      };
+    }
+
+    function sceneBounds() {
+      var b = model.bounds || C.sceneRenderer.boundsFor(model.elements || []);
+      // Guard invalid / empty
+      if (!b || !(b.width > 0) || !(b.height > 0)) {
+        var els = model.elements || [];
+        if (els.length === 1) {
+          var eb = elementBounds(els[0]);
+          if (eb) return eb;
+        }
+        return { minX: 0, minY: 0, maxX: 1000, maxY: 1000, width: 1000, height: 1000, source: "fallback" };
+      }
+      return Object.assign({}, b, { source: "scene_mm" });
+    }
+
+    function readViewportSize() {
       var rect = vpEl.getBoundingClientRect();
-      var vw = rect.width || 800;
-      var vh = rect.height || 600;
-      var bounds = model.bounds;
+      var vw = rect.width || lastVpSize.w || 800;
+      var vh = rect.height || lastVpSize.h || 600;
+      if (!(vw > 0) || !isFinite(vw)) vw = 800;
+      if (!(vh > 0) || !isFinite(vh)) vh = 600;
+      return { w: vw, h: vh };
+    }
+
+    function applyFitBounds(bounds) {
+      var size = readViewportSize();
+      viewport.fit(bounds, size.w, size.h, 56);
+      lastVpSize = { w: size.w, h: size.h };
+      paint();
+    }
+
+    /** Fit Priority 2 — entire filtered scene in engineering mm. */
+    function fitScene() {
+      applyFitBounds(sceneBounds());
+    }
+
+    /** Fit Priority 1 — selected element mm; falls back to scene. */
+    function fitSelected() {
       var sel = selection.snapshot();
       var primary = sel.primaryId || sel.primaryElementId;
       if (primary) {
         var el = model.elements.filter(function (e) {
           return e.elementId === primary;
         })[0];
-        if (el && el.widthMm > 0 && el.heightMm > 0) {
-          bounds = {
-            minX: el.xMm,
-            minY: el.yMm,
-            maxX: el.xMm + el.widthMm,
-            maxY: el.yMm + el.heightMm,
-            width: el.widthMm,
-            height: el.heightMm,
-          };
+        var eb = elementBounds(el);
+        if (eb) {
+          applyFitBounds(eb);
+          return;
         }
       }
-      // Prefer real SVG viewBox when preview SVG exists for selected / sole element.
-      try {
-        var target = primary
-          ? model.elements.filter(function (e) {
-              return e.elementId === primary;
-            })[0]
-          : model.elements.length === 1
-            ? model.elements[0]
-            : null;
-        if (target) {
-          var svgRaw = model.previewContext.previewByElementId[target.elementId];
-          if (svgRaw && typeof svgRaw === "string") {
-            var m = svgRaw.match(/viewBox\s*=\s*["']([^"']+)["']/i);
-            if (m) {
-              var parts = m[1].trim().split(/[\s,]+/).map(Number);
-              if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
-                bounds = {
-                  minX: target.xMm,
-                  minY: target.yMm,
-                  maxX: target.xMm + parts[2],
-                  maxY: target.yMm + parts[3],
-                  width: parts[2],
-                  height: parts[3],
-                };
-              }
-            }
-          }
-        }
-      } catch (eFit) {}
-      var pad = 56;
-      // Tall/narrow products: slightly less padding so drawing fills more height.
-      if (bounds && bounds.height > bounds.width * 1.35) pad = 40;
-      if (bounds && bounds.width > bounds.height * 1.8) pad = 48;
-      viewport.fit(bounds, vw, vh, pad);
-      lastVpSize = { w: vw, h: vh };
-      paint();
+      fitScene();
     }
 
+    /**
+     * Fit button / F — selected if present else scene.
+     * Never uses SVG viewBox for bounds (artwork ≠ world mm).
+     */
+    function fitToSelectionOrScene() {
+      var sel = selection.snapshot();
+      var primary = sel.primaryId || sel.primaryElementId;
+      if (primary) fitSelected();
+      else fitScene();
+    }
+
+    function fit() {
+      fitToSelectionOrScene();
+    }
+
+    /** Always recovers a visible centered design (Fit Priority 2). */
     function resetView() {
       viewport.reset();
-      paint();
+      fitScene();
     }
 
     function zoomIn() {
@@ -442,15 +518,29 @@
       paint();
     }
 
-    function setElementPreviewSvg(elementId, svg) {
+    /**
+     * Paint adapter SVG. Fit ONCE when pendingPreviewFit is set (first resolve),
+     * never on every property-driven preview refresh.
+     * Stale D0 revision callers pass opts.renderRevision to skip viewport changes.
+     */
+    function setElementPreviewSvg(elementId, svg, opts) {
+      opts = opts || {};
+      if (!elementId) return;
+      if (opts.renderRevision != null && opts.expectedRevision != null) {
+        if (Number(opts.renderRevision) !== Number(opts.expectedRevision)) return;
+      }
       model.previewContext.previewByElementId[elementId] = svg;
       paint();
-      try {
+      var shouldFit = !!pendingPreviewFit[elementId];
+      if (shouldFit) {
+        delete pendingPreviewFit[elementId];
         var sel = selection.snapshot();
         if (sel.primaryId === elementId || model.elements.length <= 1) {
-          fitToSelectionOrScene();
+          fitSelected();
+        } else {
+          fitScene();
         }
-      } catch (e) {}
+      }
     }
 
     function setSaveStatus(status, detail) {
@@ -561,14 +651,14 @@
         model.filterLocationId = null;
         refillLocations();
         applyFilters();
-        fit();
+        fitScene();
       };
     }
     if (locSel) {
       locSel.onchange = function () {
         model.filterLocationId = locSel.value || null;
         applyFilters();
-        fit();
+        fitScene();
       };
     }
 
@@ -732,12 +822,15 @@
     return {
       loadScene: loadScene,
       fit: fit,
+      fitScene: fitScene,
+      fitSelected: fitSelected,
       fitToSelectionOrScene: fitToSelectionOrScene,
       resetView: resetView,
       zoomIn: zoomIn,
       zoomOut: zoomOut,
       setActiveTool: setActiveTool,
       setElementPreviewSvg: setElementPreviewSvg,
+      markPendingPreviewFit: markPendingPreviewFit,
       upsertLocalElement: upsertLocalElement,
       selectElementById: selectElementById,
       setSaveStatus: setSaveStatus,
@@ -763,7 +856,7 @@
       },
       paint: paint,
       isUniversalCanvas: true,
-      batch: "CANVAS-D1",
+      batch: "CANVAS-D3",
     };
   }
 

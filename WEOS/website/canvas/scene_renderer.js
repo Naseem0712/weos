@@ -132,9 +132,13 @@
     var layers = ensureLayers(hostEl);
     var snap = viewport.snapshot();
     var xform =
-      "translate(" + snap.panX + "px," + snap.panY + "px) scale(" + snap.zoom + ")";
+      typeof viewport.cssTransform === "function"
+        ? viewport.cssTransform()
+        : "translate(" + snap.panX + "px," + snap.panY + "px) scale(" + snap.zoom + ")";
     layers.world.style.transform = xform;
+    layers.world.style.transformOrigin = "0 0";
     layers.conn.style.transform = xform;
+    layers.conn.style.transformOrigin = "0 0";
 
     // Empty state (UI layer — not product SVG)
     if (!elements.length) {
@@ -251,11 +255,33 @@
     }
 
     Array.prototype.forEach.call(layers.world.querySelectorAll(".uc-el-svg svg"), function (svg) {
+      // Display-only normalization: artwork fills element box (widthMm×heightMm).
+      // Element engineering bounds drive Fit — never SVG viewBox units.
+      try {
+        if (!svg.getAttribute("viewBox")) {
+          var vbW = Number(elWidthFromParent(svg)) || 0;
+          var vbH = Number(elHeightFromParent(svg)) || 0;
+          if (vbW > 0 && vbH > 0) svg.setAttribute("viewBox", "0 0 " + vbW + " " + vbH);
+        }
+      } catch (eVb) {}
       svg.style.width = "100%";
       svg.style.height = "100%";
       svg.style.display = "block";
       svg.setAttribute("preserveAspectRatio", "none");
+      svg.setAttribute("data-weos-artwork", "1");
     });
+  }
+
+  function elWidthFromParent(svg) {
+    var host = svg && svg.closest && svg.closest(".uc-el");
+    if (!host) return 0;
+    return parseFloat(host.style.width) || 0;
+  }
+
+  function elHeightFromParent(svg) {
+    var host = svg && svg.closest && svg.closest(".uc-el");
+    if (!host) return 0;
+    return parseFloat(host.style.height) || 0;
   }
 
   global.WEOSCanvas = global.WEOSCanvas || {};

@@ -668,13 +668,27 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 ## Remaining batches (from user plan / target doc)
 
-**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → ~~Canvas D~~ **DONE** → ~~Canvas D1~~ **DONE** → ~~Canvas D2~~ **DONE** → **Next: Canvas E** → F → G.  
+**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → ~~Canvas D~~ **DONE** → ~~Canvas D1~~ **DONE** → ~~Canvas D2~~ **DONE** → ~~Canvas D3~~ **DONE** → **Next: Canvas E** → F → G.  
 Engineering Master Data / BOM Foundation remains on the architecture track **after** C–G foundations are stable.  
-**HARD STOP:** Canvas E/F/G **not started** (D2 complete). Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
+**HARD STOP:** Canvas E/F/G **not started** (D3 complete). Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
 
 ---
 
+### CANVAS D3 — Viewport / Fit / Zoom / Initial Placement Stability (**DONE**)
 
+| Field | Value |
+|---|---|
+| **ID** | CANVAS-D3 |
+| **Status** | **DONE** — Fit uses engineering mm only; centered Fit; no viewBox-driven ~600% zoom; per-design view state; Reset View recovers |
+| **Starting HEAD** | db9096f74e74d3ce1b161ad7907747f4b2322de5 |
+| **Root causes** | (1) Fit preferred SVG `viewBox` W/H over `widthMm×heightMm` while CSS maps 1px≈1mm → tiny artwork viewBoxes (e.g. railing 640×160) produced ~600% zoom and off-screen designs; (2) `worldOrigin` set in Fit but ignored by CSS `translate(pan) scale(zoom)` → cursor vs paint mismatch; (3) Fit hugged padding corner instead of centering; (4) `resetView` reset zoom/pan without Fit; (5) every preview paint re-Fit; no per-design viewport memory |
+| **Transform** | One authoritative CSS `translate(pan) scale(zoom)` origin 0,0; `worldOrigin` forced 0 |
+| **Fit priority** | 1 Fit Selected · 2 Fit Scene (load/reset/filters) · 3 first product-switch preview via `pendingPreviewFit` (not property refreshes) |
+| **Tests** | `_smoke_viewport_stability.py` A–O PASS; activation/workspace/UC preview/D2 smokes PASS; live CDP 1920/1366/1280 + Casement→Vent→Pergola→Shower→Sliding centered |
+| **Hard stop** | **Do NOT auto-start Canvas Batch E** |
+| **Production** | **NOT PERFORMED** |
+
+---
 
 ### CANVAS D2 — App Entry + Quote Workspace Separation (**DONE**)
 
@@ -693,6 +707,15 @@ Engineering Master Data / BOM Foundation remains on the architecture track **aft
 | **Production** | **NOT PERFORMED** |
 
 ---
+
+## Session checkpoint (Canvas D3)
+
+- **Branch:** weos-v2-foundation
+- **Starting HEAD:** db9096f74e74d3ce1b161ad7907747f4b2322de5
+- **Ending HEAD:** *(set after docs stamp commit)*
+- **Next eligible implementation:** **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**, not started)
+- **Do not start:** Canvas E automatically; Production deploy
+- **Preserved:** unrelated dirty product stubs / weos.db / customers / tmp files not committed
 
 ## Session checkpoint (Canvas D2)
 
