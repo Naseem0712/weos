@@ -677,7 +677,7 @@ Engineering Master Data / BOM Foundation remains on the architecture track **aft
 
 - **Branch:** `weos-v2-foundation`
 - **Starting HEAD:** `e0412cee039bb9f52a417d9054e7dbcc9c916d0d`
-- **Ending HEAD:** _(stamped after push)_
+- **Ending HEAD:** `12027d83ec13de6ceb71457f494ff750c93e7cfe` (`12027d8`) on weos-v2-foundation / origin/weos-v2-foundation
 - **Next eligible implementation:** **Canvas Batch E** — Member + Grid + Cell Engine
 - **Do not start:** Canvas E automatically; Production deploy
 - **Preserved:** B5–B9, Pergola, PDF A/B, UX C, Canvas D0/D; unrelated dirty files not committed
