@@ -7,19 +7,17 @@ BOM, cost, GST, or PDF. Zoom is display-only and never mutates W/H.
 
 from __future__ import annotations
 
-import os
 from typing import Any, Callable, Mapping
 
-# Feature flag — default OFF for rollback to #livePreview path.
+# Feature flag — Canvas D1: default ON; set WEOS_UNIVERSAL_CANVAS=0 for legacy UI.
 FLAG_ENV = "WEOS_UNIVERSAL_CANVAS"
 
 
 def is_universal_canvas_enabled(override: str | bool | None = None) -> bool:
-    if override is not None:
-        if isinstance(override, bool):
-            return override
-        return str(override).strip().lower() in ("1", "true", "yes", "on")
-    return (os.environ.get(FLAG_ENV) or "0").strip().lower() in ("1", "true", "yes", "on")
+    """Universal Canvas enabled by default (D1). Explicit 0/false/off disables."""
+    from WEOS.factory.canvas_activation import is_universal_canvas_enabled as _resolve
+
+    return _resolve(override=override)
 
 
 # Element drag-to-move is deferred until pose save path is wired in UI safely.

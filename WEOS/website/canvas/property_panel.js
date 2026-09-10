@@ -38,6 +38,11 @@
         node.classList.remove("uc-legacy-hidden");
       }
     });
+    try {
+      if (C.workspace && C.workspace.applyPrimaryCutover) {
+        C.workspace.applyPrimaryCutover(!!on);
+      }
+    } catch (eCut) {}
     // D0: when UC ON, also suppress any product-canvas popup chrome.
     try {
       if (C.designContext && C.designContext.getActive) {
@@ -206,6 +211,42 @@
 
     async function loadSelection(sel) {
       sel = sel || {};
+      if (!sel.elementId && !sel.connectionId && !sel.assemblyId && !sel.productType) {
+        renderEmpty();
+        return;
+      }
+      // Local Add-Design drafts — never hit SQL element endpoints.
+      if (sel.elementId && String(sel.elementId).indexOf("local-") === 0) {
+        try {
+          var ptLocal = sel.productType;
+          if (!ptLocal && global.WEOS_DESIGN_CONTEXT) {
+            ptLocal = (global.WEOS_DESIGN_CONTEXT.get() || {}).selectedProductType;
+          }
+          if (ptLocal && apiFn) {
+            var schemaLocal = await apiFn(
+              "/api/adapters/" + encodeURIComponent(ptLocal) + "/schema"
+            );
+            renderPanel({
+              kind: "element",
+              schema: schemaLocal,
+              values: Object.assign(
+                { productType: ptLocal, widthMm: sel.widthMm, heightMm: sel.heightMm },
+                sel.configPayload || {}
+              ),
+              selection: {
+                kind: "element",
+                elementId: sel.elementId,
+                productType: ptLocal,
+              },
+            });
+            return;
+          }
+        } catch (eLocal) {}
+        if (global.WEOS_DESIGN_CONTEXT && global.WEOS_DESIGN_CONTEXT.refreshPropertyPanel) {
+          global.WEOS_DESIGN_CONTEXT.refreshPropertyPanel();
+          return;
+        }
+      }
       if (!apiFn) {
         renderEmpty({ guidance: "API unavailable for property panel." });
         return;
@@ -228,6 +269,20 @@
         var payload = await apiFn(q);
         renderPanel(payload);
       } catch (e) {
+        // Fallback: product-type schema when durable element is missing.
+        try {
+          var pt = sel.productType;
+          if (pt) {
+            var schema = await apiFn("/api/adapters/" + encodeURIComponent(pt) + "/schema");
+            renderPanel({
+              kind: "element",
+              schema: schema,
+              values: { productType: pt },
+              selection: { kind: "element", elementId: sel.elementId || null, productType: pt },
+            });
+            return;
+          }
+        } catch (e2) {}
         setStatus("Failed to load properties: " + (e && e.message ? e.message : e), true);
       }
     }

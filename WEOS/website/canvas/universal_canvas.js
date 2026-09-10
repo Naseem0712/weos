@@ -1,7 +1,8 @@
 /**
  * WEOS Universal Engineering Canvas Host — ONE canvas for all products.
  * Batch D: professional workspace chrome (command bar + tool rail + stage + props).
- * Feature flag: WEOS_UNIVERSAL_CANVAS (env /api/flags or ?universalCanvas=1).
+ * Feature flag: WEOS_UNIVERSAL_CANVAS (env /api/flags).
+ * Canvas D1: default ON. Rollback: ?universalCanvas=0 or WEOS_UNIVERSAL_CANVAS=0.
  * Does not rewrite product engines; preview SVG via adapters; Member/Grid deferred to E.
  */
 (function (global) {
@@ -9,21 +10,29 @@
 
   var C = global.WEOSCanvas || (global.WEOSCanvas = {});
 
+  /**
+   * Feature flag: WEOS_UNIVERSAL_CANVAS (env /api/flags).
+   * Canvas D1: default ON. Explicit rollback: ?universalCanvas=0 or env=0.
+   */
   function qsFlag() {
     try {
       var u = new URL(global.location.href);
-      var v = u.searchParams.get("universalCanvas");
-      if (v != null) return /^(1|true|yes|on)$/i.test(v);
+      if (!u.searchParams.has("universalCanvas")) return null;
+      var v = String(u.searchParams.get("universalCanvas") || "").trim();
+      if (/^(0|false|no|off)$/i.test(v)) return false;
+      if (/^(1|true|yes|on)$/i.test(v)) return true;
+      return null;
     } catch (e) {}
     return null;
   }
 
   function isEnabled(serverFlag) {
-    if (typeof global.WEOS_UNIVERSAL_CANVAS === "boolean") return global.WEOS_UNIVERSAL_CANVAS;
     var q = qsFlag();
     if (q != null) return q;
     if (typeof serverFlag === "boolean") return serverFlag;
-    return false;
+    if (typeof global.WEOS_UNIVERSAL_CANVAS === "boolean") return global.WEOS_UNIVERSAL_CANVAS;
+    // D1: if flags fetch failed and no query override, prefer ON.
+    return true;
   }
 
   function createHost(rootEl, options) {
@@ -52,6 +61,7 @@
 
     var model = {
       elements: [],
+      localElements: [],
       connections: [],
       bounds: C.sceneRenderer.boundsFor([]),
       floors: [],
@@ -67,6 +77,7 @@
     var onCommandCbs = [];
 
     var zoomLabel = rootEl.querySelector('[data-uc="zoomLabel"]');
+    var designLabel = rootEl.querySelector('[data-uc="designLabel"]');
     var selInfo = rootEl.querySelector('[data-uc="selinfo"]');
     var cursorStatus = rootEl.querySelector('[data-uc="cursorStatus"]');
     var savePill = rootEl.querySelector('[data-uc="saveStatus"]');
@@ -88,17 +99,23 @@
     }
 
     function getCommandState() {
-      var hs = history.snapshot();
-      cmdState.canUndo = hs.canUndo;
-      cmdState.canRedo = hs.canRedo;
+      var hs = (history && typeof history.snapshot === "function") ? history.snapshot() : {};
+      cmdState.canUndo = !!hs.canUndo;
+      cmdState.canRedo = !!hs.canRedo;
       cmdState.zoom = viewport.zoom;
       cmdState.gridVisible = grid.visible;
       cmdState.snapEnabled = snap.enabled;
-      var sel = selection.snapshot();
+      var sel =
+        selection && typeof selection.snapshot === "function" ? selection.snapshot() : {};
+      var ids = Array.isArray(sel.selectedIds)
+        ? sel.selectedIds
+        : Array.isArray(sel.selectedElementIds)
+          ? sel.selectedElementIds
+          : [];
       cmdState.selection = {
-        selectedIds: sel.selectedIds.slice(),
-        primaryId: sel.primaryId,
-        kind: sel.kind,
+        selectedIds: ids.slice(),
+        primaryId: sel.primaryId || sel.primaryElementId || (ids.length ? ids[0] : null),
+        kind: sel.kind || (ids.length ? "element" : "none"),
       };
       return JSON.parse(JSON.stringify(cmdState));
     }
@@ -115,7 +132,9 @@
       if (gridBtn) gridBtn.classList.toggle("is-active", grid.visible);
       if (snapBtn) snapBtn.classList.toggle("is-active", snap.enabled);
       C.workspace.syncSavePill(savePill, cmdState.saveStatus);
-      emitCommand();
+      try {
+        emitCommand();
+      } catch (eEmit) {}
     }
 
     function updateZoomLabel() {
@@ -179,6 +198,33 @@
           selInfo.textContent = "No selection";
         }
       }
+      if (designLabel) {
+        if (el) {
+          designLabel.textContent =
+            String(el.displayCode || el.elementId || "") +
+            (el.productType ? " · " + String(el.productType).replace(/_/g, " ") : "");
+        } else {
+          designLabel.textContent = "Design";
+        }
+      }
+      try {
+        var extTitle = global.document && global.document.getElementById("ucSelectionTitle");
+        if (extTitle) {
+          extTitle.textContent = el
+            ? String(el.displayCode || el.elementId) +
+              " · " +
+              String(el.productType || "").replace(/_/g, " ")
+            : "No selection";
+        }
+        var pageTitle = global.document && global.document.getElementById("title");
+        if (pageTitle && global.document.getElementById("view-cart") &&
+            !global.document.getElementById("view-cart").classList.contains("hidden") &&
+            global.WEOS_UNIVERSAL_CANVAS) {
+          pageTitle.textContent = el
+            ? String(el.displayCode || "Design") + " · Engineering Workspace"
+            : "Engineering Workspace";
+        }
+      } catch (eTitle) {}
       syncChrome();
     }
 
@@ -195,16 +241,75 @@
           return e.locationId === model.filterLocationId;
         });
       }
-      model.elements = all;
+      model.elements = all.concat(model.localElements || []);
       model.connections = conns.filter(function (c) {
         var ids = Object.create(null);
-        all.forEach(function (e) {
+        model.elements.forEach(function (e) {
           ids[e.elementId] = true;
         });
         return ids[c.elementAId] && ids[c.elementBId];
       });
-      model.bounds = C.sceneRenderer.boundsFor(all);
+      model.bounds = C.sceneRenderer.boundsFor(model.elements);
       paint();
+    }
+
+    function upsertLocalElement(el) {
+      if (!el || !el.elementId) return null;
+      var next = {
+        elementId: String(el.elementId),
+        displayCode: el.displayCode || el.elementId,
+        productType: el.productType || "OTHER",
+        productId: el.productId || null,
+        widthMm: Number(el.widthMm) || 1200,
+        heightMm: Number(el.heightMm) || 1200,
+        xMm: Number(el.xMm) || 0,
+        yMm: Number(el.yMm) || 0,
+        orientation: el.orientation || "elevation",
+        assemblyId: el.assemblyId || null,
+        floorId: el.floorId || null,
+        locationId: el.locationId || null,
+        configPayload: el.configPayload || {},
+        geometryPayload: el.geometryPayload || {},
+        status: el.status || "draft",
+        local: true,
+      };
+      var found = false;
+      model.localElements = (model.localElements || []).map(function (e) {
+        if (e.elementId === next.elementId) {
+          found = true;
+          return Object.assign({}, e, next);
+        }
+        return e;
+      });
+      if (!found) model.localElements.push(next);
+      applyFilters();
+      return next;
+    }
+
+    function selectElementById(elementId, opts) {
+      opts = opts || {};
+      if (!elementId) {
+        selection.clear();
+        paint();
+        onSelectCbs.forEach(function (fn) {
+          try {
+            fn(null);
+          } catch (e) {}
+        });
+        return null;
+      }
+      selection.select(elementId, false, "element");
+      paint();
+      var el = model.elements.filter(function (e) {
+        return e.elementId === elementId;
+      })[0];
+      if (opts.fit !== false) fitToSelectionOrScene();
+      onSelectCbs.forEach(function (fn) {
+        try {
+          fn(el || { elementId: elementId });
+        } catch (e) {}
+      });
+      return el || null;
     }
 
     function fillSelectors() {
@@ -251,9 +356,66 @@
     }
 
     function fit() {
+      fitToSelectionOrScene();
+    }
+
+    function fitToSelectionOrScene() {
       var rect = vpEl.getBoundingClientRect();
-      viewport.fit(model.bounds, rect.width || 800, rect.height || 600, 48);
-      lastVpSize = { w: rect.width || 800, h: rect.height || 600 };
+      var vw = rect.width || 800;
+      var vh = rect.height || 600;
+      var bounds = model.bounds;
+      var sel = selection.snapshot();
+      var primary = sel.primaryId || sel.primaryElementId;
+      if (primary) {
+        var el = model.elements.filter(function (e) {
+          return e.elementId === primary;
+        })[0];
+        if (el && el.widthMm > 0 && el.heightMm > 0) {
+          bounds = {
+            minX: el.xMm,
+            minY: el.yMm,
+            maxX: el.xMm + el.widthMm,
+            maxY: el.yMm + el.heightMm,
+            width: el.widthMm,
+            height: el.heightMm,
+          };
+        }
+      }
+      // Prefer real SVG viewBox when preview SVG exists for selected / sole element.
+      try {
+        var target = primary
+          ? model.elements.filter(function (e) {
+              return e.elementId === primary;
+            })[0]
+          : model.elements.length === 1
+            ? model.elements[0]
+            : null;
+        if (target) {
+          var svgRaw = model.previewContext.previewByElementId[target.elementId];
+          if (svgRaw && typeof svgRaw === "string") {
+            var m = svgRaw.match(/viewBox\s*=\s*["']([^"']+)["']/i);
+            if (m) {
+              var parts = m[1].trim().split(/[\s,]+/).map(Number);
+              if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+                bounds = {
+                  minX: target.xMm,
+                  minY: target.yMm,
+                  maxX: target.xMm + parts[2],
+                  maxY: target.yMm + parts[3],
+                  width: parts[2],
+                  height: parts[3],
+                };
+              }
+            }
+          }
+        }
+      } catch (eFit) {}
+      var pad = 56;
+      // Tall/narrow products: slightly less padding so drawing fills more height.
+      if (bounds && bounds.height > bounds.width * 1.35) pad = 40;
+      if (bounds && bounds.width > bounds.height * 1.8) pad = 48;
+      viewport.fit(bounds, vw, vh, pad);
+      lastVpSize = { w: vw, h: vh };
       paint();
     }
 
@@ -283,6 +445,12 @@
     function setElementPreviewSvg(elementId, svg) {
       model.previewContext.previewByElementId[elementId] = svg;
       paint();
+      try {
+        var sel = selection.snapshot();
+        if (sel.primaryId === elementId || model.elements.length <= 1) {
+          fitToSelectionOrScene();
+        }
+      } catch (e) {}
     }
 
     function setSaveStatus(status, detail) {
@@ -564,11 +732,14 @@
     return {
       loadScene: loadScene,
       fit: fit,
+      fitToSelectionOrScene: fitToSelectionOrScene,
       resetView: resetView,
       zoomIn: zoomIn,
       zoomOut: zoomOut,
       setActiveTool: setActiveTool,
       setElementPreviewSvg: setElementPreviewSvg,
+      upsertLocalElement: upsertLocalElement,
+      selectElementById: selectElementById,
       setSaveStatus: setSaveStatus,
       getViewModel: getViewModel,
       getCommandState: getCommandState,
@@ -583,6 +754,7 @@
       viewport: viewport,
       registry: registry,
       propertyPanelEl: shell.propertyPanel,
+      shell: shell,
       onSelect: function (fn) {
         if (typeof fn === "function") onSelectCbs.push(fn);
       },
@@ -591,12 +763,12 @@
       },
       paint: paint,
       isUniversalCanvas: true,
-      batch: "CANVAS-D",
+      batch: "CANVAS-D1",
     };
   }
 
   /**
-   * Progressive SPA mount: wrap #livePreview when flag on; leave forms alone.
+   * Progressive SPA mount: wrap #livePreview when flag on; leave forms in DOM (hidden in UC mode).
    */
   function tryMount(options) {
     options = options || {};
@@ -606,7 +778,7 @@
     var panel = live.closest(".cart-preview") || live.parentElement;
     if (!panel) return null;
 
-    // D0: ONE Universal Canvas only — never mount a second host.
+    // D0/D1: ONE Universal Canvas only — never mount a second host.
     var existing = global.document.getElementById("universalCanvasHost");
     if (existing && global.WEOS_UNIVERSAL_CANVAS_HOST && global.WEOS_UNIVERSAL_CANVAS_HOST.isUniversalCanvas) {
       return global.WEOS_UNIVERSAL_CANVAS_HOST;
@@ -618,13 +790,23 @@
       mount.id = "universalCanvasHost";
       mount.className = "uc-mount";
       mount.style.cssText =
-        "display:flex;flex-direction:column;flex:1 1 auto;min-height:0;height:clamp(560px,78vh,960px)";
+        "display:flex;flex-direction:column;flex:1 1 auto;min-height:0;height:100%";
       live.style.display = "none";
       live.setAttribute("data-uc-compat", "1");
+      live.setAttribute("aria-hidden", "true");
       panel.insertBefore(mount, live);
     }
     panel.classList.add("uc-active");
-    var host = createHost(mount, options);
+    var host;
+    try {
+      host = createHost(mount, options);
+    } catch (eCreate) {
+      console.warn("UniversalCanvas createHost failed", eCreate);
+      try {
+        if (C.workspace && C.workspace.applyPrimaryCutover) C.workspace.applyPrimaryCutover(false);
+      } catch (e0) {}
+      return null;
+    }
     global.WEOS_UNIVERSAL_CANVAS_HOST = host;
 
     // Compatibility: keep zoom buttons wired.
@@ -645,6 +827,12 @@
       };
 
     try {
+      if (C.workspace && C.workspace.applyPrimaryCutover) {
+        C.workspace.applyPrimaryCutover(true);
+      }
+    } catch (eCut) {}
+
+    try {
       if (C.designContext && C.designContext.getActive) {
         C.designContext.getActive().routeLegacyIntoUc();
       }
@@ -657,6 +845,7 @@
     create: createHost,
     tryMount: tryMount,
     isEnabled: isEnabled,
+    qsFlag: qsFlag,
   };
   C.create = createHost;
 })(typeof window !== "undefined" ? window : globalThis);

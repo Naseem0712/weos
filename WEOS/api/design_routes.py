@@ -510,13 +510,17 @@ class ElementPoseBody(BaseModel):
 
 @router.get("/api/flags")
 def api_feature_flags() -> dict[str, Any]:
-    """Public feature flags — Universal Canvas defaults OFF for rollback."""
+    """Public feature flags — Universal Canvas defaults ON (D1); env/query can disable."""
     from WEOS.factory import universal_canvas as uc
+    from WEOS.factory import canvas_activation as ca
 
+    enabled = uc.is_universal_canvas_enabled()
     return {
-        "WEOS_UNIVERSAL_CANVAS": uc.is_universal_canvas_enabled(),
-        "universalCanvas": uc.is_universal_canvas_enabled(),
+        "WEOS_UNIVERSAL_CANVAS": enabled,
+        "universalCanvas": enabled,
         "elementDragEnabled": uc.ELEMENT_DRAG_ENABLED,
+        "universalCanvasDefault": "on",
+        "universalCanvasFallback": ca.activation_docs()["legacyFallback"],
     }
 
 

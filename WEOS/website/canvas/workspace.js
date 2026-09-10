@@ -1,11 +1,26 @@
 /**
- * WEOS Canvas Batch D — Professional workspace chrome (tool rail + command bar + stage).
- * Wraps the ONE Universal Canvas host — does not create a second canvas.
+ * WEOS Canvas Batch D/D1 — Professional workspace chrome (tool rail + command bar + stage).
+ * D1: primary cutover — TOOL RAIL | LARGE UC | PROPERTIES; legacy form wrapped.
  */
 (function (global) {
   "use strict";
 
   var C = global.WEOSCanvas || (global.WEOSCanvas = {});
+
+  var PRODUCT_CHOICES = [
+    { type: "SLIDING_WINDOW", label: "Sliding Window", w: 1800, h: 1500, code: "W" },
+    { type: "CASEMENT_WINDOW", label: "Casement Window", w: 1200, h: 1500, code: "C" },
+    { type: "FIXED_WINDOW", label: "Fixed Window", w: 1200, h: 1200, code: "F" },
+    { type: "FOLD_WINDOW", label: "Folding Window", w: 2400, h: 2100, code: "FD" },
+    { type: "DOOR", label: "Door", w: 900, h: 2100, code: "D" },
+    { type: "VENTILATOR", label: "Ventilator", w: 600, h: 450, code: "V" },
+    { type: "SHOWER_PARTITION", label: "Shower Partition", w: 1200, h: 2000, code: "S" },
+    { type: "LOUVER", label: "Louver", w: 1200, h: 1500, code: "L" },
+    { type: "RAILING", label: "Railing", w: 2400, h: 900, code: "R" },
+    { type: "PERGOLA", label: "Pergola", w: 4000, h: 3000, code: "P" },
+    { type: "ACP", label: "ACP", w: 2400, h: 1800, code: "A" },
+    { type: "GRILL", label: "Grill", w: 1200, h: 1200, code: "G" },
+  ];
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/</g, "&lt;").replace(/"/g, "&quot;");
@@ -32,7 +47,7 @@
 
   function buildShellHtml() {
     return (
-      '<div class="uc-workspace" data-batch="CANVAS-D">' +
+      '<div class="uc-workspace" data-batch="CANVAS-D1">' +
       '<div class="uc-command-bar weos-ds-toolbar" role="toolbar" aria-label="Canvas commands">' +
       '<div class="weos-ds-toolbar__group uc-cmd-identity">' +
       '<strong class="uc-cmd-title">Engineering Canvas</strong>' +
@@ -130,10 +145,226 @@
     el.dataset.kind = status || "unsaved";
   }
 
+  function ensureProjectChrome() {
+    var cart = global.document && global.document.getElementById("view-cart");
+    if (!cart) return null;
+    var existing = global.document.getElementById("ucProjectChrome");
+    if (existing) return existing;
+    var chrome = global.document.createElement("div");
+    chrome.id = "ucProjectChrome";
+    chrome.className = "uc-project-chrome";
+    chrome.innerHTML =
+      '<div class="uc-project-chrome__row">' +
+      '<div class="uc-project-chrome__identity">' +
+      '<strong id="ucWorkspaceTitle">Engineering Workspace</strong>' +
+      '<span class="muted" id="ucSelectionTitle">No selection</span>' +
+      "</div>" +
+      '<div class="uc-project-chrome__setup" id="ucSetupCompact">' +
+      '<span class="muted">Setup</span> <strong id="ucSetupText">—</strong>' +
+      '<button type="button" class="btn ghost sm" id="btnUcEditSetup">Edit setup</button>' +
+      "</div>" +
+      '<div class="uc-project-chrome__actions">' +
+      '<button type="button" class="btn sm" id="btnUcAddDesign">+ Add Design</button>' +
+      '<button type="button" class="btn ghost sm" id="btnUcQuoteLines">Quote lines</button>' +
+      "</div>" +
+      "</div>";
+    var split = cart.querySelector(".cart-split");
+    if (split && split.parentNode) split.parentNode.insertBefore(chrome, split);
+    else cart.insertBefore(chrome, cart.firstChild);
+    return chrome;
+  }
+
+  function ensureAddDesignModal() {
+    var existing = global.document.getElementById("ucAddDesignModal");
+    if (existing) return existing;
+    var modal = global.document.createElement("div");
+    modal.id = "ucAddDesignModal";
+    modal.className = "uc-add-design-modal hidden";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-label", "Add Design");
+    var opts = PRODUCT_CHOICES.map(function (p) {
+      return (
+        '<button type="button" class="uc-add-design-opt" data-product-type="' +
+        esc(p.type) +
+        '" data-w="' +
+        p.w +
+        '" data-h="' +
+        p.h +
+        '" data-code="' +
+        esc(p.code) +
+        '"><strong>' +
+        esc(p.label) +
+        '</strong><span class="muted">' +
+        p.w +
+        "×" +
+        p.h +
+        " mm</span></button>"
+      );
+    }).join("");
+    modal.innerHTML =
+      '<div class="uc-add-design-modal__panel">' +
+      '<div class="uc-add-design-modal__head">' +
+      "<strong>Add Design</strong>" +
+      '<button type="button" class="btn ghost sm" data-uc-add-close>Close</button>' +
+      "</div>" +
+      '<p class="muted" style="margin:.35rem 0 .75rem;font-size:.8rem">Choose a product. It opens on the Universal Canvas with the matching property panel — no separate designer popup.</p>' +
+      '<div class="uc-add-design-grid">' +
+      opts +
+      "</div>" +
+      "</div>";
+    global.document.body.appendChild(modal);
+    return modal;
+  }
+
+  function defaultSizeFor(productType) {
+    for (var i = 0; i < PRODUCT_CHOICES.length; i++) {
+      if (PRODUCT_CHOICES[i].type === productType) return PRODUCT_CHOICES[i];
+    }
+    return { type: productType, label: productType, w: 1200, h: 1200, code: "X" };
+  }
+
+  function openAddDesignModal() {
+    var modal = ensureAddDesignModal();
+    modal.classList.remove("hidden");
+  }
+
+  function closeAddDesignModal() {
+    var modal = global.document.getElementById("ucAddDesignModal");
+    if (modal) modal.classList.add("hidden");
+  }
+
+  function createDesignOnCanvas(productType, widthMm, heightMm, codePrefix) {
+    var host = global.WEOS_UNIVERSAL_CANVAS_HOST;
+    if (!host || !host.upsertLocalElement) return null;
+    var meta = defaultSizeFor(productType);
+    var w = Number(widthMm) || meta.w;
+    var h = Number(heightMm) || meta.h;
+    var prefix = codePrefix || meta.code || "X";
+    var n = ((host.getViewModel && host.getViewModel().elements) || []).length + 1;
+    var displayCode = prefix + "-" + String(n).padStart(2, "0");
+    var id = "local-" + productType.toLowerCase() + "-" + Date.now().toString(36);
+    var el = host.upsertLocalElement({
+      elementId: id,
+      displayCode: displayCode,
+      productType: productType,
+      widthMm: w,
+      heightMm: h,
+      xMm: 40 + (n - 1) * 40,
+      yMm: 40 + (n - 1) * 40,
+    });
+    host.selectElementById(id, { fit: true });
+    try {
+      if (C.designContext && C.designContext.getActive) {
+        var dc = C.designContext.getActive({
+          api: typeof global.api === "function" ? global.api : null,
+        });
+        dc.selectElement(
+          Object.assign({}, el, {
+            configPayload: { widthMm: w, heightMm: h },
+          })
+        );
+      }
+    } catch (e) {}
+    closeAddDesignModal();
+    return el;
+  }
+
+  function wireAddDesignUi() {
+    ensureProjectChrome();
+    ensureAddDesignModal();
+    var addBtn = global.document.getElementById("btnUcAddDesign");
+    if (addBtn && !addBtn._ucWired) {
+      addBtn._ucWired = true;
+      addBtn.onclick = function () {
+        openAddDesignModal();
+      };
+    }
+    var editSetup = global.document.getElementById("btnUcEditSetup");
+    if (editSetup && !editSetup._ucWired) {
+      editSetup._ucWired = true;
+      editSetup.onclick = function () {
+        if (typeof global.setView === "function") global.setView("setup");
+      };
+    }
+    var quoteBtn = global.document.getElementById("btnUcQuoteLines");
+    if (quoteBtn && !quoteBtn._ucWired) {
+      quoteBtn._ucWired = true;
+      quoteBtn.onclick = function () {
+        var cart = global.document.getElementById("view-cart");
+        if (!cart) return;
+        cart.classList.toggle("uc-show-quote");
+      };
+    }
+    var modal = global.document.getElementById("ucAddDesignModal");
+    if (modal && !modal._ucWired) {
+      modal._ucWired = true;
+      modal.addEventListener("click", function (ev) {
+        var t = ev.target;
+        if (t === modal || (t && t.getAttribute && t.getAttribute("data-uc-add-close") != null)) {
+          closeAddDesignModal();
+          return;
+        }
+        var opt = t && t.closest ? t.closest("[data-product-type]") : null;
+        if (!opt) return;
+        createDesignOnCanvas(
+          opt.getAttribute("data-product-type"),
+          opt.getAttribute("data-w"),
+          opt.getAttribute("data-h"),
+          opt.getAttribute("data-code")
+        );
+      });
+    }
+    // Mirror setup summary text when present
+    try {
+      var src = global.document.getElementById("setupSummaryText");
+      var dst = global.document.getElementById("ucSetupText");
+      if (src && dst) dst.textContent = src.textContent || "—";
+    } catch (e) {}
+  }
+
+  function applyPrimaryCutover(on) {
+    var cart = global.document && global.document.getElementById("view-cart");
+    if (!cart) return;
+    if (on) {
+      cart.classList.add("uc-mode", "uc-primary");
+      ensureProjectChrome();
+      wireAddDesignUi();
+      var tools = cart.querySelector(".cart-tools");
+      if (tools) {
+        tools.classList.add("uc-legacy-form");
+        tools.setAttribute("data-uc-wrapped", "1");
+      }
+      var preview = cart.querySelector(".cart-preview");
+      if (preview) preview.classList.add("uc-active");
+      var navCart = global.document.querySelector('.navbtn[data-view="cart"]');
+      if (navCart) navCart.textContent = "Design";
+      var title = global.document.getElementById("title");
+      if (title && !cart.classList.contains("hidden")) {
+        title.textContent = "Engineering Workspace";
+      }
+      var subtitle = global.document.getElementById("subtitle");
+      if (subtitle && !cart.classList.contains("hidden")) {
+        subtitle.textContent = "Universal Canvas · product properties on the right";
+      }
+    } else {
+      cart.classList.remove("uc-mode", "uc-primary", "uc-show-quote");
+      var chrome = global.document.getElementById("ucProjectChrome");
+      if (chrome) chrome.style.display = "none";
+      var navCartOff = global.document.querySelector('.navbtn[data-view="cart"]');
+      if (navCartOff) navCartOff.textContent = "Window Cart";
+    }
+  }
+
   C.workspace = {
     buildShellHtml: buildShellHtml,
     mountShell: mountShell,
     syncToolRail: syncToolRail,
     syncSavePill: syncSavePill,
+    applyPrimaryCutover: applyPrimaryCutover,
+    openAddDesignModal: openAddDesignModal,
+    closeAddDesignModal: closeAddDesignModal,
+    createDesignOnCanvas: createDesignOnCanvas,
+    PRODUCT_CHOICES: PRODUCT_CHOICES,
   };
 })(typeof window !== "undefined" ? window : globalThis);

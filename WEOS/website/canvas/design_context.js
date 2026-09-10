@@ -375,6 +375,46 @@
       try {
         var panel = global.WEOS_PROPERTY_PANEL;
         if (!panel) return;
+        var localEl =
+          state.elementId && String(state.elementId).indexOf("local-") === 0;
+        // Local UC drafts (D1 Add Design) paint from ActiveDesignContext schema — no SQL id yet.
+        if (localEl || !state.elementId) {
+          if (typeof panel.renderPanel === "function") {
+            if (!state.supported) {
+              panel.renderPanel({
+                kind: "none",
+                guidance: state.guidance || UNSUPPORTED_MESSAGE,
+                schema: state.propertySchema,
+                values: { unsupportedNotice: state.guidance || UNSUPPORTED_MESSAGE },
+                selection: {
+                  kind: "none",
+                  productType: state.selectedProductType,
+                  elementId: state.elementId || null,
+                },
+              });
+              return;
+            }
+            panel.renderPanel({
+              kind: "element",
+              schema: state.propertySchema,
+              values: Object.assign(
+                {
+                  productType: state.selectedProductType,
+                  widthMm: state.configPayload && state.configPayload.widthMm,
+                  heightMm: state.configPayload && state.configPayload.heightMm,
+                },
+                state.configPayload || {}
+              ),
+              selection: {
+                kind: localEl ? "element" : "catalogue",
+                productType: state.selectedProductType,
+                elementId: state.elementId || null,
+                assemblyId: state.assemblyId || null,
+              },
+            });
+          }
+          return;
+        }
         if (state.elementId && typeof panel.loadSelection === "function") {
           panel.loadSelection({
             elementId: state.elementId,

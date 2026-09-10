@@ -36,6 +36,8 @@ def _field_keys(schema: dict) -> set[str]:
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from fastapi.testclient import TestClient
 
@@ -210,7 +212,7 @@ def main() -> None:
     _ok(saved.get("persisted") is True, "panel save persisted")
     reloaded = ds.get_element(eid, company_gst=gst)
     _ok(float(reloaded.get("widthMm") or 0) == 4200, "width saved")
-    _ok(float(reloaded.get("heightMm") or 0) == 3200, "depth→heightMm footprint saved")
+    _ok(float(reloaded.get("heightMm") or 0) == 3200, "depth->heightMm footprint saved")
     c2 = reloaded.get("configPayload") or {}
     _ok(float(c2.get("postHeightMm") or 0) == 2900, "post height in config")
     n2 = pm.normalize_pergola_config(c2, width_mm=reloaded.get("widthMm"), depth_mm=reloaded.get("heightMm"))

@@ -229,28 +229,36 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
   max-width:none;max-height:none;width:auto;height:auto;display:block;flex-shrink:0
 }
 #view-cart .cart-preview #wrapDesignPhoto,#view-cart .cart-preview #lineSpecs{flex:0 0 auto}
-/* Universal Canvas Host (Batch 7 + D) — large workspace when flag on; old preview preserved */
+/* Universal Canvas Host (Batch 7 + D/D1) — large workspace when flag on; old preview preserved */
 #view-cart .cart-preview.uc-active{min-height:0}
 #view-cart .cart-preview.uc-active #universalCanvasHost{
-  flex:1 1 auto;min-height:0;height:clamp(560px,78vh,960px)
+  flex:1 1 auto;min-height:0;height:100%
 }
-#view-cart .cart-preview.uc-active .uc-viewport{min-height:420px}
+#view-cart .cart-preview.uc-active .uc-viewport{min-height:0;flex:1 1 auto}
 #view-cart .cart-preview.uc-active .preview[data-uc-compat="1"]{display:none!important}
-/* Batch D: canvas dominates — shrink left tools column when UC mode (legacy stacks hidden) */
+/* Batch D1: UC primary — legacy left form wrapped (see workspace.css .uc-primary) */
 #view-cart.uc-mode > .two.cart-split{
   grid-template-columns:minmax(160px,.32fr) minmax(0,1.68fr)
 }
+#view-cart.uc-mode.uc-primary > .two.cart-split{
+  grid-template-columns:none
+}
 #view-cart.uc-mode .cart-tools{max-width:none}
 @media(max-width:1100px){
-  #view-cart.uc-mode > .two.cart-split{
+  #view-cart.uc-mode:not(.uc-primary) > .two.cart-split{
     grid-template-columns:minmax(140px,.28fr) minmax(0,1.72fr)
   }
 }
-.uc-el-svg svg{max-width:none;max-height:none}
+.uc-el-svg svg{max-width:100%;max-height:100%;width:100%;height:100%}
 /* Batch 9 — contextual property panel; legacy tools wrapped when UC mode on */
 #ucPropertyPanel{
   flex:0 0 auto;max-height:42vh;overflow:auto;margin-top:.55rem;
   border:1px solid var(--line);border-radius:12px;padding:.55rem .7rem;background:#fff
+}
+#universalCanvasHost #ucPropertyPanel,
+.uc-host--workspace #ucPropertyPanel,
+#ucPropertyPanelHost #ucPropertyPanel{
+  max-height:none;height:100%;margin-top:0;border:0;border-radius:0;padding:0;background:transparent
 }
 #view-cart .cart-preview.uc-active > #ucPropertyPanel{display:none!important}
 .uc-pp-group{margin:.45rem 0 .65rem}
@@ -475,7 +483,7 @@ textarea{max-width:100%}
     <button class="navbtn" data-view="setup">Project Setup</button>
     <button class="navbtn" data-view="master">Master Ledger</button>
     <button class="navbtn" data-view="projects">Saved Projects</button>
-    <button class="navbtn" data-view="cart">Window Cart</button>
+    <button class="navbtn" data-view="cart">Design</button>
     <button class="navbtn" data-view="library">Product Library</button>
     <button class="navbtn" data-view="product">Product Details</button>
     <button class="navbtn" data-view="customers">Customers</button>
@@ -3251,7 +3259,7 @@ function setView(v) {
     setup:['Project Setup','Customer, brand, quote text — once per project, editable anytime'],
     master:['Master Ledger','Package quotes, advances, GST and balance — one job only'],
     projects:['Saved Projects','Search, filter, duplicate, archive — versions kept'],
-    cart:['Window Cart','Products & design only · pick print setup at export'],
+    cart:['Engineering Workspace','Universal Canvas · properties on the right · Quote lines for pricing'],
     library:['Product Library','One catalogue — browse, import, edit materials and rules'],
     product:['Product Details','Specs from Product JSON only'],
     admin:['Product Library','One catalogue — browse, import, edit materials and rules'],
@@ -3271,7 +3279,14 @@ function setView(v) {
   if (v==='master') initMasterLedger();
   if (v==='projects') loadProjects();
   if (v==='library') initAdmin();
-  if (v==='cart') { renderCart(); refreshPreview(); refreshSetupSummary(); refreshExportSetupSelect(); }
+  if (v==='cart') {
+    renderCart(); refreshPreview(); refreshSetupSummary(); refreshExportSetupSelect();
+    try {
+      if (window.WEOS_UNIVERSAL_CANVAS && window.WEOSCanvas && WEOSCanvas.workspace && WEOSCanvas.workspace.applyPrimaryCutover) {
+        WEOSCanvas.workspace.applyPrimaryCutover(true);
+      }
+    } catch (_) {}
+  }
   if (v==='customers') initCustomers();
   if (v==='company') initCompany();
   if (v==='scan' && window.WEOS_SCAN_TOKEN) loadPublicScan(window.WEOS_SCAN_TOKEN);
@@ -14166,17 +14181,27 @@ async function pingEngine(){
 (function () {
   async function bootUniversalCanvas() {
     if (!window.WEOSCanvas || !window.WEOSCanvas.UniversalCanvas) return;
-    var serverEnabled = false;
+    var serverEnabled = true; // D1 default ON; server/query may override
     try {
       var flags = await fetch('/api/flags').then(function (r) { return r.json(); });
-      serverEnabled = !!(flags && (flags.universalCanvas || flags.WEOS_UNIVERSAL_CANVAS));
+      if (flags && typeof flags.universalCanvas === 'boolean') serverEnabled = flags.universalCanvas;
+      else if (flags && typeof flags.WEOS_UNIVERSAL_CANVAS === 'boolean') serverEnabled = flags.WEOS_UNIVERSAL_CANVAS;
     } catch (e) {}
     var host = window.WEOSCanvas.UniversalCanvas.tryMount({ serverEnabled: serverEnabled });
     if (!host) {
+      window.WEOS_UNIVERSAL_CANVAS = false;
       if (window.WEOSCanvas.propertyPanel) window.WEOSCanvas.propertyPanel.hideLegacyTools(false);
+      if (window.WEOSCanvas.workspace && WEOSCanvas.workspace.applyPrimaryCutover) {
+        WEOSCanvas.workspace.applyPrimaryCutover(false);
+      }
       return;
     }
     window.WEOS_UNIVERSAL_CANVAS = true;
+    try {
+      if (window.WEOSCanvas.workspace && WEOSCanvas.workspace.applyPrimaryCutover) {
+        WEOSCanvas.workspace.applyPrimaryCutover(true);
+      }
+    } catch (eCut) {}
     // Canvas D0 — ActiveDesignContext singleton (product → adapter → schema → toolset).
     try {
       if (window.WEOSCanvas && WEOSCanvas.designContext) {

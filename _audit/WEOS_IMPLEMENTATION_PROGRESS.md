@@ -246,7 +246,7 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 | **Goal** | One UniversalCanvas host: viewport/zoom/pan/selection/labels/scene load/adapters; keep `#livePreview` via `WEOS_UNIVERSAL_CANVAS` flag |
 | **Files committed** | `WEOS/factory/universal_canvas.py`, `WEOS/website/canvas/{universal_canvas,viewport,scene_renderer,selection,adapters}.js`, `WEOS/api/design_routes.py`, `WEOS/website/index.html`, `WEOS/_smoke_universal_canvas.py`, `_audit/WEOS_IMPLEMENTATION_PROGRESS.md` |
 | **Schema / migration** | None (uses B5/B6 DesignDocument/Element SQL); pose via `PATCH /api/elements/{id}/pose` |
-| **Feature flag** | `WEOS_UNIVERSAL_CANVAS` default **OFF**; `/api/flags`; URL `?universalCanvas=1` |
+| **Feature flag** | `WEOS_UNIVERSAL_CANVAS` default **ON** (Canvas D1); `/api/flags`; rollback `?universalCanvas=0` or env=`0` |
 | **Tests** | `_smoke_universal_canvas.py` A–H **PASS**; B7 regression suite **PASS** (16/16) |
 | **Issues** | Element drag-to-move deferred (`ELEMENT_DRAG_ENABLED=False`); pose save via API only |
 | **Commit** | (see git) — `feat(canvas): introduce universal engineering canvas host` |
@@ -603,11 +603,29 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 4. ~~**UX Batch C — WEOS Design System foundation**~~ **DONE**
 5. ~~**Canvas D0 — Product Context parity**~~ **DONE**
 6. ~~**Canvas Batch D — Professional Universal Canvas Workspace**~~ **DONE**
-7. **Next eligible:** **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**)
-8. Then **Canvas Batch F** — Cell Product Assignment (**QUEUED**)
-9. Then **Canvas Batch G** — Design Management (**QUEUED**)
-10. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains **separate**
-11. Production deployment — **NOT AUTHORIZED / NOT PERFORMED**
+7. ~~**Canvas D1 — Universal Canvas Activation + Real Workspace Cutover**~~ **DONE**
+8. **Next eligible:** **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**)
+9. Then **Canvas Batch F** — Cell Product Assignment (**QUEUED**)
+10. Then **Canvas Batch G** — Design Management (**QUEUED**)
+11. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains **separate**
+12. Production deployment — **NOT AUTHORIZED / NOT PERFORMED**
+
+---
+
+### CANVAS D1 — Universal Canvas Activation + Real Workspace Cutover (**DONE**)
+
+| Field | Value |
+|---|---|
+| **ID** | CANVAS-D1 |
+| **Status** | **DONE** / LIVE VERIFIED / TESTED / COMMITTED / PUSHED |
+| **Starting HEAD** | `e0412cee039bb9f52a417d9054e7dbcc9c916d0d` |
+| **Root cause** | UC flag defaulted **OFF** (`WEOS_UNIVERSAL_CANVAS` → `"0"`); normal boot never mounted Batch D workspace without `?universalCanvas=1`. Even when mounted, UC stayed nested in the right Live Preview column beside the giant left Window Cart form (partial uc-mode shrink only). |
+| **Activation** | Default **ON** via `WEOS/factory/canvas_activation.py`; `/api/flags` reflects ON; query `?universalCanvas=0` or env `WEOS_UNIVERSAL_CANVAS=0` rollback |
+| **Cutover** | `#view-cart.uc-primary`: hide legacy `.cart-tools`, hide Live Preview chrome, full-bleed UC host = tool rail \| stage \| props; `+ Add Design` modal |
+| **Rendered dims (1920×1080)** | tool rail **56px**; props **360px**; stage **~1118px**; host **~1536×907**; legacy form/livePreview `display:none` |
+| **Tests** | `_smoke_canvas_activation.py` A–O **PASS**; workspace / product context / UC / adapters / contextual / pergola / hierarchy / scene / design system / PDF A/B **PASS** |
+| **Hard stop** | **Do NOT auto-start Canvas Batch E** |
+| **Production** | **NOT PERFORMED** |
 
 ---
 
@@ -616,7 +634,7 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 | Field | Value |
 |---|---|
 | **ID** | CANVAS-E |
-| **Status** | **QUEUED** after Canvas D |
+| **Status** | **QUEUED** after Canvas D1 |
 | **Goal** | FrameMember domain; vertical/horizontal drawing; cell subdivision; stable cell IDs; SQL persistence; tests |
 | **Hard stop** | No cell product-assignment UX (Batch F); members = domain data not decorative SVG |
 | **Authority** | ACD.4–ACD.5, ACD.12 |
@@ -649,9 +667,20 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 ## Remaining batches (from user plan / target doc)
 
-**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → ~~Canvas D~~ **DONE** → **Next: Canvas E** → F → G.  
+**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → ~~Canvas D~~ **DONE** → ~~Canvas D1~~ **DONE** → **Next: Canvas E** → F → G.  
 Engineering Master Data / BOM Foundation remains on the architecture track **after** C–G foundations are stable.  
-**HARD STOP:** Canvas E/F/G **not started** (D complete). Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
+**HARD STOP:** Canvas E/F/G **not started** (D1 complete). Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
+
+---
+
+## Session checkpoint (Canvas D1)
+
+- **Branch:** `weos-v2-foundation`
+- **Starting HEAD:** `e0412cee039bb9f52a417d9054e7dbcc9c916d0d`
+- **Ending HEAD:** _(stamped after push)_
+- **Next eligible implementation:** **Canvas Batch E** — Member + Grid + Cell Engine
+- **Do not start:** Canvas E automatically; Production deploy
+- **Preserved:** B5–B9, Pergola, PDF A/B, UX C, Canvas D0/D; unrelated dirty files not committed
 
 ---
 

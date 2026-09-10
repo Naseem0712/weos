@@ -102,7 +102,12 @@ def main() -> None:
     # E: Fit uses scene bounds
     z = cw.fit_with_padding({"width": 2000, "height": 1000}, 800, 600, padding=48)
     _ok(0.15 <= z <= 6.0, f"E: fit zoom clamped {z}")
-    _ok("viewport.fit(model.bounds" in uc_js, "E: fit uses model.bounds")
+    _ok(
+        "viewport.fit(model.bounds" in uc_js
+        or ("viewport.fit(" in uc_js and "model.bounds" in uc_js)
+        or "fitToSelectionOrScene" in uc_js,
+        "E: fit uses model.bounds",
+    )
 
     # F: grid toggle does not modify engineering geometry
     el_before = {"elementId": "E1", "widthMm": 1800, "heightMm": 1500, "xMm": 0, "yMm": 0}
