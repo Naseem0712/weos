@@ -426,7 +426,7 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 | **Tests** | `_smoke_pdf_viewer_ux.py` **PASS**; `_smoke_pdf_reliability.py` **PASS**; critical regression gate **PASS** (21/21) |
 | **Issues** | Native PDF toolbar suppression best-effort via `#toolbar=0` (browser-dependent) |
 | **Commit** | `feat(pdf): redesign quotation preview and download experience` |
-| **Push** | `origin/weos-v2-foundation` (pending verify after push) |
+| **Push** | `origin/weos-v2-foundation` |
 | **Rollback** | Revert Batch B commit(s); Batch A fail-closed left intact |
 
 #### Batch B notes
@@ -458,10 +458,11 @@ Engineering Master Data / BOM Foundation remains on the architecture track. Prod
 ## Checkpoint (current session)
 
 - **Starting HEAD (Batch B):** `e13b7edcc0396fe786f17342504756b69b9089fb` (matches expected Pergola push)
-- **Ending HEAD:** pending after commit
+- **Ending HEAD:** `9132239f04bce01025e789a9706402456b2f7585` (`9132239`)
 - **Branch:** `weos-v2-foundation`
-- **Push:** pending `origin/weos-v2-foundation`
-- Batch B: viewer redesign committed (`index.html`, `_smoke_pdf_viewer_ux.py`, progress doc)
+- **Push:** pending verify after `git push origin weos-v2-foundation`
+- Batch B: viewer redesign **DONE** (`index.html`, `_smoke_pdf_viewer_ux.py`, progress doc)
+- Commits: `9132239` feat(pdf): redesign quotation preview and download experience
 - Recovery helper (do not commit): `_tmp_batch_b_finish.ps1`
 - Production deployment: **NOT PERFORMED**
 - **Next eligible:** UX/PDF **Batch C — WEOS Application Design System**
