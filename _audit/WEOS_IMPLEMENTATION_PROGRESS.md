@@ -581,7 +581,7 @@ Engineering Master Data / BOM Foundation remains on the architecture track **aft
 ## Checkpoint (current session — Batch C COMPLETE)
 
 - **Starting HEAD:** `011b624d7e04235a49187a7b0d21463bc2461215` on `weos-v2-foundation`
-- **Ending HEAD:** b86e1693bec3ce4071a3afb340baf88ce31204f7 (b86e169) — Batch C COMPLETE / PUSHED
+- **Ending HEAD:** 632b12b3f7969897dfa9a285df4469d6d3e2565c (632b12b) on weos-v2-foundation / origin/weos-v2-foundation
 - **Batch C:** **COMPLETE** — design system smoke PASS; critical regression 21/21 PASS; selective commit + push
 - **Canvas D–G:** not started (HARD STOP after C)
 - Production deployment: **NOT PERFORMED**
