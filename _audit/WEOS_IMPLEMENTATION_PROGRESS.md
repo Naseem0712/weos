@@ -1,4 +1,4 @@
-# WEOS V2 Implementation Progress
+﻿# WEOS V2 Implementation Progress
 
 **Branch:** `weos-v2-foundation`  
 **Authority:** `_audit/WEOS_TARGET_ARCHITECTURE_AND_GAP_PLAN.md`  
@@ -458,11 +458,11 @@ Engineering Master Data / BOM Foundation remains on the architecture track. Prod
 ## Checkpoint (current session)
 
 - **Starting HEAD (Batch B):** `e13b7edcc0396fe786f17342504756b69b9089fb` (matches expected Pergola push)
-- **Ending HEAD:** `352449fbe487e0ebc9dc60fd2ad015793cc39edc` (`352449f`)
+- **Ending HEAD:** `3df87fc38b9cde1d92fb82583ea3aa82e70dfcfc` (`3df87fc`)
 - **Branch:** `weos-v2-foundation`
-- **Push:** `origin/weos-v2-foundation` @ `352449f`
+- **Push:** `origin/weos-v2-foundation` @ `3df87fc`
 - Batch B: viewer redesign **DONE** (`index.html`, `_smoke_pdf_viewer_ux.py`, progress doc)
-- Commits: `9132239` feat(pdf) · `071cf29` docs ending-HEAD · `352449f` docs push SHA
+- Commits: `9132239` feat(pdf) · `071cf29` docs ending-HEAD · `3df87fc` docs push SHA
 - Recovery helper (do not commit): `_tmp_batch_b_finish.ps1`
 - Production deployment: **NOT PERFORMED**
 - **Next eligible:** UX/PDF **Batch C — WEOS Application Design System**
