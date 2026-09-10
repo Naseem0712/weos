@@ -57,11 +57,11 @@
     var selection = C.selection.create({ allowMulti: true });
     var registry = C.adapters.createRegistry();
     var history = C.commands.createHistory({ maxSize: 50 });
-    var grid = C.grid.create({ visible: true });
+    var grid = C.grid.create({ visible: false });
     var snap = C.snap.create({ enabled: true });
     var cmdState = C.commands.createCommandState({
       activeTool: C.commands.TOOLS.SELECT,
-      gridVisible: true,
+      gridVisible: false,
       snapEnabled: true,
     });
 
@@ -145,8 +145,14 @@
         deleteBtn.disabled = true;
         deleteBtn.title = "Delete unavailable — no safe backend delete in Batch D";
       }
-      if (gridBtn) gridBtn.classList.toggle("is-active", grid.visible);
-      if (snapBtn) snapBtn.classList.toggle("is-active", snap.enabled);
+      if (gridBtn) {
+        gridBtn.classList.toggle("is-active", !!grid.visible);
+        gridBtn.setAttribute("aria-pressed", grid.visible ? "true" : "false");
+      }
+      if (snapBtn) {
+        snapBtn.classList.toggle("is-active", !!snap.enabled);
+        snapBtn.setAttribute("aria-pressed", snap.enabled ? "true" : "false");
+      }
       C.workspace.syncSavePill(savePill, cmdState.saveStatus);
       try {
         emitCommand();
@@ -155,19 +161,46 @@
 
     function updateZoomLabel() {
       if (zoomLabel) zoomLabel.textContent = Math.round(viewport.zoom * 100) + "%";
-      updateCursorStatus();
+      scheduleCursorStatus(null);
     }
 
-    function updateCursorStatus(world) {
+    // rAF-coalesced cursor mm — avoids status-bar layout thrash on every pointermove
+    var _cursorRaf = 0;
+    var _cursorWorld = null;
+    function scheduleCursorStatus(world) {
+      if (world) _cursorWorld = world;
+      if (_cursorRaf) return;
+      _cursorRaf = requestAnimationFrame(function () {
+        _cursorRaf = 0;
+        flushCursorStatus(_cursorWorld);
+      });
+    }
+    function flushCursorStatus(world) {
       if (!cursorStatus) return;
-      var x = world && world.xMm != null ? Math.round(world.xMm) : "—";
-      var y = world && world.yMm != null ? Math.round(world.yMm) : "—";
-      cursorStatus.textContent =
+      var cur = cmdState.cursor || {};
+      var xMm = world && world.xMm != null ? world.xMm : cur.xMm;
+      var yMm = world && world.yMm != null ? world.yMm : cur.yMm;
+      var x = xMm != null && isFinite(xMm) ? Math.round(xMm) : "—";
+      var y = yMm != null && isFinite(yMm) ? Math.round(yMm) : "—";
+      var next =
         "X " + x + " mm · Y " + y + " mm · Zoom " + Math.round(viewport.zoom * 100) + "%";
+      if (cursorStatus.textContent !== next) cursorStatus.textContent = next;
       cmdState.cursor = {
-        xMm: world && world.xMm != null ? world.xMm : null,
-        yMm: world && world.yMm != null ? world.yMm : null,
+        xMm: xMm != null && isFinite(xMm) ? xMm : null,
+        yMm: yMm != null && isFinite(yMm) ? yMm : null,
       };
+    }
+    function updateCursorStatus(world) {
+      scheduleCursorStatus(world || null);
+    }
+
+    function applyHoverClassOnly(hoverId) {
+      Array.prototype.forEach.call(vpEl.querySelectorAll(".uc-el"), function (node) {
+        var eid = node.getAttribute("data-element-id");
+        var selected = node.classList.contains("uc-el-selected");
+        var on = !!(hoverId && eid === hoverId && !selected);
+        node.classList.toggle("uc-el-hover", on);
+      });
     }
 
     function paint() {
@@ -518,10 +551,18 @@
       paint();
     }
 
+    function isPlaceholderSvg(svg) {
+      if (!svg || typeof svg !== "string") return true;
+      if (svg.indexOf("<svg") < 0) return true;
+      if (svg.indexOf("data-weos-placeholder") >= 0) return true;
+      return false;
+    }
+
     /**
      * Paint adapter SVG. Fit ONCE when pendingPreviewFit is set (first resolve),
      * never on every property-driven preview refresh.
      * Stale D0 revision callers pass opts.renderRevision to skip viewport changes.
+     * Never replace a good design SVG with placeholder / legacy livePreview mirror.
      */
     function setElementPreviewSvg(elementId, svg, opts) {
       opts = opts || {};
@@ -529,18 +570,37 @@
       if (opts.renderRevision != null && opts.expectedRevision != null) {
         if (Number(opts.renderRevision) !== Number(opts.expectedRevision)) return;
       }
-      model.previewContext.previewByElementId[elementId] = svg;
+      var id = String(elementId);
+      var next = svg == null ? "" : String(svg);
+      var prev = model.previewContext.previewByElementId[id];
+      var source = String(opts.source || "adapter");
+      var prevGood = prev && !isPlaceholderSvg(prev);
+      var nextBad = isPlaceholderSvg(next);
+      // Keep perfect product SVG permanently once it lands.
+      if (prevGood && nextBad) return;
+      // Legacy #livePreview MutationObserver must not overwrite adapter artwork.
+      if (prevGood && (source === "livePreview" || source === "legacyMirror")) return;
+      model.previewContext.previewByElementId[id] = next;
+      if (!model.previewContext.previewSourceByElementId) {
+        model.previewContext.previewSourceByElementId = {};
+      }
+      model.previewContext.previewSourceByElementId[id] = source;
       paint();
-      var shouldFit = !!pendingPreviewFit[elementId];
+      var shouldFit = !!pendingPreviewFit[id];
       if (shouldFit) {
-        delete pendingPreviewFit[elementId];
+        delete pendingPreviewFit[id];
         var sel = selection.snapshot();
-        if (sel.primaryId === elementId || model.elements.length <= 1) {
+        if (sel.primaryId === id || model.elements.length <= 1) {
           fitSelected();
         } else {
           fitScene();
         }
       }
+    }
+
+    function hasGoodElementPreview(elementId) {
+      if (!elementId) return false;
+      return !isPlaceholderSvg(model.previewContext.previewByElementId[String(elementId)]);
     }
 
     function setSaveStatus(status, detail) {
@@ -622,6 +682,7 @@
       gridBtn.onclick = function () {
         grid.toggle();
         cmdState.gridVisible = grid.visible;
+        syncChrome();
         paint();
       };
     if (snapBtn)
@@ -662,7 +723,16 @@
       };
     }
 
+    var _lastSelectedKey = "";
     selection.onChange(function (snapSel) {
+      var ids = (snapSel.selectedIds || snapSel.selectedElementIds || []).join("\0");
+      var selChanged = ids !== _lastSelectedKey;
+      _lastSelectedKey = ids;
+      // Hover-only changes: toggle CSS class — do NOT rebuild the whole scene (jank).
+      if (!selChanged) {
+        applyHoverClassOnly(snapSel.hoverId || null);
+        return;
+      }
       paint();
       onSelectCbs.forEach(function (fn) {
         try {
@@ -729,9 +799,9 @@
           elements: model.elements,
           gridMm: grid.spacingForZoom(viewport.zoom).minorMm,
         });
-        updateCursorStatus({ xMm: sp.xMm, yMm: sp.yMm });
+        scheduleCursorStatus({ xMm: sp.xMm, yMm: sp.yMm });
       } else {
-        updateCursorStatus(world);
+        scheduleCursorStatus(world);
       }
 
       var hoverNode = ev.target && ev.target.closest ? ev.target.closest("[data-element-id]") : null;
@@ -741,7 +811,17 @@
       viewport.panBy(ev.clientX - panning.x, ev.clientY - panning.y);
       panning.x = ev.clientX;
       panning.y = ev.clientY;
-      paint();
+      // Pan: update transforms only — avoid full scene HTML rebuild every move
+      if (typeof viewport.cssTransform === "function") {
+        var xform = viewport.cssTransform();
+        Array.prototype.forEach.call(vpEl.querySelectorAll(".uc-layer--world, .uc-layer--conn, .uc-layer--grid"), function (layer) {
+          layer.style.transform = xform;
+          layer.style.transformOrigin = "0 0";
+        });
+        updateZoomLabel();
+      } else {
+        paint();
+      }
     });
 
     function endPan(ev) {
@@ -830,6 +910,7 @@
       zoomOut: zoomOut,
       setActiveTool: setActiveTool,
       setElementPreviewSvg: setElementPreviewSvg,
+      hasGoodElementPreview: hasGoodElementPreview,
       markPendingPreviewFit: markPendingPreviewFit,
       upsertLocalElement: upsertLocalElement,
       selectElementById: selectElementById,

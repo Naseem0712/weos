@@ -232,6 +232,7 @@
           // D3: paint only — Fit happens iff host has pendingPreviewFit for this element
           // (first resolve after Add Design / product switch). Property refreshes do not Fit.
           host.setElementPreviewSvg(elementId, svg, {
+            source: "adapter",
             renderRevision: state.renderRevision,
             expectedRevision: state.renderRevision,
           });

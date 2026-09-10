@@ -173,6 +173,7 @@
       if (sel) cls += " uc-el-selected";
       if (hover) cls += " uc-el-hover";
       if (unsupported) cls += " uc-el-unsupported";
+      // Selection is outline-only (CSS) — never paint opaque fill over design SVG.
       html +=
         '<div class="' +
         cls +
@@ -188,8 +189,8 @@
         el.widthMm +
         "px;height:" +
         el.heightMm +
-        'px;box-sizing:border-box;cursor:pointer">' +
-        '<div class="uc-el-svg" style="width:100%;height:100%;overflow:hidden">' +
+        'px;box-sizing:border-box;cursor:pointer;background:transparent">' +
+        '<div class="uc-el-svg" style="width:100%;height:100%;overflow:hidden;background:transparent">' +
         (rendered.svg || "") +
         "</div>" +
         '<div class="uc-el-label" style="position:absolute;left:4px;top:4px;background:rgba(255,255,255,.85);' +
