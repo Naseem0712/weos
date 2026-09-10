@@ -1,0 +1,100 @@
+/**
+ * WEOS Application Design System — Tokens (UX Batch C)
+ * ALLUKRAFT / WEOS visual language: warm paper, forest green, copper.
+ * Progressive: does not rewrite legacy SPA styles; new surfaces use --weos-* / .weos-ds-*.
+ */
+:root {
+  /* Brand & surfaces (aligned with existing SPA :root) */
+  --weos-color-bg: #e8e3d8;
+  --weos-color-ink: #141410;
+  --weos-color-muted: #5c584f;
+  --weos-color-panel: rgba(255, 252, 247, 0.94);
+  --weos-color-card: #fffdf9;
+  --weos-color-line: rgba(20, 20, 16, 0.12);
+  --weos-color-line-strong: rgba(20, 20, 16, 0.22);
+  --weos-color-primary: #0a5a48;
+  --weos-color-primary-hover: #147a62;
+  --weos-color-primary-active: #084a3b;
+  --weos-color-accent: #b45324;
+  --weos-color-accent-soft: rgba(180, 83, 36, 0.12);
+  --weos-color-success: #0a5a48;
+  --weos-color-warning: #b45324;
+  --weos-color-danger: #8c1f18;
+  --weos-color-info: #1e4d6b;
+  --weos-color-overlay: rgba(20, 20, 16, 0.45);
+  --weos-color-focus: #0a5a48;
+
+  /* Status surfaces */
+  --weos-status-ok-bg: #e7f3ee;
+  --weos-status-ok-fg: #0a5a48;
+  --weos-status-warn-bg: #f3ebe2;
+  --weos-status-warn-fg: #b45324;
+  --weos-status-err-bg: #f5e6e4;
+  --weos-status-err-fg: #8c1f18;
+  --weos-status-info-bg: #e6eef4;
+  --weos-status-info-fg: #1e4d6b;
+  --weos-status-neutral-bg: #efeee9;
+  --weos-status-neutral-fg: #5c584f;
+
+  /* Typography scale */
+  --weos-font-sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --weos-font-display: Georgia, "Palatino Linotype", Palatino, "Times New Roman", Times, serif;
+  --weos-font-mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+
+  --weos-text-xs: 0.72rem;
+  --weos-text-sm: 0.82rem;
+  --weos-text-md: 0.92rem;
+  --weos-text-base: 1rem;
+  --weos-text-lg: 1.15rem;
+  --weos-text-xl: 1.35rem;
+  --weos-text-2xl: clamp(1.5rem, 2.5vw, 2rem);
+  --weos-text-3xl: clamp(1.6rem, 3vw, 2.2rem);
+
+  --weos-leading-tight: 1.2;
+  --weos-leading-snug: 1.35;
+  --weos-leading-normal: 1.5;
+  --weos-tracking-label: 0.05em;
+  --weos-tracking-tight: -0.02em;
+  --weos-font-weight-regular: 400;
+  --weos-font-weight-medium: 500;
+  --weos-font-weight-semibold: 600;
+  --weos-font-weight-bold: 700;
+
+  /* Spacing scale (4px base) */
+  --weos-space-0: 0;
+  --weos-space-1: 0.25rem;   /* 4 */
+  --weos-space-2: 0.5rem;    /* 8 */
+  --weos-space-3: 0.75rem;   /* 12 */
+  --weos-space-4: 1rem;      /* 16 */
+  --weos-space-5: 1.25rem;   /* 20 */
+  --weos-space-6: 1.5rem;    /* 24 */
+  --weos-space-8: 2rem;      /* 32 */
+  --weos-space-10: 2.5rem;   /* 40 */
+  --weos-space-12: 3rem;     /* 48 */
+
+  /* Border radius */
+  --weos-radius-sm: 6px;
+  --weos-radius-md: 8px;
+  --weos-radius-lg: 10px;
+  --weos-radius-xl: 14px;
+  --weos-radius-pill: 999px;
+
+  /* Elevation */
+  --weos-shadow-sm: 0 2px 8px rgba(20, 20, 16, 0.06);
+  --weos-shadow-md: 0 10px 40px rgba(20, 20, 16, 0.06);
+  --weos-shadow-lg: 0 18px 48px rgba(20, 20, 16, 0.14);
+  --weos-shadow-focus: 0 0 0 3px rgba(10, 90, 72, 0.28);
+
+  /* Layout chrome (for Canvas D+ toolbars / panels) */
+  --weos-toolbar-h: 44px;
+  --weos-sidepanel-w: 300px;
+  --weos-z-dropdown: 40;
+  --weos-z-sidepanel: 50;
+  --weos-z-modal: 60;
+  --weos-z-toast: 70;
+
+  /* Motion */
+  --weos-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --weos-duration-fast: 120ms;
+  --weos-duration: 180ms;
+}

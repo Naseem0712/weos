@@ -4,6 +4,9 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>WEOS — Manufacturing OS</title>
+<!-- WEOS Application Design System (UX Batch C) — progressive tokens/components; legacy styles remain SoT for existing screens -->
+<link rel="stylesheet" href="/static/design-system/tokens.css"/>
+<link rel="stylesheet" href="/static/design-system/components.css"/>
 <style>
 :root{
   --bg:#e8e3d8; --ink:#141410; --muted:#5c584f; --panel:rgba(255,252,247,.94);
@@ -14077,6 +14080,8 @@ async function pingEngine(){
   try { weosMountAgentDock(); } catch(e){ console.warn('WEOS Agent dock failed to mount', e); }
 })();
 </script>
+<!-- WEOS Design System helpers (UX Batch C) — modal/sidepanel/tabs for progressive adoption -->
+<script src="/static/design-system/weos-ds.js"></script>
 <!-- Universal Canvas Host modules (Batch 7) — progressive; gated by WEOS_UNIVERSAL_CANVAS -->
 <script src="/static/canvas/viewport.js"></script>
 <script src="/static/canvas/selection.js"></script>

@@ -359,8 +359,8 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 1. ~~UX/PDF **Batch A — PDF reliability**~~ **DONE**
 2. ~~**Batch 8.5 / 9.5 — Pergola**~~ **DONE**
 3. ~~UX/PDF **Batch B — PDF Viewer Redesign**~~ **DONE** (@ `a8e8894`)
-4. **Next eligible:** **UX Batch C — WEOS Design System foundation** (**QUEUED — NOT STARTED**)
-5. Then **Canvas Batch D** — Professional Universal Canvas Workspace (**QUEUED**)
+4. ~~**UX Batch C — WEOS Design System foundation**~~ **DONE**
+5. **Next eligible:** **Canvas Batch D** — Professional Universal Canvas Workspace (**QUEUED**)
 6. Then **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**)
 7. Then **Canvas Batch F** — Cell Product Assignment (**QUEUED**)
 8. Then **Canvas Batch G** — Design Management (**QUEUED**)
@@ -464,16 +464,63 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 ---
 
-### UX BATCH C — WEOS Design System foundation (**QUEUED — NOT STARTED**)
+### UX BATCH C — WEOS Design System foundation (**DONE**)
 
 | Field | Value |
 |---|---|
 | **ID** | UX-C |
-| **Status** | **QUEUED** — next eligible implementation batch |
-| **Goal** | Shared WEOS UI primitives: buttons, inputs, dialogs, toolbar, cards, property sections, layout primitives |
-| **Depends on** | Batch B complete (`a8e8894`) |
+| **Status** | **DONE** — tested locally; pushed to origin (Production NOT PERFORMED) |
+| **Goal** | Shared WEOS UI primitives: tokens, buttons, inputs, dialogs, toolbar, cards, property sections, layout primitives |
+| **Files** | `WEOS/website/design-system/tokens.css`, `components.css`, `weos-ds.js`; progressive link/script in `WEOS/website/index.html`; `WEOS/_smoke_design_system.py`; `_audit/WEOS_IMPLEMENTATION_PROGRESS.md` |
+| **Schema / migration** | None |
+| **Depends on** | Batch B complete (`a8e8894`); tip before Batch C finish: `011b624` |
+| **Tests** | `_smoke_design_system.py` **PASS**; critical regression gate **PASS** (21/21 — see below) |
+| **Issues** | Progressive integration only — not a full SPA redesign; Canvas D not started |
+| **Commit** | `feat(ui): introduce WEOS application design system` (+ optional docs stamp) |
+| **Push** | `origin/weos-v2-foundation` |
+| **Rollback** | Revert Batch C commit(s); remove design-system link/script from index if needed |
 | **Hard stop** | Do **not** start Canvas D/E/F/G inside this batch; no Production deploy |
 | **Authority** | Target plan **ACD.11** (Advanced Canvas Design Workflow) |
+
+#### Batch C gate results (2026-09-10)
+
+| Smoke | Result |
+|---|---|
+| `_smoke_design_system.py` | **PASS** |
+| `_smoke_persistence_durability.py` | **PASS** |
+| `_smoke_canonical_customer.py` | **PASS** |
+| `_smoke_canonical_project.py` | **PASS** |
+| `_smoke_tenant_ownership.py` | **PASS** |
+| `_smoke_design_hierarchy.py` | **PASS** |
+| `_smoke_design_scene.py` | **PASS** |
+| `_smoke_universal_canvas.py` | **PASS** |
+| `_smoke_product_adapters.py` | **PASS** |
+| `_smoke_contextual_properties.py` | **PASS** |
+| `_smoke_pergola_adapter.py` | **PASS** |
+| `_smoke_pdf_reliability.py` | **PASS** |
+| `_smoke_pdf_viewer_ux.py` | **PASS** |
+| `_smoke_quote_identity_flow.py` | **PASS** |
+| `_smoke_quote_totals.py` | **PASS** |
+| `_smoke_public_scan_security.py` | **PASS** |
+| `_smoke_quote_pdf_cart.py` | **PASS** |
+| `_smoke_money_specs.py` | **PASS** |
+| `_smoke_normal_railing.py` | **PASS** |
+| `_smoke_stair_railing.py` | **PASS** |
+| `_smoke_sliding_track_opening.py` | **PASS** |
+| `_smoke_casement_mullion.py` | **PASS** |
+
+#### Queue order (strict)
+
+1. ~~UX/PDF **Batch A — PDF reliability**~~ **DONE**
+2. ~~**Batch 8.5 / 9.5 — Pergola**~~ **DONE**
+3. ~~UX/PDF **Batch B — PDF Viewer Redesign**~~ **DONE** (`a8e8894`)
+4. ~~**UX Batch C — WEOS Design System foundation**~~ **DONE**
+5. **Next eligible:** **Canvas Batch D** — Professional Universal Canvas Workspace (**QUEUED**)
+6. Then **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**)
+7. Then **Canvas Batch F** — Cell Product Assignment (**QUEUED**)
+8. Then **Canvas Batch G** — Design Management (**QUEUED**)
+9. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains **separate**
+10. Production deployment — **NOT AUTHORIZED / NOT PERFORMED**
 
 ---
 
@@ -527,19 +574,18 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 ## Remaining batches (from user plan / target doc)
 
-**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** (`a8e8894`) → **Next eligible: UX Batch C (queued, not started)** → Canvas D → E → F → G.  
+**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** (`a8e8894`) → ~~UX Batch C~~ **DONE** → **Next: Canvas D** → E → F → G.  
 Engineering Master Data / BOM Foundation remains on the architecture track **after** C–G foundations are stable.  
 **HARD STOP:** Canvas D/E/F/G **not started**. Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
 
-## Checkpoint (current session — plan update only)
+## Checkpoint (current session — Batch C COMPLETE)
 
-- **Batch B tip (verified before this plan update):** `a8e8894` — COMPLETE / TESTED / PUSHED
-- **Plan-update commit:** `524f85a` — `docs(audit): add advanced canvas member cell design roadmap`
-- **Branch / push:** `weos-v2-foundation` → `origin/weos-v2-foundation` @ `524f85a`
-- **This turn:** PLAN UPDATE ONLY — Advanced Canvas Design Workflow incorporated into target + progress docs
-- **Batch B:** left intact — not rewritten
-- **UX C / Canvas D–G:** queued only — **no implementation started**
+- **Starting HEAD:** `011b624d7e04235a49187a7b0d21463bc2461215` on `weos-v2-foundation`
+- **Ending HEAD:** filled after commit/push (see Batch C commit SHA)
+- **Batch C:** **COMPLETE** — design system smoke PASS; critical regression 21/21 PASS; selective commit + push
+- **Canvas D–G:** not started (HARD STOP after C)
 - Production deployment: **NOT PERFORMED**
-- **Next eligible implementation:** **UX Batch C — WEOS Design System foundation**
+- **Next eligible implementation:** **Canvas Batch D** — Professional Universal Canvas Workspace
 - Unrelated dirty tree left untouched
+- Recovery script `_tmp_batch_c_finish.ps1` left untracked (not committed)
 
