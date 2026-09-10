@@ -533,10 +533,11 @@ Engineering Master Data / BOM Foundation remains on the architecture track **aft
 
 ## Checkpoint (current session — plan update only)
 
-- **Verified tip:** `a8e8894` (`a8e889411dd75f0621388684b0b75abffae63de0`) local = `origin/weos-v2-foundation`
-- **Branch:** `weos-v2-foundation`
+- **Batch B tip (verified before this plan update):** `a8e8894` — COMPLETE / TESTED / PUSHED
+- **Plan-update commit:** `524f85a` — `docs(audit): add advanced canvas member cell design roadmap`
+- **Branch / push:** `weos-v2-foundation` → `origin/weos-v2-foundation` @ `524f85a`
 - **This turn:** PLAN UPDATE ONLY — Advanced Canvas Design Workflow incorporated into target + progress docs
-- **Batch B:** left intact (COMPLETE / TESTED / PUSHED) — not rewritten
+- **Batch B:** left intact — not rewritten
 - **UX C / Canvas D–G:** queued only — **no implementation started**
 - Production deployment: **NOT PERFORMED**
 - **Next eligible implementation:** **UX Batch C — WEOS Design System foundation**
