@@ -458,11 +458,11 @@ Engineering Master Data / BOM Foundation remains on the architecture track. Prod
 ## Checkpoint (current session)
 
 - **Starting HEAD (Batch B):** `e13b7edcc0396fe786f17342504756b69b9089fb` (matches expected Pergola push)
-- **Ending HEAD:** `9132239f04bce01025e789a9706402456b2f7585` (`9132239`)
+- **Ending HEAD:** `071cf299c2089da07ae230b99de955843c1d8ef4` (`071cf29`)
 - **Branch:** `weos-v2-foundation`
-- **Push:** pending verify after `git push origin weos-v2-foundation`
+- **Push:** `origin/weos-v2-foundation` @ `071cf29`
 - Batch B: viewer redesign **DONE** (`index.html`, `_smoke_pdf_viewer_ux.py`, progress doc)
-- Commits: `9132239` feat(pdf): redesign quotation preview and download experience
+- Commits: `9132239` feat(pdf) · `071cf29` docs(audit) ending-HEAD stamp
 - Recovery helper (do not commit): `_tmp_batch_b_finish.ps1`
 - Production deployment: **NOT PERFORMED**
 - **Next eligible:** UX/PDF **Batch C — WEOS Application Design System**
