@@ -139,6 +139,10 @@
       "PERGOLA",
       "LOUVER",
       "SURFACE",
+      "ACP",
+      "HPL",
+      "FLUTED",
+      "PERFORATED",
     ].forEach(function (pt) {
       register(pt, previewSvgAdapter);
     });

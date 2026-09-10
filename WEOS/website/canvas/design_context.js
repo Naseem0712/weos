@@ -183,6 +183,63 @@
       return true;
     }
 
+    /**
+     * Fetch authoritative adapter SVG and paint it onto the ONE Universal Canvas.
+     * Uses a dedicated preview generation counter so preview fetches do not
+     * abort / invalidate ActiveDesignContext switch work (D0 stale rules still apply).
+     */
+    var _previewGen = 0;
+    function refreshElementPreview(element, configPayload) {
+      var host = global.WEOS_UNIVERSAL_CANVAS_HOST;
+      if (!host || typeof host.setElementPreviewSvg !== "function") {
+        return Promise.resolve(null);
+      }
+      var el = element || {};
+      var elementId = el.elementId || state.elementId;
+      var pt = normalizeProductType(el.productType || state.selectedProductType);
+      if (!elementId || !pt || toolsetFor(pt) === "unsupported") {
+        return Promise.resolve(null);
+      }
+      if (!apiFn) return Promise.resolve(null);
+
+      _previewGen += 1;
+      var gen = _previewGen;
+      var expectedElement = elementId;
+      var expectedType = pt;
+      var cfg = Object.assign({}, state.configPayload || {}, configPayload || {});
+      if (el.widthMm != null && cfg.widthMm == null) cfg.widthMm = el.widthMm;
+      if (el.heightMm != null && cfg.heightMm == null) cfg.heightMm = el.heightMm;
+      var body = {
+        elementId: elementId,
+        productType: pt,
+        displayCode: el.displayCode || null,
+        widthMm: Number(el.widthMm != null ? el.widthMm : cfg.widthMm) || 0,
+        heightMm: Number(el.heightMm != null ? el.heightMm : cfg.heightMm) || 0,
+        configPayload: cfg,
+      };
+      return Promise.resolve(
+        apiFn("/api/adapters/" + encodeURIComponent(pt) + "/preview", {
+          method: "POST",
+          body: body,
+        })
+      )
+        .then(function (res) {
+          if (gen !== _previewGen) return null;
+          if (normalizeProductType(state.selectedProductType) !== expectedType) return null;
+          if ((state.elementId || null) !== expectedElement) return null;
+          var svg = res && res.svg ? String(res.svg) : "";
+          if (!svg || svg.indexOf("<svg") < 0) return res;
+          host.setElementPreviewSvg(elementId, svg);
+          try {
+            if (host.selectElementById) host.selectElementById(elementId, { fit: false });
+          } catch (eFit) {}
+          return res;
+        })
+        .catch(function () {
+          return null;
+        });
+    }
+
     function localResolve(productType, elementId, assemblyId, source, configPayload) {
       var pt = normalizeProductType(productType);
       var toolset = toolsetFor(pt);
@@ -287,14 +344,47 @@
             }
             refreshPropertyPanel();
             routeLegacyIntoUc();
+            if (state.elementId && state.supported) {
+              refreshElementPreview(
+                {
+                  elementId: state.elementId,
+                  productType: state.selectedProductType,
+                  widthMm: state.configPayload && state.configPayload.widthMm,
+                  heightMm: state.configPayload && state.configPayload.heightMm,
+                },
+                state.configPayload
+              );
+            }
           })
           .catch(function () {
             refreshPropertyPanel();
             routeLegacyIntoUc();
+            if (state.elementId && state.supported) {
+              refreshElementPreview(
+                {
+                  elementId: state.elementId,
+                  productType: state.selectedProductType,
+                  widthMm: state.configPayload && state.configPayload.widthMm,
+                  heightMm: state.configPayload && state.configPayload.heightMm,
+                },
+                state.configPayload
+              );
+            }
           });
       } else {
         refreshPropertyPanel();
         routeLegacyIntoUc();
+        if (state.elementId && state.supported) {
+          refreshElementPreview(
+            {
+              elementId: state.elementId,
+              productType: state.selectedProductType,
+              widthMm: state.configPayload && state.configPayload.widthMm,
+              heightMm: state.configPayload && state.configPayload.heightMm,
+            },
+            state.configPayload
+          );
+        }
       }
       return snapshot();
     }
@@ -505,6 +595,7 @@
       clearTransientDom: clearTransientDom,
       routeLegacyIntoUc: routeLegacyIntoUc,
       refreshPropertyPanel: refreshPropertyPanel,
+      refreshElementPreview: refreshElementPreview,
       onChange: onChange,
       applyServerContext: applyServerContext,
       toolsetFor: toolsetFor,

@@ -193,10 +193,33 @@
               value: String(val),
             });
           }
-          if (input.tagName === "INPUT") {
+          if (input.tagName === "INPUT" || input.tagName === "SELECT") {
             input.addEventListener("change", function () {
               state.dirty = true;
               setStatus("Unsaved changes", false);
+              // Live UC preview for local drafts + durable elements (D2 2D fix).
+              try {
+                var key = input.getAttribute("data-pp-key");
+                var val = input.type === "number" ? Number(input.value) : input.value;
+                var patch = {};
+                if (key) patch[key] = val;
+                var sel = (state.selection && state.selection.selection) || state.selection || {};
+                var elementId = sel.elementId || (state.values && state.values.elementId);
+                var productType = sel.productType || (state.values && state.values.productType);
+                var widthMm = key === "widthMm" ? val : (state.values && state.values.widthMm);
+                var heightMm = key === "heightMm" ? val : (state.values && state.values.heightMm);
+                if (state.values) Object.assign(state.values, patch);
+                var dc = global.WEOS_DESIGN_CONTEXT || (C.designContext && C.designContext.getActive && C.designContext.getActive());
+                if (dc && typeof dc.refreshElementPreview === "function" && elementId && productType) {
+                  clearTimeout(state._previewTimer);
+                  state._previewTimer = setTimeout(function () {
+                    dc.refreshElementPreview(
+                      { elementId: elementId, productType: productType, widthMm: widthMm, heightMm: heightMm },
+                      Object.assign({}, state.values || {}, patch)
+                    );
+                  }, 180);
+                }
+              } catch (ePrev) {}
             });
           }
           row.appendChild(input);
