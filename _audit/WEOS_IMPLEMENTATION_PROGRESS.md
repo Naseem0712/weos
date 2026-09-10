@@ -358,8 +358,9 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 
 1. ~~UX/PDF **Batch A — PDF reliability**~~ **DONE**
 2. ~~**Batch 8.5 / 9.5 — Pergola**~~ **DONE**
-3. **Next:** UX/PDF **Batch B — PDF Viewer Redesign**
-4. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains separate
+3. ~~UX/PDF **Batch B — PDF Viewer Redesign**~~ **DONE**
+4. **Next:** UX/PDF **Batch C — App UI Design System**
+5. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains separate
 
 ---
 
@@ -413,49 +414,58 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 
 ---
 
-## Remaining batches (from user plan / target doc)
+### BATCH B — PDF Viewer Redesign (UX/PDF)
 
-**Immediate UX/PDF queue:** ~~Batch A (PDF reliability)~~ **DONE** → ~~Batch 8.5/9.5 Pergola~~ **DONE** → Batch B (PDF Viewer Redesign).  
-Engineering Master Data / BOM Foundation remains on the architecture track (separate from Pergola product completion). Production deployment — **NOT PERFORMED**.
+| Field | Value |
+|---|---|
+| **ID** | UX-PDF-B |
+| **Goal** | Professional quotation PDF preview UX: Preparing / Validating / Ready / Error; maximize document space; wire Batch A preflight errors into clear missing-item UI |
+| **Files committed** | `WEOS/website/index.html`, `WEOS/_smoke_pdf_viewer_ux.py`, `_audit/WEOS_IMPLEMENTATION_PROGRESS.md` |
+| **Schema / migration** | None |
+| **Architecture** | Viewer-only; same live-cart → preflight → render path as Batch A; remains Snapshot-ready (no second PDF architecture) |
+| **Tests** | `_smoke_pdf_viewer_ux.py` **PASS**; `_smoke_pdf_reliability.py` **PASS**; critical regression gate **PASS** (21/21) |
+| **Issues** | Native PDF toolbar suppression best-effort via `#toolbar=0` (browser-dependent) |
+| **Commit** | `feat(pdf): redesign quotation preview and download experience` |
+| **Push** | `origin/weos-v2-foundation` (pending verify after push) |
+| **Rollback** | Revert Batch B commit(s); Batch A fail-closed left intact |
 
-## Checkpoint (current session)
+#### Batch B notes
 
-- **Starting HEAD (Batch 8.5/9.5):** `a906e191010424b9278abd4b64e6a92159ae00ad` (matches expected ~`a906e19`)
-- **Ending HEAD:** `7f35dc8722e76180c631025afdb916248e5f2bb3` (`7f35dc8`)
-- **Commits:** `bce5234` feat(pergola) · `5df4f47` test(pergola) · `8eed62f` docs(audit) · `7f35dc8` ending-HEAD stamp
-- **Branch:** `weos-v2-foundation`
-- **Push:** `origin/weos-v2-foundation` @ `7f35dc8`
-- Batch 8.5/9.5: Pergola adapter + property panel + quote/PDF **DONE** (committed + pushed)
-- **Fixes during gate:** `_bool(*vals)` in `pergola_model.py`; smoke calls `build_customer_pdf_bytes(payload)` without invalid `template=` kwarg
-- **Regression gate:** **PASS** (2026-09-10 retry; shell OK with elevated permissions)
+- Loading: centered “Preparing Quotation PDF” + compact progress; no empty grey iframe before bytes exist; quote/project identity in header
+- Ready: PDF dominates viewport; compact bar Back | Quote number | Print | Download
+- Error: Batch A `errors` / `missingIds` listed with Retry + Back to Quote — never blank incomplete “valid” PDF
+- Fake multi-tab progress pills / machine theatre removed → phase indicator only
+- Engineering calculations / quote amounts / item identity untouched
+- Universal Canvas / Engineering Master Data / BOM / QuoteFamily **not started**
+
+#### Batch B gate results (2026-09-10)
 
 | Smoke | Result |
 |---|---|
-| `_smoke_pergola_adapter.py` | **PASS** |
-| `_smoke_product_adapters.py` | **PASS** |
-| `_smoke_contextual_properties.py` | **PASS** |
-| `_smoke_pdf_reliability.py` | **PASS** |
-| `_smoke_universal_canvas.py` | **PASS** |
-| `_smoke_special_catalogue_products.py` | **PASS** |
-| `_smoke_quote_pdf_cart.py` | **PASS** |
-| `_smoke_persistence_durability.py` | **PASS** |
-| `_smoke_canonical_customer.py` | **PASS** |
-| `_smoke_canonical_project.py` | **PASS** |
-| `_smoke_tenant_ownership.py` | **PASS** |
-| `_smoke_design_hierarchy.py` | **PASS** |
-| `_smoke_design_scene.py` | **PASS** |
-| `_smoke_quote_identity_flow.py` | **PASS** |
-| `_smoke_quote_totals.py` | **PASS** |
-| `_smoke_public_scan_security.py` | **PASS** |
-| `_smoke_money_specs.py` | **PASS** |
-| `_smoke_railing_pdf.py` | **PASS** |
-| `_smoke_normal_railing.py` | **PASS** |
-| `_smoke_stair_railing.py` | **PASS** |
-| `_smoke_sliding_track_opening.py` | **PASS** |
-| `_smoke_casement_mullion.py` | **PASS** |
+| `_smoke_pdf_viewer_ux.py` | **PASS** |
+| `_smoke_pdf_reliability.py` | **PASS** (fail-closed intact) |
+| Critical regression gate (21) | **PASS** |
 
-- Known non-Pergola: `_smoke_gst_hub_persist.py` still FAIL (finance totals / restore) — left untouched
+Gate smokes: durability, canonical customer/project, tenant ownership, design hierarchy/scene, universal canvas, product adapters, contextual properties, pergola, pdf reliability, pdf viewer ux, quote identity, quote totals, public scan, quote PDF cart, money specs, normal railing, stair railing, sliding, casement — all **PASS**.
+
+---
+
+## Remaining batches (from user plan / target doc)
+
+**Immediate UX/PDF queue:** ~~Batch A (PDF reliability)~~ **DONE** → ~~Batch 8.5/9.5 Pergola~~ **DONE** → ~~Batch B (PDF Viewer Redesign)~~ **DONE** → **Next:** Batch C (App UI Design System).  
+Engineering Master Data / BOM Foundation remains on the architecture track. Production deployment — **NOT PERFORMED**.
+
+## Checkpoint (current session)
+
+- **Starting HEAD (Batch B):** `e13b7edcc0396fe786f17342504756b69b9089fb` (matches expected Pergola push)
+- **Ending HEAD:** pending after commit
+- **Branch:** `weos-v2-foundation`
+- **Push:** pending `origin/weos-v2-foundation`
+- Batch B: viewer redesign committed (`index.html`, `_smoke_pdf_viewer_ux.py`, progress doc)
+- Recovery helper (do not commit): `_tmp_batch_b_finish.ps1`
 - Production deployment: **NOT PERFORMED**
-- **Next eligible:** UX/PDF **Batch B — PDF Viewer Redesign**
-- Hard stop: do **not** start Batch B or Engineering Master Data / BOM in this turn
-- Unrelated dirty left untouched: other product stubs, weos.db, company/profile.json, glass catalogue seed, WEOS/customers/, _tmp_*, railway tomls, etc.
+- **Next eligible:** UX/PDF **Batch C — WEOS Application Design System**
+- Hard stop: do **not** start Batch C or Engineering Master Data / BOM / QuoteFamily in this turn
+- Unrelated dirty left untouched
+- Visual: static UX state machine + responsive CSS verified; live browser open skipped (avoid altering commercial PDF / DB state)
+

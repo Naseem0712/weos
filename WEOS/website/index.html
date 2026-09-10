@@ -78,36 +78,57 @@ a{color:inherit}
 .rail-tools .rt-steps button:active{transform:scale(.96)}
 .rail-tools .rt-steps button.active{background:var(--green);color:#fff;border-color:var(--green)}
 .rail-tools .rt-steps button.done{border-color:var(--green);color:var(--green)}
-.pdf-machine{position:fixed;inset:0;z-index:10000;display:none;align-items:stretch;justify-content:center;background:rgba(15,23,42,.72);backdrop-filter:blur(8px);padding:14px}
+/* Batch B — quotation PDF viewer (Preparing | Validating | Ready | Error) */
+.pdf-machine{position:fixed;inset:0;z-index:10000;display:none;align-items:stretch;justify-content:center;background:rgba(15,23,42,.78);backdrop-filter:blur(6px);padding:10px}
 .pdf-machine.active{display:flex}
-.pdf-machine-card{width:min(1040px,100%);height:min(92vh,100%);background:#f8fafc;border:1px solid rgba(255,255,255,.38);border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.35);display:grid;grid-template-rows:auto auto minmax(0,1fr);overflow:hidden}
-.pdf-machine-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding:12px 16px 8px;background:linear-gradient(135deg,#e6f7ee,#fff8e8)}
-.pdf-machine-title{margin:0;font-size:1rem;font-weight:800;color:#0f172a}
-.pdf-machine-sub{margin:.18rem 0 0;color:#475569;font-size:.78rem}
-.pdf-machine-close{border:1px solid var(--line);background:#fff;color:#0f172a;border-radius:10px;padding:.42rem .7rem;cursor:pointer}
-.pdf-machine-stage{padding:8px 14px;border-top:1px solid rgba(15,23,42,.08);border-bottom:1px solid rgba(15,23,42,.08);background:#fff}
-.machine-scene{height:42px;position:relative;border:1px solid #d8e2df;border-radius:10px;background:linear-gradient(180deg,#f8fafc,#eef7f2);overflow:hidden}
-.machine-wheel{position:absolute;left:18px;top:10px;width:22px;height:22px;border:4px solid #0a5a48;border-top-color:#b45324;border-radius:50%;animation:spin 1s linear infinite}
-.machine-wheel.small{left:50px;top:15px;width:14px;height:14px;border-width:3px;animation-duration:.72s;animation-direction:reverse}
-.machine-beam{position:absolute;left:86px;right:12px;top:18px;height:6px;border-radius:999px;background:repeating-linear-gradient(90deg,#0a5a48 0 22px,#147a62 22px 44px);animation:belt .9s linear infinite}
-.machine-doc{position:absolute;left:104px;top:7px;width:26px;height:30px;border-radius:5px;background:#fff;border:1px solid #cbd5e1;box-shadow:0 4px 12px rgba(15,23,42,.12);animation:docmove 2.4s ease-in-out infinite}
-.machine-doc:before,.machine-doc:after{content:"";position:absolute;left:6px;right:6px;height:2px;background:#94a3b8;border-radius:3px}
-.machine-doc:before{top:10px}.machine-doc:after{top:17px}
-.pdf-machine-status{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:6px}
-.pdf-machine-status span{border:1px solid #d8e2df;background:#f8fafc;border-radius:999px;padding:.22rem .6rem;font-size:.76rem;color:#475569}
-.pdf-machine-status span.active{background:#0a5a48;color:#fff;border-color:#0a5a48}
-.pdf-machine-body{display:grid;grid-template-rows:auto 1fr;min-height:0;background:#e2e8f0}
-.pdf-machine-actions{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;padding:7px 12px;background:#fff;border-bottom:1px solid #d6dedb}
-.pdf-machine-frame{width:100%;height:100%;border:0;background:#fff;display:none}
-.pdf-machine-frame.ready{display:block}
+.pdf-machine-card{width:min(1180px,100%);height:min(96vh,100%);max-height:100%;background:#0f172a;border:1px solid rgba(255,255,255,.12);border-radius:12px;box-shadow:0 24px 70px rgba(0,0,0,.45);display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
+.pdf-viewer-bar{display:flex;align-items:center;gap:.55rem;flex-wrap:nowrap;padding:8px 10px;background:#111827;border-bottom:1px solid rgba(255,255,255,.1);min-height:44px}
+.pdf-viewer-bar .pdf-viewer-id{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:.1rem}
+.pdf-viewer-bar .pdf-viewer-quote{margin:0;font-size:.92rem;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pdf-viewer-bar .pdf-viewer-meta{margin:0;font-size:.72rem;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pdf-viewer-bar .pdf-viewer-actions{display:flex;align-items:center;gap:.4rem;flex-shrink:0}
+.pdf-viewer-bar button,.pdf-viewer-bar a.btn{border:1px solid rgba(148,163,184,.35);background:#1e293b;color:#f1f5f9;border-radius:8px;padding:.38rem .7rem;cursor:pointer;font-size:.8rem;text-decoration:none;line-height:1.2;white-space:nowrap}
+.pdf-viewer-bar button:hover,.pdf-viewer-bar a.btn:hover{background:#334155}
+.pdf-viewer-bar button:disabled,.pdf-viewer-bar a.btn[aria-disabled="true"]{opacity:.45;pointer-events:none;cursor:not-allowed}
+.pdf-viewer-bar .pdf-btn-primary{background:#0a5a48;border-color:#0a5a48;color:#fff}
+.pdf-viewer-bar .pdf-btn-primary:hover{background:#0d6b56}
+.pdf-viewer-stage{position:relative;min-height:0;background:#0b1220;display:flex;align-items:stretch;justify-content:center}
+.pdf-state{display:none;width:100%;height:100%;min-height:0}
+.pdf-machine[data-state="preparing"] .pdf-state-loading,
+.pdf-machine[data-state="validating"] .pdf-state-loading,
+.pdf-machine[data-state="error"] .pdf-state-error,
+.pdf-machine[data-state="ready"] .pdf-state-ready{display:flex}
+.pdf-state-loading,.pdf-state-error{flex-direction:column;align-items:center;justify-content:center;padding:1.25rem 1rem;text-align:center;gap:.65rem}
+.pdf-state-loading h2,.pdf-state-error h2{margin:0;font-size:1.15rem;font-weight:700;color:#f8fafc}
+.pdf-state-loading p,.pdf-state-error p{margin:0;max-width:34rem;color:#94a3b8;font-size:.85rem;line-height:1.45}
+.pdf-progress{width:min(280px,78vw);height:4px;border-radius:999px;background:rgba(148,163,184,.25);overflow:hidden}
+.pdf-progress > i{display:block;height:100%;width:40%;border-radius:inherit;background:linear-gradient(90deg,#0a5a48,#147a62,#b45324);animation:pdfbar 1.1s ease-in-out infinite}
+.pdf-phase{font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;color:#64748b}
+.pdf-state-error{align-items:stretch;text-align:left;max-width:520px;margin:0 auto}
+.pdf-state-error h2{text-align:center;color:#fecaca}
+.pdf-state-error .pdf-error-lead{text-align:center;color:#fca5a5}
+.pdf-error-list{list-style:none;margin:.35rem 0 0;padding:0;max-height:min(42vh,320px);overflow:auto;border:1px solid rgba(248,113,113,.35);border-radius:10px;background:rgba(127,29,29,.25)}
+.pdf-error-list li{padding:.55rem .75rem;border-bottom:1px solid rgba(248,113,113,.2);color:#fee2e2;font-size:.82rem;line-height:1.35}
+.pdf-error-list li:last-child{border-bottom:0}
+.pdf-error-actions{display:flex;flex-wrap:wrap;gap:.45rem;justify-content:center;margin-top:.35rem}
+.pdf-error-actions button{border:1px solid rgba(148,163,184,.4);background:#1e293b;color:#f1f5f9;border-radius:8px;padding:.45rem .85rem;cursor:pointer;font-size:.82rem}
+.pdf-error-actions .pdf-btn-primary{background:#0a5a48;border-color:#0a5a48}
+.pdf-machine-frame{width:100%;height:100%;border:0;background:#111827}
+.pdf-state-ready{flex-direction:column}
+@media(max-width:720px){
+  .pdf-machine{padding:0}
+  .pdf-machine-card{width:100%;height:100%;border-radius:0}
+  .pdf-viewer-bar{flex-wrap:wrap;gap:.4rem;padding:8px}
+  .pdf-viewer-bar .pdf-viewer-id{order:2;flex:1 1 100%}
+  .pdf-viewer-bar .pdf-viewer-actions{margin-left:auto}
+  .pdf-viewer-bar button,.pdf-viewer-bar a.btn{padding:.35rem .55rem;font-size:.76rem}
+}
+@keyframes pdfbar{0%{transform:translateX(-120%)}100%{transform:translateX(320%)}}
 #windowCartTools.special-product-tools > .row:nth-of-type(n+2),
 #windowCartTools.special-product-tools #customGlassBox,
 #windowCartTools.special-product-tools #casementPanelBox{display:none!important}
 #windowCartTools.special-product-tools #addFeatureBox{margin-top:.55rem}
 #windowCartTools.special-product-tools #addFeatureBox .muted{display:none}
-@keyframes spin{to{transform:rotate(360deg)}}
-@keyframes belt{to{background-position:56px 0}}
-@keyframes docmove{0%{transform:translateX(0);opacity:.1}20%{opacity:1}75%{opacity:1}100%{transform:translateX(620px);opacity:.08}}
 .navbtn{border:0;background:transparent;color:#1f2d28;font-weight:500;text-align:left;padding:.65rem .75rem;border-radius:10px;cursor:pointer;width:100%;transition:background-color .15s ease,color .15s ease,transform .08s ease,box-shadow .15s ease}
 .navbtn:hover{background:rgba(10,90,72,.12);color:#0a5a48}
 .navbtn:active{background:rgba(10,90,72,.26);transform:scale(.98);box-shadow:inset 0 2px 6px rgba(10,90,72,.18)}
@@ -2610,41 +2631,99 @@ function setButtonBusy(el, busy, label) {
     el.removeAttribute('aria-busy');
   }
 }
+function pdfViewerIdentity() {
+  const quoteNo = (($('projQuoteNo') && $('projQuoteNo').value) || '').trim()
+    || state.projectId
+    || 'Draft quote';
+  const project = (($('cartName') && $('cartName').value)
+    || ($('projName') && $('projName').value)
+    || '').trim() || 'Untitled project';
+  const customer = (($('cartCustomer') && $('cartCustomer').value)
+    || ($('projCustName') && $('projCustName').value)
+    || '').trim();
+  const bits = [project];
+  if (customer) bits.push(customer);
+  if (state.projectId && quoteNo !== state.projectId) bits.push(state.projectId);
+  return { quoteNo, meta: bits.join(' · ') };
+}
+function refreshPdfViewerIdentity(label) {
+  const id = pdfViewerIdentity();
+  const quoteEl = $('pdfViewerQuote');
+  const metaEl = $('pdfViewerMeta');
+  if (quoteEl) quoteEl.textContent = id.quoteNo;
+  if (metaEl) {
+    const kind = label ? String(label) : '';
+    metaEl.textContent = kind && kind !== 'Quote PDF'
+      ? (id.meta + (id.meta ? ' · ' : '') + kind)
+      : id.meta;
+  }
+}
+function setPdfViewerState(mode, note) {
+  const box = ensurePdfMachine();
+  const stateName = String(mode || 'preparing').toLowerCase();
+  const allowed = { preparing: 1, validating: 1, ready: 1, error: 1 };
+  box.dataset.state = allowed[stateName] ? stateName : 'preparing';
+  const phase = $('pdfViewerPhase');
+  if (phase) {
+    if (stateName === 'validating') phase.textContent = 'Validating';
+    else if (stateName === 'preparing') phase.textContent = 'Preparing';
+    else if (stateName === 'ready') phase.textContent = 'Ready';
+    else if (stateName === 'error') phase.textContent = 'Error';
+  }
+  const detail = $('pdfViewerDetail');
+  if (detail && note) detail.textContent = note;
+  const print = $('pdfMachinePrint');
+  const dl = $('pdfMachineDownload');
+  const canAct = stateName === 'ready';
+  if (print) print.disabled = !canAct;
+  if (dl) {
+    if (canAct) dl.removeAttribute('aria-disabled');
+    else dl.setAttribute('aria-disabled', 'true');
+  }
+}
 function ensurePdfMachine() {
   let box = $('pdfMachine');
+  if (box && !$('pdfViewerQuote')) {
+    try { box.remove(); } catch (_) {}
+    box = null;
+  }
   if (box) return box;
   box = document.createElement('div');
   box.id = 'pdfMachine';
   box.className = 'pdf-machine';
+  box.dataset.state = 'preparing';
   box.innerHTML = `
-    <div class="pdf-machine-card" role="dialog" aria-modal="true" aria-labelledby="pdfMachineTitle">
-      <div class="pdf-machine-head">
-        <div>
-          <h2 class="pdf-machine-title" id="pdfMachineTitle">WEOS Engine</h2>
-          <p class="pdf-machine-sub" id="pdfMachineSub">Collecting drawings, specs, rates and terms.</p>
+    <div class="pdf-machine-card" role="dialog" aria-modal="true" aria-labelledby="pdfViewerTitle">
+      <header class="pdf-viewer-bar">
+        <button type="button" id="pdfMachineClose">Back</button>
+        <div class="pdf-viewer-id">
+          <p class="pdf-viewer-quote" id="pdfViewerQuote">Quote</p>
+          <p class="pdf-viewer-meta" id="pdfViewerMeta"></p>
         </div>
-        <button class="pdf-machine-close" type="button" id="pdfMachineClose">Back to app</button>
-      </div>
-      <div class="pdf-machine-stage">
-        <div class="machine-scene" aria-hidden="true">
-          <span class="machine-wheel"></span><span class="machine-wheel small"></span>
-          <span class="machine-doc"></span><span class="machine-beam"></span>
+        <div class="pdf-viewer-actions">
+          <button type="button" id="pdfMachinePrint" disabled>Print</button>
+          <a class="btn pdf-btn-primary" id="pdfMachineDownload" href="#" download="quote.pdf" aria-disabled="true">Download</a>
         </div>
-        <div class="pdf-machine-status" id="pdfMachineSteps">
-          <span data-step="project">Project data</span>
-          <span data-step="design">Design drawings</span>
-          <span data-step="specs">Specs and totals</span>
-          <span data-step="pdf">PDF pages</span>
-          <span data-step="ready">Ready</span>
+      </header>
+      <div class="pdf-viewer-stage">
+        <div class="pdf-state pdf-state-loading" id="pdfStateLoading">
+          <p class="pdf-phase" id="pdfViewerPhase">Preparing</p>
+          <h2 id="pdfViewerTitle">Preparing Quotation PDF</h2>
+          <p id="pdfViewerDetail">Gathering project, drawings, specs and terms.</p>
+          <div class="pdf-progress" aria-hidden="true"><i></i></div>
         </div>
-      </div>
-      <div class="pdf-machine-body">
-        <div class="pdf-machine-actions">
-          <button class="btn ghost sm" type="button" id="pdfMachinePrint">Print</button>
-          <a class="btn sm" id="pdfMachineDownload" href="#" download="quote.pdf">Download PDF</a>
-          <span class="muted" id="pdfMachineNote" style="font-size:.8rem">Engine is preparing the file...</span>
+        <div class="pdf-state pdf-state-error" id="pdfStateError">
+          <h2>Quotation PDF incomplete</h2>
+          <p class="pdf-error-lead" id="pdfErrorLead">Preflight blocked an incomplete PDF. Fix the items below, then retry.</p>
+          <ul class="pdf-error-list" id="pdfErrorList"></ul>
+          <div class="pdf-error-actions">
+            <button type="button" class="pdf-btn-primary" id="pdfErrorRetry">Retry</button>
+            <button type="button" id="pdfErrorFix">Back to Quote</button>
+          </div>
         </div>
-        <iframe class="pdf-machine-frame" id="pdfMachineFrame" title="Generated PDF preview"></iframe>
+        <div class="pdf-state pdf-state-ready">
+          <iframe class="pdf-machine-frame" id="pdfMachineFrame" title="Quotation PDF preview"></iframe>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(box);
@@ -2652,18 +2731,22 @@ function ensurePdfMachine() {
   if (close) close.onclick = () => hidePdfMachine();
   const print = $('pdfMachinePrint');
   if (print) print.onclick = () => printPdfMachine();
+  const retry = $('pdfErrorRetry');
+  if (retry) retry.onclick = () => retryPdfMachine();
+  const fix = $('pdfErrorFix');
+  if (fix) fix.onclick = () => {
+    hidePdfMachine();
+    try { if (typeof setView === 'function') setView('cart'); } catch (_) {}
+  };
   return box;
 }
 function showPdfMachine(title) {
   const box = ensurePdfMachine();
   box.classList.add('active');
-  const titleEl = $('pdfMachineTitle');
-  if (titleEl) titleEl.textContent = title || 'WEOS Engine';
-  const sub = $('pdfMachineSub');
-  if (sub) sub.textContent = 'Customer data, saved design, 2D drawings and terms are being compiled in one place.';
+  state._pdfViewerLabel = title || 'Quote PDF';
+  refreshPdfViewerIdentity(state._pdfViewerLabel);
   const frame = $('pdfMachineFrame');
   if (frame) {
-    frame.classList.remove('ready');
     frame.onload = null;
     frame.removeAttribute('src');
   }
@@ -2672,22 +2755,81 @@ function showPdfMachine(title) {
     dl.href = '#';
     dl.setAttribute('aria-disabled', 'true');
   }
-  const note = $('pdfMachineNote');
-  if (note) note.textContent = 'WEOS engine is gathering the latest project details...';
-  updatePdfMachineStep('project');
+  const list = $('pdfErrorList');
+  if (list) list.innerHTML = '';
+  setPdfViewerState('preparing', 'Gathering project, drawings, specs and terms.');
 }
 function hidePdfMachine() {
   const box = $('pdfMachine');
   if (box) box.classList.remove('active');
 }
+/** Compact phase indicator — maps legacy step names to Preparing | Validating | Ready | Error. */
 function updatePdfMachineStep(step, note) {
-  const steps = $('pdfMachineSteps');
-  if (steps) {
-    steps.querySelectorAll('[data-step]').forEach(el => {
-      el.classList.toggle('active', el.getAttribute('data-step') === step);
-    });
+  const s = String(step || '').toLowerCase();
+  if (s === 'ready') setPdfViewerState('ready', note);
+  else if (s === 'error' || s === 'fail' || s === 'failed') setPdfViewerState('error', note);
+  else if (s === 'specs' || s === 'pdf' || s === 'validating' || s === 'validate') {
+    setPdfViewerState('validating', note || 'Validating drawings, specs, terms and totals…');
+  } else {
+    setPdfViewerState('preparing', note || 'Preparing quotation PDF…');
   }
-  if (note && $('pdfMachineNote')) $('pdfMachineNote').textContent = note;
+}
+function showPdfMachineError(detail) {
+  const box = ensurePdfMachine();
+  box.classList.add('active');
+  refreshPdfViewerIdentity(state._pdfViewerLabel || 'Quote PDF');
+  const frame = $('pdfMachineFrame');
+  if (frame) {
+    frame.onload = null;
+    frame.removeAttribute('src');
+  }
+  const dl = $('pdfMachineDownload');
+  if (dl) {
+    dl.href = '#';
+    dl.setAttribute('aria-disabled', 'true');
+  }
+  const d = detail && typeof detail === 'object' ? detail : { message: String(detail || 'PDF preflight failed') };
+  const lead = $('pdfErrorLead');
+  if (lead) {
+    lead.textContent = d.message || d.status || 'PDF preflight failed — incomplete quotation refused.';
+  }
+  const items = [];
+  const seen = Object.create(null);
+  const pushItem = (raw) => {
+    const t = String(raw || '').trim();
+    if (!t || seen[t]) return;
+    seen[t] = 1;
+    items.push(t);
+  };
+  (Array.isArray(d.errors) ? d.errors : []).forEach(pushItem);
+  (Array.isArray(d.missingIds) ? d.missingIds : []).forEach((id) => {
+    pushItem(`${id} — drawing or required content unavailable`);
+  });
+  if (!items.length && d.message) pushItem(d.message);
+  if (!items.length) pushItem('Quotation PDF could not be completed. No incomplete file was issued.');
+  const list = $('pdfErrorList');
+  if (list) {
+    list.innerHTML = items.map((t) => `<li>${esc(t)}</li>`).join('');
+  }
+  setPdfViewerState('error');
+}
+function retryPdfMachine() {
+  const last = state._pdfViewerLastOpts;
+  if (!last || !last.kind) {
+    toast('Open Download or Print from the quote again');
+    return;
+  }
+  if (state._exportBusy) return;
+  state._exportBusy = true;
+  showPdfMachine(last.label || 'Quote PDF');
+  openProjectPdf(last.kind, { label: last.label, print: !!last.print })
+    .catch((err) => {
+      if (!(err && err.pdfDetail)) {
+        showPdfMachineError({ message: (err && err.message) || String(err), errors: [], missingIds: [] });
+      }
+      toast((err && err.message) || String(err));
+    })
+    .finally(() => { state._exportBusy = false; });
 }
 function safePdfFilePart(value) {
   return String(value || '')
@@ -2715,15 +2857,23 @@ function pdfDownloadFilename(kind) {
   if (kind === 'factory') base += '_factory';
   return base + '.pdf';
 }
+function pdfPreviewUrl(url) {
+  const base = String(url || '');
+  if (!base || base === '#') return base;
+  if (/#(toolbar|navpanes|scrollbar)=/i.test(base)) return base;
+  // Prefer WEOS chrome; hide competing native PDF toolbar where the viewer honors it.
+  return base + (base.indexOf('#') >= 0 ? '&' : '#') + 'toolbar=0&navpanes=0&scrollbar=1';
+}
 function finishPdfMachine(url, label, printNow, filename) {
   const box = ensurePdfMachine();
   box.classList.add('active');
-  updatePdfMachineStep('ready', 'PDF ready. Review, print, download, or go back to the app.');
+  state._pdfViewerLabel = label || state._pdfViewerLabel || 'Quote PDF';
+  refreshPdfViewerIdentity(state._pdfViewerLabel);
   const frame = $('pdfMachineFrame');
+  const viewUrl = pdfPreviewUrl(url);
   if (frame) {
     frame.onload = null;
-    frame.src = url;
-    frame.classList.add('ready');
+    frame.src = viewUrl;
     if (printNow) {
       frame.onload = () => setTimeout(() => printPdfMachine(), 450);
     }
@@ -2734,6 +2884,7 @@ function finishPdfMachine(url, label, printNow, filename) {
     dl.download = filename || pdfDownloadFilename(label === 'Factory PDF' ? 'factory' : 'customer');
     dl.removeAttribute('aria-disabled');
   }
+  setPdfViewerState('ready', 'PDF ready');
 }
 function printPdfMachine() {
   const frame = $('pdfMachineFrame');
@@ -2744,7 +2895,7 @@ function printPdfMachine() {
       return;
     }
   } catch (_) {}
-  toast('PDF ready — use the Download PDF button, then print');
+  toast('PDF ready — use Download, then print');
 }
 function goCompanyLogin(ev) {
   if (ev && ev.preventDefault) ev.preventDefault();
@@ -10514,6 +10665,7 @@ function _liveExportBody(brand) {
 async function openProjectPdf(kind, opts) {
   opts = opts || {};
   const label = opts.label || (kind === 'factory' ? 'Factory PDF' : 'Quote PDF');
+  state._pdfViewerLastOpts = { kind, label, print: !!opts.print };
   if (state.selectedLine != null && state.lines[state.selectedLine] && !isRailingMode() && !isShowerMode() && !isVentMode()) {
     try {
       const draft = currentLineDraft();
@@ -10529,16 +10681,16 @@ async function openProjectPdf(kind, opts) {
   }
   showPdfMachine(label);
   toast('Preparing latest quote data...');
-  updatePdfMachineStep('project', 'Checking project, customer and bill-to details...');
+  updatePdfMachineStep('project', 'Checking project, customer and bill-to details…');
   await ensureProject();
-  updatePdfMachineStep('design', 'Collecting saved 2D designs and product drawings...');
+  updatePdfMachineStep('design', 'Collecting saved 2D designs and product drawings…');
   try { await ensureExportSetupApplied(); } catch (_) {}
   if (typeof syncPrintCopyTwins === 'function') syncPrintCopyTwins('print');
   updatePdfLinks();
   const brand = (typeof activePdfBrand === 'function' && activePdfBrand()) || 'marqt';
   const body = _liveExportBody(brand);
   toast(kind === 'factory' ? 'Generating factory PDF...' : 'Generating quote PDF...');
-  updatePdfMachineStep('specs', 'Calculating specs, totals, notes and terms...');
+  updatePdfMachineStep('validating', 'Validating drawings, specs, terms and totals…');
   const res = await fetch(`${API_BASE}/api/projects/${state.projectId}/${kind}-pdf?brand=${encodeURIComponent(brand)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -10546,23 +10698,27 @@ async function openProjectPdf(kind, opts) {
     signal: (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(90000) : undefined,
   });
   if (!res.ok) {
-    let msg = res.statusText;
+    let detail = { message: res.statusText, errors: [], missingIds: [] };
     try {
       const j = await res.json();
       const d = j.detail;
       if (d && typeof d === 'object') {
-        const errs = Array.isArray(d.errors) ? d.errors.join('; ') : '';
-        const missing = Array.isArray(d.missingIds) && d.missingIds.length
-          ? ` Missing IDs: ${d.missingIds.slice(0, 8).join(', ')}` : '';
-        msg = `${d.message || d.status || 'PDF preflight failed'}${errs ? ' — ' + errs : ''}${missing}`;
-      } else {
-        msg = d || msg;
+        detail = {
+          status: d.status || 'Error',
+          message: d.message || d.status || 'PDF preflight failed',
+          errors: Array.isArray(d.errors) ? d.errors : [],
+          missingIds: Array.isArray(d.missingIds) ? d.missingIds : [],
+        };
+      } else if (d) {
+        detail = { message: typeof d === 'string' ? d : JSON.stringify(d), errors: [], missingIds: [] };
       }
     } catch (_) {}
-    updatePdfMachineStep('pdf', typeof msg === 'string' ? msg : JSON.stringify(msg));
-    throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    showPdfMachineError(detail);
+    const err = new Error(detail.message || 'PDF preflight failed');
+    err.pdfDetail = detail;
+    throw err;
   }
-  updatePdfMachineStep('pdf', 'Binding cover, drawings, tables and terms into one PDF...');
+  updatePdfMachineStep('pdf', 'Binding cover, drawings, tables and terms into one PDF…');
   const blob = await res.blob();
   if (cacheKind === 'customer' && state._custPdfCache.url) {
     try { URL.revokeObjectURL(state._custPdfCache.url); } catch (_) {}
@@ -10588,7 +10744,9 @@ async function openProjectPdf(kind, opts) {
     try {
       await openProjectPdf(kind, { label, print: id === 'linkCustPrint' });
     } catch(err) {
-      updatePdfMachineStep('project', err.message || String(err));
+      if (!(err && err.pdfDetail)) {
+        showPdfMachineError({ message: err.message || String(err), errors: [], missingIds: [] });
+      }
       toast(err.message || String(err));
     } finally {
       state._exportBusy = false;
