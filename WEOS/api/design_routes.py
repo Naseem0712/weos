@@ -927,3 +927,100 @@ def api_property_panel_update_element(
         return cp.apply_element_property_update(element_id, company_gst=g, patch=patch)
     except Exception as exc:
         raise _map_err(exc) from exc
+
+
+# ── Canvas D2 — App entry + Quote workspace (cards / duplicate) ──────────────
+
+
+class DesignDuplicateBody(BaseModel):
+    rows: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class AppEntryBody(BaseModel):
+    sessionProjectId: str | None = None
+    preferProjectId: str | None = None
+
+
+@router.get("/api/projects/{project_id}/quote-workspace")
+def api_quote_workspace(project_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    """Authoritative Quote Review payload: design cards + totals + active context."""
+    from WEOS.factory.company_workspace import require_owned_project
+    from WEOS.factory import quote_workspace as qw
+    from WEOS.factory.project_store import load_project
+
+    require_owned_project(request, project_id, gst)
+    try:
+        doc = load_project(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return qw.build_quote_workspace(doc)
+
+
+@router.post("/api/projects/{project_id}/designs/{line_id}/duplicate")
+def api_duplicate_design(
+    project_id: str,
+    line_id: str,
+    body: DesignDuplicateBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    """Multi-size duplicate → real new lineIds; original unchanged; durable save."""
+    from WEOS.factory.company_workspace import require_owned_project
+    from WEOS.factory import quote_workspace as qw
+    from WEOS.factory.project_store import DurableSaveError, load_project, save_project
+
+    require_owned_project(request, project_id, gst)
+    try:
+        doc = load_project(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        result = qw.duplicate_design_rows(doc, source_line_id=line_id, rows=body.rows or [])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        saved = save_project(result["doc"], action="duplicate_design")
+    except DurableSaveError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    workspace = qw.build_quote_workspace(saved)
+    return {
+        "ok": True,
+        "batch": "CANVAS-D2",
+        "projectId": project_id,
+        "sourceLineId": line_id,
+        "createdCount": result["createdCount"],
+        "createdLineIds": result["createdLineIds"],
+        "created": result["created"],
+        "persisted": True,
+        "durable": True,
+        "workspace": workspace,
+        "project": saved,
+    }
+
+
+@router.get("/api/quote-workspace/app-entry")
+def api_quote_app_entry(request: Request, gst: str | None = None, prefer: str | None = None) -> dict[str, Any]:
+    """Post-login entry plan: restore draft or New Quote Setup — never silent create."""
+    from fastapi import HTTPException as FastAPIHTTPException
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import quote_workspace as qw
+    from WEOS.factory.project_store import list_projects
+
+    try:
+        g = require_company_gst(request, gst)
+    except FastAPIHTTPException:
+        plan = qw.app_entry_plan(logged_in=False)
+        return {"ok": True, "batch": "CANVAS-D2", "loggedIn": False, **plan}
+
+    projects = list_projects(company_gst=g, status="draft", limit=30, sort="updatedAt", order="desc")
+    draft = qw.find_active_draft(projects, prefer_project_id=prefer)
+    plan = qw.app_entry_plan(logged_in=True, active_draft=draft)
+    return {
+        "ok": True,
+        "batch": "CANVAS-D2",
+        "loggedIn": True,
+        "draft": draft,
+        **plan,
+    }

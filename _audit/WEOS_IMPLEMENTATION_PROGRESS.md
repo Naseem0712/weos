@@ -604,8 +604,9 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 5. ~~**Canvas D0 — Product Context parity**~~ **DONE**
 6. ~~**Canvas Batch D — Professional Universal Canvas Workspace**~~ **DONE**
 7. ~~**Canvas D1 — Universal Canvas Activation + Real Workspace Cutover**~~ **DONE**
-8. **Next eligible:** **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**)
-9. Then **Canvas Batch F** — Cell Product Assignment (**QUEUED**)
+8. ~~**Canvas D2 — App Entry + Quote Workspace Separation**~~ **DONE**
+9. **Next eligible:** **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**)
+10. Then **Canvas Batch F** — Cell Product Assignment (**QUEUED**)
 10. Then **Canvas Batch G** — Design Management (**QUEUED**)
 11. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains **separate**
 12. Production deployment — **NOT AUTHORIZED / NOT PERFORMED**
@@ -634,7 +635,7 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 | Field | Value |
 |---|---|
 | **ID** | CANVAS-E |
-| **Status** | **QUEUED** after Canvas D1 |
+| **Status** | **QUEUED** after Canvas D2 |
 | **Goal** | FrameMember domain; vertical/horizontal drawing; cell subdivision; stable cell IDs; SQL persistence; tests |
 | **Hard stop** | No cell product-assignment UX (Batch F); members = domain data not decorative SVG |
 | **Authority** | ACD.4–ACD.5, ACD.12 |
@@ -667,11 +668,40 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 ## Remaining batches (from user plan / target doc)
 
-**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → ~~Canvas D~~ **DONE** → ~~Canvas D1~~ **DONE** → **Next: Canvas E** → F → G.  
+**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → ~~Canvas D~~ **DONE** → ~~Canvas D1~~ **DONE** → ~~Canvas D2~~ **DONE** → **Next: Canvas E** → F → G.  
 Engineering Master Data / BOM Foundation remains on the architecture track **after** C–G foundations are stable.  
-**HARD STOP:** Canvas E/F/G **not started** (D1 complete). Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
+**HARD STOP:** Canvas E/F/G **not started** (D2 complete). Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
 
 ---
+
+
+
+### CANVAS D2 — App Entry + Quote Workspace Separation (**DONE**)
+
+| Field | Value |
+|---|---|
+| **ID** | CANVAS-D2 |
+| **Status** | **DONE** — 2D product preview fixed; Engineering vs Quote Review separated; cards + multi-size duplicate; smokes PASS |
+| **Starting HEAD** | 2b3318199df65f8755df822f375a8a9d87a2a3f4 (D1 tip) |
+| **2D root cause** | Add Design / product select created local UC elements but never called /api/adapters/{type}/preview → setElementPreviewSvg; client adapters only painted placeholders; specialty calc skipped under UC with no replacement |
+| **2D fix** | design_context.refreshElementPreview → adapter SVG → UC host; wired from Add Design + product switch + property changes; ACP registered; dedicated _previewGen (does not abort D0 context switch) |
+| **App entry** | Login → restore draft or New Quote / Quote Setup; no silent commercial create |
+| **Modes** | Engineering (compact top bar + UC, no quote list) vs Quote Review (design cards + totals + duplicate) |
+| **APIs** | GET /api/quote-workspace/app-entry, GET /api/projects/{id}/quote-workspace, POST .../designs/{lineId}/duplicate |
+| **Tests** | _smoke_uc_product_preview.py, _smoke_app_entry_quote_workspace.py, _smoke_quote_design_cards.py, _smoke_design_duplicate.py + activation/context PASS |
+| **Hard stop** | **Do NOT auto-start Canvas Batch E** |
+| **Production** | **NOT PERFORMED** |
+
+---
+
+## Session checkpoint (Canvas D2)
+
+- **Branch:** weos-v2-foundation
+- **Starting HEAD:** 2b3318199df65f8755df822f375a8a9d87a2a3f4
+- **Ending HEAD:** (see git after push)
+- **Next eligible implementation:** **Canvas Batch E** — Member + Grid + Cell Engine
+- **Do not start:** Canvas E automatically; Production deploy
+- **Preserved:** unrelated dirty product stubs / weos.db / customers / tmp files not committed
 
 ## Session checkpoint (Canvas D1)
 
