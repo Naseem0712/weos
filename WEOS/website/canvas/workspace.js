@@ -89,7 +89,7 @@
       toolBtn("member", "Member", true) +
       toolBtn("member_v", "V-Mem", true) +
       toolBtn("member_h", "H-Mem", true) +
-      toolBtn("grid_split", "Grid", true) +
+      toolBtn("grid_split", "Cells", true) +
       "</aside>" +
       '<div class="uc-stage-wrap">' +
       '<div class="uc-viewport" tabindex="0" aria-label="Engineering viewport"></div>' +
