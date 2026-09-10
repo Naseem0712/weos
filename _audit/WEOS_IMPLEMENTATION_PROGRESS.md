@@ -360,12 +360,13 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 2. ~~**Batch 8.5 / 9.5 — Pergola**~~ **DONE**
 3. ~~UX/PDF **Batch B — PDF Viewer Redesign**~~ **DONE** (@ `a8e8894`)
 4. ~~**UX Batch C — WEOS Design System foundation**~~ **DONE**
-5. **Next eligible:** **Canvas Batch D** — Professional Universal Canvas Workspace (**QUEUED**)
-6. Then **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**)
-7. Then **Canvas Batch F** — Cell Product Assignment (**QUEUED**)
-8. Then **Canvas Batch G** — Design Management (**QUEUED**)
-9. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains **separate** — attach **after** C–G foundations are stable
-10. Production deployment — **NOT AUTHORIZED / NOT PERFORMED**
+5. ~~**Canvas D0 — Product Context / Stale State / Single Canvas Parity**~~ **DONE**
+6. **Next eligible:** **Canvas Batch D** — Professional Universal Canvas Workspace (**QUEUED**)
+7. Then **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**)
+8. Then **Canvas Batch F** — Cell Product Assignment (**QUEUED**)
+9. Then **Canvas Batch G** — Design Management (**QUEUED**)
+10. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains **separate** — attach **after** C–G foundations are stable
+11. Production deployment — **NOT AUTHORIZED / NOT PERFORMED**
 
 **HARD STOP (this plan-update turn):** Do **not** implement UX C or Canvas D/E/F/G. Do **not** rewrite Batch B. Docs only.
 
@@ -515,12 +516,55 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 2. ~~**Batch 8.5 / 9.5 — Pergola**~~ **DONE**
 3. ~~UX/PDF **Batch B — PDF Viewer Redesign**~~ **DONE** (`a8e8894`)
 4. ~~**UX Batch C — WEOS Design System foundation**~~ **DONE**
-5. **Next eligible:** **Canvas Batch D** — Professional Universal Canvas Workspace (**QUEUED**)
-6. Then **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**)
-7. Then **Canvas Batch F** — Cell Product Assignment (**QUEUED**)
-8. Then **Canvas Batch G** — Design Management (**QUEUED**)
-9. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains **separate**
-10. Production deployment — **NOT AUTHORIZED / NOT PERFORMED**
+5. ~~**Canvas D0 — Product Context / Stale State / Single Canvas Parity**~~ **DONE**
+6. **Next eligible:** **Canvas Batch D** — Professional Universal Canvas Workspace (**QUEUED**)
+7. Then **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**)
+8. Then **Canvas Batch F** — Cell Product Assignment (**QUEUED**)
+9. Then **Canvas Batch G** — Design Management (**QUEUED**)
+10. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains **separate**
+11. Production deployment — **NOT AUTHORIZED / NOT PERFORMED**
+
+---
+
+### CANVAS D0 — Product Context / Stale State / Single Canvas Parity (**DONE**)
+
+| Field | Value |
+|---|---|
+| **ID** | CANVAS-D0 |
+| **Status** | **DONE** |
+| **Goal** | ONE ActiveDesignContext; product_type → registry → schema → renderer → toolset; no WINDOW fallthrough; no stale model/tools across switches; UC ON = one viewport (legacy designers routed into UC) |
+| **Files committed** | `WEOS/factory/design_context.py`, `WEOS/factory/product_adapters.py`, `WEOS/factory/contextual_properties.py`, `WEOS/api/design_routes.py`, `WEOS/website/canvas/design_context.js`, `WEOS/website/canvas/{property_panel,universal_canvas}.js`, `WEOS/website/index.html`, `WEOS/_smoke_product_context_switching.py`, `_audit/WEOS_IMPLEMENTATION_PROGRESS.md` |
+| **Schema / migration** | None (context + specialized schemas only) |
+| **APIs** | `GET /api/design-context`, `POST /api/design-context/switch` |
+| **Tests** | `_smoke_product_context_switching.py` A–N **PASS**; design system / UC / adapters / contextual / pergola / design scene+hierarchy / PDF reliability+viewer / critical gate **PASS** |
+| **Issues** | Live browser visual with `?universalCanvas=1` deferred if no safe local server in session |
+| **Commit** | `fix(canvas): isolate product context and prevent stale designer state` |
+| **Push** | `origin/weos-v2-foundation` |
+| **Rollback** | Revert D0 commit(s); B7–B9 / Pergola / PDF / Design System foundations retained |
+| **Hard stop** | **Do NOT auto-start Canvas Batch D** |
+
+#### D0 notes
+
+- Root causes: dual ownership (legacy `applyProductWorld` + UC panel); WINDOW/`sliding` fallthrough; shared preview/mode flags; MutationObserver mirroring wrong SVG; no atomic context clear on catalogue switch
+- ActiveDesignContext owns selectedProductType, elementId, assemblyId, adapterId, propertySchema, toolset, renderer, renderRevision
+- Casement ≠ Sliding schema fields; unsupported → guidance message (not Window tools)
+- UC ON: legacy tool stacks stay wrapped; second `#universalCanvasHost` refused; specialty calc skipped under UC
+- Element-scoped `configScope` (`element:{id}` / `draft:{type}`) — no shared `currentWindowConfig`
+- Async: `renderRevision` + AbortController discard stale renders; clear transient `#livePreview` only
+
+#### Queue order (strict)
+
+1. ~~UX/PDF **Batch A — PDF reliability**~~ **DONE**
+2. ~~**Batch 8.5 / 9.5 — Pergola**~~ **DONE**
+3. ~~UX/PDF **Batch B — PDF Viewer Redesign**~~ **DONE**
+4. ~~**UX Batch C — WEOS Design System foundation**~~ **DONE**
+5. ~~**Canvas D0 — Product Context parity**~~ **DONE**
+6. **Next eligible:** **Canvas Batch D** — Professional Universal Canvas Workspace (**QUEUED**)
+7. Then **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**)
+8. Then **Canvas Batch F** — Cell Product Assignment (**QUEUED**)
+9. Then **Canvas Batch G** — Design Management (**QUEUED**)
+10. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains **separate**
+11. Production deployment — **NOT AUTHORIZED / NOT PERFORMED**
 
 ---
 
@@ -529,7 +573,7 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 | Field | Value |
 |---|---|
 | **ID** | CANVAS-D |
-| **Status** | **QUEUED** after UX C |
+| **Status** | **QUEUED** after Canvas D0 |
 | **Goal** | Left tool rail, command toolbar, grid, selection improvements, snap foundation, dimensions, undo/redo foundation — on **ONE** Universal Canvas |
 | **Hard stop** | No FrameMember / Cell engine (Batch E); no second canvas |
 | **Authority** | ACD.2–ACD.3, ACD.8, ACD.11 |
@@ -574,9 +618,20 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 ## Remaining batches (from user plan / target doc)
 
-**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** (`a8e8894`) → ~~UX Batch C~~ **DONE** → **Next: Canvas D** → E → F → G.  
+**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → **Next: Canvas D** → E → F → G.  
 Engineering Master Data / BOM Foundation remains on the architecture track **after** C–G foundations are stable.  
-**HARD STOP:** Canvas D/E/F/G **not started**. Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
+**HARD STOP:** Canvas D/E/F/G **not started** (D0 complete). Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
+
+---
+
+## Session checkpoint (Canvas D0)
+
+- **Branch:** `weos-v2-foundation`
+- **Starting HEAD:** `8c023706c6eaf02134ac160460cb85101fdd1b0a`
+- **Ending HEAD:** (see D0 commit after push)
+- **Next eligible implementation:** **Canvas Batch D** — Professional Universal Canvas Workspace
+- **Do not start:** Canvas D automatically in this turn; Production deploy
+- **Preserved:** B5–B9, Pergola 8.5/9.5, PDF A/B, UX C foundations; unrelated dirty files not committed
 
 ## Checkpoint (current session — Batch C COMPLETE)
 

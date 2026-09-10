@@ -4826,6 +4826,12 @@ function productWorldOf(p, ln) {
       const t = String(p.productType || p.category || '').toLowerCase();
       return t.includes('stair') ? 'staircase_railing' : 'railing';
     }
+    // D0: do not default unsupported / empty catalogue types to window world under UC.
+    const blob = String((p.productType || '') + ' ' + (p.category || '') + ' ' + (p.id || '')).toLowerCase();
+    const looksWindow = /(window|slid|casement|fold|door|tele|sync|section_series)/.test(blob)
+      || String(p.category || '').toLowerCase().includes('window')
+      || String(p.category || '').toLowerCase().includes('door');
+    if (!looksWindow && window.WEOS_UNIVERSAL_CANVAS) return 'unsupported';
     return 'window';
   }
   if (ln) {
@@ -4883,6 +4889,17 @@ function applyProductWorld(opts) {
   opts = opts || {};
   const p = selectedProductMeta();
   const world = productWorldOf(p, null);
+  // Canvas D0: ONE ActiveDesignContext owns product → adapter → schema → toolset.
+  // When UC ON, catalogue switch clears stale prior product (no Window fallthrough).
+  try {
+    if (window.WEOSCanvas && WEOSCanvas.designContext) {
+      const dc = WEOSCanvas.designContext.getActive({ api: typeof api === 'function' ? api : null });
+      dc.selectCatalogue(p || {}, world);
+      if (window.WEOS_UNIVERSAL_CANVAS) {
+        dc.routeLegacyIntoUc();
+      }
+    }
+  } catch (e) { /* design context optional until scripts load */ }
   const win = $('windowCartTools');
   const addBtn = $('btnAddLine');
   const bulk = $('bulkSizesBox');
@@ -4897,18 +4914,24 @@ function applyProductWorld(opts) {
     state._previewLineId = null;
     state._previewKey = null;
     if ($('livePreview') && (world === 'window' || world === 'louver' || world === 'pergola' || world === 'surface'
-      || world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator')) {
+      || world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator'
+      || world === 'unsupported')) {
       $('livePreview').innerHTML = '<span class="muted">Drawing…</span>';
     }
   }
+  // UC ON: legacy tool stacks stay hidden; property panel + ActiveDesignContext own chrome.
+  // Still sync #lineSystem / modes so cart draft identity stays correct — but skip show*Tools.
+  const ucOn = !!window.WEOS_UNIVERSAL_CANVAS;
   if (world === 'louver' || world === 'pergola' || world === 'surface') {
     state.railingMode = false;
     state.showerMode = false;
     state.ventMode = false;
-    showRailTools(false);
-    showShowerTools(false);
-    showVentTools(false);
-    if (win) win.classList.remove('hidden');
+    if (!ucOn) {
+      showRailTools(false);
+      showShowerTools(false);
+      showVentTools(false);
+      if (win) win.classList.remove('hidden');
+    }
     if ($('lineSystem')) $('lineSystem').value = world;
     if ($('lineSeries')) $('lineSeries').value = '';
     if (world === 'louver' && $('lineFillType')) $('lineFillType').value = 'louvers';
@@ -4923,14 +4946,16 @@ function applyProductWorld(opts) {
     state.showerMode = false;
     state.railingMode = false;
     if ($('lineSystem')) $('lineSystem').value = 'ventilator';
-    if (win) win.classList.add('hidden');
-    showRailTools(false);
-    showShowerTools(false);
-    showVentTools(true);
+    if (!ucOn) {
+      if (win) win.classList.add('hidden');
+      showRailTools(false);
+      showShowerTools(false);
+      showVentTools(true);
+    }
     if (addBtn) addBtn.textContent = 'Add ventilator to cart';
     if ($('lineSeries')) $('lineSeries').value = '';
     setSpecialProductToolMode('');
-    ventCalc();
+    if (!ucOn) ventCalc();
     return;
   }
   if (world === 'shower') {
@@ -4938,20 +4963,24 @@ function applyProductWorld(opts) {
     state.ventMode = false;
     state.railingMode = false;
     if ($('lineSystem')) $('lineSystem').value = 'shower';
-    if (win) win.classList.add('hidden');
-    showRailTools(false);
-    showVentTools(false);
-    showShowerTools(true);
+    if (!ucOn) {
+      if (win) win.classList.add('hidden');
+      showRailTools(false);
+      showVentTools(false);
+      showShowerTools(true);
+    }
     if (addBtn) addBtn.textContent = 'Add shower to cart';
     if ($('lineSeries')) $('lineSeries').value = '';
     setSpecialProductToolMode('');
-    showerCalc();
+    if (!ucOn) showerCalc();
     return;
   }
   state.showerMode = false;
   state.ventMode = false;
-  showShowerTools(false);
-  showVentTools(false);
+  if (!ucOn) {
+    showShowerTools(false);
+    showVentTools(false);
+  }
   if (world === 'railing' || world === 'staircase_railing') {
     state.railingMode = true;
     // Product-type lock: staircase_railing forces stairs. Generic railing must NOT
@@ -4965,26 +4994,52 @@ function applyProductWorld(opts) {
       if (!state.railShape || state.railShape === 'staircase') state.railShape = 'straight';
       if (!['design', 'bottom', 'handrail', 'glass', 'rates'].includes(state.railStep)) state.railStep = 'design';
     }
-    if (win) win.classList.add('hidden');
-    setSpecialProductToolMode('');
-    showRailTools(true);
+    if (!ucOn) {
+      if (win) win.classList.add('hidden');
+      setSpecialProductToolMode('');
+      showRailTools(true);
+    }
     if (addBtn) addBtn.textContent = 'Add railing to cart';
     // Drop window series leftovers under the canvas when entering railing world.
     if ($('lineSeries')) $('lineSeries').value = '';
-    railingCalc();
+    if (!ucOn) railingCalc();
+    return;
+  }
+  if (world === 'unsupported') {
+    state.railingMode = false;
+    state.showerMode = false;
+    state.ventMode = false;
+    if (!ucOn) {
+      showRailTools(false);
+      showShowerTools(false);
+      showVentTools(false);
+      if (win) win.classList.add('hidden');
+    }
+    if (addBtn) addBtn.textContent = 'Unsupported product';
+    if ($('livePreview')) {
+      $('livePreview').innerHTML = '<span class="muted">This product type is not supported on the canvas yet. Window tools are not shown.</span>';
+    }
     return;
   }
   state.railingMode = false;
-  if (win) win.classList.remove('hidden');
-  showRailTools(false);
+  if (!ucOn) {
+    if (win) win.classList.remove('hidden');
+    showRailTools(false);
+  }
   if (addBtn) addBtn.textContent = 'Add to cart';
   const sysEl = $('lineSystem');
-  const sys = systemForProduct(p) || 'sliding';
+  // D0: never fall through unknown → sliding when product has no system — keep prior only for true window family.
+  const implied = systemForProduct(p);
+  const sys = implied || (sysEl && ['ventilator', 'shower', 'railing', 'louver', 'pergola', 'surface'].includes(String(sysEl.value || '').toLowerCase()) ? 'sliding' : null) || (sysEl && sysEl.value) || 'sliding';
   // Always sync implied system from the selected product so canvas regenerates
   // for casement ↔ sliding ↔ bifold switches (not only when the control was empty).
   if (sysEl) {
     const prevSys = String(sysEl.value || '').toLowerCase();
-    if (sysEl.value !== sys || ['ventilator', 'shower', 'railing', 'louver', 'pergola', 'surface'].includes(prevSys)) {
+    if (implied && (sysEl.value !== implied || ['ventilator', 'shower', 'railing', 'louver', 'pergola', 'surface'].includes(prevSys))) {
+      sysEl.value = implied;
+      state.draftHandleOverrides = {};
+      applySystemUiRules({ applyFoldPreset: implied === 'bifold' });
+    } else if (sysEl.value !== sys || ['ventilator', 'shower', 'railing', 'louver', 'pergola', 'surface'].includes(prevSys)) {
       sysEl.value = sys;
       state.draftHandleOverrides = {};
       applySystemUiRules({ applyFoldPreset: sys === 'bifold' });
@@ -14087,6 +14142,7 @@ async function pingEngine(){
 <script src="/static/canvas/selection.js"></script>
 <script src="/static/canvas/adapters.js"></script>
 <script src="/static/canvas/scene_renderer.js"></script>
+<script src="/static/canvas/design_context.js"></script>
 <script src="/static/canvas/universal_canvas.js"></script>
 <script src="/static/canvas/property_panel.js"></script>
 <script>
@@ -14104,6 +14160,15 @@ async function pingEngine(){
       return;
     }
     window.WEOS_UNIVERSAL_CANVAS = true;
+    // Canvas D0 — ActiveDesignContext singleton (product → adapter → schema → toolset).
+    try {
+      if (window.WEOSCanvas && WEOSCanvas.designContext) {
+        window.WEOS_DESIGN_CONTEXT = WEOSCanvas.designContext.getActive({
+          api: typeof api === 'function' ? api : null
+        });
+        window.WEOS_DESIGN_CONTEXT.routeLegacyIntoUc();
+      }
+    } catch (e) { console.warn('Design context init deferred', e); }
     // Contextual property panel (Batch 9) — ONE panel; hide legacy tool stacks.
     try {
       if (window.WEOSCanvas.propertyPanel) {
@@ -14127,16 +14192,25 @@ async function pingEngine(){
         host.loadScene(scene);
       }
     } catch (e) { console.warn('Universal Canvas scene load deferred', e); }
-    // Bridge: when legacy refreshPreview injects SVG into #livePreview, mirror into selection.
+    // Bridge: mirror #livePreview SVG into UC only when product/context matches selection
+    // (D0 — discard stale cross-product SVG from legacy refreshPreview).
     var live = document.getElementById('livePreview');
     if (live && window.MutationObserver) {
       new MutationObserver(function () {
         try {
           var svg = live.querySelector('svg');
           var sel = host.getViewModel().selected;
-          if (svg && sel && sel.elementId) {
-            host.setElementPreviewSvg(sel.elementId, svg.outerHTML);
+          if (!svg || !sel || !sel.elementId) return;
+          var dc = window.WEOS_DESIGN_CONTEXT;
+          if (dc) {
+            var ctx = dc.get();
+            if (ctx.elementId && ctx.elementId !== sel.elementId) return;
+            if (ctx.selectedProductType && sel.productType
+              && String(ctx.selectedProductType).toUpperCase() !== String(sel.productType).toUpperCase()) {
+              return;
+            }
           }
+          host.setElementPreviewSvg(sel.elementId, svg.outerHTML);
         } catch (e) {}
       }).observe(live, { childList: true, subtree: true });
     }

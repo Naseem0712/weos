@@ -61,8 +61,11 @@ def schemas_cross_pollute(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
 
 
 def panel_for_element(element: Mapping[str, Any]) -> dict[str, Any]:
+    from WEOS.factory import design_context as dc
+
     pt = str(element.get("productType") or "").strip().upper()
-    schema = pa.property_schema_for(pt)
+    # D0: schema via ActiveDesignContext (specialized toolsets; no WINDOW fallthrough).
+    schema = dc.property_schema_for_context(pt)
     ad = pa.resolve_adapter(pt)
     cfg = ad.load_configuration(element)
     if pt == "PERGOLA" or getattr(ad, "adapter_id", "") == "pergola":
@@ -89,6 +92,28 @@ def panel_for_element(element: Mapping[str, Any]) -> dict[str, Any]:
             },
             "geometryKeys": ["widthMm", "depthMm", "xMm", "yMm"],
             "configDomain": "configPayload",
+            "toolset": schema.get("toolset"),
+            "adapterId": schema.get("adapterId"),
+        }
+    if schema.get("usedFallback") or getattr(ad, "adapter_id", "") == "fallback":
+        return {
+            "kind": "none",
+            "title": "Unsupported product",
+            "guidance": schema.get("guidance") or dc.UNSUPPORTED_MESSAGE,
+            "schema": schema,
+            "values": {
+                "productType": pt or None,
+                "unsupportedNotice": schema.get("guidance") or dc.UNSUPPORTED_MESSAGE,
+            },
+            "selection": {
+                "kind": "element",
+                "elementId": element.get("elementId"),
+                "assemblyId": element.get("assemblyId"),
+                "connectionId": None,
+                "productType": pt or None,
+            },
+            "toolset": "unsupported",
+            "adapterId": "fallback",
         }
     values = {
         "elementId": element.get("elementId"),
@@ -115,6 +140,8 @@ def panel_for_element(element: Mapping[str, Any]) -> dict[str, Any]:
         },
         "geometryKeys": ["widthMm", "heightMm", "xMm", "yMm"],
         "configDomain": "configPayload",
+        "toolset": schema.get("toolset"),
+        "adapterId": schema.get("adapterId"),
     }
 
 

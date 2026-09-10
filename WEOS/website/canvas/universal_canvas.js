@@ -335,7 +335,13 @@
     var panel = live.closest(".cart-preview") || live.parentElement;
     if (!panel) return null;
 
-    var mount = global.document.getElementById("universalCanvasHost");
+    // D0: ONE Universal Canvas only — never mount a second host.
+    var existing = global.document.getElementById("universalCanvasHost");
+    if (existing && global.WEOS_UNIVERSAL_CANVAS_HOST && global.WEOS_UNIVERSAL_CANVAS_HOST.isUniversalCanvas) {
+      return global.WEOS_UNIVERSAL_CANVAS_HOST;
+    }
+
+    var mount = existing;
     if (!mount) {
       mount = global.document.createElement("div");
       mount.id = "universalCanvasHost";
@@ -363,6 +369,12 @@
     if (zout) zout.onclick = function () {
       host.zoomOut();
     };
+
+    try {
+      if (C.designContext && C.designContext.getActive) {
+        C.designContext.getActive().routeLegacyIntoUc();
+      }
+    } catch (e) {}
 
     return host;
   }

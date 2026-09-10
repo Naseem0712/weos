@@ -149,17 +149,37 @@ class FallbackAdapter:
         return {"ok": True, "warnings": ["unknown product — placeholder preview"], "errors": []}
 
     def get_property_schema(self) -> dict[str, Any]:
-        return _base_schema_groups(
-            _geom_fields(),
-            {
-                "id": "identity",
-                "label": "Product",
-                "domain": "config",
-                "fields": [
-                    {"key": "productType", "label": "Product type", "type": "readonly", "domain": "identity"},
-                ],
-            },
-        )
+        # Unsupported products: geometry + identity only — never Window tool chrome.
+        return {
+            "version": 1,
+            "groups": [
+                _geom_fields(),
+                {
+                    "id": "identity",
+                    "label": "Product",
+                    "domain": "config",
+                    "fields": [
+                        {
+                            "key": "productType",
+                            "label": "Product type",
+                            "type": "readonly",
+                            "domain": "identity",
+                        },
+                        {
+                            "key": "unsupportedNotice",
+                            "label": "Notice",
+                            "type": "readonly",
+                            "domain": "identity",
+                        },
+                    ],
+                },
+            ],
+            "guidance": (
+                "This product type is not supported on Universal Canvas yet. "
+                "Window tools are not shown for unsupported products."
+            ),
+            "toolset": "unsupported",
+        }
 
     def update_configuration(
         self, element: Mapping[str, Any], patch: Mapping[str, Any]
@@ -1130,7 +1150,10 @@ def render_element_preview(
 
 
 def property_schema_for(product_type: str) -> dict[str, Any]:
-    return DEFAULT_PRODUCT_REGISTRY.get_property_schema(product_type)
+    # D0: specialized schema/toolset via ActiveDesignContext (Casement ≠ Sliding; no WINDOW tools).
+    from WEOS.factory import design_context as dc
+
+    return dc.property_schema_for_context(product_type)
 
 
 def canvas_adapter_fn(element: Mapping[str, Any], context: Mapping[str, Any] | None = None) -> dict[str, Any]:

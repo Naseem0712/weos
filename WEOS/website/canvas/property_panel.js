@@ -38,6 +38,12 @@
         node.classList.remove("uc-legacy-hidden");
       }
     });
+    // D0: when UC ON, also suppress any product-canvas popup chrome.
+    try {
+      if (C.designContext && C.designContext.getActive) {
+        C.designContext.getActive().routeLegacyIntoUc();
+      }
+    } catch (e) {}
   }
 
   function createPanel(mountEl, options) {
@@ -97,7 +103,11 @@
       if (selLabel) selLabel.textContent = "No selection";
       body.className = "uc-pp-body muted";
       body.style.fontSize = ".82rem";
-      body.textContent = (guidance && guidance.guidance) || "Select an element on the Engineering Canvas.";
+      var msg =
+        (guidance && (guidance.guidance || guidance.message)) ||
+        (typeof guidance === "string" ? guidance : null) ||
+        "Select an element on the Engineering Canvas.";
+      body.textContent = msg;
       if (actions) actions.style.display = "none";
     }
 
@@ -294,6 +304,16 @@
     var panel = createPanel(mount, options);
     if (host && typeof host.onSelect === "function") {
       host.onSelect(function (selected) {
+        try {
+          if (C.designContext && C.designContext.getActive) {
+            var dc = C.designContext.getActive({ api: options.api });
+            if (selected && selected.elementId) {
+              dc.selectElement(selected);
+            } else {
+              dc.switchProduct({ productType: null, source: "clear-selection", forceClear: true });
+            }
+          }
+        } catch (e) {}
         panel.loadSelection(selected || {});
       });
     }

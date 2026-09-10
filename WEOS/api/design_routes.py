@@ -625,6 +625,47 @@ def api_adapter_schema(product_type: str) -> dict[str, Any]:
     return pa.property_schema_for(pt)
 
 
+class DesignContextBody(BaseModel):
+    productType: str | None = None
+    elementId: str | None = None
+    assemblyId: str | None = None
+    configPayload: dict[str, Any] | None = None
+    source: str | None = "switch"
+    previous: dict[str, Any] | None = None
+
+
+@router.get("/api/design-context")
+def api_get_design_context(
+    productType: str | None = None,
+    elementId: str | None = None,
+    assemblyId: str | None = None,
+) -> dict[str, Any]:
+    """ActiveDesignContext snapshot — product_type → adapter → schema → toolset."""
+    from WEOS.factory import design_context as dc
+
+    return dc.resolve_active_design_context(
+        product_type=productType,
+        element_id=elementId,
+        assembly_id=assemblyId,
+        source="api",
+    )
+
+
+@router.post("/api/design-context/switch")
+def api_switch_design_context(body: DesignContextBody) -> dict[str, Any]:
+    """Atomic product switch — bumps renderRevision; clears prior toolset/schema."""
+    from WEOS.factory import design_context as dc
+
+    return dc.switch_product_context(
+        body.previous,
+        product_type=body.productType,
+        element_id=body.elementId,
+        assembly_id=body.assemblyId,
+        config_payload=body.configPayload,
+        source=body.source or "switch",
+    )
+
+
 @router.post("/api/adapters/{product_type}/preview")
 def api_adapter_preview(product_type: str, body: dict[str, Any]) -> dict[str, Any]:
     """Stateless adapter preview — element geometry + config → engine SVG."""
