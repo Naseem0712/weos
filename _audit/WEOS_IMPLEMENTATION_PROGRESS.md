@@ -358,9 +358,16 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 
 1. ~~UX/PDF **Batch A — PDF reliability**~~ **DONE**
 2. ~~**Batch 8.5 / 9.5 — Pergola**~~ **DONE**
-3. ~~UX/PDF **Batch B — PDF Viewer Redesign**~~ **DONE**
-4. **Next:** UX/PDF **Batch C — App UI Design System**
-5. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains separate
+3. ~~UX/PDF **Batch B — PDF Viewer Redesign**~~ **DONE** (@ `a8e8894`)
+4. **Next eligible:** **UX Batch C — WEOS Design System foundation** (**QUEUED — NOT STARTED**)
+5. Then **Canvas Batch D** — Professional Universal Canvas Workspace (**QUEUED**)
+6. Then **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**)
+7. Then **Canvas Batch F** — Cell Product Assignment (**QUEUED**)
+8. Then **Canvas Batch G** — Design Management (**QUEUED**)
+9. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains **separate** — attach **after** C–G foundations are stable
+10. Production deployment — **NOT AUTHORIZED / NOT PERFORMED**
+
+**HARD STOP (this plan-update turn):** Do **not** implement UX C or Canvas D/E/F/G. Do **not** rewrite Batch B. Docs only.
 
 ---
 
@@ -448,25 +455,90 @@ All PASS (exit 0): durability, canonical customer, canonical project, tenant own
 
 Gate smokes: durability, canonical customer/project, tenant ownership, design hierarchy/scene, universal canvas, product adapters, contextual properties, pergola, pdf reliability, pdf viewer ux, quote identity, quote totals, public scan, quote PDF cart, money specs, normal railing, stair railing, sliding, casement — all **PASS**.
 
+#### Batch B ending HEAD (verified)
+
+| Field | Value |
+|---|---|
+| **Local + remote tip** | `a8e889411dd75f0621388684b0b75abffae63de0` (`a8e8894`) on `weos-v2-foundation` / `origin/weos-v2-foundation` |
+| **Status** | COMPLETE / TESTED / PUSHED — do **not** rewrite Batch B |
+
+---
+
+### UX BATCH C — WEOS Design System foundation (**QUEUED — NOT STARTED**)
+
+| Field | Value |
+|---|---|
+| **ID** | UX-C |
+| **Status** | **QUEUED** — next eligible implementation batch |
+| **Goal** | Shared WEOS UI primitives: buttons, inputs, dialogs, toolbar, cards, property sections, layout primitives |
+| **Depends on** | Batch B complete (`a8e8894`) |
+| **Hard stop** | Do **not** start Canvas D/E/F/G inside this batch; no Production deploy |
+| **Authority** | Target plan **ACD.11** (Advanced Canvas Design Workflow) |
+
+---
+
+### CANVAS BATCH D — Professional Universal Canvas Workspace (**QUEUED**)
+
+| Field | Value |
+|---|---|
+| **ID** | CANVAS-D |
+| **Status** | **QUEUED** after UX C |
+| **Goal** | Left tool rail, command toolbar, grid, selection improvements, snap foundation, dimensions, undo/redo foundation — on **ONE** Universal Canvas |
+| **Hard stop** | No FrameMember / Cell engine (Batch E); no second canvas |
+| **Authority** | ACD.2–ACD.3, ACD.8, ACD.11 |
+
+---
+
+### CANVAS BATCH E — Member + Grid + Cell Engine (**QUEUED**)
+
+| Field | Value |
+|---|---|
+| **ID** | CANVAS-E |
+| **Status** | **QUEUED** after Canvas D |
+| **Goal** | FrameMember domain; vertical/horizontal drawing; cell subdivision; stable cell IDs; SQL persistence; tests |
+| **Hard stop** | No cell product-assignment UX (Batch F); members = domain data not decorative SVG |
+| **Authority** | ACD.4–ACD.5, ACD.12 |
+
+---
+
+### CANVAS BATCH F — Cell Product Assignment (**QUEUED**)
+
+| Field | Value |
+|---|---|
+| **ID** | CANVAS-F |
+| **Status** | **QUEUED** after Canvas E |
+| **Goal** | Fixed / Sliding / Casement / Ventilator / Door / panel; structure vs infill/behavior; contextual schemas; mixed assembly |
+| **Hard stop** | No Design Management polish (Batch G); keep Geometry ≠ behavior ≠ series ≠ config |
+| **Authority** | ACD.6–ACD.7, ACD.12 |
+
+---
+
+### CANVAS BATCH G — Design Management (**QUEUED**)
+
+| Field | Value |
+|---|---|
+| **ID** | CANVAS-G |
+| **Status** | **QUEUED** after Canvas F |
+| **Goal** | Add Design; Duplicate Design with explicit scale rules (PROPORTIONAL / FIXED DIMENSION / USER CHOICE — no silent guess); Project Design cards; floor/location workflow |
+| **Hard stop** | Deep Window Master / profile BOM waits until C–G stable; Duplicate = new ID, never mutate original |
+| **Authority** | ACD.9–ACD.11, ACD.12 |
+
 ---
 
 ## Remaining batches (from user plan / target doc)
 
-**Immediate UX/PDF queue:** ~~Batch A (PDF reliability)~~ **DONE** → ~~Batch 8.5/9.5 Pergola~~ **DONE** → ~~Batch B (PDF Viewer Redesign)~~ **DONE** → **Next:** Batch C (App UI Design System).  
-Engineering Master Data / BOM Foundation remains on the architecture track. Production deployment — **NOT PERFORMED**.
+**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** (`a8e8894`) → **Next eligible: UX Batch C (queued, not started)** → Canvas D → E → F → G.  
+Engineering Master Data / BOM Foundation remains on the architecture track **after** C–G foundations are stable.  
+**HARD STOP:** Canvas D/E/F/G **not started**. Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
 
-## Checkpoint (current session)
+## Checkpoint (current session — plan update only)
 
-- **Starting HEAD (Batch B):** `e13b7edcc0396fe786f17342504756b69b9089fb` (matches expected Pergola push)
-- **Ending HEAD:** `3df87fc38b9cde1d92fb82583ea3aa82e70dfcfc` (`3df87fc`)
+- **Verified tip:** `a8e8894` (`a8e889411dd75f0621388684b0b75abffae63de0`) local = `origin/weos-v2-foundation`
 - **Branch:** `weos-v2-foundation`
-- **Push:** `origin/weos-v2-foundation` @ `3df87fc`
-- Batch B: viewer redesign **DONE** (`index.html`, `_smoke_pdf_viewer_ux.py`, progress doc)
-- Commits: `9132239` feat(pdf) · `071cf29` docs ending-HEAD · `3df87fc` docs push SHA
-- Recovery helper (do not commit): `_tmp_batch_b_finish.ps1`
+- **This turn:** PLAN UPDATE ONLY — Advanced Canvas Design Workflow incorporated into target + progress docs
+- **Batch B:** left intact (COMPLETE / TESTED / PUSHED) — not rewritten
+- **UX C / Canvas D–G:** queued only — **no implementation started**
 - Production deployment: **NOT PERFORMED**
-- **Next eligible:** UX/PDF **Batch C — WEOS Application Design System**
-- Hard stop: do **not** start Batch C or Engineering Master Data / BOM / QuoteFamily in this turn
-- Unrelated dirty left untouched
-- Visual: static UX state machine + responsive CSS verified; live browser open skipped (avoid altering commercial PDF / DB state)
+- **Next eligible implementation:** **UX Batch C — WEOS Design System foundation**
+- Unrelated dirty tree left untouched
 
