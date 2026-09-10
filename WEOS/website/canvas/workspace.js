@@ -165,7 +165,8 @@
       "</div>" +
       '<div class="uc-project-chrome__actions">' +
       '<button type="button" class="btn sm" id="btnUcAddDesign">+ Add Design</button>' +
-      '<button type="button" class="btn ghost sm" id="btnUcQuoteLines">Quote lines</button>' +
+      '<button type="button" class="btn sm" id="btnUcAddToQuote" title="Save design to quote after server confirm">Add to Quote</button>' +
+      '<button type="button" class="btn ghost sm" id="btnUcQuoteLines">Quote Review</button>' +
       "</div>" +
       "</div>";
     var split = cart.querySelector(".cart-split");
@@ -264,6 +265,10 @@
             configPayload: { widthMm: w, heightMm: h },
           })
         );
+        // Critical: fetch adapter SVG onto UC (placeholder until this resolves).
+        if (typeof dc.refreshElementPreview === "function") {
+          dc.refreshElementPreview(el, { widthMm: w, heightMm: h });
+        }
       }
     } catch (e) {}
     closeAddDesignModal();
@@ -291,9 +296,52 @@
     if (quoteBtn && !quoteBtn._ucWired) {
       quoteBtn._ucWired = true;
       quoteBtn.onclick = function () {
+        if (C.quoteWorkspace && C.quoteWorkspace.showQuoteReview) {
+          C.quoteWorkspace.showQuoteReview();
+          return;
+        }
         var cart = global.document.getElementById("view-cart");
         if (!cart) return;
-        cart.classList.toggle("uc-show-quote");
+        // D2: do not overlay quote list on canvas
+        if (typeof global.setView === "function") global.setView("quote-review");
+      };
+    }
+    var addToQuote = global.document.getElementById("btnUcAddToQuote");
+    if (addToQuote && !addToQuote._ucWired) {
+      addToQuote._ucWired = true;
+      addToQuote.onclick = async function () {
+        try {
+          if (typeof global.requireCompanyLogin === "function" && !global.requireCompanyLogin()) return;
+          var st = global.state || {};
+          if (!st.projectId) {
+            if (typeof global.toast === "function") {
+              global.toast("Create Quote Setup first (New Quote), then Add to Quote");
+            }
+            if (typeof global.setView === "function") global.setView("setup");
+            return;
+          }
+          // Prefer existing Add line path when a draft is configured; else save current selection snapshot
+          if (typeof global.addDraftLineToCart === "function") {
+            try {
+              await global.addDraftLineToCart(null, { toastMsg: "Added to quote" });
+            } catch (_) {
+              // fall through to save
+            }
+          }
+          if (typeof global.saveProject === "function") {
+            await global.saveProject(false);
+          }
+          if (C.quoteWorkspace && C.quoteWorkspace.afterAddToQuote) {
+            C.quoteWorkspace.afterAddToQuote();
+          }
+          if (typeof global.toast === "function") {
+            global.toast("Saved to quote — open Quote Review for cards");
+          }
+        } catch (e) {
+          if (typeof global.toast === "function") {
+            global.toast((e && e.message) || String(e));
+          }
+        }
       };
     }
     var modal = global.document.getElementById("ucAddDesignModal");
@@ -327,7 +375,8 @@
     var cart = global.document && global.document.getElementById("view-cart");
     if (!cart) return;
     if (on) {
-      cart.classList.add("uc-mode", "uc-primary");
+      cart.classList.add("uc-mode", "uc-primary", "qw-engineering");
+      cart.classList.remove("uc-show-quote");
       ensureProjectChrome();
       wireAddDesignUi();
       var tools = cart.querySelector(".cart-tools");
@@ -345,14 +394,22 @@
       }
       var subtitle = global.document.getElementById("subtitle");
       if (subtitle && !cart.classList.contains("hidden")) {
-        subtitle.textContent = "Universal Canvas · product properties on the right";
+        subtitle.textContent = "Universal Canvas · Quote Review is separate";
+      }
+      var host = global.document.getElementById("universalCanvasHost");
+      var ws = host && host.querySelector(".uc-workspace");
+      if (ws) ws.classList.add("qw-compact-props");
+      if (C.quoteWorkspace && C.quoteWorkspace.syncTopBar) {
+        try {
+          C.quoteWorkspace.syncTopBar();
+        } catch (e) {}
       }
     } else {
-      cart.classList.remove("uc-mode", "uc-primary", "uc-show-quote");
+      cart.classList.remove("uc-mode", "uc-primary", "uc-show-quote", "qw-engineering");
       var chrome = global.document.getElementById("ucProjectChrome");
       if (chrome) chrome.style.display = "none";
       var navCartOff = global.document.querySelector('.navbtn[data-view="cart"]');
-      if (navCartOff) navCartOff.textContent = "Window Cart";
+      if (navCartOff) navCartOff.textContent = "Design";
     }
   }
 

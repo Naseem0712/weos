@@ -564,7 +564,7 @@ textarea{max-width:100%}
     <!-- PROJECT SETUP (customer / quote print details — once per project, editable anytime) -->
     <section id="view-setup" class="grid hidden">
       <div class="panel">
-        <p class="muted" style="margin:0 0 .85rem">Set customer and quote print details once. Window Cart stays product-only; at export you can pick which setup prints on the PDF.</p>
+        <p class="muted" style="margin:0 0 .85rem">Set customer and quote print details once. Engineering stays product design; at export you can pick which setup prints on the PDF.</p>
         <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
           <div class="grow"><label class="l">Project name</label><input id="cartName" value="WEOS Project"/></div>
           <div><label class="l">PDF Brand</label>
@@ -631,7 +631,7 @@ textarea{max-width:100%}
         <div id="setupDiscountBox" style="margin:.45rem 0 .2rem"></div>
         <div class="row" style="margin-top:.35rem;gap:.5rem;flex-wrap:wrap">
           <button class="btn" id="btnSaveSetup" type="button">Save project setup</button>
-          <button class="btn sec" id="btnSetupToCart" type="button">Continue to Window Cart</button>
+          <button class="btn sec" id="btnSetupToCart" type="button">Continue to Engineering</button>
           <button class="btn ghost sm" id="btnSetupLoadList" type="button">Refresh saved setups</button>
           <button class="btn ghost sm" id="btnSetupMaster" type="button">Open Master Ledger</button>
         </div>
@@ -3242,24 +3242,46 @@ function restoreSideNav() {
 }
 
 function setView(v) {
-  const needLogin = ['dashboard','setup','master','projects','customers','cart'];
+  const needLogin = ['dashboard','setup','master','projects','customers','cart','quote-review','quote-home'];
   if (v === 'admin') v = 'library';
+  if (v === 'quote_review') v = 'quote-review';
+  if (v === 'quote_home') v = 'quote-home';
   if (needLogin.indexOf(v) >= 0 && !isCompanyLoggedIn()) {
     v = 'company';
   }
+  if (v === 'quote-review' && window.WEOSCanvas && WEOSCanvas.quoteWorkspace && WEOSCanvas.quoteWorkspace.showQuoteReview) {
+    WEOSCanvas.quoteWorkspace.showQuoteReview();
+    return;
+  }
+  if (v === 'quote-home') {
+    state.view = v;
+    if (window.WEOSCanvas && WEOSCanvas.quoteWorkspace) {
+      try { WEOSCanvas.quoteWorkspace.boot(); } catch (_) {}
+    }
+    document.querySelectorAll('.navbtn').forEach(b => b.classList.remove('active'));
+    ['dashboard','setup','master','projects','cart','library','product','admin','customers','company','scan','learning','formulas','templates','engines','quote-home','quote-review'].forEach(id => {
+      const el = $('view-'+id); if (!el) return;
+      el.classList.toggle('hidden', id !== 'quote-home');
+    });
+    $('title').textContent = 'Quote / Design workspace';
+    $('subtitle').textContent = 'Restore draft or New Quote — then Engineering';
+    return;
+  }
   state.view = v;
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view===v || (v==='library' && b.dataset.view==='library')));
-  ['dashboard','setup','master','projects','cart','library','product','admin','customers','company','scan','learning','formulas','templates','engines'].forEach(id => {
+  ['dashboard','setup','master','projects','cart','library','product','admin','customers','company','scan','learning','formulas','templates','engines','quote-home','quote-review'].forEach(id => {
     const el = $('view-'+id); if (!el) return;
     if (id === 'admin' && v === 'library') { el.classList.remove('hidden'); return; }
     el.classList.toggle('hidden', id!==v);
   });
   const titles = {
     dashboard:['Dashboard','This month vs last · this year vs last · follow-up queue'],
-    setup:['Project Setup','Customer, brand, quote text — once per project, editable anytime'],
+    setup:['Quote Setup','Customer, project, draft — required before Add Design'],
+    'quote-review':['Quote Review','Design cards · totals · duplicate · PDF'],
+    'quote-home':['Quote / Design workspace','Restore draft or New Quote — then Engineering'],
     master:['Master Ledger','Package quotes, advances, GST and balance — one job only'],
     projects:['Saved Projects','Search, filter, duplicate, archive — versions kept'],
-    cart:['Engineering Workspace','Universal Canvas · properties on the right · Quote lines for pricing'],
+    cart:['Engineering Workspace','Universal Canvas · Quote Review is separate'],
     library:['Product Library','One catalogue — browse, import, edit materials and rules'],
     product:['Product Details','Specs from Product JSON only'],
     admin:['Product Library','One catalogue — browse, import, edit materials and rules'],
@@ -3271,8 +3293,9 @@ function setView(v) {
     templates:['Template Builder','Calculator PDFs + uploaded quotes · branding optional'],
     engines:['Engines & Memory','Glass & Hardware engines · glass-depth sizing · memory audit & intelligence'],
   };
-  $('title').textContent = titles[v][0];
-  $('subtitle').textContent = titles[v][1];
+  const tt = titles[v] || ['WEOS','Manufacturing Operating System'];
+  $('title').textContent = tt[0];
+  $('subtitle').textContent = tt[1];
   $('side').classList.remove('open');
   if (v==='dashboard') loadDashboard();
   if (v==='setup') { refreshSetupSummary(); loadSetupList(); renderPackageQuotes(); renderSetupDiscount(); lookupSetupClient(); refreshQuoteCopySuggestions(); }
@@ -3284,6 +3307,10 @@ function setView(v) {
     try {
       if (window.WEOS_UNIVERSAL_CANVAS && window.WEOSCanvas && WEOSCanvas.workspace && WEOSCanvas.workspace.applyPrimaryCutover) {
         WEOSCanvas.workspace.applyPrimaryCutover(true);
+      }
+      if (window.WEOSCanvas && WEOSCanvas.quoteWorkspace && WEOSCanvas.quoteWorkspace.setEngineeringChrome) {
+        WEOSCanvas.quoteWorkspace.setEngineeringChrome();
+        if (WEOSCanvas.quoteWorkspace.refreshWorkspaceFromServer) WEOSCanvas.quoteWorkspace.refreshWorkspaceFromServer();
       }
     } catch (_) {}
   }
@@ -10234,8 +10261,15 @@ async function upsertCustomerFromSetup() {
 if ($('btnSetupToCart')) $('btnSetupToCart').onclick = async () => {
   try {
     syncProjectCustomer();
+    await saveProject(true);
     persistCartSession();
     setView('cart');
+    if (window.WEOSCanvas && WEOSCanvas.quoteWorkspace) {
+      try {
+        WEOSCanvas.quoteWorkspace.setEngineeringChrome();
+        WEOSCanvas.quoteWorkspace.refreshWorkspaceFromServer();
+      } catch (_) {}
+    }
   } catch(e) { toast(e.message); }
 };
 if ($('btnSetupLoadList')) $('btnSetupLoadList').onclick = loadSetupList;
@@ -12787,6 +12821,15 @@ if ($('btnCoGstAuth')) $('btnCoGstAuth').onclick = async () => {
     if ($('coGstErr')) $('coGstErr').textContent = '';
     toast(ws.created ? 'Company created — logged in' : (ws.enrolledPin ? 'PIN saved — logged in' : 'Logged in'));
     if ($('coGstStatus')) $('coGstStatus').textContent = (ws.created ? 'Created · ' : 'Opened · ') + 'GSTIN ' + ws.gstNo;
+    try {
+      if (window.WEOSCanvas && WEOSCanvas.quoteWorkspace && WEOSCanvas.quoteWorkspace.runAppEntry) {
+        await WEOSCanvas.quoteWorkspace.runAppEntry({ autoRestore: true });
+      } else {
+        setView('quote-home');
+      }
+    } catch (_) {
+      setView('setup');
+    }
   } catch(e) {
     // Keep what the user typed (including last GST check digit) after a failed login.
     if ($('coGstLogin') && ident) $('coGstLogin').value = ident;
@@ -14137,6 +14180,7 @@ async function pingEngine(){
   if (state.workspaceRestored) {
     try { await loadDashboard(); } catch (_) {}
   }
+  window.__WEOS_D2_PENDING_ENTRY = !!state.workspaceRestored;
   try { await loadProducts(); } catch (e) { console.warn('Product catalog unavailable', e); }
   try { state.adminMeta = await api('/api/admin/meta', { timeoutMs: 8000 }); } catch(_){}
   const hasSavedLines = Array.isArray(state.lines) && state.lines.some(ln => ln && typeof ln === 'object' && (ln.lineId || ln.product || ln.itemSnapshot || ln.item_snapshot));
@@ -14174,6 +14218,9 @@ async function pingEngine(){
 <script src="/static/canvas/snap.js"></script>
 <script src="/static/canvas/dimensions.js"></script>
 <script src="/static/canvas/workspace.js"></script>
+<script src="/static/canvas/design_cards.js"></script>
+<script src="/static/canvas/design_duplicate.js"></script>
+<script src="/static/canvas/quote_workspace.js"></script>
 <script src="/static/canvas/design_context.js"></script>
 <script src="/static/canvas/universal_canvas.js"></script>
 <script src="/static/canvas/property_panel.js"></script>
@@ -14234,6 +14281,15 @@ async function pingEngine(){
         host.loadScene(scene);
       }
     } catch (e) { console.warn('Universal Canvas scene load deferred', e); }
+    try {
+      if (window.WEOSCanvas && WEOSCanvas.quoteWorkspace) {
+        WEOSCanvas.quoteWorkspace.boot();
+        if (window.__WEOS_D2_PENDING_ENTRY) {
+          window.__WEOS_D2_PENDING_ENTRY = false;
+          WEOSCanvas.quoteWorkspace.runAppEntry({ autoRestore: true }).catch(function () {});
+        }
+      }
+    } catch (eD2) { console.warn('Quote workspace boot deferred', eD2); }
     // Bridge: mirror #livePreview SVG into UC only when product/context matches selection
     // (D0 — discard stale cross-product SVG from legacy refreshPreview).
     var live = document.getElementById('livePreview');

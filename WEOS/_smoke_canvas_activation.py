@@ -99,7 +99,7 @@ def main() -> None:
 
     # ── H: property panel mounted ────────────────────────────────────────────
     _ok("ucPropertyPanel" in ws_js and "uc-props-rail" in ws_js, "H: props rail mount")
-    _ok("minmax(300px, 360px)" in ws_css or "minmax(280px, 320px)" in ws_css, "H: props width band")
+    _ok("minmax(300px, 360px)" in ws_css or "minmax(280px, 320px)" in ws_css or "minmax(240px, 280px)" in ws_css or "minmax(220px, 260px)" in ws_css, "H: props width band")
     _ok("tryMount" in pp_js and "propertyPanelEl" in uc_js, "H: panel API")
 
     # ── I: product selection updates property panel ──────────────────────────
