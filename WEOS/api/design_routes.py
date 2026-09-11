@@ -672,8 +672,13 @@ def api_switch_design_context(body: DesignContextBody) -> dict[str, Any]:
 
 @router.post("/api/adapters/{product_type}/preview")
 def api_adapter_preview(product_type: str, body: dict[str, Any]) -> dict[str, Any]:
-    """Stateless adapter preview — element geometry + config → engine SVG."""
+    """Stateless adapter preview — element geometry + config → engine SVG.
+
+    When renderPurpose/purpose is CANVAS_RENDER, strip artificial white page
+    backgrounds. PDF/PRINT callers omit that flag and keep paper white.
+    """
     from WEOS.factory import product_adapters as pa
+    from WEOS.factory.canvas_preview import normalize_for_canvas
 
     pt = str(product_type or "").strip().upper()
     if pt == "WINDOW":
@@ -682,9 +687,15 @@ def api_adapter_preview(product_type: str, body: dict[str, Any]) -> dict[str, An
             detail="product type must not collapse to WINDOW",
         )
     el = dict(body or {})
+    purpose = str(el.pop("renderPurpose", None) or el.pop("purpose", None) or "").strip().upper()
     el["productType"] = pt
     cfg = el.pop("config", None) or el.get("configPayload")
-    return pa.render_element_preview(el, cfg if isinstance(cfg, dict) else None)
+    out = pa.render_element_preview(el, cfg if isinstance(cfg, dict) else None)
+    if purpose in ("CANVAS_RENDER", "CANVAS") and isinstance(out, dict) and out.get("svg"):
+        out = dict(out)
+        out["svg"] = normalize_for_canvas(out.get("svg"))
+        out["canvasNormalized"] = True
+    return out
 
 
 @router.get("/api/elements/{element_id}")

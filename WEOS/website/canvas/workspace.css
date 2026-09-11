@@ -252,6 +252,10 @@
 .uc-el-svg {
   background: transparent !important;
 }
+.uc-el-svg svg,
+.uc-el-svg svg[data-weos-canvas-normalized="1"] {
+  background: transparent !important;
+}
 
 .uc-command-bar .weos-ds-btn.is-active,
 .uc-command-bar [data-uc="gridToggle"].is-active,
