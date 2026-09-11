@@ -26,8 +26,12 @@
     return String(s == null ? "" : s).replace(/</g, "&lt;").replace(/"/g, "&quot;");
   }
 
-  function toolBtn(id, label, reserved) {
-    var title = reserved ? label + " (coming next)" : label;
+  function toolBtn(id, label, reserved, titleOverride) {
+    var title = titleOverride
+      ? titleOverride
+      : reserved
+        ? label + " — INTENTIONALLY DISABLED until Canvas Batch E (Member + Grid + Cell)"
+        : label;
     return (
       '<button type="button" class="uc-tool' +
       (reserved ? " is-reserved" : "") +
@@ -40,7 +44,7 @@
       '"><span class="uc-tool__label">' +
       esc(label) +
       "</span>" +
-      (reserved ? '<span class="uc-tool__soon">soon</span>' : "") +
+      (reserved ? '<span class="uc-tool__soon">Batch E</span>' : "") +
       "</button>"
     );
   }
@@ -82,9 +86,9 @@
       "</div>" +
       '<div class="uc-workspace-body">' +
       '<aside class="uc-tool-rail" aria-label="Canvas tools">' +
-      toolBtn("select", "Select", false) +
-      toolBtn("pan", "Pan", false) +
-      toolBtn("measure", "Dim", false) +
+      toolBtn("select", "Select", false, "Select elements") +
+      toolBtn("pan", "Pan", false, "Pan viewport") +
+      toolBtn("measure", "Dim", false, "Show dimension overlay (display only — not measure-draw)") +
       '<div class="uc-tool-rail__sep"></div>' +
       toolBtn("member", "Member", true) +
       toolBtn("member_v", "V-Mem", true) +

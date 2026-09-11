@@ -223,7 +223,9 @@ def property_schema_for_context(product_type: str) -> dict[str, Any]:
         schema["usedFallback"] = True
         schema["toolset"] = TOOLSET_UNSUPPORTED
         schema["guidance"] = UNSUPPORTED_MESSAGE
-        return schema
+        from WEOS.factory.canvas_preview import enrich_schema
+
+        return enrich_schema(schema)
     ad = pa.resolve_adapter(pt)
     adapter_id = adapter_id_for_context(ad)
     schema = dict(ad.get_property_schema())
@@ -245,7 +247,9 @@ def property_schema_for_context(product_type: str) -> dict[str, Any]:
             ]
     elif adapter_id == "window_family":
         schema = _specialize_window_schema(schema, pt)
-    return schema
+    from WEOS.factory.canvas_preview import enrich_schema
+
+    return enrich_schema(schema)
 
 
 def property_schema_for(product_type: str) -> dict[str, Any]:
