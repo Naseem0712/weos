@@ -68,19 +68,21 @@ def main() -> None:
     _ok("function toggle" in snap or "toggle:" in snap or ".toggle" in snap, "snap.toggle exists")
     _ok("world" in snap.lower() or "xMm" in snap, "snap returns world mm candidates")
 
-    # Member tools intentionally disabled until Batch E
-    _ok("member" in ws and "disabled" in ws, "Member buttons disabled")
-    _ok("Batch E" in ws or "INTENTIONALLY DISABLED" in ws, "Member tooltip points to Batch E")
-    _ok("RESERVED" in cmd and "member_v" in cmd, "V-Mem/H-Mem reserved")
-    _ok("FrameMember" not in uc and "mullion" not in uc.lower(), "no member engine yet")
+    # Member tools enabled when capability allows (Batch E)
+    _ok("member_v" in ws and "setStructureEnabled" in uc, "Member tools + capability gate")
+    _ok("supportsFrameGrid" in ws or "N/A" in ws or "memberTools" in uc, "capability messaging")
+    _ok("STRUCTURE_TOOLS" in cmd and "member_v" in cmd, "V-Mem/H-Mem structure tools")
+    _ok("memberTools" in uc or "confirmGhost" in (CANVAS / "member_tools.js").read_text(encoding="utf-8"), "member engine wired")
 
     # Command state single source
     st = cw.create_command_state(active_tool="select")
     _ok(st["activeTool"] == "select", "factory command state select")
     st2 = cw.set_active_tool(st, "pan")
     _ok(st2["activeTool"] == "pan", "factory set pan")
-    st3 = cw.set_active_tool(st2, "member")
-    _ok(st3["activeTool"] != "member", "member tool rejected (reserved)")
+    st3 = cw.set_active_tool(st2, "member", structure_enabled=False)
+    _ok(st3["activeTool"] != "member", "member tool rejected without capability")
+    st4 = cw.set_active_tool(cw.create_command_state(structure_enabled=True), "member_v")
+    _ok(st4["activeTool"] == "member_v", "member_v accepted with capability")
 
     print("PASS: _smoke_canvas_tool_interactions.py")
 

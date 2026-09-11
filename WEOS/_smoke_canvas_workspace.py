@@ -77,23 +77,21 @@ def main() -> None:
     # A: one Universal Canvas host
     _ok("ONE Universal Canvas" in uc_js or "never mount a second host" in uc_js, "A: single host guard")
     _ok("universalCanvasHost" in uc_js, "A: host id")
-    _ok("FrameMember" not in uc_js and "mullion" not in uc_js.lower(), "A: no member engine")
+    _ok("member_tools" in index or "FrameMember" in (ROOT / "WEOS" / "factory" / "member_grid.py").read_text(encoding="utf-8") or "setStructureEnabled" in uc_js, "A: Batch E member engine present")
 
     # B: workspace toolbar exists
     _ok("uc-command-bar" in ws_js and "weos-ds-toolbar" in ws_js, "B: command bar + ds toolbar")
     _ok("uc-tool-rail" in ws_js and "data-uc-tool" in ws_js and 'toolBtn("select"' in ws_js, "B: tool rail")
-    _ok(
-        ("coming next" in ws_js or "Batch E" in ws_js or "INTENTIONALLY DISABLED" in ws_js)
-        and "is-reserved" in ws_js,
-        "B: reserved tools disabled",
-    )
+    _ok('toolBtn("member_v"' in ws_js and "CANVAS-E" in ws_js, "B: member tools in Batch E shell")
 
     # C: tool state Select/Pan
     st = cw.create_command_state(active_tool=cw.TOOL_SELECT)
     st = cw.set_active_tool(st, cw.TOOL_PAN)
     _ok(st["activeTool"] == cw.TOOL_PAN, "C: pan tool")
-    st2 = cw.set_active_tool(st, cw.TOOL_MEMBER)
-    _ok(st2["activeTool"] == cw.TOOL_PAN, "C: reserved member refused")
+    st2 = cw.set_active_tool(st, cw.TOOL_MEMBER, structure_enabled=False)
+    _ok(st2["activeTool"] == cw.TOOL_PAN, "C: member refused without capability")
+    st3 = cw.set_active_tool(cw.create_command_state(structure_enabled=True), cw.TOOL_MEMBER_V)
+    _ok(st3["activeTool"] == cw.TOOL_MEMBER_V, "C: member_v when enabled")
     _ok("createCommandState" in cmd_js and "activeTool" in cmd_js, "C: JS command state")
 
     # D: viewport zoom/pan B7 contract
@@ -238,8 +236,8 @@ def main() -> None:
 
     # Delete disabled without backend
     st = cw.create_command_state()
-    _ok(st["deleteEnabled"] is False, "delete disabled foundation")
-    _ok("Delete unavailable" in uc_js or "deleteEnabled: false" in cmd_js, "delete UI disabled")
+    _ok("deleteMember" in uc_js or "Delete selected member" in uc_js or "delete_member" in uc_js, "delete UI for members")
+    _ok("Select a member to delete" in uc_js or "merge cells" in uc_js.lower() or "deleteMember" in (CANVAS_JS / "member_tools.js").read_text(encoding="utf-8"), "delete member path")
 
     print("PASS: Canvas Batch D workspace smoke A–O + history")
 

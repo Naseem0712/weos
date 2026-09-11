@@ -151,7 +151,7 @@ def main() -> None:
     dc_js = (CANVAS_JS / "design_context.js").read_text(encoding="utf-8")
     _ok("data-product-canvas-popup" in dc_js, "O: popup routing")
     _ok("routeLegacyIntoUc" in dc_js and "routeLegacyIntoUc" in uc_js, "O: legacy routed into UC")
-    _ok("FrameMember" not in uc_js and "mullion" not in uc_js.lower(), "O: no member engine")
+    _ok("setStructureEnabled" in uc_js or "memberTools" in uc_js, "O: Batch E member engine wired")
     _ok(
         "CANVAS-D1" in ws_js
         or "CANVAS-D1" in uc_js
