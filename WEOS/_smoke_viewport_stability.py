@@ -127,7 +127,7 @@ def main() -> None:
     _ok("widthMm" in ws_js and "heightMm" in ws_js, "N: engineering sizes")
 
     # O: batch marker + diag flag + zoom limits
-    _ok("CANVAS-D3" in uc_js, "O: host batch D3")
+    _ok("CANVAS-D3" in uc_js or "CANVAS-D4" in uc_js, "O: host batch D3/D4")
     _ok("ucViewportDiag" in uc_js or "setDiag" in vp_js, "O: optional diag flag")
     _ok(cw.ZOOM_MIN == 0.15 and cw.ZOOM_MAX == 6.0, "O: zoom limits aligned")
 

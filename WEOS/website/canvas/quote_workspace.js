@@ -214,6 +214,107 @@
     return -1;
   }
 
+  /**
+   * D4: keep Quote Review card in sync with the same item ID after geometry/config edits.
+   * Updates dims / preview / summary locally; amount only when calculable on the line.
+   */
+  function syncCardFromElement(element, previewSvg) {
+    element = element || {};
+    var st = stateObj();
+    var lines = st.lines || [];
+    var eid = element.elementId || element.id;
+    var code = element.displayCode || element.designSerial;
+    var idx = -1;
+    if (typeof st.selectedLine === "number" && st.selectedLine >= 0) {
+      idx = st.selectedLine;
+    }
+    if (idx < 0 && eid) {
+      for (var i = 0; i < lines.length; i++) {
+        var ln = lines[i] || {};
+        if (
+          String(ln.elementId || "") === String(eid) ||
+          String(ln.designElementId || "") === String(eid) ||
+          String(ln.lineId || "") === String(eid)
+        ) {
+          idx = i;
+          break;
+        }
+      }
+    }
+    if (idx < 0 && code) {
+      for (var j = 0; j < lines.length; j++) {
+        var ln2 = lines[j] || {};
+        if (String(ln2.designSerial || ln2.lineId || "") === String(code)) {
+          idx = j;
+          break;
+        }
+      }
+    }
+    if (idx < 0 || !lines[idx]) return false;
+    var line = lines[idx];
+    var w = element.widthMm != null ? Number(element.widthMm) : Number(line.width);
+    var h = element.heightMm != null ? Number(element.heightMm) : Number(line.height);
+    if (isFinite(w) && w > 0) line.width = w;
+    if (isFinite(h) && h > 0) line.height = h;
+    if (previewSvg) {
+      line.previewSvg = previewSvg;
+      if (!line.quotation) line.quotation = {};
+      line.quotation.previewSvg = previewSvg;
+    }
+    if (element.productType) line.productType = element.productType;
+    // Recalc amount when rate + area known
+    try {
+      var rate = Number(line.sellingRate || line.rate || (line.quotation && line.quotation.sellingPerUnit));
+      var unit = String(line.saleUnit || (line.quotation && line.quotation.saleUnit) || "sqft").toLowerCase();
+      var qty = Number(line.qty || line.quantity || 1) || 1;
+      if (isFinite(rate) && rate > 0 && isFinite(w) && isFinite(h) && w > 0 && h > 0) {
+        var area = unit === "sqft" ? (w * h) / 92903.04 : unit === "sqm" ? (w * h) / 1e6 : 1;
+        if (unit === "nos" || unit === "each") area = 1;
+        line.amount = Math.round(rate * area * qty);
+      }
+    } catch (_) {}
+    lines[idx] = line;
+    st.lines = lines;
+
+    // Live DOM patch on Quote Review if open
+    try {
+      var card = global.document && global.document.querySelector('.qw-card[data-line-id="' + String(line.lineId || "").replace(/"/g, "") + '"]');
+      if (card) {
+        var meta = card.querySelector(".qw-card__meta");
+        if (meta) {
+          var size =
+            (isFinite(w) ? Math.round(w) : "—") + "×" + (isFinite(h) ? Math.round(h) : "—") + " mm";
+          meta.textContent =
+            size +
+            " · Qty " +
+            (line.qty || line.quantity || 1) +
+            (line.floor ? " · " + line.floor : "") +
+            (line.location ? " · " + line.location : "");
+        }
+        if (previewSvg) {
+          var prev = card.querySelector(".qw-card__preview");
+          if (prev) {
+            prev.classList.remove("qw-card__preview--empty", "muted");
+            prev.innerHTML = previewSvg;
+          }
+        }
+        if (line.amount != null) {
+          var amt = card.querySelector(".qw-card__amount");
+          if (amt && C.designCards && C.designCards.money) {
+            amt.textContent = C.designCards.money(line.amount);
+          }
+        }
+      }
+    } catch (_) {}
+    syncTopBar({
+      itemCount: lines.length,
+      amount: lines.reduce(function (s, L) {
+        return s + (Number(L.amount) || 0);
+      }, 0),
+    });
+    return true;
+  }
+
   function wireQuoteReviewActions(payload) {
     var host = $("qwReviewHost");
     if (!host || host._qwWired === payload.projectId) {
@@ -554,6 +655,7 @@
     refreshWorkspaceFromServer: refreshWorkspaceFromServer,
     syncTopBar: syncTopBar,
     setEngineeringChrome: setEngineeringChrome,
+    syncCardFromElement: syncCardFromElement,
     onDuplicated: onDuplicated,
     afterAddToQuote: afterAddToQuote,
     getLastWorkspace: function () {

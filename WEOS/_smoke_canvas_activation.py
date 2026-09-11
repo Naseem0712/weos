@@ -156,8 +156,9 @@ def main() -> None:
         "CANVAS-D1" in ws_js
         or "CANVAS-D1" in uc_js
         or "CANVAS-D3" in uc_js
+        or "CANVAS-D4" in uc_js
         or "CANVAS-D1" in act_py,
-        "O: D1/D3 batch marker",
+        "O: D1/D3/D4 batch marker",
     )
 
     # Header / identity

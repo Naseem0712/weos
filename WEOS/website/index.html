@@ -14269,6 +14269,15 @@ async function pingEngine(){
               if (res && res.preview && res.preview.svg && res.element && host.setElementPreviewSvg) {
                 host.setElementPreviewSvg(res.element.elementId, res.preview.svg, { source: "adapter" });
               }
+              if (res && res.element && window.WEOSCanvas && WEOSCanvas.quoteWorkspace && WEOSCanvas.quoteWorkspace.syncCardFromElement) {
+                WEOSCanvas.quoteWorkspace.syncCardFromElement(
+                  res.element,
+                  res.preview && res.preview.svg
+                );
+              }
+              if (host && res && res.element && typeof host.applyElementPatch === "function") {
+                host.applyElementPatch(res.element.elementId, res.element);
+              }
             } catch (e) {}
           }
         });

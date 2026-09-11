@@ -216,6 +216,7 @@
         widthMm: Number(el.widthMm != null ? el.widthMm : cfg.widthMm) || 0,
         heightMm: Number(el.heightMm != null ? el.heightMm : cfg.heightMm) || 0,
         configPayload: cfg,
+        renderPurpose: "CANVAS_RENDER",
       };
       return Promise.resolve(
         apiFn("/api/adapters/" + encodeURIComponent(pt) + "/preview", {
@@ -476,6 +477,27 @@
       return map[w] || "";
     }
 
+    /**
+     * D4: merge geometry/config into ActiveDesignContext without product switch.
+     * Keeps renderRevision monotonic for latest-wins preview commits.
+     */
+    function applyConfigPatch(patch, opts) {
+      opts = opts || {};
+      patch = patch && typeof patch === "object" ? patch : {};
+      if (opts.elementId && state.elementId && opts.elementId !== state.elementId) {
+        return snapshot();
+      }
+      state.configPayload = Object.assign({}, state.configPayload || {}, patch);
+      if (patch.widthMm != null) state.configPayload.widthMm = patch.widthMm;
+      if (patch.heightMm != null) state.configPayload.heightMm = patch.heightMm;
+      if (patch.depthMm != null && state.configPayload.heightMm == null) {
+        state.configPayload.heightMm = patch.depthMm;
+      }
+      state.renderRevision = (Number(state.renderRevision) || 0) + 1;
+      emit();
+      return snapshot();
+    }
+
     function refreshPropertyPanel() {
       try {
         var panel = global.WEOS_PROPERTY_PANEL;
@@ -505,6 +527,7 @@
               values: Object.assign(
                 {
                   productType: state.selectedProductType,
+                  elementId: state.elementId || null,
                   widthMm: state.configPayload && state.configPayload.widthMm,
                   heightMm: state.configPayload && state.configPayload.heightMm,
                 },
@@ -611,6 +634,7 @@
       routeLegacyIntoUc: routeLegacyIntoUc,
       refreshPropertyPanel: refreshPropertyPanel,
       refreshElementPreview: refreshElementPreview,
+      applyConfigPatch: applyConfigPatch,
       onChange: onChange,
       applyServerContext: applyServerContext,
       toolsetFor: toolsetFor,

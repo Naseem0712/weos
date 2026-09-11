@@ -204,9 +204,9 @@
     }
 
     function paint() {
-      var showDims =
-        cmdState.activeTool === C.commands.TOOLS.MEASURE ||
-        !!(selection.snapshot().primaryId);
+      // D4: Dim tool = dimension display overlay only (no measure-draw).
+      // Select/Pan do not auto-show dims — avoids fake always-on measure.
+      var showDims = cmdState.activeTool === C.commands.TOOLS.MEASURE;
       C.sceneRenderer.renderInto(vpEl, model, viewport, selection, registry, {
         grid: grid,
         dimensions: C.dimensions,
@@ -215,7 +215,7 @@
       updateZoomLabel();
       var snapSel = selection.snapshot();
       var el = model.elements.filter(function (e) {
-        return e.elementId === snapSel.primaryElementId;
+        return e.elementId === snapSel.primaryElementId || e.elementId === snapSel.primaryId;
       })[0];
       model.selectedSync = el
         ? {
@@ -340,6 +340,60 @@
       }
       applyFilters();
       return next;
+    }
+
+    /**
+     * D4: patch DesignElement geometry/config in local overlay and/or scene tree.
+     * Property commits must update the authoritative element box (W/H/X/Y), not only SVG.
+     */
+    function patchSceneElement(elementId, patch) {
+      if (!model.scene || !elementId) return false;
+      var hit = false;
+      function walkAssemblies(list) {
+        (list || []).forEach(function (asm) {
+          (asm.elements || []).forEach(function (e, idx) {
+            if (String(e.elementId) !== String(elementId)) return;
+            asm.elements[idx] = Object.assign({}, e, patch, { elementId: e.elementId });
+            hit = true;
+          });
+        });
+      }
+      (model.scene.floors || []).forEach(function (fl) {
+        (fl.locations || []).forEach(function (loc) {
+          walkAssemblies(loc.assemblies);
+        });
+        walkAssemblies(fl.assemblies);
+      });
+      walkAssemblies(model.scene.unlocatedAssemblies);
+      return hit;
+    }
+
+    function applyElementPatch(elementId, patch) {
+      if (!elementId || !patch) return null;
+      var id = String(elementId);
+      var existing = (model.elements || []).filter(function (e) {
+        return String(e.elementId) === id;
+      })[0];
+      var merged = Object.assign({}, existing || {}, patch, { elementId: id });
+      if (merged.widthMm != null) merged.widthMm = Number(merged.widthMm);
+      if (merged.heightMm != null) merged.heightMm = Number(merged.heightMm);
+      if (merged.xMm != null) merged.xMm = Number(merged.xMm);
+      if (merged.yMm != null) merged.yMm = Number(merged.yMm);
+
+      var inLocal = (model.localElements || []).some(function (e) {
+        return String(e.elementId) === id;
+      });
+      if (inLocal || String(id).indexOf("local-") === 0 || (existing && existing.local)) {
+        return upsertLocalElement(merged);
+      }
+      // Durable scene element — mutate scene tree, no duplicate local overlay.
+      var patched = patchSceneElement(id, merged);
+      if (!patched) {
+        // Not in scene yet — keep as local overlay only.
+        return upsertLocalElement(Object.assign({}, merged, { local: true }));
+      }
+      applyFilters();
+      return merged;
     }
 
     function selectElementById(elementId, opts) {
@@ -572,6 +626,12 @@
       }
       var id = String(elementId);
       var next = svg == null ? "" : String(svg);
+      // D4 transparent canvas: strip artificial white page backgrounds (PDF keeps white).
+      try {
+        if (C.adapters && typeof C.adapters.normalizeForCanvas === "function" && next.indexOf("<svg") >= 0) {
+          next = C.adapters.normalizeForCanvas(next);
+        }
+      } catch (eNorm) {}
       var prev = model.previewContext.previewByElementId[id];
       var source = String(opts.source || "adapter");
       var prevGood = prev && !isPlaceholderSvg(prev);
@@ -913,6 +973,7 @@
       hasGoodElementPreview: hasGoodElementPreview,
       markPendingPreviewFit: markPendingPreviewFit,
       upsertLocalElement: upsertLocalElement,
+      applyElementPatch: applyElementPatch,
       selectElementById: selectElementById,
       setSaveStatus: setSaveStatus,
       getViewModel: getViewModel,
@@ -937,7 +998,7 @@
       },
       paint: paint,
       isUniversalCanvas: true,
-      batch: "CANVAS-D3",
+      batch: "CANVAS-D4",
     };
   }
 

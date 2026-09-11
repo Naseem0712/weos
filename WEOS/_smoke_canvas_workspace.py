@@ -82,7 +82,11 @@ def main() -> None:
     # B: workspace toolbar exists
     _ok("uc-command-bar" in ws_js and "weos-ds-toolbar" in ws_js, "B: command bar + ds toolbar")
     _ok("uc-tool-rail" in ws_js and "data-uc-tool" in ws_js and 'toolBtn("select"' in ws_js, "B: tool rail")
-    _ok("coming next" in ws_js and "is-reserved" in ws_js, "B: reserved tools disabled")
+    _ok(
+        ("coming next" in ws_js or "Batch E" in ws_js or "INTENTIONALLY DISABLED" in ws_js)
+        and "is-reserved" in ws_js,
+        "B: reserved tools disabled",
+    )
 
     # C: tool state Select/Pan
     st = cw.create_command_state(active_tool=cw.TOOL_SELECT)

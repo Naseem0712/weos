@@ -668,9 +668,25 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 ## Remaining batches (from user plan / target doc)
 
-**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → ~~Canvas D~~ **DONE** → ~~Canvas D1~~ **DONE** → ~~Canvas D2~~ **DONE** → ~~Canvas D3~~ **DONE** → **Next: Canvas E** → F → G.  
+**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → ~~Canvas D~~ **DONE** → ~~Canvas D1~~ **DONE** → ~~Canvas D2~~ **DONE** → ~~Canvas D3~~ **DONE** → ~~Canvas D4~~ **DONE** → **Next: Canvas E** → F → G.  
 Engineering Master Data / BOM Foundation remains on the architecture track **after** C–G foundations are stable.  
-**HARD STOP:** Canvas E/F/G **not started** (D3 complete). Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
+**HARD STOP:** Canvas E/F/G **not started** (D4 complete). Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
+
+---
+
+### CANVAS D4 — Interactive Property / Configuration / Tool Binding (**DONE**)
+
+| Field | Value |
+|---|---|
+| **ID** | CANVAS-D4 |
+| **Status** | **DONE** — Property Panel drives DesignElement + adapter preview; no silent no-ops; Dim/Select/Pan/Grid/Snap real; Member tools intentionally disabled |
+| **Starting HEAD** | 3405e98714e7ac02c506f16f195ccf78e112e71e |
+| **Root causes** | (1) Property `change` used broken `state.selection` nesting and ignored `state.elementId` → preview refresh skipped for local drafts; (2) geometry never called `upsertLocalElement`/`applyElementPatch` so W/H stayed stale on the canvas box; (3) durable saves only on manual Save button; (4) Dim auto-showed on any selection (looked like fake measure); (5) quote cards not synced on edit |
+| **Pipeline** | Property Panel → validate → GEOMETRY\|CONFIG → local upsert OR SQL `/api/property-panel/element` → DesignElement → `refreshElementPreview` → `setElementPreviewSvg` → Saved (fail-closed) |
+| **Tools** | Select/Pan real; Dim = dimension display overlay only; Grid/Snap toggles; Member/V-Mem/H-Mem/Cells disabled with Batch E tooltip |
+| **Tests** | `_smoke_property_interactions.py` A–O PASS; `_smoke_canvas_tool_interactions.py` PASS; live CDP all 8 products W resize + preview; regression gate green |
+| **Hard stop** | **Do NOT auto-start Canvas Batch E** |
+| **Production** | **NOT PERFORMED** |
 
 ---
 
@@ -707,6 +723,15 @@ Engineering Master Data / BOM Foundation remains on the architecture track **aft
 | **Production** | **NOT PERFORMED** |
 
 ---
+
+## Session checkpoint (Canvas D4)
+
+- **Branch:** weos-v2-foundation
+- **Starting HEAD:** 3405e98714e7ac02c506f16f195ccf78e112e71e
+- **Ending HEAD:** (pending commit)
+- **Next eligible implementation:** **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**, not started)
+- **Do not start:** Canvas E automatically; Production deploy
+- **Preserved:** unrelated dirty product stubs / weos.db / customers / tmp files not committed
 
 ## Session checkpoint (Canvas D3)
 
