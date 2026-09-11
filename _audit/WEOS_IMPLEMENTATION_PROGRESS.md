@@ -630,15 +630,39 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 ---
 
-### CANVAS BATCH E — Member + Grid + Cell Engine (**QUEUED**)
+### CANVAS BATCH E — Member + Grid + Cell Engine (**DONE**)
 
 | Field | Value |
 |---|---|
 | **ID** | CANVAS-E |
-| **Status** | **QUEUED** after Canvas D2 |
+| **Status** | **DONE** — domain + drawing + smokes + push (Production NOT PERFORMED) |
+| **Starting HEAD** | `b16101b8348bc64396268ba449407fdeb055346d` |
 | **Goal** | FrameMember domain; vertical/horizontal drawing; cell subdivision; stable cell IDs; SQL persistence; tests |
 | **Hard stop** | No cell product-assignment UX (Batch F); members = domain data not decorative SVG |
 | **Authority** | ACD.4–ACD.5, ACD.12 |
+| **Size change rule** | Explicit `KEEP_OFFSETS` \| `SCALE` \| `CANCEL` only — never silent guess. Documented default when callers pass `KEEP_OFFSETS`: keep absolute member offsets in mm; reject if members fall outside new opening. |
+| **PDF** | Grid activated → structural topology SVG; fail-closed `STRUCTURAL_EDIT_PENDING_RENDER` if composite missing — never silent old product drawing |
+| **Tests** | `_smoke_member_grid_cells.py` A–N PASS; `_smoke_member_canvas_interaction.py` PASS; D4/D2/PDF/viewport/activation regression PASS |
+| **Live** | 1200×1000 H@700 → nested V center → 3 leaves; Grid 2×3 → 6 leaves; reload OK; Pergola/Railing/ACP capability leak blocked |
+| **Production** | **NOT PERFORMED** |
+
+#### Queue order (strict)
+
+1. ~~UX/PDF **Batch A — PDF reliability**~~ **DONE**
+2. ~~**Batch 8.5 / 9.5 — Pergola**~~ **DONE**
+3. ~~UX/PDF **Batch B — PDF Viewer Redesign**~~ **DONE**
+4. ~~**UX Batch C — WEOS Design System foundation**~~ **DONE**
+5. ~~**Canvas D0 — Product Context parity**~~ **DONE**
+6. ~~**Canvas Batch D — Professional Universal Canvas Workspace**~~ **DONE**
+7. ~~**Canvas D1 — Universal Canvas Activation + Real Workspace Cutover**~~ **DONE**
+8. ~~**Canvas D2 — App Entry + Quote Workspace Separation**~~ **DONE**
+9. ~~**Canvas D3 — Viewport stability**~~ **DONE**
+10. ~~**Canvas D4 — Property / tool binding**~~ **DONE**
+11. ~~**Canvas Batch E — Member + Grid + Cell Engine**~~ **DONE**
+12. **Next eligible:** **Canvas Batch F** — Cell Product Assignment (**QUEUED**)
+13. Then **Canvas Batch G** — Design Management (**QUEUED**)
+14. Architecture track (Engineering Master Data / BOM Foundation, etc.) remains **separate**
+15. Production deployment — **NOT AUTHORIZED / NOT PERFORMED**
 
 ---
 
@@ -668,9 +692,9 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 ## Remaining batches (from user plan / target doc)
 
-**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → ~~Canvas D~~ **DONE** → ~~Canvas D1~~ **DONE** → ~~Canvas D2~~ **DONE** → ~~Canvas D3~~ **DONE** → ~~Canvas D4~~ **DONE** → **Next: Canvas E** → F → G.  
+**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → ~~Canvas D~~ **DONE** → ~~Canvas D1~~ **DONE** → ~~Canvas D2~~ **DONE** → ~~Canvas D3~~ **DONE** → ~~Canvas D4~~ **DONE** → ~~Canvas E~~ **DONE** → **Next: Canvas F** → G.  
 Engineering Master Data / BOM Foundation remains on the architecture track **after** C–G foundations are stable.  
-**HARD STOP:** Canvas E/F/G **not started** (D4 complete). Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
+**HARD STOP:** Canvas F/G **not started**. Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
 
 ---
 
@@ -723,6 +747,17 @@ Engineering Master Data / BOM Foundation remains on the architecture track **aft
 | **Production** | **NOT PERFORMED** |
 
 ---
+
+## Session checkpoint (Canvas Batch E)
+
+- **Branch:** weos-v2-foundation
+- **Starting HEAD:** b16101b8348bc64396268ba449407fdeb055346d
+- **Ending HEAD:** 8753ff204bc06fd91a7323f2955a4ba0fe71b383 (8753ff2) on weos-v2-foundation / origin/weos-v2-foundation
+- **Next eligible implementation:** **Canvas Batch F** — Cell Product Assignment (**QUEUED**, not started)
+- **Do not start:** Canvas F automatically; Production deploy
+- **Preserved:** unrelated dirty product stubs / weos.db / customers / tmp files not committed
+- **Size change rule:** KEEP_OFFSETS | SCALE | CANCEL — never silent; documented KEEP_OFFSETS keeps absolute mm offsets
+- **PDF:** structural topology SVG when grid activated; STRUCTURAL_EDIT_PENDING_RENDER fail-closed otherwise for pending composite
 
 ## Session checkpoint (Canvas D4)
 
