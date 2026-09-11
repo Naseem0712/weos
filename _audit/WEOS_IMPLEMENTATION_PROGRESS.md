@@ -728,12 +728,12 @@ Engineering Master Data / BOM Foundation remains on the architecture track **aft
 
 - **Branch:** weos-v2-foundation
 - **Starting HEAD:** 3405e98714e7ac02c506f16f195ccf78e112e71e
-- **Ending HEAD:** 26b4f367f4ff2fe0b67bffa273bd7376e883d434
+- **Ending HEAD:** 3d0a069af2bc13051d4f0c8087e86663bbe8161d (3d0a069)
 - **Next eligible implementation:** **Canvas Batch E** — Member + Grid + Cell Engine (**QUEUED**, not started)
 - **Do not start:** Canvas E automatically; Production deploy
 - **Preserved:** unrelated dirty product stubs / weos.db / customers / tmp files not committed
 - **Transparent preview:** `normalizeForCanvas` / `CANVAS_RENDER` — `_smoke_canvas_transparent_preview.py` PASS; live pixel samples confirm grey through SVG margins; PDF keeps white paper
-- **Commits:** `c747c6f`/`b250f93` property+tool binding; `26b4f36` transparent canvas preview
+- **Commits:** `c747c6f` property binding; `b250f93` tool rail + Batch E tooltips; `26b4f36` transparent canvas preview; `3d0a069` progress stamp
 
 ## Session checkpoint (Canvas D3)
 
