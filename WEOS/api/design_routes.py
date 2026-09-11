@@ -867,12 +867,29 @@ def api_property_panel(
 
     k = str(kind or "none").strip().lower()
     if k not in cp.SELECTION_KINDS:
-        raise HTTPException(status_code=400, detail="kind must be none|element|assembly|connection")
+        raise HTTPException(
+            status_code=400,
+            detail="kind must be none|element|assembly|connection|member|cell",
+        )
     if k == "none" or not id:
         return cp.empty_panel_guidance()
 
     g = require_company_gst(request, gst)
     try:
+        if k == "member":
+            from WEOS.factory import member_grid as mg
+
+            mem = mg.get_member(id, company_gst=g)
+            if not mem:
+                raise PermissionError("member not found for company")
+            return mg.panel_for_member(mem)
+        if k == "cell":
+            from WEOS.factory import member_grid as mg
+
+            cell = mg.get_cell(id, company_gst=g)
+            if not cell:
+                raise PermissionError("cell not found for company")
+            return mg.panel_for_cell(cell)
         if k == "element":
             el = ds.get_element(id, company_gst=g)
             if not el:
@@ -1035,3 +1052,197 @@ def api_quote_app_entry(request: Request, gst: str | None = None, prefer: str | 
         "draft": draft,
         **plan,
     }
+
+
+# ── Canvas Batch E — FrameMember + DesignCell ─────────────────────────────────
+
+
+class MemberPlaceBody(BaseModel):
+    orientation: str
+    positionMm: float
+    cellId: str | None = None
+    memberType: str | None = None
+    expectedRevisionId: str | None = None
+
+
+class EqualGridBody(BaseModel):
+    rows: int
+    columns: int
+    expectedRevisionId: str | None = None
+
+
+class MemberPositionBody(BaseModel):
+    positionMm: float
+    expectedRevisionId: str | None = None
+
+
+class SizeChangeBody(BaseModel):
+    widthMm: float
+    heightMm: float
+    sizeChangeRule: str  # KEEP_OFFSETS | SCALE | CANCEL — required, never silent
+    expectedRevisionId: str | None = None
+
+
+@router.get("/api/products/{product_type}/structure-capabilities")
+def api_structure_capabilities(product_type: str) -> dict[str, Any]:
+    from WEOS.factory import member_grid as mg
+
+    return {"ok": True, "batch": "CANVAS-E", **mg.product_capabilities(product_type)}
+
+
+@router.get("/api/elements/{element_id}/structure")
+def api_element_structure(
+    element_id: str, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import member_grid as mg
+
+    g = require_company_gst(request, gst)
+    try:
+        topo = mg.get_element_topology(element_id, company_gst=g)
+    except Exception as exc:
+        raise _map_err(exc) from exc
+    return {"ok": True, "batch": "CANVAS-E", **topo}
+
+
+@router.post("/api/elements/{element_id}/members")
+def api_place_member(
+    element_id: str, body: MemberPlaceBody, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import member_grid as mg
+
+    g = require_company_gst(request, gst)
+    try:
+        return mg.place_member(
+            element_id=element_id,
+            company_gst=g,
+            orientation=body.orientation,
+            position_mm=body.positionMm,
+            cell_id=body.cellId,
+            member_type=body.memberType,
+            expected_revision_id=body.expectedRevisionId,
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/elements/{element_id}/grid")
+def api_equal_grid(
+    element_id: str, body: EqualGridBody, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import member_grid as mg
+
+    g = require_company_gst(request, gst)
+    try:
+        return mg.apply_equal_grid(
+            element_id=element_id,
+            company_gst=g,
+            rows=body.rows,
+            columns=body.columns,
+            expected_revision_id=body.expectedRevisionId,
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.patch("/api/members/{member_id}")
+def api_patch_member(
+    member_id: str, body: MemberPositionBody, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import member_grid as mg
+
+    g = require_company_gst(request, gst)
+    try:
+        return mg.update_member_position(
+            member_id=member_id,
+            company_gst=g,
+            position_mm=body.positionMm,
+            expected_revision_id=body.expectedRevisionId,
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.delete("/api/members/{member_id}")
+def api_delete_member(
+    member_id: str, request: Request, gst: str | None = None, expectedRevisionId: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import member_grid as mg
+
+    g = require_company_gst(request, gst)
+    try:
+        return mg.delete_member(
+            member_id=member_id,
+            company_gst=g,
+            expected_revision_id=expectedRevisionId,
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/elements/{element_id}/structure/undo")
+def api_structure_undo(
+    element_id: str, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import member_grid as mg
+
+    g = require_company_gst(request, gst)
+    try:
+        return mg.undo_structure(element_id=element_id, company_gst=g)
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/elements/{element_id}/structure/redo")
+def api_structure_redo(
+    element_id: str, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import member_grid as mg
+
+    g = require_company_gst(request, gst)
+    try:
+        return mg.redo_structure(element_id=element_id, company_gst=g)
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/elements/{element_id}/structure/size-change")
+def api_structure_size_change(
+    element_id: str, body: SizeChangeBody, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import member_grid as mg
+
+    g = require_company_gst(request, gst)
+    try:
+        return mg.apply_size_change(
+            element_id=element_id,
+            company_gst=g,
+            width_mm=body.widthMm,
+            height_mm=body.heightMm,
+            size_change_rule=body.sizeChangeRule,
+            expected_revision_id=body.expectedRevisionId,
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.get("/api/elements/{element_id}/structure/pdf")
+def api_structure_pdf(
+    element_id: str, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    """PDF safety probe — structural topology or STRUCTURAL_EDIT_PENDING_RENDER."""
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import member_grid as mg
+
+    g = require_company_gst(request, gst)
+    try:
+        return {"ok": True, "batch": "CANVAS-E", **mg.pdf_drawing_for_element(element_id, company_gst=g)}
+    except Exception as exc:
+        raise _map_err(exc) from exc

@@ -1132,10 +1132,36 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
         is_ventilator_cart_line,
     )
 
+    # Canvas Batch E — if structural topology is activated on a linked element,
+    # never silently reuse the old product SVG; use structural composite or fail-closed.
+    struct_el = str(line.get("elementId") or line.get("designElementId") or "").strip()
+    struct_gst = str(line.get("companyGst") or "").strip()
+    if struct_el and struct_gst:
+        try:
+            from WEOS.factory import member_grid as mg
+
+            pdf_draw = mg.pdf_drawing_for_element(struct_el, company_gst=struct_gst)
+            if pdf_draw.get("mode") == "structural" and pdf_draw.get("svg"):
+                return str(pdf_draw["svg"])
+            if pdf_draw.get("mode") == "fail_closed" or pdf_draw.get("pending"):
+                code = pdf_draw.get("code") or mg.STRUCTURAL_EDIT_PENDING_RENDER
+                raise RuntimeError(code)
+            # mode product_svg → fall through
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
+
     prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
     live_svg = str((prev or {}).get("svg") or (prev or {}).get("pdfSvg") or "").strip()
     # Always prefer the live-canvas SVG (slim strokes). Never a thickened pdfSvg.
     if live_svg and "<svg" in live_svg.lower():
+        # Guard: if line flags structural pending, refuse silent old drawing
+        geo = line.get("geometryPayload") if isinstance(line.get("geometryPayload"), Mapping) else {}
+        if geo.get("gridActivated") and not geo.get("structuralCompositeReady"):
+            from WEOS.factory.member_grid import STRUCTURAL_EDIT_PENDING_RENDER
+
+            raise RuntimeError(STRUCTURAL_EDIT_PENDING_RENDER)
         return live_svg
 
     if is_ventilator_cart_line(line):

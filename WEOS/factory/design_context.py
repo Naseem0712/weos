@@ -138,6 +138,12 @@ def empty_context(*, reason: str | None = None) -> dict[str, Any]:
         "guidance": reason or UNSUPPORTED_MESSAGE,
         "configScope": "none",
         "source": "none",
+        "supportsFrameGrid": False,
+        "supportsCellSubdivision": False,
+        "structureCapabilities": {
+            "supportsFrameGrid": False,
+            "supportsCellSubdivision": False,
+        },
     }
 
 
@@ -290,6 +296,10 @@ def resolve_active_design_context(
     config_scope = f"element:{element_id}" if element_id else f"draft:{pt}"
     scoped_config = dict(config_payload) if isinstance(config_payload, Mapping) else {}
 
+    from WEOS.factory import member_grid as mg
+
+    caps = mg.product_capabilities(pt, declared=scoped_config.get("capabilities") if isinstance(scoped_config, dict) else None)
+
     return {
         "selectedProductType": pt,
         "elementId": element_id,
@@ -304,6 +314,9 @@ def resolve_active_design_context(
         "configScope": config_scope,
         "configPayload": scoped_config,
         "source": source,
+        "supportsFrameGrid": caps["supportsFrameGrid"],
+        "supportsCellSubdivision": caps["supportsCellSubdivision"],
+        "structureCapabilities": caps,
     }
 
 

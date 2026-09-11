@@ -1,7 +1,8 @@
-﻿"""Canvas Batch D — Professional Universal Canvas Workspace foundations.
+﻿"""Canvas Batch D/E — Professional Universal Canvas Workspace foundations.
 
 Pure helpers for command state, history, grid, snap, dimensions, and save status.
-No FrameMember / Cell engine (Batch E). World geometry stays engineering mm.
+Batch E enables FrameMember / Cell tools when product supportsFrameGrid.
+World geometry stays engineering mm.
 """
 
 from __future__ import annotations
@@ -9,7 +10,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Mapping, MutableMapping, Sequence
 
-BATCH_ID = "CANVAS-D"
+BATCH_ID = "CANVAS-E"
 
 TOOL_SELECT = "select"
 TOOL_PAN = "pan"
@@ -19,8 +20,18 @@ TOOL_MEMBER_V = "member_v"
 TOOL_MEMBER_H = "member_h"
 TOOL_GRID = "grid_split"
 
-ACTIVE_TOOLS = (TOOL_SELECT, TOOL_PAN, TOOL_MEASURE)
-RESERVED_TOOLS = (TOOL_MEMBER, TOOL_MEMBER_V, TOOL_MEMBER_H, TOOL_GRID)
+ACTIVE_TOOLS = (
+    TOOL_SELECT,
+    TOOL_PAN,
+    TOOL_MEASURE,
+    TOOL_MEMBER,
+    TOOL_MEMBER_V,
+    TOOL_MEMBER_H,
+    TOOL_GRID,
+)
+# Specialty products keep these visually present but disabled unless capability says otherwise.
+STRUCTURE_TOOLS = (TOOL_MEMBER, TOOL_MEMBER_V, TOOL_MEMBER_H, TOOL_GRID)
+RESERVED_TOOLS: tuple[str, ...] = ()  # Batch E: no longer reserved globally
 
 ZOOM_MIN = 0.15
 ZOOM_MAX = 6.0
@@ -56,9 +67,12 @@ def create_command_state(
     selected_ids: Sequence[str] | None = None,
     grid_visible: bool = True,
     snap_enabled: bool = True,
+    structure_enabled: bool = False,
 ) -> dict[str, Any]:
     tool = str(active_tool or TOOL_SELECT).lower()
-    if tool not in ACTIVE_TOOLS and tool not in RESERVED_TOOLS:
+    if tool not in ACTIVE_TOOLS:
+        tool = TOOL_SELECT
+    if tool in STRUCTURE_TOOLS and not structure_enabled:
         tool = TOOL_SELECT
     ids = [str(x) for x in (selected_ids or []) if str(x)]
     return {
@@ -79,17 +93,37 @@ def create_command_state(
         "snapEnabled": bool(snap_enabled),
         "cursor": {"xMm": None, "yMm": None},
         "deleteEnabled": False,
+        "structureEnabled": bool(structure_enabled),
     }
 
 
-def set_active_tool(state: MutableMapping[str, Any], tool: str) -> dict[str, Any]:
+def set_active_tool(
+    state: MutableMapping[str, Any],
+    tool: str,
+    *,
+    structure_enabled: bool | None = None,
+) -> dict[str, Any]:
     t = str(tool or TOOL_SELECT).lower()
-    if t in RESERVED_TOOLS:
+    enabled = (
+        bool(structure_enabled)
+        if structure_enabled is not None
+        else bool(state.get("structureEnabled"))
+    )
+    if t in STRUCTURE_TOOLS and not enabled:
         return dict(state)
     if t not in ACTIVE_TOOLS:
         t = TOOL_SELECT
     out = dict(state)
     out["activeTool"] = t
+    out["structureEnabled"] = enabled
+    return out
+
+
+def set_structure_enabled(state: MutableMapping[str, Any], enabled: bool) -> dict[str, Any]:
+    out = dict(state)
+    out["structureEnabled"] = bool(enabled)
+    if not enabled and out.get("activeTool") in STRUCTURE_TOOLS:
+        out["activeTool"] = TOOL_SELECT
     return out
 
 

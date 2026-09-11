@@ -12,17 +12,24 @@ from typing import Any, Mapping
 from WEOS.factory import product_adapters as pa
 
 
-SELECTION_KINDS = frozenset({"none", "element", "assembly", "connection"})
+SELECTION_KINDS = frozenset({"none", "element", "assembly", "connection", "member", "cell"})
 
 
 def empty_panel_guidance() -> dict[str, Any]:
     return {
         "kind": "none",
         "title": "Engineering Canvas",
-        "guidance": "Select an element, assembly, or connection to edit properties.",
+        "guidance": "Select an element, assembly, connection, member, or cell to edit properties.",
         "schema": {"version": 1, "groups": [], "adapterId": None, "productType": None},
         "values": {},
-        "selection": {"kind": "none", "elementId": None, "assemblyId": None, "connectionId": None},
+        "selection": {
+            "kind": "none",
+            "elementId": None,
+            "assemblyId": None,
+            "connectionId": None,
+            "memberId": None,
+            "cellId": None,
+        },
     }
 
 

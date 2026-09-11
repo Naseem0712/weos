@@ -953,3 +953,154 @@ class Connection(Base):
             "createdAt": _iso(self.created_at),
             "updatedAt": _iso(self.updated_at),
         }
+
+
+# ── WEOS V2 Canvas Batch E — FrameMember + DesignCell (structural topology) ──
+
+
+MEMBER_ORIENTATIONS = ("V", "H")
+MEMBER_TYPES = (
+    "OUTER_FRAME",
+    "MULLION",
+    "TRANSOM",
+    "COUPLER",
+    "MEETING_MEMBER",
+    "CUSTOM",
+)
+SIZE_CHANGE_RULES = ("KEEP_OFFSETS", "SCALE", "CANCEL")
+
+
+class FrameMember(Base):
+    """Real structural member inside an opening — not decorative SVG.
+
+    Coordinates are element-local engineering mm (origin = element top-left).
+    World mm = element.xMm/yMm + local. Distinct from DesignElement / Connection.
+    """
+
+    __tablename__ = "frame_members"
+    __table_args__ = (
+        UniqueConstraint(
+            "element_id",
+            "display_code",
+            name="uq_frame_member_element_display_code",
+        ),
+    )
+
+    member_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    element_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("design_elements.element_id"), index=True, nullable=False
+    )
+    assembly_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    design_document_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    project_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    display_code: Mapped[str] = mapped_column(String(40), nullable=False, default="M-01")
+    orientation: Mapped[str] = mapped_column(String(8), index=True, nullable=False)  # V | H
+    member_type: Mapped[str] = mapped_column(String(40), index=True, nullable=False, default="MULLION")
+    position_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    x1_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    y1_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    x2_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    y2_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    span_cell_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    parent_member_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    profile_role: Mapped[str | None] = mapped_column(String(80))
+    thickness_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "memberId": self.member_id,
+            "elementId": self.element_id,
+            "assemblyId": self.assembly_id,
+            "designDocumentId": self.design_document_id,
+            "projectId": self.project_id,
+            "companyGst": self.company_gst,
+            "displayCode": self.display_code,
+            "orientation": self.orientation,
+            "memberType": self.member_type,
+            "positionMm": self.position_mm,
+            "x1Mm": self.x1_mm,
+            "y1Mm": self.y1_mm,
+            "x2Mm": self.x2_mm,
+            "y2Mm": self.y2_mm,
+            "spanCellId": self.span_cell_id,
+            "parentMemberId": self.parent_member_id,
+            "profileRole": self.profile_role,
+            "thicknessMm": self.thickness_mm,
+            "sortOrder": self.sort_order,
+            "status": self.status,
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+        }
+
+
+class DesignCell(Base):
+    """Stable-ID panel region produced by FrameMember subdivision.
+
+    Batch E: geometry + lineage only — NO product assignment (Batch F).
+    """
+
+    __tablename__ = "design_cells"
+    __table_args__ = (
+        UniqueConstraint(
+            "element_id",
+            "display_code",
+            name="uq_design_cell_element_display_code",
+        ),
+    )
+
+    cell_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    element_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("design_elements.element_id"), index=True, nullable=False
+    )
+    assembly_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    design_document_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    project_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    display_code: Mapped[str] = mapped_column(String(40), nullable=False, default="C-01")
+    parent_cell_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    x_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    y_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    width_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    height_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    is_root: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_leaf: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    split_by_member_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    # Reserved for Batch F — must stay null / unused in Batch E
+    product_assignment: Mapped[Any] = mapped_column(JSON, nullable=True)
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "cellId": self.cell_id,
+            "elementId": self.element_id,
+            "assemblyId": self.assembly_id,
+            "designDocumentId": self.design_document_id,
+            "projectId": self.project_id,
+            "companyGst": self.company_gst,
+            "displayCode": self.display_code,
+            "parentCellId": self.parent_cell_id,
+            "xMm": self.x_mm,
+            "yMm": self.y_mm,
+            "widthMm": self.width_mm,
+            "heightMm": self.height_mm,
+            "isRoot": bool(self.is_root),
+            "isLeaf": bool(self.is_leaf),
+            "splitByMemberId": self.split_by_member_id,
+            "sortOrder": self.sort_order,
+            "status": self.status,
+            "productAssignment": None,  # Batch F — never expose assignment in E
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+        }
