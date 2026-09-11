@@ -45,6 +45,21 @@
     return TOOLSET_BY_PRODUCT[key] || "unsupported";
   }
 
+  var FRAME_GRID_PRODUCTS = {
+    SLIDING_WINDOW: 1,
+    CASEMENT_WINDOW: 1,
+    FIXED_WINDOW: 1,
+    FOLD_WINDOW: 1,
+    DOOR: 1,
+    VENTILATOR: 1,
+    WINDOW_VENT_COMBO: 1,
+  };
+
+  function supportsFrameGrid(pt) {
+    var key = normalizeProductType(pt);
+    return !!(key && FRAME_GRID_PRODUCTS[key]);
+  }
+
   function emptyContext(reason) {
     return {
       selectedProductType: null,
@@ -68,6 +83,8 @@
       configScope: "none",
       source: "none",
       configPayload: {},
+      supportsFrameGrid: false,
+      supportsCellSubdivision: false,
     };
   }
 
@@ -125,6 +142,19 @@
       state.source = ctx.source || state.source;
       state.configPayload =
         ctx.configPayload && typeof ctx.configPayload === "object" ? Object.assign({}, ctx.configPayload) : {};
+      state.supportsFrameGrid =
+        ctx.supportsFrameGrid != null ? !!ctx.supportsFrameGrid : supportsFrameGrid(state.selectedProductType);
+      state.supportsCellSubdivision =
+        ctx.supportsCellSubdivision != null ? !!ctx.supportsCellSubdivision : state.supportsFrameGrid;
+      try {
+        var hostCap = global.WEOS_UNIVERSAL_CANVAS_HOST;
+        if (hostCap && typeof hostCap.setStructureEnabled === "function") {
+          hostCap.setStructureEnabled(!!state.supportsFrameGrid);
+        }
+        if (hostCap && typeof hostCap.refreshStructureForSelection === "function" && state.elementId) {
+          hostCap.refreshStructureForSelection();
+        }
+      } catch (eCap) {}
       emit();
       return snapshot();
     }
@@ -277,6 +307,14 @@
       state.supported = supported;
       state.guidance = supported ? null : UNSUPPORTED_MESSAGE;
       state.configScope = elementId ? "element:" + elementId : pt ? "draft:" + pt : "none";
+      state.supportsFrameGrid = supportsFrameGrid(pt);
+      state.supportsCellSubdivision = state.supportsFrameGrid;
+      try {
+        var hostLocal = global.WEOS_UNIVERSAL_CANVAS_HOST;
+        if (hostLocal && typeof hostLocal.setStructureEnabled === "function") {
+          hostLocal.setStructureEnabled(!!state.supportsFrameGrid);
+        }
+      } catch (eLocCap) {}
       state.source = source || "local";
       state.configPayload = configPayload && typeof configPayload === "object" ? Object.assign({}, configPayload) : {};
       state.propertySchema = {

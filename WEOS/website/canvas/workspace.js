@@ -30,7 +30,7 @@
     var title = titleOverride
       ? titleOverride
       : reserved
-        ? label + " — INTENTIONALLY DISABLED until Canvas Batch E (Member + Grid + Cell)"
+        ? label + " — unavailable for this product (supportsFrameGrid=false)"
         : label;
     return (
       '<button type="button" class="uc-tool' +
@@ -44,14 +44,14 @@
       '"><span class="uc-tool__label">' +
       esc(label) +
       "</span>" +
-      (reserved ? '<span class="uc-tool__soon">Batch E</span>' : "") +
+      (reserved ? '<span class="uc-tool__soon">N/A</span>' : "") +
       "</button>"
     );
   }
 
   function buildShellHtml() {
     return (
-      '<div class="uc-workspace" data-batch="CANVAS-D1">' +
+      '<div class="uc-workspace" data-batch="CANVAS-E">' +
       '<div class="uc-command-bar weos-ds-toolbar" role="toolbar" aria-label="Canvas commands">' +
       '<div class="weos-ds-toolbar__group uc-cmd-identity">' +
       '<strong class="uc-cmd-title">Engineering Canvas</strong>' +
@@ -61,7 +61,7 @@
       '<div class="weos-ds-toolbar__group">' +
       '<button type="button" class="weos-ds-btn weos-ds-btn--ghost weos-ds-btn--sm" data-uc="undo" disabled title="Undo">Undo</button>' +
       '<button type="button" class="weos-ds-btn weos-ds-btn--ghost weos-ds-btn--sm" data-uc="redo" disabled title="Redo">Redo</button>' +
-      '<button type="button" class="weos-ds-btn weos-ds-btn--ghost weos-ds-btn--sm" data-uc="delete" disabled title="Delete unavailable">Delete</button>' +
+      '<button type="button" class="weos-ds-btn weos-ds-btn--ghost weos-ds-btn--sm" data-uc="delete" disabled title="Delete selected member">Delete</button>' +
       "</div>" +
       '<span class="weos-ds-toolbar__sep"></span>' +
       '<div class="weos-ds-toolbar__group">' +
@@ -86,14 +86,14 @@
       "</div>" +
       '<div class="uc-workspace-body">' +
       '<aside class="uc-tool-rail" aria-label="Canvas tools">' +
-      toolBtn("select", "Select", false, "Select elements") +
+      toolBtn("select", "Select", false, "Select elements / members / cells") +
       toolBtn("pan", "Pan", false, "Pan viewport") +
       toolBtn("measure", "Dim", false, "Show dimension overlay (display only — not measure-draw)") +
       '<div class="uc-tool-rail__sep"></div>' +
-      toolBtn("member", "Member", true) +
-      toolBtn("member_v", "V-Mem", true) +
-      toolBtn("member_h", "H-Mem", true) +
-      toolBtn("grid_split", "Cells", true) +
+      toolBtn("member", "Member", false, "Place structural member") +
+      toolBtn("member_v", "V-Mem", false, "Place vertical member (mullion)") +
+      toolBtn("member_h", "H-Mem", false, "Place horizontal member (transom)") +
+      toolBtn("grid_split", "Cells", false, "Equal Rows×Columns cell grid") +
       "</aside>" +
       '<div class="uc-stage-wrap">' +
       '<div class="uc-viewport" tabindex="0" aria-label="Engineering viewport"></div>' +
@@ -132,6 +132,35 @@
       var on = id === activeTool && !btn.disabled;
       btn.classList.toggle("is-active", on);
       btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  }
+
+  function syncStructureTools(toolRail, structureEnabled) {
+    if (!toolRail) return;
+    var structureIds = { member: 1, member_v: 1, member_h: 1, grid_split: 1 };
+    toolRail.querySelectorAll("[data-uc-tool]").forEach(function (btn) {
+      var id = btn.getAttribute("data-uc-tool");
+      if (!structureIds[id]) return;
+      var on = !!structureEnabled;
+      btn.disabled = !on;
+      btn.setAttribute("aria-disabled", on ? "false" : "true");
+      btn.classList.toggle("is-reserved", !on);
+      var soon = btn.querySelector(".uc-tool__soon");
+      if (!on) {
+        btn.title = (btn.querySelector(".uc-tool__label") || {}).textContent +
+          " — unavailable for this product (supportsFrameGrid=false)";
+        if (!soon) {
+          soon = document.createElement("span");
+          soon.className = "uc-tool__soon";
+          soon.textContent = "N/A";
+          btn.appendChild(soon);
+        } else {
+          soon.textContent = "N/A";
+        }
+      } else {
+        btn.title = (btn.querySelector(".uc-tool__label") || {}).textContent || id;
+        if (soon) soon.remove();
+      }
     });
   }
 
@@ -424,6 +453,7 @@
     buildShellHtml: buildShellHtml,
     mountShell: mountShell,
     syncToolRail: syncToolRail,
+    syncStructureTools: syncStructureTools,
     syncSavePill: syncSavePill,
     applyPrimaryCutover: applyPrimaryCutover,
     openAddDesignModal: openAddDesignModal,

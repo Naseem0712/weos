@@ -685,6 +685,36 @@
 
     async function loadSelection(sel) {
       sel = sel || {};
+      if (sel.kind === "member" && (sel.memberId || sel.primaryId || sel.elementId)) {
+        var mid = sel.memberId || sel.primaryId;
+        if (mid && apiFn) {
+          try {
+            var mpay = await apiFn(
+              "/api/property-panel?kind=member&id=" + encodeURIComponent(mid)
+            );
+            renderPanel(mpay);
+            return;
+          } catch (eMem) {
+            setStatus("Failed to load member properties", true);
+            return;
+          }
+        }
+      }
+      if (sel.kind === "cell" && (sel.cellId || sel.primaryId)) {
+        var cid = sel.cellId || sel.primaryId;
+        if (cid && apiFn) {
+          try {
+            var cpay = await apiFn(
+              "/api/property-panel?kind=cell&id=" + encodeURIComponent(cid)
+            );
+            renderPanel(cpay);
+            return;
+          } catch (eCell) {
+            setStatus("Failed to load cell properties", true);
+            return;
+          }
+        }
+      }
       if (!sel.elementId && !sel.connectionId && !sel.assemblyId && !sel.productType) {
         renderEmpty();
         return;
@@ -826,8 +856,18 @@
     if (!mount) return null;
     var panel = createPanel(mount, options);
     if (host && typeof host.onSelect === "function") {
-      host.onSelect(function (selected) {
+      host.onSelect(function (selected, snapSel) {
         try {
+          if (snapSel && (snapSel.kind === "member" || snapSel.kind === "cell")) {
+            panel.loadSelection({
+              kind: snapSel.kind,
+              memberId: snapSel.kind === "member" ? snapSel.primaryId : null,
+              cellId: snapSel.kind === "cell" ? snapSel.primaryId : null,
+              primaryId: snapSel.primaryId,
+              elementId: selected && selected.elementId,
+            });
+            return;
+          }
           if (C.designContext && C.designContext.getActive) {
             var dc = C.designContext.getActive({ api: options.api });
             if (selected && selected.elementId) {

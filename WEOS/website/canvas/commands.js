@@ -15,8 +15,17 @@
     MEMBER_H: "member_h",
     GRID: "grid_split",
   };
-  var ACTIVE = [TOOLS.SELECT, TOOLS.PAN, TOOLS.MEASURE];
-  var RESERVED = [TOOLS.MEMBER, TOOLS.MEMBER_V, TOOLS.MEMBER_H, TOOLS.GRID];
+  var ACTIVE = [
+    TOOLS.SELECT,
+    TOOLS.PAN,
+    TOOLS.MEASURE,
+    TOOLS.MEMBER,
+    TOOLS.MEMBER_V,
+    TOOLS.MEMBER_H,
+    TOOLS.GRID,
+  ];
+  var STRUCTURE = [TOOLS.MEMBER, TOOLS.MEMBER_V, TOOLS.MEMBER_H, TOOLS.GRID];
+  var RESERVED = []; // Batch E — enabled when supportsFrameGrid
   var ZOOM_MIN = 0.15;
   var ZOOM_MAX = 6;
 
@@ -29,10 +38,12 @@
   function createCommandState(opts) {
     opts = opts || {};
     var tool = String(opts.activeTool || TOOLS.SELECT).toLowerCase();
-    if (ACTIVE.indexOf(tool) < 0 && RESERVED.indexOf(tool) < 0) tool = TOOLS.SELECT;
+    if (ACTIVE.indexOf(tool) < 0) tool = TOOLS.SELECT;
+    var structureEnabled = !!opts.structureEnabled;
+    if (STRUCTURE.indexOf(tool) >= 0 && !structureEnabled) tool = TOOLS.SELECT;
     var ids = (opts.selectedIds || []).map(String).filter(Boolean);
     return {
-      batch: "CANVAS-D",
+      batch: "CANVAS-E",
       activeTool: tool,
       canUndo: !!opts.canUndo,
       canRedo: !!opts.canRedo,
@@ -46,15 +57,24 @@
       gridVisible: opts.gridVisible !== false,
       snapEnabled: opts.snapEnabled !== false,
       cursor: { xMm: null, yMm: null },
-      deleteEnabled: false,
+      deleteEnabled: !!opts.deleteEnabled,
+      structureEnabled: structureEnabled,
     };
   }
 
   function setActiveTool(state, tool) {
     var t = String(tool || TOOLS.SELECT).toLowerCase();
-    if (RESERVED.indexOf(t) >= 0) return state;
+    if (STRUCTURE.indexOf(t) >= 0 && !state.structureEnabled) return state;
     if (ACTIVE.indexOf(t) < 0) t = TOOLS.SELECT;
     state.activeTool = t;
+    return state;
+  }
+
+  function setStructureEnabled(state, on) {
+    state.structureEnabled = !!on;
+    if (!state.structureEnabled && STRUCTURE.indexOf(state.activeTool) >= 0) {
+      state.activeTool = TOOLS.SELECT;
+    }
     return state;
   }
 
@@ -154,12 +174,14 @@
   C.commands = {
     TOOLS: TOOLS,
     ACTIVE_TOOLS: ACTIVE,
+    STRUCTURE_TOOLS: STRUCTURE,
     RESERVED_TOOLS: RESERVED,
     ZOOM_MIN: ZOOM_MIN,
     ZOOM_MAX: ZOOM_MAX,
     clampZoom: clampZoom,
     createCommandState: createCommandState,
     setActiveTool: setActiveTool,
+    setStructureEnabled: setStructureEnabled,
     createHistory: createHistory,
     saveStatusFromDurable: saveStatusFromDurable,
     keyboardShortcutAllowed: keyboardShortcutAllowed,

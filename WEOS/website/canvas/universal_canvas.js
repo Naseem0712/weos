@@ -48,7 +48,10 @@
       throw new Error("WEOSCanvas modules missing — load viewport/selection/adapters/scene_renderer first");
     }
     if (!C.workspace || !C.commands || !C.grid || !C.snap || !C.dimensions) {
-      throw new Error("WEOSCanvas Batch D modules missing — load commands/grid/snap/dimensions/workspace first");
+      throw new Error("WEOSCanvas Batch D/E modules missing — load commands/grid/snap/dimensions/workspace first");
+    }
+    if (!C.memberTools) {
+      throw new Error("WEOSCanvas Batch E member_tools.js missing");
     }
 
     var shell = C.workspace.mountShell(rootEl);
@@ -59,11 +62,14 @@
     var history = C.commands.createHistory({ maxSize: 50 });
     var grid = C.grid.create({ visible: false });
     var snap = C.snap.create({ enabled: true });
+    var memberTools = C.memberTools.create({ viewport: vpEl });
     var cmdState = C.commands.createCommandState({
       activeTool: C.commands.TOOLS.SELECT,
       gridVisible: false,
       snapEnabled: true,
+      structureEnabled: false,
     });
+    memberTools.ensureOverlay(vpEl);
 
     var model = {
       elements: [],
@@ -138,12 +144,20 @@
 
     function syncChrome() {
       C.workspace.syncToolRail(shell.toolRail, cmdState.activeTool);
+      if (C.workspace.syncStructureTools) {
+        C.workspace.syncStructureTools(shell.toolRail, !!cmdState.structureEnabled);
+      }
       vpEl.setAttribute("data-tool", cmdState.activeTool);
       if (undoBtn) undoBtn.disabled = !history.canUndo;
       if (redoBtn) redoBtn.disabled = !history.canRedo;
+      var selSnap = selection.snapshot ? selection.snapshot() : {};
+      var selKind = selSnap.kind || "none";
+      var canDeleteMember = selKind === "member" && !!selSnap.primaryId;
       if (deleteBtn) {
-        deleteBtn.disabled = true;
-        deleteBtn.title = "Delete unavailable — no safe backend delete in Batch D";
+        deleteBtn.disabled = !canDeleteMember;
+        deleteBtn.title = canDeleteMember
+          ? "Delete selected member (merge cells)"
+          : "Select a member to delete";
       }
       if (gridBtn) {
         gridBtn.classList.toggle("is-active", !!grid.visible);
@@ -212,6 +226,9 @@
         dimensions: C.dimensions,
         showDimensions: showDims,
       });
+      try {
+        memberTools.paintTopology(viewport, model.elements);
+      } catch (ePaintStruct) {}
       updateZoomLabel();
       var snapSel = selection.snapshot();
       var el = model.elements.filter(function (e) {
@@ -230,7 +247,11 @@
           }
         : null;
       if (selInfo) {
-        if (el) {
+        if (snapSel.kind === "member" && snapSel.primaryId) {
+          selInfo.textContent = "Member · " + snapSel.primaryId;
+        } else if (snapSel.kind === "cell" && snapSel.primaryId) {
+          selInfo.textContent = "Cell · " + snapSel.primaryId;
+        } else if (el) {
           selInfo.textContent =
             el.displayCode +
             " · " +
@@ -601,6 +622,34 @@
 
     function setActiveTool(tool) {
       C.commands.setActiveTool(cmdState, tool);
+      if (tool === C.commands.TOOLS.GRID && cmdState.structureEnabled) {
+        var el = model.selectedSync;
+        if (el && el.elementId) {
+          memberTools
+            .promptGrid(el.elementId)
+            .then(function (res) {
+              if (!res) {
+                setActiveTool(C.commands.TOOLS.SELECT);
+                return;
+              }
+              history.push({
+                type: "equal_grid",
+                before: null,
+                after: res.topology,
+                payload: { elementId: el.elementId, rows: res.rows, columns: res.columns },
+              });
+              setSaveStatus("saved");
+              setActiveTool(C.commands.TOOLS.SELECT);
+              paint();
+            })
+            .catch(function (err) {
+              try {
+                global.alert(err && err.message ? err.message : String(err));
+              } catch (e) {}
+              setActiveTool(C.commands.TOOLS.SELECT);
+            });
+        }
+      }
       syncChrome();
       paint();
     }
@@ -713,16 +762,76 @@
     }
 
     function undo() {
+      var el = model.selectedSync;
+      if (el && el.elementId && cmdState.structureEnabled) {
+        memberTools
+          .undo(el.elementId)
+          .then(function (res) {
+            history.push({
+              type: "structure_undo",
+              before: null,
+              after: res && res.topology,
+              payload: { elementId: el.elementId },
+            });
+            setSaveStatus("saved");
+            paint();
+          })
+          .catch(function () {
+            var cmd = history.undo();
+            paint();
+            return cmd;
+          });
+        return null;
+      }
       var cmd = history.undo();
-      // Infrastructure-only in Batch D unless a safe domain apply exists.
       paint();
       return cmd;
     }
 
     function redo() {
+      var el = model.selectedSync;
+      if (el && el.elementId && cmdState.structureEnabled) {
+        memberTools
+          .redo(el.elementId)
+          .then(function (res) {
+            history.push({
+              type: "structure_redo",
+              before: null,
+              after: res && res.topology,
+              payload: { elementId: el.elementId },
+            });
+            setSaveStatus("saved");
+            paint();
+          })
+          .catch(function () {
+            var cmd = history.redo();
+            paint();
+            return cmd;
+          });
+        return null;
+      }
       var cmd = history.redo();
       paint();
       return cmd;
+    }
+
+    function setStructureEnabled(on) {
+      cmdState.structureEnabled = !!on;
+      if (C.commands.setStructureEnabled) C.commands.setStructureEnabled(cmdState, !!on);
+      memberTools.setStructureEnabled(!!on);
+      if (!on && (C.commands.STRUCTURE_TOOLS || []).indexOf(cmdState.activeTool) >= 0) {
+        cmdState.activeTool = C.commands.TOOLS.SELECT;
+      }
+      syncChrome();
+      paint();
+    }
+
+    function refreshStructureForSelection() {
+      var el = model.selectedSync;
+      if (!el || !el.elementId) return;
+      memberTools.loadTopology(el.elementId).then(function () {
+        paint();
+      }).catch(function () {});
     }
 
     // Wire toolbar
@@ -820,6 +929,8 @@
       var tool = cmdState.activeTool;
       var t = ev.target;
       var elNode = t && t.closest ? t.closest("[data-element-id]") : null;
+      var memNode = t && t.closest ? t.closest("[data-member-id]") : null;
+      var cellNode = t && t.closest ? t.closest("[data-cell-id]") : null;
 
       if (tool === C.commands.TOOLS.PAN || ev.button === 1) {
         panning = { x: ev.clientX, y: ev.clientY, pointerId: ev.pointerId };
@@ -827,6 +938,46 @@
           vpEl.setPointerCapture(ev.pointerId);
         } catch (e) {}
         vpEl.classList.add("is-panning");
+        return;
+      }
+
+      // Batch E: confirm member placement on click
+      if (
+        (tool === C.commands.TOOLS.MEMBER ||
+          tool === C.commands.TOOLS.MEMBER_V ||
+          tool === C.commands.TOOLS.MEMBER_H) &&
+        cmdState.structureEnabled &&
+        ev.button === 0
+      ) {
+        if (!memberTools.state.ghost) return;
+        setSaveStatus("saving");
+        memberTools
+          .confirmGhost()
+          .then(function (res) {
+            history.push({
+              type: "place_member",
+              before: null,
+              after: res && res.topology,
+              payload: { member: res && res.member },
+            });
+            setSaveStatus("saved");
+            paint();
+          })
+          .catch(function (err) {
+            setSaveStatus("error");
+            try {
+              global.alert(err && err.message ? err.message : String(err));
+            } catch (e) {}
+          });
+        return;
+      }
+
+      if (tool === C.commands.TOOLS.SELECT && memNode) {
+        selection.select(memNode.getAttribute("data-member-id"), false, "member");
+        return;
+      }
+      if (tool === C.commands.TOOLS.SELECT && cellNode) {
+        selection.select(cellNode.getAttribute("data-cell-id"), false, "cell");
         return;
       }
 
@@ -853,15 +1004,34 @@
     vpEl.addEventListener("pointermove", function (ev) {
       var rect = vpEl.getBoundingClientRect();
       var world = viewport.viewportToWorld(ev.clientX - rect.left, ev.clientY - rect.top);
+      var worldPt = world;
       if (snap.enabled) {
         var sp = snap.snapPoint(world.xMm, world.yMm, {
           zoom: viewport.zoom,
           elements: model.elements,
           gridMm: grid.spacingForZoom(viewport.zoom).minorMm,
         });
-        scheduleCursorStatus({ xMm: sp.xMm, yMm: sp.yMm });
+        worldPt = { xMm: sp.xMm, yMm: sp.yMm };
+        scheduleCursorStatus(worldPt);
       } else {
         scheduleCursorStatus(world);
+      }
+
+      var tool = cmdState.activeTool;
+      if (
+        cmdState.structureEnabled &&
+        (tool === C.commands.TOOLS.MEMBER ||
+          tool === C.commands.TOOLS.MEMBER_V ||
+          tool === C.commands.TOOLS.MEMBER_H)
+      ) {
+        memberTools.updateGhost(tool, worldPt, model.elements, function (x, y) {
+          if (!snap.enabled) return { xMm: x, yMm: y };
+          return snap.snapPoint(x, y, {
+            zoom: viewport.zoom,
+            elements: model.elements,
+            gridMm: grid.spacingForZoom(viewport.zoom).minorMm,
+          });
+        });
       }
 
       var hoverNode = ev.target && ev.target.closest ? ev.target.closest("[data-element-id]") : null;
@@ -874,7 +1044,7 @@
       // Pan: update transforms only — avoid full scene HTML rebuild every move
       if (typeof viewport.cssTransform === "function") {
         var xform = viewport.cssTransform();
-        Array.prototype.forEach.call(vpEl.querySelectorAll(".uc-layer--world, .uc-layer--conn, .uc-layer--grid"), function (layer) {
+        Array.prototype.forEach.call(vpEl.querySelectorAll(".uc-layer--world, .uc-layer--conn, .uc-layer--grid, .uc-layer--structure"), function (layer) {
           layer.style.transform = xform;
           layer.style.transformOrigin = "0 0";
         });
@@ -920,6 +1090,7 @@
       var key = ev.key;
       var mod = ev.ctrlKey || ev.metaKey;
       if (key === "Escape") {
+        memberTools.cancelGhost();
         setActiveTool(C.commands.TOOLS.SELECT);
         return;
       }
@@ -940,10 +1111,67 @@
         redo();
         return;
       }
-      // Delete intentionally no-op (disabled) — avoid browser-only deletion
+      if ((key === "Delete" || key === "Backspace") && !mod) {
+        var sel = selection.snapshot();
+        if (sel.kind === "member" && sel.primaryId) {
+          ev.preventDefault();
+          setSaveStatus("saving");
+          memberTools
+            .deleteMember(sel.primaryId)
+            .then(function (res) {
+              history.push({
+                type: "delete_member",
+                before: null,
+                after: res && res.topology,
+                payload: { memberId: sel.primaryId },
+              });
+              selection.clear();
+              setSaveStatus("saved");
+              if (model.selectedSync && model.selectedSync.elementId) {
+                return memberTools.loadTopology(model.selectedSync.elementId);
+              }
+            })
+            .then(function () {
+              paint();
+            })
+            .catch(function (err) {
+              setSaveStatus("error");
+              try {
+                global.alert(err && err.message ? err.message : String(err));
+              } catch (e) {}
+            });
+        }
+      }
     }
     vpEl.addEventListener("keydown", onKey);
     rootEl.addEventListener("keydown", onKey);
+
+    if (deleteBtn) {
+      deleteBtn.onclick = function () {
+        var sel = selection.snapshot();
+        if (sel.kind !== "member" || !sel.primaryId) return;
+        setSaveStatus("saving");
+        memberTools
+          .deleteMember(sel.primaryId)
+          .then(function (res) {
+            history.push({
+              type: "delete_member",
+              before: null,
+              after: res && res.topology,
+              payload: { memberId: sel.primaryId },
+            });
+            selection.clear();
+            setSaveStatus("saved");
+            paint();
+          })
+          .catch(function (err) {
+            setSaveStatus("error");
+            try {
+              global.alert(err && err.message ? err.message : String(err));
+            } catch (e) {}
+          });
+      };
+    }
 
     // Observe app save pill for B2 durability honesty
     try {
@@ -969,6 +1197,9 @@
       zoomIn: zoomIn,
       zoomOut: zoomOut,
       setActiveTool: setActiveTool,
+      setStructureEnabled: setStructureEnabled,
+      refreshStructureForSelection: refreshStructureForSelection,
+      memberTools: memberTools,
       setElementPreviewSvg: setElementPreviewSvg,
       hasGoodElementPreview: hasGoodElementPreview,
       markPendingPreviewFit: markPendingPreviewFit,

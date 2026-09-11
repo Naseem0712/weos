@@ -282,6 +282,37 @@
   z-index: 4;
   pointer-events: none;
 }
+.uc-layer--structure {
+  z-index: 5;
+  pointer-events: none;
+}
+.uc-cell {
+  border: 1px dashed rgba(100, 116, 139, 0.45);
+  background: rgba(148, 163, 184, 0.06);
+  pointer-events: auto !important;
+  cursor: pointer;
+}
+.uc-cell.is-hover,
+.uc-cell:hover {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.55);
+}
+.uc-member {
+  background: rgba(15, 23, 42, 0.85);
+  pointer-events: auto !important;
+  cursor: pointer;
+  min-width: 4px;
+  min-height: 4px;
+}
+.uc-member[data-orientation="V"] {
+  width: 4px !important;
+}
+.uc-member[data-orientation="H"] {
+  height: 4px !important;
+}
+.uc-structure-ghost {
+  overflow: visible;
+}
 
 .uc-status-bar [data-uc="cursorStatus"] {
   min-width: 14.5rem;
