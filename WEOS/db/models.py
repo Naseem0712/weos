@@ -1255,6 +1255,7 @@ COST_BASIS_TYPES = (
     "PER_KG",
     "PER_RMT",
     "PER_RFT",
+    "PER_LENGTH",
     "PER_PC",
     "PER_NOS",
     "PER_SET",
@@ -1749,6 +1750,278 @@ class EngineeringBomLine(Base):
             "deductionMode": self.deduction_mode,
             "costBasisType": self.cost_basis_type,
             "costBasisValue": self.cost_basis_value,
+            "sortOrder": self.sort_order,
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "usesQuoteSellingRate": False,
+        }
+
+
+# ── WEOS V2 Engineering Costing + Selling Price Engine ────────────────────────
+
+COSTING_DOC_STATUSES = ("CURRENT", "STALE", "ERROR", "PARTIAL")
+COST_CALC_STATUSES = ("READY", "PARTIAL", "ERROR", "STALE")
+COST_BREAKDOWN_CATEGORIES = (
+    "MATERIAL",
+    "GLASS",
+    "HARDWARE",
+    "ACCESSORIES",
+    "COATING",
+    "FABRICATION",
+    "INSTALLATION",
+    "TRANSPORT",
+    "WASTAGE",
+    "OVERHEAD",
+    "OTHER",
+)
+COST_RULE_DOMAINS = (
+    "WASTAGE",
+    "COATING",
+    "FABRICATION",
+    "INSTALLATION",
+    "TRANSPORT",
+    "OVERHEAD",
+)
+COST_RULE_SCOPES = ("DESIGN", "PROJECT", "ITEM", "SERIES", "FAMILY", "COMPANY")
+# Precedence high → low: Design > Project > Item > Series > Family > Company
+COST_RULE_PRECEDENCE = ("DESIGN", "PROJECT", "ITEM", "SERIES", "FAMILY", "COMPANY")
+COATING_MODES = ("INCLUDED", "SEPARATE", "NOT_APPLICABLE")
+SELLING_PRICE_METHODS = (
+    "COST_PLUS_MARKUP",
+    "COST_PLUS_TARGET_MARGIN",
+    "MANUAL_RATE",
+    "MANUAL_AMOUNT",
+    "UNIT_RATE",
+    "LEGACY_MANUAL_RATE",
+)
+COMMERCIAL_UNITS = ("SFT", "SQM", "NOS", "OPENING", "RFT", "RMT", "PC", "SET", "UNIT")
+SELLING_LOCK_STATUSES = ("DRAFT", "UNLOCKED", "LOCKED")
+COST_PRECISION_MODES = ("EXACT", "ESTIMATED", "ESTIMATED_STOCK", "NOMINAL")
+
+
+class CostRule(Base):
+    """Deterministic cost rule master — separate domains; never quote selling rate."""
+
+    __tablename__ = "cost_rules"
+
+    rule_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    company_gst: Mapped[str | None] = mapped_column(String(40), index=True)
+    domain: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    scope: Mapped[str] = mapped_column(String(30), index=True, nullable=False, default="COMPANY")
+    scope_ref: Mapped[str | None] = mapped_column(String(80), index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Domain-specific payload (pct, rate, mode, basis, formula keys)
+    params: Mapped[Any] = mapped_column(JSON, nullable=True)
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    source: Mapped[str | None] = mapped_column(String(40), default="seed")  # seed | manual | legacy
+    manual_review: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "ruleId": self.rule_id,
+            "companyGst": self.company_gst,
+            "domain": self.domain,
+            "scope": self.scope,
+            "scopeRef": self.scope_ref,
+            "name": self.name,
+            "params": self.params or {},
+            "priority": self.priority,
+            "status": self.status,
+            "revision": self.revision,
+            "source": self.source,
+            "manualReview": bool(self.manual_review),
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+            "batch": "ENG-COST",
+            "usesQuoteSellingRate": False,
+        }
+
+
+class CostingDocument(Base):
+    """Derived costing header from Engineering BOM + Cost Rules (not selling/tax/payment)."""
+
+    __tablename__ = "costing_documents"
+
+    costing_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    project_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    design_document_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    assembly_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    element_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    bom_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    scope_level: Mapped[str] = mapped_column(String(30), index=True, nullable=False, default="ELEMENT")
+    status: Mapped[str] = mapped_column(String(30), default="CURRENT", index=True)
+    calc_status: Mapped[str] = mapped_column(String(30), default="READY", index=True)
+    generator_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    bom_revision_token: Mapped[str | None] = mapped_column(String(80))
+    master_revision_token: Mapped[str | None] = mapped_column(String(80))
+    cost_rule_revision_token: Mapped[str | None] = mapped_column(String(80))
+    source_fingerprint: Mapped[str | None] = mapped_column(String(80), index=True)
+    category_totals: Mapped[Any] = mapped_column(JSON, nullable=True)
+    total_cost: Mapped[float] = mapped_column(Float, default=0.0)
+    selling_method: Mapped[str | None] = mapped_column(String(40))
+    selling_subtotal: Mapped[float | None] = mapped_column(Float)
+    suggested_selling: Mapped[float | None] = mapped_column(Float)
+    actual_selling: Mapped[float | None] = mapped_column(Float)
+    gross_profit: Mapped[float | None] = mapped_column(Float)
+    gross_margin_pct: Mapped[float | None] = mapped_column(Float)
+    markup_pct: Mapped[float | None] = mapped_column(Float)
+    target_margin_pct: Mapped[float | None] = mapped_column(Float)
+    commercial_unit: Mapped[str | None] = mapped_column(String(20))
+    calculated_qty: Mapped[float | None] = mapped_column(Float)
+    billing_qty: Mapped[float | None] = mapped_column(Float)
+    billing_qty_override: Mapped[float | None] = mapped_column(Float)
+    lock_status: Mapped[str] = mapped_column(String(20), default="DRAFT")
+    issues: Mapped[Any] = mapped_column(JSON, nullable=True)
+    summary: Mapped[Any] = mapped_column(JSON, nullable=True)
+    lines_payload: Mapped[Any] = mapped_column(JSON, nullable=True)
+    selling_payload: Mapped[Any] = mapped_column(JSON, nullable=True)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    superseded_by: Mapped[str | None] = mapped_column(String(60))
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self, *, include_internal: bool = True) -> dict:
+        data = {
+            "costingId": self.costing_id,
+            "companyGst": self.company_gst,
+            "projectId": self.project_id,
+            "designDocumentId": self.design_document_id,
+            "assemblyId": self.assembly_id,
+            "elementId": self.element_id,
+            "bomId": self.bom_id,
+            "scopeLevel": self.scope_level,
+            "status": self.status,
+            "calcStatus": self.calc_status,
+            "generatorVersion": self.generator_version,
+            "bomRevisionToken": self.bom_revision_token,
+            "masterRevisionToken": self.master_revision_token,
+            "costRuleRevisionToken": self.cost_rule_revision_token,
+            "sourceFingerprint": self.source_fingerprint,
+            "sellingMethod": self.selling_method,
+            "sellingSubtotal": self.selling_subtotal,
+            "suggestedSelling": self.suggested_selling,
+            "actualSelling": self.actual_selling,
+            "commercialUnit": self.commercial_unit,
+            "calculatedQty": self.calculated_qty,
+            "billingQty": self.billing_qty,
+            "billingQtyOverride": self.billing_qty_override,
+            "lockStatus": self.lock_status,
+            "isCurrent": bool(self.is_current),
+            "supersededBy": self.superseded_by,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+            "batch": "ENG-COST",
+            "usesQuoteSellingRateAsCost": False,
+            "editableSource": False,
+        }
+        if include_internal:
+            data.update(
+                {
+                    "categoryTotals": self.category_totals or {},
+                    "totalCost": self.total_cost,
+                    "grossProfit": self.gross_profit,
+                    "grossMarginPct": self.gross_margin_pct,
+                    "markupPct": self.markup_pct,
+                    "targetMarginPct": self.target_margin_pct,
+                    "issues": self.issues or [],
+                    "summary": self.summary or {},
+                    "lines": self.lines_payload or [],
+                    "selling": self.selling_payload or {},
+                    "meta": self.meta,
+                }
+            )
+        return data
+
+    def to_public_commercial_dict(self) -> dict:
+        """Customer/QR/PDF-safe — commercial selling only; no cost/markup/profit."""
+        return {
+            "costingId": self.costing_id,
+            "elementId": self.element_id,
+            "projectId": self.project_id,
+            "sellingSubtotal": self.actual_selling if self.actual_selling is not None else self.selling_subtotal,
+            "commercialUnit": self.commercial_unit,
+            "billingQty": self.billing_qty,
+            "lockStatus": self.lock_status,
+            "batch": "ENG-COST-PUBLIC",
+        }
+
+
+class CostingLine(Base):
+    """Piece-level cost line with full BOM traceability."""
+
+    __tablename__ = "costing_lines"
+
+    line_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    costing_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("costing_documents.costing_id"), index=True, nullable=False
+    )
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    bom_line_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    category: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    breakdown_category: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    master_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    master_kind: Mapped[str | None] = mapped_column(String(40))
+    code: Mapped[str | None] = mapped_column(String(80))
+    description: Mapped[str] = mapped_column(String(400), nullable=False)
+    cost_basis_type: Mapped[str | None] = mapped_column(String(30))
+    cost_basis_value: Mapped[float | None] = mapped_column(Float)
+    quantity_basis: Mapped[float | None] = mapped_column(Float)
+    quantity_unit: Mapped[str | None] = mapped_column(String(20))
+    unit_cost: Mapped[float | None] = mapped_column(Float)
+    extended_cost: Mapped[float] = mapped_column(Float, default=0.0)
+    precision_mode: Mapped[str | None] = mapped_column(String(30))
+    cell_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    member_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    element_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    # Manual override — never overwrite master/BOM source
+    original_unit_cost: Mapped[float | None] = mapped_column(Float)
+    original_extended_cost: Mapped[float | None] = mapped_column(Float)
+    override_unit_cost: Mapped[float | None] = mapped_column(Float)
+    override_extended_cost: Mapped[float | None] = mapped_column(Float)
+    override_reason: Mapped[str | None] = mapped_column(Text)
+    override_user: Mapped[str | None] = mapped_column(String(80))
+    override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "lineId": self.line_id,
+            "costingId": self.costing_id,
+            "companyGst": self.company_gst,
+            "bomLineId": self.bom_line_id,
+            "category": self.category,
+            "breakdownCategory": self.breakdown_category,
+            "masterId": self.master_id,
+            "masterKind": self.master_kind,
+            "code": self.code,
+            "description": self.description,
+            "costBasisType": self.cost_basis_type,
+            "costBasisValue": self.cost_basis_value,
+            "quantityBasis": self.quantity_basis,
+            "quantityUnit": self.quantity_unit,
+            "unitCost": self.unit_cost,
+            "extendedCost": self.extended_cost,
+            "precisionMode": self.precision_mode,
+            "cellId": self.cell_id,
+            "memberId": self.member_id,
+            "elementId": self.element_id,
+            "originalUnitCost": self.original_unit_cost,
+            "originalExtendedCost": self.original_extended_cost,
+            "overrideUnitCost": self.override_unit_cost,
+            "overrideExtendedCost": self.override_extended_cost,
+            "overrideReason": self.override_reason,
+            "overrideUser": self.override_user,
+            "overrideAt": _iso(self.override_at),
             "sortOrder": self.sort_order,
             "meta": self.meta,
             "createdAt": _iso(self.created_at),
