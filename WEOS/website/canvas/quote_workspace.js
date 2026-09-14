@@ -379,6 +379,15 @@
         saveAsTemplate(btn.getAttribute("data-qw-tpl"));
       };
     });
+    host.querySelectorAll("[data-qw-bom]").forEach(function (btn) {
+      btn.onclick = function () {
+        var eid = btn.getAttribute("data-qw-bom");
+        var bomHost = global.document.getElementById("engBomHost");
+        if (C.engineeringBom && C.engineeringBom.openForElement && bomHost) {
+          C.engineeringBom.openForElement(bomHost, eid);
+        }
+      };
+    });
     ["qwFilterFloor", "qwFilterLoc", "qwFilterPt"].forEach(function (id) {
       var el = $(id);
       if (el) el.onchange = function () {

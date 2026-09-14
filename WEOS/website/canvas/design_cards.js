@@ -119,6 +119,13 @@
       '<button type="button" class="weos-ds-btn weos-ds-btn--ghost weos-ds-btn--sm" data-qw-tpl="' +
       esc(card.lineId) +
       '" title="Save as Template">Template</button>' +
+      (card.elementId
+        ? '<button type="button" class="weos-ds-btn weos-ds-btn--ghost weos-ds-btn--sm" data-qw-bom="' +
+          esc(card.elementId) +
+          '" data-qw-bom-line="' +
+          esc(card.lineId) +
+          '" title="Engineering BOM">View BOM</button>'
+        : "") +
       "</div>" +
       "</article>"
     );

@@ -488,6 +488,7 @@ textarea{max-width:100%}
     <button class="navbtn active" data-view="dashboard">Dashboard</button>
     <button class="navbtn" data-view="setup">Project Setup</button>
     <button class="navbtn" data-view="master">Master Ledger</button>
+    <button class="navbtn" data-view="eng-masters">Engineering Masters</button>
     <button class="navbtn" data-view="projects">Saved Projects</button>
     <button class="navbtn" data-view="cart">Design</button>
     <button class="navbtn" data-view="agent">WEOS Agent</button>
@@ -665,6 +666,14 @@ textarea{max-width:100%}
         <div id="mlBody" style="margin-top:.85rem"></div>
       </div>
     </section>
+
+    <!-- ENGINEERING MASTERS (BOM foundation — outside canvas) -->
+    <section id="view-eng-masters" class="grid hidden">
+      <div class="panel" id="engMastersHost"></div>
+    </section>
+
+    <!-- ENGINEERING BOM PANEL (opened from Design Card View BOM) -->
+    <div id="engBomHost" class="eng-bom-host hidden" aria-live="polite"></div>
 
     <!-- CART -->
     <section id="view-cart" class="grid hidden">
@@ -3258,7 +3267,7 @@ function restoreSideNav() {
 }
 
 function setView(v) {
-  const needLogin = ['dashboard','setup','master','projects','customers','cart','quote-review','quote-home'];
+  const needLogin = ['dashboard','setup','master','eng-masters','projects','customers','cart','quote-review','quote-home'];
   if (v === 'admin') v = 'library';
   if (v === 'quote_review') v = 'quote-review';
   if (v === 'quote_home') v = 'quote-home';
@@ -3275,7 +3284,7 @@ function setView(v) {
       try { WEOSCanvas.quoteWorkspace.boot(); } catch (_) {}
     }
     document.querySelectorAll('.navbtn').forEach(b => b.classList.remove('active'));
-    ['dashboard','setup','master','projects','cart','library','product','admin','customers','company','scan','learning','formulas','templates','engines','quote-home','quote-review','agent'].forEach(id => {
+    ['dashboard','setup','master','eng-masters','projects','cart','library','product','admin','customers','company','scan','learning','formulas','templates','engines','quote-home','quote-review','agent'].forEach(id => {
       const el = $('view-'+id); if (!el) return;
       el.classList.toggle('hidden', id !== 'quote-home');
     });
@@ -3285,7 +3294,7 @@ function setView(v) {
   }
   state.view = v;
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view===v || (v==='library' && b.dataset.view==='library')));
-  ['dashboard','setup','master','projects','cart','library','product','admin','customers','company','scan','learning','formulas','templates','engines','quote-home','quote-review','agent'].forEach(id => {
+  ['dashboard','setup','master','eng-masters','projects','cart','library','product','admin','customers','company','scan','learning','formulas','templates','engines','quote-home','quote-review','agent'].forEach(id => {
     const el = $('view-'+id); if (!el) return;
     if (id === 'admin' && v === 'library') { el.classList.remove('hidden'); return; }
     el.classList.toggle('hidden', id!==v);
@@ -3296,6 +3305,7 @@ function setView(v) {
     'quote-review':['Quote Review','Design cards · totals · duplicate · PDF'],
     'quote-home':['Quote / Design workspace','Restore draft or New Quote — then Engineering'],
     master:['Master Ledger','Package quotes, advances, GST and balance — one job only'],
+    'eng-masters':['Engineering Masters','Series · profiles · glass · hardware · accessories (BOM foundation)'],
     projects:['Saved Projects','Search, filter, duplicate, archive — versions kept'],
     cart:['Engineering Workspace','Universal Canvas · Quote Review is separate'],
     agent:['WEOS Agent','Mobile / quote login · cloud quotes · live suggestions'],
@@ -3317,6 +3327,14 @@ function setView(v) {
   if (v==='dashboard') loadDashboard();
   if (v==='setup') { refreshSetupSummary(); loadSetupList(); renderPackageQuotes(); renderSetupDiscount(); lookupSetupClient(); refreshQuoteCopySuggestions(); }
   if (v==='master') initMasterLedger();
+  if (v==='eng-masters') {
+    try {
+      var host = $('engMastersHost');
+      if (host && window.WEOSCanvas && WEOSCanvas.engineeringMasters) {
+        WEOSCanvas.engineeringMasters.mount(host, 'series');
+      }
+    } catch (_) {}
+  }
   if (v==='projects') loadProjects();
   if (v==='library') initAdmin();
   if (v==='cart') {
@@ -14224,6 +14242,8 @@ async function pingEngine(){
 <script src="/static/canvas/member_tools.js"></script>
 <script src="/static/canvas/design_cards.js"></script>
 <script src="/static/canvas/design_duplicate.js"></script>
+<script src="/static/canvas/engineering_masters.js"></script>
+<script src="/static/canvas/engineering_bom.js"></script>
 <script src="/static/canvas/quote_workspace.js"></script>
 <script src="/static/canvas/design_context.js"></script>
 <script src="/static/canvas/universal_canvas.js"></script>

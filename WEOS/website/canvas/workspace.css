@@ -921,3 +921,22 @@ body.weos-eng-focus .top #savePill {
   font: inherit;
   padding: 0.25rem 0.35rem;
 }
+
+/* Engineering Masters + BOM (outside canvas) */
+.eng-master__tabs { display:flex; flex-wrap:wrap; gap:.35rem; margin:.6rem 0; }
+.eng-master__table-wrap, .eng-bom__table-wrap { overflow:auto; max-height:60vh; }
+.eng-master__table, .eng-bom__table { width:100%; border-collapse:collapse; font-size:.82rem; }
+.eng-master__table th, .eng-master__table td,
+.eng-bom__table th, .eng-bom__table td { border-bottom:1px solid rgba(20,20,16,.1); padding:.35rem .4rem; text-align:left; }
+.eng-master__editor { margin-top:.8rem; padding:.6rem; border:1px solid rgba(20,20,16,.12); border-radius:8px; }
+.eng-master__form-row { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.5rem; }
+.eng-bom-host { position:fixed; right:1rem; bottom:1rem; top:4rem; width:min(720px,94vw); z-index:80; background:var(--weos-color-bg,#f7f4ec); border:1px solid rgba(20,20,16,.18); border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,.18); overflow:auto; padding:.75rem; }
+.eng-bom-host.hidden { display:none; }
+.eng-bom__head { display:flex; justify-content:space-between; gap:.5rem; align-items:flex-start; }
+.eng-bom__badge { display:inline-block; padding:.1rem .4rem; border-radius:4px; font-size:.72rem; font-weight:600; }
+.eng-bom__badge--ready { background:#d8f3e2; color:#14532d; }
+.eng-bom__badge--partial { background:#fff3cd; color:#7a5b00; }
+.eng-bom__badge--error, .eng-bom__badge--stale { background:#fde2e1; color:#7f1d1d; }
+.eng-bom__issues { margin:.5rem 0; padding-left:1.1rem; font-size:.8rem; }
+.eng-bom__issue--error { color:#7f1d1d; }
+.eng-bom__issue--warning { color:#7a5b00; }
