@@ -77,8 +77,11 @@
       connections: [],
       bounds: C.sceneRenderer.boundsFor([]),
       floors: [],
+      floorCatalog: [],
       filterFloorId: null,
       filterLocationId: null,
+      activeFloorId: null,
+      activeLocationId: null,
       previewContext: { previewByElementId: {} },
       scene: null,
       selectedSync: null,
@@ -342,7 +345,9 @@
         orientation: el.orientation || "elevation",
         assemblyId: el.assemblyId || null,
         floorId: el.floorId || null,
+        floorName: el.floorName || null,
         locationId: el.locationId || null,
+        locationName: el.locationName || null,
         configPayload: el.configPayload || {},
         geometryPayload: el.geometryPayload || {},
         status: el.status || "draft",
@@ -451,44 +456,342 @@
       return el || null;
     }
 
+    function projectIdFromApp() {
+      try {
+        var st = global.state || {};
+        if (st.projectId) return String(st.projectId);
+      } catch (e) {}
+      return null;
+    }
+
+    function apiCall(path, opts) {
+      if (typeof global.api === "function") return global.api(path, opts);
+      return Promise.reject(new Error("api unavailable"));
+    }
+
+    function findFloor(floorId) {
+      var id = floorId || model.activeFloorId;
+      if (!id) return null;
+      var list = model.floorCatalog || [];
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].floorId === id) return list[i];
+      }
+      return null;
+    }
+
+    function findLocation(locationId, floorId) {
+      var fl = findFloor(floorId || model.activeFloorId);
+      if (!fl) return null;
+      var locs = fl.locations || [];
+      for (var i = 0; i < locs.length; i++) {
+        if (locs[i].locationId === locationId) return locs[i];
+      }
+      return null;
+    }
+
+    function getActiveFloorLocation() {
+      var fl = findFloor(model.activeFloorId);
+      var loc = findLocation(model.activeLocationId, model.activeFloorId);
+      return {
+        floorId: model.activeFloorId || null,
+        floorName: fl ? fl.name || fl.code || null : null,
+        locationId: model.activeLocationId || null,
+        locationName: loc ? loc.name || loc.code || null : null,
+      };
+    }
+
+    function selectedDesignElement() {
+      var snapSel = selection.snapshot();
+      var id = snapSel.primaryElementId || snapSel.primaryId;
+      if (!id || snapSel.kind === "member" || snapSel.kind === "cell") return null;
+      return (
+        (model.elements || []).filter(function (e) {
+          return e.elementId === id;
+        })[0] || null
+      );
+    }
+
+    function persistFloorLocationOnSelection() {
+      var el = selectedDesignElement();
+      if (!el || !el.elementId) return null;
+      var meta = getActiveFloorLocation();
+      return applyElementPatch(el.elementId, {
+        floorId: meta.floorId,
+        floorName: meta.floorName,
+        locationId: meta.locationId,
+        locationName: meta.locationName,
+      });
+    }
+
     function fillSelectors() {
       if (!floorSel) return;
-      var floors = (model.scene && model.scene.floors) || [];
-      floorSel.innerHTML = '<option value="">All floors</option>';
+      var floors = model.floorCatalog || [];
+      var html = '<option value="">Select floor</option>';
       floors.forEach(function (fl) {
-        floorSel.innerHTML +=
+        html +=
           '<option value="' +
           String(fl.floorId || "").replace(/"/g, "") +
           '">' +
-          String(fl.name || fl.code || fl.floorId).replace(/</g, "") +
+          String(fl.name || fl.code || fl.floorId).replace(/</g, "&lt;") +
           "</option>";
       });
-      floorSel.value = model.filterFloorId || "";
+      html += '<option value="__new__">+ New floor…</option>';
+      floorSel.innerHTML = html;
+      var want = model.activeFloorId || "";
+      if (want && !floors.some(function (f) { return f.floorId === want; })) want = "";
+      floorSel.value = want;
+      floorSel.disabled = false;
       refillLocations();
     }
 
     function refillLocations() {
       if (!locSel) return;
-      var floors = (model.scene && model.scene.floors) || [];
-      locSel.innerHTML = '<option value="">All locations</option>';
-      floors.forEach(function (fl) {
-        if (model.filterFloorId && fl.floorId !== model.filterFloorId) return;
-        (fl.locations || []).forEach(function (loc) {
-          locSel.innerHTML +=
-            '<option value="' +
-            String(loc.locationId || "").replace(/"/g, "") +
-            '">' +
-            String(loc.name || loc.code || loc.locationId).replace(/</g, "") +
-            "</option>";
+      var fl = findFloor(model.activeFloorId);
+      var locs = (fl && fl.locations) || [];
+      var html = '<option value="">Select location</option>';
+      locs.forEach(function (loc) {
+        html +=
+          '<option value="' +
+          String(loc.locationId || "").replace(/"/g, "") +
+          '">' +
+          String(loc.name || loc.code || loc.locationId).replace(/</g, "&lt;") +
+          "</option>";
+      });
+      if (model.activeFloorId) {
+        html += '<option value="__new__">+ New location…</option>';
+      }
+      locSel.innerHTML = html;
+      var want = model.activeLocationId || "";
+      if (want && !locs.some(function (l) { return l.locationId === want; })) want = "";
+      locSel.value = want;
+      locSel.disabled = !model.activeFloorId;
+    }
+
+    function syncSelectorsFromSelection() {
+      var el = selectedDesignElement();
+      if (el) {
+        if (el.floorId) model.activeFloorId = el.floorId;
+        if (el.locationId != null) model.activeLocationId = el.locationId;
+      }
+      fillSelectors();
+    }
+
+    function ensureLocalFloorCatalog() {
+      if ((model.floorCatalog || []).length) return model.floorCatalog;
+      var localFloor = {
+        floorId: "local-floor-unassigned",
+        name: "Unassigned",
+        code: "UNASSIGNED",
+        local: true,
+        locations: [
+          {
+            locationId: "local-loc-general",
+            name: "General",
+            code: "GEN",
+            local: true,
+          },
+        ],
+      };
+      model.floorCatalog = [localFloor];
+      return model.floorCatalog;
+    }
+
+    function refreshFloorCatalog() {
+      var pid = projectIdFromApp();
+      if (!pid || typeof global.api !== "function") {
+        // Prefer scene floors when present; else local draft catalog.
+        var sceneFloors = (model.scene && model.scene.floors) || [];
+        if (sceneFloors.length) {
+          model.floorCatalog = sceneFloors.map(function (fl) {
+            return {
+              floorId: fl.floorId,
+              name: fl.name,
+              code: fl.code,
+              locations: (fl.locations || []).map(function (loc) {
+                return {
+                  locationId: loc.locationId,
+                  name: loc.name,
+                  code: loc.code,
+                };
+              }),
+            };
+          });
+        } else {
+          ensureLocalFloorCatalog();
+        }
+        if (!model.activeFloorId && model.floorCatalog[0]) {
+          model.activeFloorId = model.floorCatalog[0].floorId;
+        }
+        if (model.activeFloorId && !model.activeLocationId) {
+          var fl0 = findFloor(model.activeFloorId);
+          if (fl0 && (fl0.locations || []).length === 1) {
+            model.activeLocationId = fl0.locations[0].locationId;
+          }
+        }
+        fillSelectors();
+        return Promise.resolve(model.floorCatalog);
+      }
+      return apiCall("/api/projects/" + encodeURIComponent(pid) + "/floors")
+        .then(function (payload) {
+          var floors = (payload && payload.floors) || [];
+          if (!floors.length) {
+            ensureLocalFloorCatalog();
+            fillSelectors();
+            return model.floorCatalog;
+          }
+          return Promise.all(
+            floors.map(function (fl) {
+              return apiCall("/api/floors/" + encodeURIComponent(fl.floorId) + "/locations")
+                .then(function (locPayload) {
+                  return {
+                    floorId: fl.floorId,
+                    name: fl.name,
+                    code: fl.code,
+                    isSystem: fl.isSystem,
+                    locations: ((locPayload && locPayload.locations) || []).map(function (loc) {
+                      return {
+                        locationId: loc.locationId,
+                        name: loc.name,
+                        code: loc.code,
+                      };
+                    }),
+                  };
+                })
+                .catch(function () {
+                  return {
+                    floorId: fl.floorId,
+                    name: fl.name,
+                    code: fl.code,
+                    isSystem: fl.isSystem,
+                    locations: [],
+                  };
+                });
+            })
+          ).then(function (catalog) {
+            model.floorCatalog = catalog;
+            if (!model.activeFloorId && catalog[0]) {
+              model.activeFloorId = catalog[0].floorId;
+            }
+            if (model.activeFloorId && !model.activeLocationId) {
+              var flA = findFloor(model.activeFloorId);
+              if (flA && (flA.locations || []).length === 1) {
+                model.activeLocationId = flA.locations[0].locationId;
+              }
+            }
+            fillSelectors();
+            return catalog;
+          });
+        })
+        .catch(function () {
+          ensureLocalFloorCatalog();
+          fillSelectors();
+          return model.floorCatalog;
+        });
+    }
+
+    function createFloorInteractive() {
+      var name = global.prompt("New floor name (e.g. Ground Floor, First Floor)", "");
+      if (name == null) {
+        fillSelectors();
+        return Promise.resolve(null);
+      }
+      name = String(name).trim();
+      if (!name) {
+        fillSelectors();
+        return Promise.resolve(null);
+      }
+      var pid = projectIdFromApp();
+      if (!pid || typeof global.api !== "function") {
+        var id = "local-floor-" + Date.now().toString(36);
+        var fl = { floorId: id, name: name, local: true, locations: [] };
+        model.floorCatalog = (model.floorCatalog || []).concat([fl]);
+        model.activeFloorId = id;
+        model.activeLocationId = null;
+        fillSelectors();
+        persistFloorLocationOnSelection();
+        return Promise.resolve(fl);
+      }
+      return apiCall("/api/projects/" + encodeURIComponent(pid) + "/floors", {
+        method: "POST",
+        body: { name: name },
+      }).then(function (fl) {
+        return refreshFloorCatalog().then(function () {
+          model.activeFloorId = fl.floorId;
+          model.activeLocationId = null;
+          fillSelectors();
+          persistFloorLocationOnSelection();
+          paint();
+          return fl;
         });
       });
-      locSel.value = model.filterLocationId || "";
+    }
+
+    function createLocationInteractive() {
+      if (!model.activeFloorId) {
+        fillSelectors();
+        return Promise.resolve(null);
+      }
+      var name = global.prompt("New location name (e.g. Living Room, Master Bedroom)", "");
+      if (name == null) {
+        fillSelectors();
+        return Promise.resolve(null);
+      }
+      name = String(name).trim();
+      if (!name) {
+        fillSelectors();
+        return Promise.resolve(null);
+      }
+      var fl = findFloor(model.activeFloorId);
+      if (!fl || fl.local || String(model.activeFloorId).indexOf("local-") === 0) {
+        var lid = "local-loc-" + Date.now().toString(36);
+        var loc = { locationId: lid, name: name, local: true };
+        fl = fl || { floorId: model.activeFloorId, name: "Floor", locations: [] };
+        fl.locations = (fl.locations || []).concat([loc]);
+        if (!findFloor(model.activeFloorId)) {
+          model.floorCatalog = (model.floorCatalog || []).concat([fl]);
+        }
+        model.activeLocationId = lid;
+        fillSelectors();
+        persistFloorLocationOnSelection();
+        paint();
+        return Promise.resolve(loc);
+      }
+      return apiCall("/api/floors/" + encodeURIComponent(model.activeFloorId) + "/locations", {
+        method: "POST",
+        body: { name: name },
+      }).then(function (loc) {
+        return refreshFloorCatalog().then(function () {
+          model.activeLocationId = loc.locationId;
+          fillSelectors();
+          persistFloorLocationOnSelection();
+          paint();
+          return loc;
+        });
+      });
     }
 
     function loadScene(scene) {
       model.scene = scene || { floors: [], unlocatedAssemblies: [] };
       model.floors = model.scene.floors || [];
-      fillSelectors();
+      if ((model.floors || []).length) {
+        model.floorCatalog = model.floors.map(function (fl) {
+          return {
+            floorId: fl.floorId,
+            name: fl.name,
+            code: fl.code,
+            locations: (fl.locations || []).map(function (loc) {
+              return {
+                locationId: loc.locationId,
+                name: loc.name,
+                code: loc.code,
+              };
+            }),
+          };
+        });
+        fillSelectors();
+      } else {
+        refreshFloorCatalog();
+      }
       applyFilters();
       initialSceneFitDone = false;
       fitScene();
@@ -877,20 +1180,67 @@
 
     if (floorSel) {
       floorSel.onchange = function () {
-        model.filterFloorId = floorSel.value || null;
-        model.filterLocationId = null;
+        var v = floorSel.value || "";
+        if (v === "__new__") {
+          createFloorInteractive().catch(function (err) {
+            try {
+              global.alert(err && err.message ? err.message : String(err));
+            } catch (e) {}
+            fillSelectors();
+          });
+          return;
+        }
+        model.activeFloorId = v || null;
+        model.activeLocationId = null;
         refillLocations();
-        applyFilters();
-        fitScene();
+        // Auto-pick first location when floor has exactly one (common Unassigned/General case)
+        var fl = findFloor(model.activeFloorId);
+        if (fl && (fl.locations || []).length === 1) {
+          model.activeLocationId = fl.locations[0].locationId;
+          if (locSel) locSel.value = model.activeLocationId;
+        }
+        persistFloorLocationOnSelection();
+        paint();
       };
     }
     if (locSel) {
       locSel.onchange = function () {
-        model.filterLocationId = locSel.value || null;
-        applyFilters();
-        fitScene();
+        var v = locSel.value || "";
+        if (v === "__new__") {
+          createLocationInteractive().catch(function (err) {
+            try {
+              global.alert(err && err.message ? err.message : String(err));
+            } catch (e) {}
+            fillSelectors();
+          });
+          return;
+        }
+        model.activeLocationId = v || null;
+        persistFloorLocationOnSelection();
+        paint();
       };
     }
+    var floorRefreshBtn = rootEl.querySelector("#ucFloorRefresh");
+    if (floorRefreshBtn) {
+      floorRefreshBtn.onclick = function () {
+        refreshFloorCatalog();
+      };
+    }
+
+    // Compact empty-state CTA
+    vpEl.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      var btn = t.closest("[data-uc-empty-add]");
+      if (!btn) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      try {
+        if (C.workspace && typeof C.workspace.openAddDesignModal === "function") {
+          C.workspace.openAddDesignModal();
+        }
+      } catch (eEmpty) {}
+    });
 
     var _lastSelectedKey = "";
     selection.onChange(function (snapSel) {
@@ -903,6 +1253,7 @@
         return;
       }
       paint();
+      syncSelectorsFromSelection();
       onSelectCbs.forEach(function (fn) {
         try {
           fn(model.selectedSync, snapSel);
@@ -1185,10 +1536,13 @@
     } catch (e) {}
 
     syncChrome();
+    refreshFloorCatalog();
     paint();
 
     return {
       loadScene: loadScene,
+      refreshFloorCatalog: refreshFloorCatalog,
+      getActiveFloorLocation: getActiveFloorLocation,
       fit: fit,
       fitScene: fitScene,
       fitSelected: fitSelected,

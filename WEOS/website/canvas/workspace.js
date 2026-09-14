@@ -75,8 +75,9 @@
       '<div class="weos-ds-toolbar__group">' +
       '<button type="button" class="weos-ds-btn weos-ds-btn--ghost weos-ds-btn--sm" data-uc="gridToggle" title="Toggle grid">Grid</button>' +
       '<button type="button" class="weos-ds-btn weos-ds-btn--ghost weos-ds-btn--sm" data-uc="snapToggle" title="Toggle snap">Snap</button>' +
-      '<label class="muted uc-floor-label" style="font-size:.72rem">Floor <select id="ucFloorSel" class="weos-ds-select"></select></label>' +
-      '<label class="muted uc-floor-label" style="font-size:.72rem">Loc <select id="ucLocSel" class="weos-ds-select"></select></label>' +
+      '<label class="muted uc-floor-label" title="Assign floor to selected design">Floor <select id="ucFloorSel" class="weos-ds-select uc-floor-sel"></select></label>' +
+      '<label class="muted uc-floor-label" title="Assign location to selected design">Loc <select id="ucLocSel" class="weos-ds-select uc-loc-sel"></select></label>' +
+      '<button type="button" class="weos-ds-btn weos-ds-btn--ghost weos-ds-btn--sm" id="ucFloorRefresh" title="Reload floors / locations">↻</button>' +
       "</div>" +
       '<span class="weos-ds-toolbar__spacer"></span>' +
       '<div class="weos-ds-toolbar__group">' +
@@ -189,17 +190,17 @@
     chrome.innerHTML =
       '<div class="uc-project-chrome__row">' +
       '<div class="uc-project-chrome__identity">' +
-      '<strong id="ucWorkspaceTitle">Engineering Workspace</strong>' +
+      '<strong id="ucWorkspaceTitle">Design</strong>' +
       '<span class="muted" id="ucSelectionTitle">No selection</span>' +
       "</div>" +
       '<div class="uc-project-chrome__setup" id="ucSetupCompact">' +
       '<span class="muted">Setup</span> <strong id="ucSetupText">—</strong>' +
-      '<button type="button" class="btn ghost sm" id="btnUcEditSetup">Edit setup</button>' +
+      '<button type="button" class="btn ghost sm" id="btnUcEditSetup">Edit</button>' +
       "</div>" +
       '<div class="uc-project-chrome__actions">' +
       '<button type="button" class="btn sm" id="btnUcAddDesign">+ Add Design</button>' +
       '<button type="button" class="btn sm" id="btnUcAddToQuote" title="Save design to quote after server confirm">Add to Quote</button>' +
-      '<button type="button" class="btn ghost sm" id="btnUcQuoteLines">Quote Review</button>' +
+      '<button type="button" class="btn ghost sm uc-chrome-dup" id="btnUcQuoteLines">Quote Review</button>' +
       "</div>" +
       "</div>";
     var split = cart.querySelector(".cart-split");
@@ -278,6 +279,7 @@
     var n = ((host.getViewModel && host.getViewModel().elements) || []).length + 1;
     var displayCode = prefix + "-" + String(n).padStart(2, "0");
     var id = "local-" + productType.toLowerCase() + "-" + Date.now().toString(36);
+    var floorLoc = (host.getActiveFloorLocation && host.getActiveFloorLocation()) || {};
     var el = host.upsertLocalElement({
       elementId: id,
       displayCode: displayCode,
@@ -287,6 +289,10 @@
       // D3: deterministic world mm near origin; Fit uses widthMm×heightMm (not SVG viewBox).
       xMm: 0,
       yMm: 0,
+      floorId: floorLoc.floorId || null,
+      floorName: floorLoc.floorName || null,
+      locationId: floorLoc.locationId || null,
+      locationName: floorLoc.locationName || null,
     });
     // Immediate Fit to engineering mm (placeholder shares W×H with final artwork).
     host.selectElementById(id, { fit: true });
@@ -440,12 +446,24 @@
           C.quoteWorkspace.syncTopBar();
         } catch (e) {}
       }
+      try {
+        global.document.body.classList.add("weos-eng-focus");
+      } catch (eFocus) {}
+      try {
+        var hostFl = global.WEOS_UNIVERSAL_CANVAS_HOST;
+        if (hostFl && typeof hostFl.refreshFloorCatalog === "function") {
+          hostFl.refreshFloorCatalog();
+        }
+      } catch (eFl) {}
     } else {
       cart.classList.remove("uc-mode", "uc-primary", "uc-show-quote", "qw-engineering");
       var chrome = global.document.getElementById("ucProjectChrome");
       if (chrome) chrome.style.display = "none";
       var navCartOff = global.document.querySelector('.navbtn[data-view="cart"]');
       if (navCartOff) navCartOff.textContent = "Design";
+      try {
+        global.document.body.classList.remove("weos-eng-focus");
+      } catch (eFocusOff) {}
     }
   }
 

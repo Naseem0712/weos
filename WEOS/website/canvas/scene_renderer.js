@@ -108,7 +108,13 @@
         '<div class="uc-layer uc-layer--world uc-world" data-layer="world"></div>' +
         '<div class="uc-layer uc-layer--conn uc-conn" data-layer="conn"></div>' +
         '<div class="uc-layer uc-layer--dims" data-layer="dims"></div>' +
-        '<div class="uc-layer uc-layer--ui" data-layer="ui"></div>';
+        '<div class="uc-layer uc-layer--ui" data-layer="ui"></div>' +
+        '<div class="uc-empty-host" data-layer="empty"></div>';
+    } else if (!hostEl.querySelector(".uc-empty-host")) {
+      var emptyHost = global.document.createElement("div");
+      emptyHost.className = "uc-empty-host";
+      emptyHost.setAttribute("data-layer", "empty");
+      hostEl.appendChild(emptyHost);
     }
     return {
       grid: hostEl.querySelector(".uc-layer--grid"),
@@ -116,6 +122,7 @@
       conn: hostEl.querySelector(".uc-layer--conn"),
       dims: hostEl.querySelector(".uc-layer--dims"),
       ui: hostEl.querySelector(".uc-layer--ui"),
+      empty: hostEl.querySelector(".uc-empty-host"),
     };
   }
 
@@ -140,17 +147,21 @@
     layers.conn.style.transform = xform;
     layers.conn.style.transformOrigin = "0 0";
 
-    // Empty state (UI layer — not product SVG)
+    // Empty state sits OUTSIDE transformed layers (viewport overlay) — never clipped by zoom/pan.
     if (!elements.length) {
       layers.world.innerHTML = "";
       layers.conn.innerHTML = "";
-      layers.ui.innerHTML =
-        '<div class="uc-empty-state weos-ds-state">' +
-        '<p class="uc-empty-state__title">No design yet</p>' +
-        '<p class="uc-empty-state__text">Add a design from the project workflow, or select a product to begin. The canvas stays empty until you confirm an action.</p>' +
-        "</div>";
+      layers.ui.innerHTML = "";
+      if (layers.empty) {
+        layers.empty.innerHTML =
+          '<div class="uc-empty-state uc-empty-state--compact weos-ds-state">' +
+          '<p class="uc-empty-state__title">Canvas ready</p>' +
+          '<button type="button" class="weos-ds-btn weos-ds-btn--sm" data-uc-empty-add>Add Design</button>' +
+          "</div>";
+      }
     } else {
       layers.ui.innerHTML = "";
+      if (layers.empty) layers.empty.innerHTML = "";
     }
 
     // Grid layer (viewport-only)

@@ -134,6 +134,9 @@
     if (!cart) return;
     cart.classList.add("uc-mode", "uc-primary", "qw-engineering");
     cart.classList.remove("uc-show-quote");
+    try {
+      global.document.body.classList.add("weos-eng-focus");
+    } catch (_) {}
     // Never park a quote list beside the canvas in D2
     var quoteBtn = $("btnUcQuoteLines");
     if (quoteBtn) {
@@ -143,12 +146,18 @@
     var chrome = $("ucProjectChrome");
     if (chrome) {
       var title = $("ucWorkspaceTitle");
-      if (title) title.textContent = "Engineering Workspace";
+      if (title) title.textContent = "Design";
     }
     // Compact props
     var host = $("universalCanvasHost");
     var ws = host && host.querySelector(".uc-workspace");
     if (ws) ws.classList.add("qw-compact-props");
+    try {
+      var hostFl = global.WEOS_UNIVERSAL_CANVAS_HOST;
+      if (hostFl && typeof hostFl.refreshFloorCatalog === "function") {
+        hostFl.refreshFloorCatalog();
+      }
+    } catch (_) {}
   }
 
   async function refreshWorkspaceFromServer() {

@@ -3322,6 +3322,7 @@ function setView(v) {
   if (v==='cart') {
     renderCart(); refreshPreview(); refreshSetupSummary(); refreshExportSetupSelect();
     try {
+      document.body.classList.add('weos-eng-focus');
       if (window.WEOS_UNIVERSAL_CANVAS && window.WEOSCanvas && WEOSCanvas.workspace && WEOSCanvas.workspace.applyPrimaryCutover) {
         WEOSCanvas.workspace.applyPrimaryCutover(true);
       }
@@ -3330,6 +3331,8 @@ function setView(v) {
         if (WEOSCanvas.quoteWorkspace.refreshWorkspaceFromServer) WEOSCanvas.quoteWorkspace.refreshWorkspaceFromServer();
       }
     } catch (_) {}
+  } else {
+    try { document.body.classList.remove('weos-eng-focus'); } catch (_) {}
   }
   if (v==='customers') initCustomers();
   if (v==='company') initCompany();
