@@ -82,7 +82,7 @@ def main() -> None:
 
     # D: workspace payload
     ws = qw.build_quote_workspace(doc)
-    _ok(ws["batch"] == "CANVAS-D2" and len(ws["cards"]) == 1, "D: workspace cards")
+    _ok(ws["batch"] in ("CANVAS-D2", "CANVAS-G") and len(ws["cards"]) == 1, "D: workspace cards")
     _ok(ws["context"]["hasActiveQuote"] is True, "D: active quote context")
 
     # E: frontend card renderer

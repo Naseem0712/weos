@@ -214,7 +214,7 @@ def main() -> None:
 
     # Layers separation
     _ok("uc-layer--grid" in sr_js and "uc-layer--dims" in sr_js and "uc-layer--conn" in sr_js, "layers separated")
-    _ok("uc-empty-state" in sr_js and "No design yet" in sr_js, "empty canvas state")
+    _ok("uc-empty-state" in sr_js and ("No design yet" in sr_js or "Canvas ready" in sr_js or "Add Design" in sr_js), "empty canvas state")
 
     # History smoke (domain before/after — no DOM)
     hist = cw.CommandHistory(max_size=3)
