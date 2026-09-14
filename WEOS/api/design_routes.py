@@ -962,11 +962,34 @@ def api_property_panel_update_element(
 
 class DesignDuplicateBody(BaseModel):
     rows: list[dict[str, Any]] = Field(default_factory=list)
+    idempotencyKey: str | None = None
 
 
 class AppEntryBody(BaseModel):
     sessionProjectId: str | None = None
     preferProjectId: str | None = None
+
+
+class SaveTemplateBody(BaseModel):
+    name: str
+    category: str | None = None
+    description: str | None = None
+    tags: list[str] | None = None
+    lineId: str | None = None
+    elementId: str | None = None
+
+
+class InstantiateTemplateBody(BaseModel):
+    widthMm: float
+    heightMm: float
+    sizeChangeRule: str | None = None
+    floorId: str | None = None
+    locationId: str | None = None
+    mark: str | None = None
+    qty: float | None = 1
+    sellingRate: float | None = None
+    floor: str | None = None
+    location: str | None = None
 
 
 @router.get("/api/projects/{project_id}/quote-workspace")
@@ -992,18 +1015,25 @@ def api_duplicate_design(
     request: Request,
     gst: str | None = None,
 ) -> dict[str, Any]:
-    """Multi-size duplicate → real new lineIds; original unchanged; durable save."""
-    from WEOS.factory.company_workspace import require_owned_project
+    """Multi-size duplicate → real new lineIds; composite deep-copy when SQL exists."""
+    from WEOS.factory.company_workspace import require_owned_project, require_company_gst
     from WEOS.factory import quote_workspace as qw
     from WEOS.factory.project_store import DurableSaveError, load_project, save_project
 
     require_owned_project(request, project_id, gst)
+    g = require_company_gst(request, gst)
     try:
         doc = load_project(project_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     try:
-        result = qw.duplicate_design_rows(doc, source_line_id=line_id, rows=body.rows or [])
+        result = qw.duplicate_design_rows(
+            doc,
+            source_line_id=line_id,
+            rows=body.rows or [],
+            company_gst=g,
+            idempotency_key=body.idempotencyKey,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
@@ -1015,15 +1045,56 @@ def api_duplicate_design(
     workspace = qw.build_quote_workspace(saved)
     return {
         "ok": True,
-        "batch": "CANVAS-D2",
+        "batch": "CANVAS-G",
         "projectId": project_id,
         "sourceLineId": line_id,
         "createdCount": result["createdCount"],
         "createdLineIds": result["createdLineIds"],
         "created": result["created"],
+        "rowResults": result.get("rowResults") or [],
+        "failedCount": result.get("failedCount") or 0,
+        "idempotentReplay": bool(result.get("idempotentReplay")),
         "persisted": True,
         "durable": True,
         "workspace": workspace,
+        "project": saved,
+    }
+
+
+@router.delete("/api/projects/{project_id}/designs/{line_id}")
+def api_delete_design(
+    project_id: str,
+    line_id: str,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    """Delete/retire design line + linked composite topology."""
+    from WEOS.factory.company_workspace import require_owned_project, require_company_gst
+    from WEOS.factory import quote_workspace as qw
+    from WEOS.factory.project_store import DurableSaveError, load_project, save_project
+
+    require_owned_project(request, project_id, gst)
+    g = require_company_gst(request, gst)
+    try:
+        doc = load_project(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        result = qw.delete_design_line(doc, line_id=line_id, company_gst=g)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        saved = save_project(result["doc"], action="delete_design")
+    except DurableSaveError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "batch": "CANVAS-G",
+        "projectId": project_id,
+        "deletedLineId": line_id,
+        "retired": result.get("retired"),
+        "persisted": True,
+        "workspace": qw.build_quote_workspace(saved),
         "project": saved,
     }
 
@@ -1051,6 +1122,163 @@ def api_quote_app_entry(request: Request, gst: str | None = None, prefer: str | 
         "loggedIn": True,
         "draft": draft,
         **plan,
+    }
+
+
+# ── Canvas Batch G — Design templates ─────────────────────────────────────────
+
+
+@router.get("/api/design-templates")
+def api_list_design_templates(request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_templates as dt
+
+    g = require_company_gst(request, gst)
+    items = dt.list_templates(company_gst=g)
+    return {"ok": True, "batch": "CANVAS-G", "templates": items, "includeInPdf": False}
+
+
+@router.get("/api/design-templates/{template_id}")
+def api_get_design_template(
+    template_id: str, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import design_templates as dt
+
+    g = require_company_gst(request, gst)
+    tpl = dt.get_template(template_id, company_gst=g)
+    if tpl is None:
+        raise HTTPException(status_code=404, detail="template not found")
+    return {"ok": True, "batch": "CANVAS-G", "template": tpl}
+
+
+@router.post("/api/projects/{project_id}/designs/{line_id}/save-as-template")
+def api_save_design_as_template(
+    project_id: str,
+    line_id: str,
+    body: SaveTemplateBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_owned_project, require_company_gst
+    from WEOS.factory import composite_duplicate as cd
+    from WEOS.factory import design_templates as dt
+
+    require_owned_project(request, project_id, gst)
+    g = require_company_gst(request, gst)
+    el = cd.find_element_for_line(project_id=project_id, company_gst=g, line_id=line_id)
+    if el is None and body.elementId:
+        from WEOS.factory import design_scene as ds
+
+        el = ds.get_element(body.elementId, company_gst=g)
+    if el is None:
+        raise HTTPException(status_code=404, detail="No engineering element for this design")
+    try:
+        tpl = dt.save_element_as_template(
+            element_id=el["elementId"],
+            company_gst=g,
+            name=body.name,
+            category=body.category,
+            description=body.description,
+            tags=body.tags,
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+    return {"ok": True, "batch": "CANVAS-G", "template": tpl}
+
+
+@router.post("/api/projects/{project_id}/design-templates/{template_id}/instantiate")
+def api_instantiate_template(
+    project_id: str,
+    template_id: str,
+    body: InstantiateTemplateBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    """Instantiate template → new quote line + new engineering IDs."""
+    from WEOS.factory.company_workspace import require_owned_project, require_company_gst
+    from WEOS.factory import design_hierarchy as dh
+    from WEOS.factory import design_templates as dt
+    from WEOS.factory import quote_workspace as qw
+    from WEOS.factory.project_store import DurableSaveError, load_project, save_project
+
+    require_owned_project(request, project_id, gst)
+    g = require_company_gst(request, gst)
+    try:
+        doc = load_project(project_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    des = dh.ensure_design_document(project_id, company_gst=g)
+    new_line_id = qw.new_line_id()
+    try:
+        inst = dt.instantiate_template(
+            template_id=template_id,
+            company_gst=g,
+            design_document_id=des["designDocumentId"],
+            legacy_line_id=new_line_id,
+            width_mm=body.widthMm,
+            height_mm=body.heightMm,
+            size_change_rule=body.sizeChangeRule,
+            location_id=body.locationId,
+            display_code=body.mark,
+            assembly_name=body.mark,
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+    tpl = dt.get_template(template_id, company_gst=g) or {}
+    line = {
+        "lineId": new_line_id,
+        "product": tpl.get("productType") or "SLIDING_WINDOW",
+        "productType": tpl.get("productType") or "SLIDING_WINDOW",
+        "displayName": tpl.get("name") or "From Template",
+        "width": float(body.widthMm),
+        "height": float(body.heightMm),
+        "qty": float(body.qty or 1),
+        "mark": body.mark,
+        "floorId": body.floorId,
+        "locationId": body.locationId,
+        "locationName": body.floor,
+        "positionName": body.location,
+        "sellingRate": body.sellingRate,
+        "elementId": inst["element"]["elementId"],
+        "designElementId": inst["element"]["elementId"],
+        "assemblyId": inst["assembly"]["assemblyId"],
+        "compositionSummary": inst.get("compositionSummary"),
+        "isComposite": True,
+        "fromTemplateId": template_id,
+        "preview": {
+            "key": f"tpl-{new_line_id}",
+            "svg": (inst.get("preview") or {}).get("svg") or "",
+            "stale": False,
+            "needsRegen": not bool((inst.get("preview") or {}).get("svg")),
+            "source": "template_instantiate",
+        },
+    }
+    if body.sellingRate is not None:
+        line["sellingRate"] = float(body.sellingRate)
+        line["sellingAmount"] = qw.line_amount(line)
+        line["commercialTotal"] = line["sellingAmount"]
+
+    lines = [dict(ln) for ln in (doc.get("lines") or []) if isinstance(ln, dict)]
+    lines.append(line)
+    out_doc = dict(doc)
+    out_doc["lines"] = lines
+    try:
+        saved = save_project(out_doc, action="instantiate_template")
+    except DurableSaveError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "batch": "CANVAS-G",
+        "projectId": project_id,
+        "lineId": new_line_id,
+        "element": inst.get("element"),
+        "assembly": inst.get("assembly"),
+        "templateId": template_id,
+        "persisted": True,
+        "workspace": qw.build_quote_workspace(saved),
+        "project": saved,
     }
 
 

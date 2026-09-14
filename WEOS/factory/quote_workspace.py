@@ -1,8 +1,11 @@
-"""Canvas D2 — Quote workspace separation helpers.
+"""Canvas D2 + Batch G — Quote workspace separation helpers.
 
 Engineering Design stays on Universal Canvas. Quote Review is a separate
 commercial surface built from authoritative saved project lines (SQL/FS SoT),
 not from DOM or localStorage-only state.
+
+Batch G: composite deep-copy duplicate, composition summaries, delete/retire,
+idempotent bulk create, template-aware cards.
 """
 
 from __future__ import annotations
@@ -10,6 +13,8 @@ from __future__ import annotations
 import copy
 import uuid
 from typing import Any, Mapping, Sequence
+
+BATCH_G = "CANVAS-G"
 
 
 def _str(v: Any, default: str = "") -> str:
@@ -130,7 +135,57 @@ def line_amount(line: Mapping[str, Any]) -> float:
     return 0.0
 
 
-def build_design_card(line: Mapping[str, Any], *, index: int = 0) -> dict[str, Any]:
+def _composition_for_line(
+    line: Mapping[str, Any],
+    *,
+    company_gst: str | None = None,
+    project_id: str | None = None,
+) -> str:
+    """Readable composition from SQL Assembly/members/cells/assignments — not DOM."""
+    cached = _str(line.get("compositionSummary") or line.get("composition"))
+    if cached:
+        return cached
+    gst = _str(company_gst or line.get("companyGst"))
+    pid = _str(project_id)
+    lid = line_id_of(line)
+    if not (gst and pid and lid):
+        return ""
+    try:
+        from WEOS.factory import cell_assignment as ca
+        from WEOS.factory import composite_duplicate as cd
+        from WEOS.factory import member_grid as mg
+
+        el = cd.find_element_for_line(project_id=pid, company_gst=gst, line_id=lid)
+        if not el:
+            return ""
+        topo = mg.get_element_topology(el["elementId"], company_gst=gst)
+        if not topo.get("gridActivated"):
+            return ""
+        assigns = ca.list_assignments_for_element(el["elementId"], company_gst=gst)
+        return ca.composition_summary(assigns, topo.get("cells") or [])
+    except Exception:
+        return ""
+
+
+def _card_status(line: Mapping[str, Any], warnings: Sequence[str]) -> str:
+    """Reuse preflight signals — Ready / Incomplete / Drawing issue / Missing rate."""
+    if not warnings:
+        return "ready"
+    joined = " ".join(warnings).lower()
+    if "drawing" in joined or "preview" in joined:
+        return "drawing_issue"
+    if "rate" in joined or "amount" in joined:
+        return "missing_rate"
+    return "incomplete"
+
+
+def build_design_card(
+    line: Mapping[str, Any],
+    *,
+    index: int = 0,
+    company_gst: str | None = None,
+    project_id: str | None = None,
+) -> dict[str, Any]:
     lid = line_id_of(line) or f"tmp-{index + 1}"
     product = _str(
         line.get("displayName")
@@ -150,15 +205,18 @@ def build_design_card(line: Mapping[str, Any], *, index: int = 0) -> dict[str, A
     amount = line_amount(line)
     svg = durable_preview_svg(line)
     warnings = card_warnings_for_line(line)
-    status = "ready" if not warnings else "needs_data"
-    if warnings and any("drawing" in w.lower() or "preview" in w.lower() for w in warnings):
-        status = "incomplete_drawing"
+    status = _card_status(line, warnings)
     qg = ""
     opts = line.get("options")
     if isinstance(opts, Mapping):
         qg = _str(opts.get("quoteGroup"))
     if not qg:
         qg = _str(line.get("quoteGroup")) or "Main"
+    composition = _composition_for_line(
+        line, company_gst=company_gst, project_id=project_id
+    )
+    element_id = _str(line.get("elementId") or line.get("designElementId"))
+    assembly_id = _str(line.get("assemblyId"))
     return {
         "designId": lid,
         "lineId": lid,
@@ -170,7 +228,9 @@ def build_design_card(line: Mapping[str, Any], *, index: int = 0) -> dict[str, A
         "heightMm": _num(line.get("height")),
         "qty": _num(line.get("qty") or line.get("quantity"), 1.0),
         "floor": _str(line.get("locationName") or line.get("floor") or line.get("floorName")),
-        "location": _str(line.get("positionName") or line.get("location") or line.get("mark")),
+        "location": _str(line.get("positionName") or line.get("location")),
+        "floorId": _str(line.get("floorId")),
+        "locationId": _str(line.get("locationId")),
         "mark": _str(line.get("mark") or line.get("displayCode") or line.get("code")),
         "series": series,
         "glass": glass,
@@ -183,11 +243,17 @@ def build_design_card(line: Mapping[str, Any], *, index: int = 0) -> dict[str, A
         "previewSvg": svg,
         "hasDurablePreview": bool(svg),
         "quoteGroup": qg,
+        "composition": composition,
+        "compositionSummary": composition,
+        "elementId": element_id,
+        "assemblyId": assembly_id,
+        "isComposite": bool(composition) or bool(line.get("isComposite")),
         "itemKind": (
             "MANUAL"
             if _str(line.get("itemKind")).upper() in ("MANUAL", "COMMERCIAL_MANUAL")
             else "ENGINEERED"
         ),
+        "batch": BATCH_G,
     }
 
 
@@ -244,18 +310,24 @@ def build_active_quote_context(doc: Mapping[str, Any] | None) -> dict[str, Any]:
 
 def build_quote_workspace(doc: Mapping[str, Any]) -> dict[str, Any]:
     lines = [ln for ln in (doc.get("lines") or []) if isinstance(ln, Mapping)]
-    cards = [build_design_card(ln, index=i) for i, ln in enumerate(lines)]
+    gst = _str(doc.get("companyGst"))
+    pid = _str(doc.get("projectId"))
+    cards = [
+        build_design_card(ln, index=i, company_gst=gst, project_id=pid)
+        for i, ln in enumerate(lines)
+    ]
     return {
         "ok": True,
-        "batch": "CANVAS-D2",
+        "batch": BATCH_G,
         "context": build_active_quote_context(doc),
         "cards": cards,
         "totals": build_quote_totals(doc),
-        "projectId": _str(doc.get("projectId")),
+        "projectId": pid,
         "quotationId": _str(doc.get("quotationId")),
         "name": _str(doc.get("name")),
         "customer": _str(doc.get("customer")),
         "status": _str(doc.get("status") or "draft"),
+        "filters": {"all": True, "floor": True, "location": True, "productType": True},
     }
 
 
@@ -278,13 +350,69 @@ def _clear_preview_for_regen(line: dict[str, Any]) -> None:
             line["item_snapshot"] = snap
 
 
+def _recalc_line_amount(clone: dict[str, Any]) -> None:
+    """Recalculate amount from new dims/qty/rate — never clone old amount."""
+    amt = line_amount(clone)
+    clone["sellingAmount"] = amt
+    clone["commercialTotal"] = amt
+    selling = clone.get("selling")
+    if isinstance(selling, dict):
+        selling = dict(selling)
+        selling["sellingAmount"] = amt
+        selling["sellingRate"] = _num(clone.get("sellingRate") or selling.get("sellingRate"))
+        clone["selling"] = selling
+
+
+def _apply_row_overrides(clone: dict[str, Any], row: Mapping[str, Any]) -> None:
+    if row.get("width") is not None or row.get("widthMm") is not None:
+        clone["width"] = _num(row.get("widthMm", row.get("width")), _num(clone.get("width")))
+    if row.get("height") is not None or row.get("heightMm") is not None:
+        clone["height"] = _num(row.get("heightMm", row.get("height")), _num(clone.get("height")))
+    if row.get("qty") is not None or row.get("quantity") is not None:
+        clone["qty"] = _num(row.get("qty", row.get("quantity")), 1.0)
+    if row.get("floor") is not None or row.get("locationName") is not None:
+        clone["locationName"] = _str(row.get("floor", row.get("locationName")))
+    if row.get("location") is not None or row.get("positionName") is not None:
+        clone["positionName"] = _str(row.get("location", row.get("positionName")))
+    if row.get("floorId") is not None:
+        clone["floorId"] = _str(row.get("floorId")) or None
+    if row.get("locationId") is not None:
+        clone["locationId"] = _str(row.get("locationId")) or None
+    if row.get("mark") is not None:
+        clone["mark"] = _str(row.get("mark"))
+    if row.get("sellingRate") is not None or row.get("rate") is not None:
+        clone["sellingRate"] = _num(row.get("sellingRate", row.get("rate")))
+    if row.get("saleUnit") is not None or row.get("sellingUnit") is not None:
+        clone["saleUnit"] = _str(row.get("saleUnit", row.get("sellingUnit")))
+    if row.get("remarks") is not None:
+        clone["remarks"] = _str(row.get("remarks"))
+
+
+def _check_mark_unique(lines: Sequence[Mapping[str, Any]], mark: str, *, exclude_id: str = "") -> None:
+    m = _str(mark)
+    if not m:
+        return
+    for ln in lines:
+        if line_id_of(ln) == exclude_id:
+            continue
+        if _str(ln.get("mark")) == m:
+            raise ValueError(f"Mark '{m}' already used on this project — choose another")
+
+
 def duplicate_design_rows(
     doc: Mapping[str, Any],
     *,
     source_line_id: str,
     rows: Sequence[Mapping[str, Any]],
+    company_gst: str | None = None,
+    idempotency_key: str | None = None,
 ) -> dict[str, Any]:
-    """Create real new lineIds / quote items from a source design."""
+    """Create real new lineIds / quote items from a source design.
+
+    When a SQL composite element exists for the source line, deep-copies
+    Assembly/Members/Cells/Assignments with remapped IDs.
+    Different-size rows require sizeChangeRule KEEP_OFFSETS|SCALE.
+    """
     if not isinstance(doc, Mapping) or not doc.get("projectId"):
         raise ValueError("Project document required")
     src_id = _str(source_line_id)
@@ -301,70 +429,259 @@ def duplicate_design_rows(
     if not rows:
         raise ValueError("At least one duplicate row required")
 
+    # Idempotency: return prior result if same key already applied
+    key = _str(idempotency_key)
+    prior = (doc.get("_duplicateIdempotency") or {}) if isinstance(doc.get("_duplicateIdempotency"), Mapping) else {}
+    if key and key in prior:
+        cached = prior[key]
+        if isinstance(cached, Mapping) and cached.get("createdLineIds"):
+            return {
+                "ok": True,
+                "batch": BATCH_G,
+                "sourceLineId": src_id,
+                "createdCount": len(cached.get("createdLineIds") or []),
+                "created": cached.get("created") or [],
+                "createdLineIds": list(cached.get("createdLineIds") or []),
+                "rowResults": list(cached.get("rowResults") or []),
+                "doc": dict(doc),
+                "workspace": build_quote_workspace(doc),
+                "idempotentReplay": True,
+            }
+
+    gst = _str(company_gst or doc.get("companyGst"))
+    pid = _str(doc.get("projectId"))
+
+    src_el = None
+    if gst and pid:
+        try:
+            from WEOS.factory import composite_duplicate as cd
+
+            src_el = cd.find_element_for_line(project_id=pid, company_gst=gst, line_id=src_id)
+        except Exception:
+            src_el = None
+
     created: list[dict[str, Any]] = []
+    row_results: list[dict[str, Any]] = []
     new_lines = [dict(ln) for ln in lines]
-    for row in rows:
+    src_w = _num(source.get("width"))
+    src_h = _num(source.get("height"))
+
+    for idx, row in enumerate(rows):
         if not isinstance(row, Mapping):
+            row_results.append({"index": idx, "status": "Failed", "reason": "invalid row"})
             continue
-        clone = copy.deepcopy(dict(source))
-        new_id = new_line_id()
-        while any(line_id_of(ln) == new_id for ln in new_lines):
+        try:
+            mark = _str(row.get("mark"))
+            if mark:
+                _check_mark_unique(new_lines, mark)
+
+            clone = copy.deepcopy(dict(source))
             new_id = new_line_id()
-        clone["lineId"] = new_id
-        if "id" in clone:
-            clone["id"] = new_id
-        if row.get("width") is not None or row.get("widthMm") is not None:
-            clone["width"] = _num(row.get("widthMm", row.get("width")), _num(clone.get("width")))
-        if row.get("height") is not None or row.get("heightMm") is not None:
-            clone["height"] = _num(row.get("heightMm", row.get("height")), _num(clone.get("height")))
-        if row.get("qty") is not None or row.get("quantity") is not None:
-            clone["qty"] = _num(row.get("qty", row.get("quantity")), 1.0)
-        if row.get("floor") is not None or row.get("locationName") is not None:
-            clone["locationName"] = _str(row.get("floor", row.get("locationName")))
-        if row.get("location") is not None or row.get("positionName") is not None:
-            clone["positionName"] = _str(row.get("location", row.get("positionName")))
-        if row.get("mark") is not None:
-            clone["mark"] = _str(row.get("mark"))
-        if row.get("sellingRate") is not None or row.get("rate") is not None:
-            clone["sellingRate"] = _num(row.get("sellingRate", row.get("rate")))
-        if isinstance(clone.get("itemSnapshot"), dict):
-            snap = dict(clone["itemSnapshot"])
-            snap["quote_item_id"] = new_id
-            clone["itemSnapshot"] = snap
-        _clear_preview_for_regen(clone)
-        opts = clone.get("options")
-        if isinstance(opts, dict):
-            opts = dict(opts)
-            for nest_key in ("railing", "shower", "ventilator", "pergola"):
-                nest = opts.get(nest_key)
-                if not isinstance(nest, dict):
-                    continue
-                nest = dict(nest)
-                if "widthMm" in nest or "width" in nest:
-                    nest["widthMm"] = clone["width"]
-                    nest["width"] = clone["width"]
-                if "heightMm" in nest or "height" in nest:
-                    nest["heightMm"] = clone["height"]
-                    nest["height"] = clone["height"]
-                if nest_key == "pergola":
-                    if "lengthMm" in nest:
-                        nest["lengthMm"] = clone["width"]
-                    if "depthMm" in nest:
-                        nest["depthMm"] = clone["height"]
-                opts[nest_key] = nest
-            clone["options"] = opts
-        new_lines.append(clone)
-        created.append(build_design_card(clone, index=len(new_lines) - 1))
+            while any(line_id_of(ln) == new_id for ln in new_lines):
+                new_id = new_line_id()
+            clone["lineId"] = new_id
+            if "id" in clone:
+                clone["id"] = new_id
+            _apply_row_overrides(clone, row)
+
+            new_w = _num(clone.get("width"), src_w)
+            new_h = _num(clone.get("height"), src_h)
+            differ = abs(new_w - src_w) > 0.5 or abs(new_h - src_h) > 0.5
+            rule = _str(row.get("sizeChangeRule") or row.get("size_change_rule")).upper() or None
+
+            if isinstance(clone.get("itemSnapshot"), dict):
+                snap = dict(clone["itemSnapshot"])
+                snap["quote_item_id"] = new_id
+                clone["itemSnapshot"] = snap
+
+            composite_meta = None
+            if src_el and gst:
+                from WEOS.factory import composite_duplicate as cd
+
+                if differ and not rule:
+                    raise ValueError(
+                        "sizeChangeRule required when dimensions differ: KEEP_OFFSETS or SCALE"
+                    )
+                dup = cd.duplicate_composite_element(
+                    source_element_id=src_el["elementId"],
+                    company_gst=gst,
+                    new_legacy_line_id=new_id,
+                    width_mm=new_w,
+                    height_mm=new_h,
+                    size_change_rule=rule if differ else None,
+                    location_id=_str(row.get("locationId")) or None,
+                    display_code=mark or None,
+                )
+                composite_meta = {
+                    "elementId": dup["element"]["elementId"],
+                    "assemblyId": dup["assembly"]["assemblyId"],
+                    "cellIdMap": dup.get("cellIdMap"),
+                    "memberIdMap": dup.get("memberIdMap"),
+                    "sizeChangeRule": dup.get("sizeChangeRule"),
+                    "compositionSummary": dup.get("compositionSummary"),
+                }
+                clone["elementId"] = dup["element"]["elementId"]
+                clone["designElementId"] = dup["element"]["elementId"]
+                clone["assemblyId"] = dup["assembly"]["assemblyId"]
+                clone["compositionSummary"] = dup.get("compositionSummary") or ""
+                clone["isComposite"] = True
+                prev = dup.get("preview") or {}
+                svg = _str(prev.get("svg"))
+                if svg:
+                    clone["preview"] = {
+                        "key": f"composite-{new_id}",
+                        "svg": svg,
+                        "stale": False,
+                        "needsRegen": False,
+                        "source": "composite_duplicate",
+                    }
+                else:
+                    _clear_preview_for_regen(clone)
+            else:
+                # Simple (non-SQL) design — JSON clone + regen; size rule not required
+                if differ and rule and rule not in ("KEEP_OFFSETS", "SCALE", ""):
+                    raise ValueError(f"invalid sizeChangeRule: {rule}")
+                _clear_preview_for_regen(clone)
+                # Clear any stale element pointers — simple path has no new SQL element
+                for k in ("elementId", "designElementId", "assemblyId"):
+                    if k in clone and src_el is None:
+                        pass  # keep inherited if any local refs
+                # Ensure we do not point at source SQL ids
+                if clone.get("elementId") and not src_el:
+                    clone.pop("elementId", None)
+                    clone.pop("designElementId", None)
+                    clone.pop("assemblyId", None)
+
+            opts = clone.get("options")
+            if isinstance(opts, dict):
+                opts = dict(opts)
+                for nest_key in ("railing", "shower", "ventilator", "pergola"):
+                    nest = opts.get(nest_key)
+                    if not isinstance(nest, dict):
+                        continue
+                    nest = dict(nest)
+                    if "widthMm" in nest or "width" in nest:
+                        nest["widthMm"] = clone["width"]
+                        nest["width"] = clone["width"]
+                    if "heightMm" in nest or "height" in nest:
+                        nest["heightMm"] = clone["height"]
+                        nest["height"] = clone["height"]
+                    if nest_key == "pergola":
+                        if "lengthMm" in nest:
+                            nest["lengthMm"] = clone["width"]
+                        if "depthMm" in nest:
+                            nest["depthMm"] = clone["height"]
+                    opts[nest_key] = nest
+                clone["options"] = opts
+
+            _recalc_line_amount(clone)
+            new_lines.append(clone)
+            card = build_design_card(
+                clone, index=len(new_lines) - 1, company_gst=gst, project_id=pid
+            )
+            created.append(card)
+            row_results.append(
+                {
+                    "index": idx,
+                    "status": "Created",
+                    "lineId": new_id,
+                    "elementId": (composite_meta or {}).get("elementId"),
+                    "sizeChangeRule": (composite_meta or {}).get("sizeChangeRule") or rule,
+                    "reason": None,
+                }
+            )
+        except Exception as exc:
+            row_results.append(
+                {
+                    "index": idx,
+                    "status": "Failed",
+                    "lineId": None,
+                    "reason": str(exc),
+                }
+            )
 
     out_doc = dict(doc)
     out_doc["lines"] = new_lines
-    return {
+    result = {
         "ok": True,
-        "batch": "CANVAS-D2",
+        "batch": BATCH_G,
         "sourceLineId": src_id,
         "createdCount": len(created),
         "created": created,
         "createdLineIds": [c["lineId"] for c in created],
+        "rowResults": row_results,
+        "doc": out_doc,
+        "workspace": build_quote_workspace(out_doc),
+        "idempotentReplay": False,
+        "failedCount": sum(1 for r in row_results if r.get("status") == "Failed"),
+    }
+    if key:
+        store = dict(prior)
+        store[key] = {
+            "createdLineIds": result["createdLineIds"],
+            "created": created,
+            "rowResults": row_results,
+        }
+        # Keep last 20 tokens
+        if len(store) > 20:
+            for old in list(store.keys())[:-20]:
+                store.pop(old, None)
+        out_doc["_duplicateIdempotency"] = store
+        result["doc"] = out_doc
+    return result
+
+
+def delete_design_line(
+    doc: Mapping[str, Any],
+    *,
+    line_id: str,
+    company_gst: str | None = None,
+    allow_issued: bool = False,
+) -> dict[str, Any]:
+    """Delete/retire a design line + linked SQL topology. Lifecycle-safe."""
+    if not isinstance(doc, Mapping) or not doc.get("projectId"):
+        raise ValueError("Project document required")
+    lid = _str(line_id)
+    if not lid:
+        raise ValueError("line_id required")
+    status = _str(doc.get("status") or "draft").lower()
+    if status in ("issued", "approved", "locked", "final") and not allow_issued:
+        raise ValueError(
+            f"Cannot delete design from {status} quote — archive/revision required"
+        )
+    lines = [ln for ln in (doc.get("lines") or []) if isinstance(ln, Mapping)]
+    found = None
+    kept: list[dict[str, Any]] = []
+    for ln in lines:
+        if line_id_of(ln) == lid:
+            found = ln
+        else:
+            kept.append(dict(ln))
+    if found is None:
+        raise ValueError(f"Design not found: {lid}")
+
+    gst = _str(company_gst or doc.get("companyGst"))
+    pid = _str(doc.get("projectId"))
+    retired = None
+    if gst and pid:
+        try:
+            from WEOS.factory import composite_duplicate as cd
+
+            el = cd.find_element_for_line(project_id=pid, company_gst=gst, line_id=lid)
+            if el:
+                retired = cd.retire_element_tree(
+                    el["elementId"], company_gst=gst, reason="design_deleted"
+                )
+        except Exception as exc:
+            raise ValueError(f"Failed to retire engineering state: {exc}") from exc
+
+    out_doc = dict(doc)
+    out_doc["lines"] = kept
+    return {
+        "ok": True,
+        "batch": BATCH_G,
+        "deletedLineId": lid,
+        "retired": retired,
         "doc": out_doc,
         "workspace": build_quote_workspace(out_doc),
     }

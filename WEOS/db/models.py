@@ -1175,3 +1175,54 @@ class CellProductAssignment(Base):
             "updatedAt": _iso(self.updated_at),
             "batch": "CANVAS-F",
         }
+
+
+# ── Canvas Batch G — reusable engineering design templates ───────────────────
+
+
+class DesignTemplate(Base):
+    """Reusable engineering starter — topology + assignments, no customer/quote identity."""
+
+    __tablename__ = "design_templates"
+
+    template_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(80), index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    product_type: Mapped[str | None] = mapped_column(String(60), index=True)
+    source_element_id: Mapped[str | None] = mapped_column(String(60))  # audit only
+    topology_snapshot: Mapped[Any] = mapped_column(JSON, nullable=False)
+    assignments_snapshot: Mapped[Any] = mapped_column(JSON, nullable=True)
+    default_size: Mapped[Any] = mapped_column(JSON, nullable=True)  # {widthMm, heightMm}
+    preview_svg: Mapped[str | None] = mapped_column(Text)
+    composition_summary: Mapped[str | None] = mapped_column(String(400))
+    tags: Mapped[Any] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "templateId": self.template_id,
+            "companyGst": self.company_gst,
+            "name": self.name,
+            "category": self.category,
+            "description": self.description,
+            "productType": self.product_type,
+            "sourceElementId": self.source_element_id,
+            "topologySnapshot": self.topology_snapshot,
+            "assignmentsSnapshot": self.assignments_snapshot,
+            "defaultSize": self.default_size,
+            "previewSvg": self.preview_svg,
+            "compositionSummary": self.composition_summary,
+            "tags": self.tags,
+            "status": self.status,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+            "batch": "CANVAS-G",
+            # Explicit: templates are never quote/customer documents
+            "isQuoteItem": False,
+            "includeInPdf": False,
+            "includeInTotals": False,
+        }
