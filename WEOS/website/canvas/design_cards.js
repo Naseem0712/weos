@@ -105,6 +105,12 @@
       '<div class="qw-card__amount">' +
       money(card.amount) +
       "</div>" +
+      (card.adminCostVisible
+        ? '<div class="qw-card__admin-cost muted" data-admin-only="1">Cost ' +
+          money(card.totalCost) +
+          (card.grossProfit != null ? " · GP " + money(card.grossProfit) : "") +
+          "</div>"
+        : "") +
       warn +
       '<div class="qw-card__actions">' +
       '<button type="button" class="weos-ds-btn weos-ds-btn--ghost weos-ds-btn--sm" data-qw-edit="' +
@@ -124,7 +130,12 @@
           esc(card.elementId) +
           '" data-qw-bom-line="' +
           esc(card.lineId) +
-          '" title="Engineering BOM">View BOM</button>'
+          '" title="Engineering BOM">View BOM</button>' +
+          '<button type="button" class="weos-ds-btn weos-ds-btn--ghost weos-ds-btn--sm" data-qw-cost="' +
+          esc(card.elementId) +
+          '" data-qw-cost-line="' +
+          esc(card.lineId) +
+          '" title="Engineering Costing">Costing</button>'
         : "") +
       "</div>" +
       "</article>"

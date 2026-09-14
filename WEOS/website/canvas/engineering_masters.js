@@ -54,6 +54,7 @@
       ["glass", "Glass"],
       ["hardware", "Hardware"],
       ["accessories", "Accessories"],
+      ["costrules", "Cost Rules"],
     ];
     return (
       '<div class="eng-master__tabs" role="tablist">' +
@@ -71,6 +72,7 @@
         })
         .join("") +
       '<button type="button" class="weos-ds-btn weos-ds-btn--ghost weos-ds-btn--sm" id="btnEngSeed">Seed defaults</button>' +
+      '<button type="button" class="weos-ds-btn weos-ds-btn--ghost weos-ds-btn--sm" id="btnEngSeedCost">Seed sample cost rules</button>' +
       '<button type="button" class="weos-ds-btn weos-ds-btn--ghost weos-ds-btn--sm" id="btnEngImport">Import legacy</button>' +
       "</div>"
     );
@@ -81,7 +83,7 @@
       '<div class="eng-master" data-batch="ENG-MASTER">' +
       '<div class="eng-master__head">' +
       "<div><strong>Engineering Masters</strong>" +
-      '<p class="muted" style="margin:.2rem 0 0;font-size:.8rem">Series, profiles, glass, hardware &amp; accessories — cost basis foundation only (no costing engine).</p></div>' +
+      '<p class="muted" style="margin:.2rem 0 0;font-size:.8rem">Series, profiles, glass, hardware, accessories &amp; cost rules (sample rates — not production).</p></div>' +
       "</div>" +
       tabBar(active) +
       '<div class="eng-master__body" id="engMasterBody">' +
@@ -309,6 +311,32 @@
     bindCommon(host);
   }
 
+  async function loadCostRules(host) {
+    var data = await api("/api/engineering/cost-rules");
+    var rows = (data.rules || []).map(function (r) {
+      return (
+        "<tr><td>" +
+        esc(r.domain) +
+        "</td><td>" +
+        esc(r.scope) +
+        "</td><td>" +
+        esc(r.name) +
+        "</td><td>" +
+        esc(JSON.stringify(r.params || {})) +
+        "</td><td>" +
+        esc(r.source || "") +
+        (r.manualReview ? " · review" : "") +
+        "</td></tr>"
+      );
+    });
+    host.innerHTML = renderShell(
+      "costrules",
+      '<p class="muted" style="font-size:.8rem;margin:0 0 .5rem">Domains: wastage, coating, fabrication, installation, transport, overhead. Precedence Design→Project→Item→Series→Family→Company.</p>' +
+        table(["Domain", "Scope", "Name", "Params", "Source"], rows)
+    );
+    bindCommon(host);
+  }
+
   function bindCommon(host) {
     host.querySelectorAll("[data-eng-tab]").forEach(function (b) {
       b.onclick = function () {
@@ -320,6 +348,12 @@
       seed.onclick = async function () {
         await api("/api/engineering/seed", { method: "POST", body: "{}" });
         mount(host, "series");
+      };
+    var seedCost = host.querySelector("#btnEngSeedCost");
+    if (seedCost)
+      seedCost.onclick = async function () {
+        await api("/api/engineering/cost-rules/seed", { method: "POST", body: "{}" });
+        mount(host, "costrules");
       };
     var imp = host.querySelector("#btnEngImport");
     if (imp)
@@ -349,6 +383,7 @@
       glass: loadGlass,
       hardware: loadHardware,
       accessories: loadAccessories,
+      costrules: loadCostRules,
     };
     (loaders[tab] || loadSeries)(host).catch(function (err) {
       host.innerHTML = renderShell(tab, '<p class="err">' + esc(err.message || err) + "</p>");

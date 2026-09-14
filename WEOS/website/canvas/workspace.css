@@ -940,3 +940,21 @@ body.weos-eng-focus .top #savePill {
 .eng-bom__issues { margin:.5rem 0; padding-left:1.1rem; font-size:.8rem; }
 .eng-bom__issue--error { color:#7f1d1d; }
 .eng-bom__issue--warning { color:#7a5b00; }
+.eng-cost-host { position:fixed; right:1rem; bottom:1rem; top:4rem; width:min(760px,94vw); z-index:81; background:var(--weos-color-bg,#f7f4ec); border:1px solid rgba(20,20,16,.18); border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,.18); overflow:auto; padding:.75rem; }
+.eng-cost-host.hidden { display:none; }
+.eng-cost__head { display:flex; justify-content:space-between; gap:.5rem; align-items:flex-start; }
+.eng-cost__badge { display:inline-block; padding:.1rem .4rem; border-radius:4px; font-size:.72rem; font-weight:600; }
+.eng-cost__badge--ready, .eng-cost__badge--current { background:#d8f3e2; color:#14532d; }
+.eng-cost__badge--partial { background:#fff3cd; color:#7a5b00; }
+.eng-cost__badge--error, .eng-cost__badge--stale { background:#fde2e1; color:#7f1d1d; }
+.eng-cost__tabs { display:flex; flex-wrap:wrap; gap:.35rem; margin:.6rem 0; }
+.eng-cost__tab { border:1px solid rgba(20,20,16,.15); background:transparent; padding:.25rem .55rem; border-radius:6px; cursor:pointer; font-size:.8rem; }
+.eng-cost__tab.is-active { background:rgba(20,20,16,.08); font-weight:600; }
+.eng-cost__table-wrap { overflow:auto; max-height:55vh; }
+.eng-cost__table { width:100%; border-collapse:collapse; font-size:.82rem; }
+.eng-cost__table th, .eng-cost__table td { border-bottom:1px solid rgba(20,20,16,.1); padding:.35rem .4rem; text-align:left; }
+.eng-cost__sell-box { display:flex; flex-wrap:wrap; gap:1rem; margin-top:.75rem; padding:.6rem; border:1px solid rgba(20,20,16,.12); border-radius:8px; }
+.eng-cost__form { display:flex; flex-direction:column; gap:.45rem; max-width:28rem; }
+.eng-cost__form label { display:flex; flex-direction:column; gap:.2rem; font-size:.82rem; }
+.eng-cost__err { color:#7f1d1d; }
+.qw-card__admin-cost { font-size:.78rem; margin-top:.25rem; }

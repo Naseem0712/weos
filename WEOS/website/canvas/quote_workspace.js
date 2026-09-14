@@ -388,6 +388,13 @@
         }
       };
     });
+    host.querySelectorAll("[data-qw-cost]").forEach(function (btn) {
+      btn.onclick = function () {
+        var eid = btn.getAttribute("data-qw-cost");
+        if (C.openEngineeringCosting) C.openEngineeringCosting(eid);
+        else if (C.engineeringCosting && C.engineeringCosting.open) C.engineeringCosting.open(eid);
+      };
+    });
     ["qwFilterFloor", "qwFilterLoc", "qwFilterPt"].forEach(function (id) {
       var el = $(id);
       if (el) el.onchange = function () {
