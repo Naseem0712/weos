@@ -670,8 +670,9 @@ def api_project_costing_rollup(
     project_id: str, request: Request, gst: str | None = None
 ) -> dict[str, Any]:
     from WEOS.factory import engineering_costing as ec
+    from WEOS.factory.company_workspace import require_owned_project
 
-    g = _gst(request, gst)
+    g, _ = require_owned_project(request, project_id, gst)
     try:
         return ec.rollup_project_costing(project_id=project_id, company_gst=g)
     except Exception as exc:

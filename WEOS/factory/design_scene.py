@@ -376,8 +376,22 @@ def update_element(
             row.status = str(status)
         # name is not a DesignElement column — ignore safely for API compat
         _ = name
+        bom_affecting = any(
+            x is not None
+            for x in (width_mm, height_mm, geometry_payload, config_payload)
+        )
         s.flush()
-        return row.to_dict()
+        out = row.to_dict()
+    if bom_affecting:
+        try:
+            from WEOS.factory import engineering_bom as eb
+
+            eb.notify_element_design_changed(
+                element_id, company_gst=gst, reason="element_geometry_or_config"
+            )
+        except Exception:
+            pass
+    return out
 
 
 def update_assembly(

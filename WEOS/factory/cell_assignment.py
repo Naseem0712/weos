@@ -514,7 +514,16 @@ def assign_product(
         out["cell"] = cell.to_dict()
         out["saveStatus"] = "saved"
         out["revisionId"] = rev.revision_id
-        return out
+        element_id = cell.element_id
+    try:
+        from WEOS.factory import engineering_bom as eb
+
+        eb.notify_element_design_changed(
+            element_id, company_gst=gst, reason="cell_assignment"
+        )
+    except Exception:
+        pass
+    return out
 
 
 def clear_assignment(*, cell_id: str, company_gst: str) -> dict[str, Any]:
@@ -555,7 +564,8 @@ def clear_assignment(*, cell_id: str, company_gst: str) -> dict[str, Any]:
             geo["hasCellAssignments"] = still is not None
             el.geometry_payload = geo
             s.flush()
-        return {
+        element_id = cell.element_id
+        out = {
             "ok": True,
             "cellId": cell.cell_id,
             "clearedAssignmentIds": cleared,
@@ -563,6 +573,15 @@ def clear_assignment(*, cell_id: str, company_gst: str) -> dict[str, Any]:
             "saveStatus": "saved",
             "batch": BATCH_ID,
         }
+    try:
+        from WEOS.factory import engineering_bom as eb
+
+        eb.notify_element_design_changed(
+            element_id, company_gst=gst, reason="cell_assignment_cleared"
+        )
+    except Exception:
+        pass
+    return out
 
 
 def update_assignment_config(

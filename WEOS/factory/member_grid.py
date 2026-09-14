@@ -718,7 +718,7 @@ def place_member(
             topology=topo,
             expected_revision_id=expected_revision_id,
         )
-        return {
+        out = {
             "ok": True,
             "member": member.to_dict(),
             "parentCell": target.to_dict(),
@@ -727,6 +727,15 @@ def place_member(
             "revision": rev,
             "saveStatus": "saved",
         }
+    try:
+        from WEOS.factory import engineering_bom as eb
+
+        eb.notify_element_design_changed(
+            el["elementId"], company_gst=company_gst, reason="member_placed"
+        )
+    except Exception:
+        pass
+    return out
 
 
 def apply_equal_grid(
@@ -915,7 +924,7 @@ def apply_equal_grid(
             topology=topo,
             expected_revision_id=expected_revision_id,
         )
-        return {
+        out = {
             "ok": True,
             "rows": r,
             "columns": c,
@@ -926,6 +935,15 @@ def apply_equal_grid(
             "revision": rev,
             "saveStatus": "saved",
         }
+    try:
+        from WEOS.factory import engineering_bom as eb
+
+        eb.notify_element_design_changed(
+            el["elementId"], company_gst=company_gst, reason="equal_grid"
+        )
+    except Exception:
+        pass
+    return out
 
 
 def delete_member(
@@ -1015,7 +1033,7 @@ def delete_member(
             topology=topo,
             expected_revision_id=expected_revision_id,
         )
-        return {
+        out = {
             "ok": True,
             "deletedMemberId": mem.member_id,
             "mergedCell": parent.to_dict(),
@@ -1023,6 +1041,15 @@ def delete_member(
             "revision": rev,
             "saveStatus": "saved",
         }
+    try:
+        from WEOS.factory import engineering_bom as eb
+
+        eb.notify_element_design_changed(
+            el["elementId"], company_gst=gst, reason="member_deleted"
+        )
+    except Exception:
+        pass
+    return out
 
 
 def update_member_position(
@@ -1108,13 +1135,22 @@ def update_member_position(
             topology=topo,
             expected_revision_id=expected_revision_id,
         )
-        return {
+        out = {
             "ok": True,
             "member": mem.to_dict(),
             "topology": topo,
             "revision": rev,
             "saveStatus": "saved",
         }
+    try:
+        from WEOS.factory import engineering_bom as eb
+
+        eb.notify_element_design_changed(
+            el["elementId"], company_gst=gst, reason="member_moved"
+        )
+    except Exception:
+        pass
+    return out
 
 
 def undo_structure(*, element_id: str, company_gst: str) -> dict[str, Any]:

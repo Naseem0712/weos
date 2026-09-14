@@ -1076,6 +1076,20 @@ def mark_stale_for_element(element_id: str, *, company_gst: str, reason: str = "
     return n
 
 
+def notify_element_design_changed(
+    element_id: str, *, company_gst: str, reason: str = "design_changed"
+) -> int:
+    """Hook for design/member/cell mutations — marks BOM (+ cascading costing) STALE.
+
+    Safe no-op when DB/BOM unavailable so geometry edits never fail on costing.
+    """
+    try:
+        return mark_stale_for_element(element_id, company_gst=company_gst, reason=reason)
+    except Exception as exc:
+        _log.info("notify_element_design_changed skipped: %s", exc)
+        return 0
+
+
 def regenerate_bom(element_id: str, *, company_gst: str) -> dict[str, Any]:
     """Safe regenerate — supersedes previous current BOM, does not mutate historical rows."""
     return generate_element_bom(element_id, company_gst=company_gst, persist=True, force=True)

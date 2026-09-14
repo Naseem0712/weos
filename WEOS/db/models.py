@@ -1781,6 +1781,18 @@ COST_RULE_DOMAINS = (
     "INSTALLATION",
     "TRANSPORT",
     "OVERHEAD",
+    "OTHER",
+)
+COST_RULE_BASES = (
+    "PERCENT_MATERIAL",
+    "PERCENT_DIRECT_COST",
+    "FIXED",
+    "FLAT",
+    "PER_OPENING",
+    "PER_ASSEMBLY",
+    "PER_SQM",
+    "PER_KG",
+    "PERCENT",
 )
 COST_RULE_SCOPES = ("DESIGN", "PROJECT", "ITEM", "SERIES", "FAMILY", "COMPANY")
 # Precedence high → low: Design > Project > Item > Series > Family > Company

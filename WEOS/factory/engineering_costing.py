@@ -362,24 +362,49 @@ def _apply_rule_charges(
     h = float(el.get("heightMm") or 0)
     area_sqm = (w * h) / 1_000_000.0 if w and h else 0.0
 
+    def _material_base() -> float:
+        return sum(
+            float(ln.get("extendedCost") or 0)
+            for ln in material_lines
+            if ln.get("breakdownCategory") in ("MATERIAL", "GLASS", "HARDWARE", "ACCESSORIES")
+        )
+
+    def _direct_cost_base() -> float:
+        return sum(float(v or 0) for k, v in totals.items() if k not in ("OVERHEAD",))
+
+    def _charge_amount(params: Mapping[str, Any]) -> tuple[float, float, str]:
+        basis = str(params.get("basis") or "FLAT").upper()
+        rate = float(params.get("rate") or params.get("pct") or 0)
+        if basis in ("PERCENT_MATERIAL",):
+            q = _material_base()
+            return round(q * rate / 100.0, 4), q, basis
+        if basis in ("PERCENT_DIRECT_COST", "PERCENT"):
+            q = _direct_cost_base()
+            return round(q * rate / 100.0, 4), q, basis
+        if basis in ("FIXED", "FLAT"):
+            return round(rate, 4), 1.0, basis
+        if basis in ("PER_OPENING", "PER_ASSEMBLY"):
+            return round(rate * 1.0, 4), 1.0, basis
+        if basis == "PER_SQM":
+            return round(rate * area_sqm, 4), area_sqm, basis
+        if basis == "PER_KG":
+            q = sum(
+                float((ln.get("meta") or {}).get("weightKg") or 0)
+                for ln in material_lines
+                if ln.get("breakdownCategory") == "MATERIAL"
+            )
+            return round(rate * q, 4), q, basis
+        return round(rate, 4), 1.0, basis
+
     def _simple_charge(domain: str, breakdown: str) -> None:
         res = domains.get(domain) or {}
         rule = res.get("rule")
         if not rule:
             return
         params = rule.get("params") or {}
-        basis = str(params.get("basis") or "FLAT").upper()
-        rate = float(params.get("rate") or 0)
-        if basis == "PER_OPENING":
-            q = 1.0
-        elif basis == "PER_SQM":
-            q = area_sqm
-        elif basis == "FLAT":
-            q = 1.0
-        else:
-            q = 1.0
-        amt = round(rate * q, 4)
-        totals[breakdown] += amt
+        amt, q, basis = _charge_amount(params)
+        rate = float(params.get("rate") or params.get("pct") or 0)
+        totals[breakdown] = totals.get(breakdown, 0.0) + amt
         extra.append(
             {
                 "lineId": new_costing_line_id(),
@@ -391,22 +416,31 @@ def _apply_rule_charges(
                 "quantityBasis": q,
                 "costBasisType": basis,
                 "precisionMode": "ESTIMATED",
-                "meta": {"ruleId": rule.get("ruleId")},
+                "meta": {"ruleId": rule.get("ruleId"), "basis": basis},
             }
         )
 
     _simple_charge("FABRICATION", "FABRICATION")
     _simple_charge("INSTALLATION", "INSTALLATION")
     _simple_charge("TRANSPORT", "TRANSPORT")
+    _simple_charge("OTHER", "OTHER")
 
-    # Overhead on subtotal before overhead
+    # Overhead on subtotal before overhead — never treated as profit
     oh_res = domains.get("OVERHEAD") or {}
     orule = oh_res.get("rule")
     if orule:
         params = orule.get("params") or {}
-        pct = float(params.get("pct") or 0)
-        sub = sum(v for k, v in totals.items() if k != "OVERHEAD")
-        amt = round(sub * pct / 100.0, 4)
+        basis = str(params.get("basis") or "PERCENT").upper()
+        if basis in ("PERCENT_DIRECT_COST", "PERCENT", "") or params.get("pct") is not None:
+            pct = float(params.get("pct") or params.get("rate") or 0)
+            sub = sum(v for k, v in totals.items() if k != "OVERHEAD")
+            amt = round(sub * pct / 100.0, 4)
+            rate = pct
+            q = sub
+            cost_basis = "PERCENT_DIRECT_COST"
+        else:
+            amt, q, cost_basis = _charge_amount(params)
+            rate = float(params.get("rate") or params.get("pct") or 0)
         totals["OVERHEAD"] += amt
         extra.append(
             {
@@ -415,11 +449,11 @@ def _apply_rule_charges(
                 "breakdownCategory": "OVERHEAD",
                 "description": orule.get("name") or "Overhead",
                 "extendedCost": amt,
-                "unitCost": pct,
-                "quantityBasis": sub,
-                "costBasisType": "PERCENT",
+                "unitCost": rate,
+                "quantityBasis": q,
+                "costBasisType": cost_basis,
                 "precisionMode": "ESTIMATED",
-                "meta": {"ruleId": orule.get("ruleId"), "pct": pct},
+                "meta": {"ruleId": orule.get("ruleId"), "notProfit": True},
             }
         )
 
@@ -1116,3 +1150,18 @@ def rollup_project_costing(*, project_id: str, company_gst: str) -> dict[str, An
         "batch": BATCH_ID,
         "internalOnly": True,
     }
+
+
+# ── Brief-aligned aliases (factory API surface) ───────────────────────────────
+
+calculate_bom_line_cost = line_material_cost
+
+
+def resolve_cost_rules(*, company_gst: str, context: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Resolve all cost-rule domains with DESIGN>PROJECT>ITEM>SERIES>FAMILY>COMPANY precedence."""
+    return cr.resolve_all_domains(company_gst=company_gst, context=context)
+
+
+def calculate_selling_price(**kwargs: Any) -> dict[str, Any]:
+    """Selling-price entry point — never mutates cost inputs."""
+    return sp.compute_selling_price(**kwargs)
