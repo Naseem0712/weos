@@ -673,7 +673,7 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 | **ID** | CANVAS-F |
 | **Status** | **DONE** — IMPLEMENTED / TESTED / COMMITTED (live browser mixed verify deferred to operator session when logged in) |
 | **Starting HEAD** | `d87df6e` (after Phase 1 UI polish; Batch E tip was `fd54709`) |
-| **Ending HEAD** | see tip after docs stamp |
+| **Ending HEAD** | `726c3839f046eacf512cca6827bfd99a97b0d88c` |
 | **Goal** | Leaf-cell Fixed/Sliding/Casement/Ventilator/Door/Open assignment; CELL-mode composite render (no double frames); PDF fail-closed for UNASSIGNED; structural conflict blocks |
 | **Domain** | `cell_product_assignments` + `WEOS/factory/cell_assignment.py` |
 | **Tests** | `_smoke_cell_product_assignment.py`, `_smoke_composite_cell_render.py`, `_smoke_cell_assignment_ui.py` + Batch E regression **PASS** |
@@ -757,8 +757,8 @@ Engineering Master Data / BOM Foundation remains on the architecture track **aft
 - **Branch:** weos-v2-foundation
 - **Starting HEAD (Phase 1 UI):** fd54709 → d87df6e (header/Floor-Loc/empty-state)
 - **Batch F domain start:** d87df6e
-- **Ending HEAD:** stamped after push
-- **Commits:** `7e4d164` domain; `8a10fce` composite render; `99eb9c4` UI workflow; `6b8123b` tests; docs stamp
+- **Ending HEAD:** 726c3839f046eacf512cca6827bfd99a97b0d88c on weos-v2-foundation / origin/weos-v2-foundation
+- **Commits:** `7e4d164` domain; `8a10fce` composite render; `99eb9c4` UI workflow; `6b8123b` tests; `726c383` docs stamp
 - **Next eligible implementation:** **Canvas Batch G** — Composite Design Management / Duplicate & Template Parity (**QUEUED**)
 - **Do not start:** Master Data/BOM; Production deploy
 - **Preserved:** unrelated dirty product stubs / weos.db / customers / tmp files not committed
