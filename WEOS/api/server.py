@@ -84,8 +84,10 @@ app.add_middleware(
 
 # Thin design hierarchy / scene routes (Batch 5+) — domain logic stays in factory/.
 from WEOS.api.design_routes import router as _design_router  # noqa: E402
+from WEOS.api.engineering_routes import router as _engineering_router  # noqa: E402
 
 app.include_router(_design_router)
+app.include_router(_engineering_router)
 
 
 @app.exception_handler(Exception)
