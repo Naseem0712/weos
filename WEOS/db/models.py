@@ -1005,6 +1005,8 @@ class FrameMember(Base):
     span_cell_id: Mapped[str | None] = mapped_column(String(60), index=True)
     parent_member_id: Mapped[str | None] = mapped_column(String(60), index=True)
     profile_role: Mapped[str | None] = mapped_column(String(80))
+    # Engineering Master Data: resolved profile id (SER+role → PROF-…); optional override
+    profile_reference: Mapped[str | None] = mapped_column(String(80), index=True)
     thickness_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="active", index=True)
@@ -1031,6 +1033,7 @@ class FrameMember(Base):
             "spanCellId": self.span_cell_id,
             "parentMemberId": self.parent_member_id,
             "profileRole": self.profile_role,
+            "profileReference": self.profile_reference,
             "thicknessMm": self.thickness_mm,
             "sortOrder": self.sort_order,
             "status": self.status,
@@ -1225,4 +1228,529 @@ class DesignTemplate(Base):
             "isQuoteItem": False,
             "includeInPdf": False,
             "includeInTotals": False,
+        }
+
+
+# ── WEOS V2 Engineering Master Data + BOM Foundation ─────────────────────────
+
+PROFILE_ROLES = (
+    "OUTER_FRAME",
+    "OUTER_FRAME_VERTICAL",
+    "OUTER_FRAME_HORIZONTAL",
+    "MULLION",
+    "TRANSOM",
+    "INTERLOCK",
+    "SHUTTER_STILE",
+    "SHUTTER_RAIL",
+    "SASH",
+    "BEAD",
+    "TRACK",
+    "SILL",
+    "ADAPTOR",
+    "REINFORCEMENT",
+    "GENERIC",
+)
+
+COST_BASIS_TYPES = (
+    "PER_KG",
+    "PER_RMT",
+    "PER_RFT",
+    "PER_PC",
+    "PER_NOS",
+    "PER_SET",
+    "PER_SFT",
+    "PER_SQM",
+    "PER_UNIT",
+    "PER_M",
+    "PER_MM",
+)
+
+BOM_UNITS = (
+    "MM",
+    "M",
+    "RMT",
+    "RFT",
+    "PC",
+    "NOS",
+    "KG",
+    "SFT",
+    "SQM",
+    "SET",
+    "UNIT",
+)
+
+BOM_LINE_CATEGORIES = (
+    "PROFILE",
+    "GLASS",
+    "HARDWARE",
+    "MESH",
+    "GASKET",
+    "EPDM",
+    "FASTENER",
+    "ANCHOR",
+    "FINISH",
+    "ACCESSORY",
+    "MATERIAL",
+    "OTHER",
+)
+
+BOM_GENERATION_STATUSES = ("READY", "PARTIAL", "ERROR", "STALE", "EMPTY")
+
+BOM_SCOPE_LEVELS = (
+    "PIECE",
+    "CELL",
+    "ELEMENT",
+    "ASSEMBLY",
+    "DESIGN",
+    "LOCATION",
+    "FLOOR",
+    "PROJECT",
+)
+
+
+class ProductSeries(Base):
+    """Engineering product series master — no project dimensions."""
+
+    __tablename__ = "product_series"
+
+    series_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    company_gst: Mapped[str | None] = mapped_column(String(40), index=True)  # null = global
+    code: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    family: Mapped[str] = mapped_column(String(60), index=True, nullable=False, default="WINDOW")
+    product_types: Mapped[Any] = mapped_column(JSON, nullable=True)  # SLIDING/FIXED/…
+    system_depth_mm: Mapped[float | None] = mapped_column(Float)
+    track_count: Mapped[int | None] = mapped_column(Integer)
+    legacy_product_id: Mapped[str | None] = mapped_column(String(80), index=True)
+    compatibility_aliases: Mapped[Any] = mapped_column(JSON, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "seriesId": self.series_id,
+            "companyGst": self.company_gst,
+            "code": self.code,
+            "name": self.name,
+            "family": self.family,
+            "productTypes": self.product_types or [],
+            "systemDepthMm": self.system_depth_mm,
+            "trackCount": self.track_count,
+            "legacyProductId": self.legacy_product_id,
+            "compatibilityAliases": self.compatibility_aliases or [],
+            "description": self.description,
+            "status": self.status,
+            "revision": self.revision,
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+            "batch": "ENG-MASTER",
+        }
+
+
+class ProfileMaster(Base):
+    """Profile / extrusion master with cost-basis foundation fields (not costing engine)."""
+
+    __tablename__ = "profile_masters"
+
+    profile_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    company_gst: Mapped[str | None] = mapped_column(String(40), index=True)
+    code: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    default_role: Mapped[str | None] = mapped_column(String(80), index=True)
+    roles: Mapped[Any] = mapped_column(JSON, nullable=True)  # allowed roles
+    width_mm: Mapped[float | None] = mapped_column(Float)
+    height_mm: Mapped[float | None] = mapped_column(Float)
+    wall_thickness_mm: Mapped[float | None] = mapped_column(Float)
+    weight_per_rmt: Mapped[float | None] = mapped_column(Float)  # kg / running meter
+    stock_length_mm: Mapped[float | None] = mapped_column(Float)
+    alloy_or_material: Mapped[str | None] = mapped_column(String(80))
+    finish_ref_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    cost_basis_type: Mapped[str | None] = mapped_column(String(30))  # PER_KG / PER_RMT / …
+    cost_basis_value: Mapped[float | None] = mapped_column(Float)  # foundation only
+    legacy_codes: Mapped[Any] = mapped_column(JSON, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "profileId": self.profile_id,
+            "companyGst": self.company_gst,
+            "code": self.code,
+            "name": self.name,
+            "defaultRole": self.default_role,
+            "roles": self.roles or [],
+            "widthMm": self.width_mm,
+            "heightMm": self.height_mm,
+            "wallThicknessMm": self.wall_thickness_mm,
+            "weightPerRmt": self.weight_per_rmt,
+            "stockLengthMm": self.stock_length_mm,
+            "alloyOrMaterial": self.alloy_or_material,
+            "finishRefId": self.finish_ref_id,
+            "costBasisType": self.cost_basis_type,
+            "costBasisValue": self.cost_basis_value,
+            "legacyCodes": self.legacy_codes or [],
+            "description": self.description,
+            "status": self.status,
+            "revision": self.revision,
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+            "batch": "ENG-MASTER",
+        }
+
+
+class SeriesProfileRole(Base):
+    """Series → profile role mapping (engine resolves by role, not hardcoded profile IDs)."""
+
+    __tablename__ = "series_profile_roles"
+    __table_args__ = (
+        UniqueConstraint("series_id", "role", name="uq_series_profile_role"),
+    )
+
+    mapping_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    series_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("product_series.series_id"), index=True, nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
+    profile_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("profile_masters.profile_id"), index=True, nullable=False
+    )
+    is_required: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "mappingId": self.mapping_id,
+            "seriesId": self.series_id,
+            "role": self.role,
+            "profileId": self.profile_id,
+            "isRequired": bool(self.is_required),
+            "notes": self.notes,
+            "status": self.status,
+            "revision": self.revision,
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+            "batch": "ENG-MASTER",
+        }
+
+
+class HardwareItem(Base):
+    __tablename__ = "hardware_items"
+
+    hardware_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    company_gst: Mapped[str | None] = mapped_column(String(40), index=True)
+    code: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str] = mapped_column(String(60), index=True, default="HARDWARE")
+    unit: Mapped[str] = mapped_column(String(20), default="PC")
+    cost_basis_type: Mapped[str | None] = mapped_column(String(30))
+    cost_basis_value: Mapped[float | None] = mapped_column(Float)
+    compatible_families: Mapped[Any] = mapped_column(JSON, nullable=True)
+    legacy_codes: Mapped[Any] = mapped_column(JSON, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "hardwareId": self.hardware_id,
+            "companyGst": self.company_gst,
+            "code": self.code,
+            "name": self.name,
+            "category": self.category,
+            "unit": self.unit,
+            "costBasisType": self.cost_basis_type,
+            "costBasisValue": self.cost_basis_value,
+            "compatibleFamilies": self.compatible_families or [],
+            "legacyCodes": self.legacy_codes or [],
+            "description": self.description,
+            "status": self.status,
+            "revision": self.revision,
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+            "batch": "ENG-MASTER",
+        }
+
+
+class HardwareRule(Base):
+    """Deterministic hardware BOM rule — testable, produces qty from config context."""
+
+    __tablename__ = "hardware_rules"
+
+    rule_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    company_gst: Mapped[str | None] = mapped_column(String(40), index=True)
+    series_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    product_type: Mapped[str | None] = mapped_column(String(40), index=True)
+    hardware_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("hardware_items.hardware_id"), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    quantity_formula: Mapped[str] = mapped_column(String(200), nullable=False, default="1")
+    condition_formula: Mapped[str | None] = mapped_column(String(200))
+    unit: Mapped[str] = mapped_column(String(20), default="PC")
+    priority: Mapped[int] = mapped_column(Integer, default=100)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "ruleId": self.rule_id,
+            "companyGst": self.company_gst,
+            "seriesId": self.series_id,
+            "productType": self.product_type,
+            "hardwareId": self.hardware_id,
+            "name": self.name,
+            "quantityFormula": self.quantity_formula,
+            "conditionFormula": self.condition_formula,
+            "unit": self.unit,
+            "priority": self.priority,
+            "status": self.status,
+            "revision": self.revision,
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+            "batch": "ENG-MASTER",
+        }
+
+
+class GlassMaster(Base):
+    __tablename__ = "glass_masters"
+
+    glass_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    company_gst: Mapped[str | None] = mapped_column(String(40), index=True)
+    code: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    makeup: Mapped[str | None] = mapped_column(String(40))  # single / double / …
+    thickness_mm: Mapped[float | None] = mapped_column(Float)
+    density_kg_per_sqm: Mapped[float | None] = mapped_column(Float)
+    cost_basis_type: Mapped[str | None] = mapped_column(String(30))
+    cost_basis_value: Mapped[float | None] = mapped_column(Float)
+    legacy_codes: Mapped[Any] = mapped_column(JSON, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "glassId": self.glass_id,
+            "companyGst": self.company_gst,
+            "code": self.code,
+            "name": self.name,
+            "makeup": self.makeup,
+            "thicknessMm": self.thickness_mm,
+            "densityKgPerSqm": self.density_kg_per_sqm,
+            "costBasisType": self.cost_basis_type,
+            "costBasisValue": self.cost_basis_value,
+            "legacyCodes": self.legacy_codes or [],
+            "description": self.description,
+            "status": self.status,
+            "revision": self.revision,
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+            "batch": "ENG-MASTER",
+        }
+
+
+class AccessoryMaster(Base):
+    """Mesh, gasket/EPDM, fasteners/anchors, finish refs, generic materials."""
+
+    __tablename__ = "accessory_masters"
+
+    accessory_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    company_gst: Mapped[str | None] = mapped_column(String(40), index=True)
+    kind: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    # MESH | GASKET | EPDM | FASTENER | ANCHOR | FINISH | MATERIAL | ACCESSORY
+    code: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    unit: Mapped[str] = mapped_column(String(20), default="PC")
+    cost_basis_type: Mapped[str | None] = mapped_column(String(30))
+    cost_basis_value: Mapped[float | None] = mapped_column(Float)
+    legacy_codes: Mapped[Any] = mapped_column(JSON, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "accessoryId": self.accessory_id,
+            "companyGst": self.company_gst,
+            "kind": self.kind,
+            "code": self.code,
+            "name": self.name,
+            "unit": self.unit,
+            "costBasisType": self.cost_basis_type,
+            "costBasisValue": self.cost_basis_value,
+            "legacyCodes": self.legacy_codes or [],
+            "description": self.description,
+            "status": self.status,
+            "revision": self.revision,
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+            "batch": "ENG-MASTER",
+        }
+
+
+class EngineeringBomDocument(Base):
+    """Derived engineering BOM header — not independently editable commercial source."""
+
+    __tablename__ = "engineering_bom_documents"
+
+    bom_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    project_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    design_document_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    assembly_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    element_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    scope_level: Mapped[str] = mapped_column(String(30), index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="EMPTY", index=True)
+    generator_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    design_revision_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    design_content_hash: Mapped[str | None] = mapped_column(String(80))
+    master_revision_token: Mapped[str | None] = mapped_column(String(80))
+    source_fingerprint: Mapped[str | None] = mapped_column(String(80), index=True)
+    issues: Mapped[Any] = mapped_column(JSON, nullable=True)
+    summary: Mapped[Any] = mapped_column(JSON, nullable=True)
+    lines_payload: Mapped[Any] = mapped_column(JSON, nullable=True)  # denormalized snapshot
+    is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    superseded_by: Mapped[str | None] = mapped_column(String(60))
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "bomId": self.bom_id,
+            "companyGst": self.company_gst,
+            "projectId": self.project_id,
+            "designDocumentId": self.design_document_id,
+            "assemblyId": self.assembly_id,
+            "elementId": self.element_id,
+            "scopeLevel": self.scope_level,
+            "status": self.status,
+            "generatorVersion": self.generator_version,
+            "designRevisionId": self.design_revision_id,
+            "designContentHash": self.design_content_hash,
+            "masterRevisionToken": self.master_revision_token,
+            "sourceFingerprint": self.source_fingerprint,
+            "issues": self.issues or [],
+            "summary": self.summary or {},
+            "lines": self.lines_payload or [],
+            "isCurrent": bool(self.is_current),
+            "supersededBy": self.superseded_by,
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+            "batch": "ENG-BOM",
+            "editableSource": False,
+            "usesQuoteSellingRate": False,
+        }
+
+
+class EngineeringBomLine(Base):
+    """Piece-level or rolled engineering BOM line contract."""
+
+    __tablename__ = "engineering_bom_lines"
+
+    line_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    bom_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("engineering_bom_documents.bom_id"), index=True, nullable=False
+    )
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    category: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    master_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    master_kind: Mapped[str | None] = mapped_column(String(40))
+    code: Mapped[str | None] = mapped_column(String(80))
+    description: Mapped[str] = mapped_column(String(400), nullable=False)
+    profile_role: Mapped[str | None] = mapped_column(String(80))
+    unit: Mapped[str] = mapped_column(String(20), default="PC")
+    quantity: Mapped[float] = mapped_column(Float, default=1.0)
+    length_mm: Mapped[float | None] = mapped_column(Float)
+    length_m: Mapped[float | None] = mapped_column(Float)
+    required_length_mm: Mapped[float | None] = mapped_column(Float)
+    stock_consumption_mm: Mapped[float | None] = mapped_column(Float)
+    width_mm: Mapped[float | None] = mapped_column(Float)
+    height_mm: Mapped[float | None] = mapped_column(Float)
+    area_sqm: Mapped[float | None] = mapped_column(Float)
+    weight_kg: Mapped[float | None] = mapped_column(Float)
+    weight_per_rmt: Mapped[float | None] = mapped_column(Float)
+    cell_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    member_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    element_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    assembly_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    scope_level: Mapped[str] = mapped_column(String(30), default="PIECE")
+    parent_line_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    rollup_key: Mapped[str | None] = mapped_column(String(120), index=True)
+    deduction_mode: Mapped[str | None] = mapped_column(String(40))  # EXACT | NOMINAL
+    cost_basis_type: Mapped[str | None] = mapped_column(String(30))
+    cost_basis_value: Mapped[float | None] = mapped_column(Float)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "lineId": self.line_id,
+            "bomId": self.bom_id,
+            "companyGst": self.company_gst,
+            "category": self.category,
+            "masterId": self.master_id,
+            "masterKind": self.master_kind,
+            "code": self.code,
+            "description": self.description,
+            "profileRole": self.profile_role,
+            "unit": self.unit,
+            "quantity": self.quantity,
+            "lengthMm": self.length_mm,
+            "lengthM": self.length_m,
+            "requiredLengthMm": self.required_length_mm,
+            "stockConsumptionMm": self.stock_consumption_mm,
+            "widthMm": self.width_mm,
+            "heightMm": self.height_mm,
+            "areaSqm": self.area_sqm,
+            "weightKg": self.weight_kg,
+            "weightPerRmt": self.weight_per_rmt,
+            "cellId": self.cell_id,
+            "memberId": self.member_id,
+            "elementId": self.element_id,
+            "assemblyId": self.assembly_id,
+            "scopeLevel": self.scope_level,
+            "parentLineId": self.parent_line_id,
+            "rollupKey": self.rollup_key,
+            "deductionMode": self.deduction_mode,
+            "costBasisType": self.cost_basis_type,
+            "costBasisValue": self.cost_basis_value,
+            "sortOrder": self.sort_order,
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "usesQuoteSellingRate": False,
         }

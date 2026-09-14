@@ -396,6 +396,7 @@ def assign_product(
     product_type: str,
     configuration: Mapping[str, Any] | None = None,
     series_code: str | None = None,
+    series_id: str | None = None,
     product_model: str | None = None,
 ) -> dict[str, Any]:
     """Assign or reassign product behavior to a leaf cell — one active assignment."""
@@ -404,6 +405,8 @@ def assign_product(
     cfg = validate_cell_config(pt, configuration)
     if series_code:
         cfg["seriesCode"] = str(series_code).strip() or None
+    if series_id:
+        cfg["seriesId"] = str(series_id).strip() or None
 
     from WEOS.db.models import CellProductAssignment, DesignCell, GeometryRevision
     from WEOS.factory import member_grid as mg
@@ -441,7 +444,7 @@ def assign_product(
             product_type=pt,
             product_model=product_model,
             adapter_id=ADAPTER_BY_PRODUCT[pt],
-            series_id=None,
+            series_id=(str(series_id).strip() if series_id else None) or cfg.get("seriesId"),
             series_code=cfg.get("seriesCode"),
             configuration=cfg,
             status="active",
