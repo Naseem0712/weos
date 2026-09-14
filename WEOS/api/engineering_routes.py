@@ -438,3 +438,249 @@ def api_get_bom(bom_id: str, request: Request, gst: str | None = None) -> dict[s
     if not bom:
         raise HTTPException(status_code=404, detail="BOM not found")
     return bom
+
+
+# ── Cost Rules + Costing + Selling ────────────────────────────────────────────
+
+
+class CostRuleBody(BaseModel):
+    domain: str
+    name: str
+    scope: str = "COMPANY"
+    scopeRef: str | None = None
+    params: dict[str, Any] | None = None
+    priority: int = 100
+    meta: dict[str, Any] | None = None
+
+
+class CostRuleUpdateBody(BaseModel):
+    name: str | None = None
+    params: dict[str, Any] | None = None
+    priority: int | None = None
+    status: str | None = None
+    scope: str | None = None
+    scopeRef: str | None = None
+    manualReview: bool | None = None
+    meta: dict[str, Any] | None = None
+
+
+class SellingBody(BaseModel):
+    method: str | None = None
+    sellingMethod: str | None = None
+    markupPct: float | None = None
+    targetMarginPct: float | None = None
+    manualRate: float | None = None
+    manualAmount: float | None = None
+    unitRate: float | None = None
+    commercialUnit: str | None = None
+    saleUnit: str | None = None
+    billingQtyOverride: float | None = None
+    actualSelling: float | None = None
+    legacySellingRate: float | None = None
+    sellingRate: float | None = None
+    lockStatus: str | None = None
+    qty: float | None = None
+    widthMm: float | None = None
+    heightMm: float | None = None
+
+
+class CostOverrideBody(BaseModel):
+    overrideUnitCost: float | None = None
+    overrideExtendedCost: float | None = None
+    reason: str
+    user: str | None = None
+
+
+class LegacyCostImportBody(BaseModel):
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.get("/api/engineering/cost-rules")
+def api_list_cost_rules(
+    request: Request, gst: str | None = None, domain: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory import cost_rules as cr
+
+    g = _gst(request, gst)
+    return {"rules": cr.list_cost_rules(company_gst=g, domain=domain)}
+
+
+@router.post("/api/engineering/cost-rules")
+def api_create_cost_rule(body: CostRuleBody, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory import cost_rules as cr
+
+    g = _gst(request, gst)
+    try:
+        return cr.create_cost_rule(
+            domain=body.domain,
+            name=body.name,
+            company_gst=g,
+            scope=body.scope,
+            scope_ref=body.scopeRef,
+            params=body.params,
+            priority=body.priority,
+            meta=body.meta,
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.patch("/api/engineering/cost-rules/{rule_id}")
+def api_update_cost_rule(
+    rule_id: str, body: CostRuleUpdateBody, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory import cost_rules as cr
+
+    g = _gst(request, gst)
+    try:
+        return cr.update_cost_rule(rule_id, company_gst=g, **body.model_dump(exclude_none=True))
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/engineering/cost-rules/seed")
+def api_seed_cost_rules(request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory import cost_rules as cr
+
+    g = _gst(request, gst)
+    return cr.seed_safe_sample_cost_rules(company_gst=g)
+
+
+@router.post("/api/engineering/cost-rules/import-legacy")
+def api_import_legacy_cost(
+    body: LegacyCostImportBody, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory import cost_rules as cr
+
+    g = _gst(request, gst)
+    return cr.import_legacy_cost_semantics(body.payload, company_gst=g)
+
+
+@router.get("/api/elements/{element_id}/costing")
+def api_get_element_costing(element_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory import engineering_costing as ec
+
+    g = _gst(request, gst)
+    row = ec.get_current_costing(element_id=element_id, company_gst=g)
+    if not row:
+        raise HTTPException(status_code=404, detail="Costing not found")
+    return row
+
+
+@router.post("/api/elements/{element_id}/costing/generate")
+def api_generate_element_costing(
+    element_id: str,
+    request: Request,
+    gst: str | None = None,
+    force: bool = False,
+    body: SellingBody | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory import engineering_costing as ec
+
+    g = _gst(request, gst)
+    selling = body.model_dump(exclude_none=True) if body else None
+    try:
+        return ec.generate_element_costing(
+            element_id, company_gst=g, persist=True, force=force, selling=selling
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/elements/{element_id}/costing/regenerate")
+def api_regenerate_element_costing(
+    element_id: str,
+    request: Request,
+    gst: str | None = None,
+    body: SellingBody | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory import engineering_costing as ec
+
+    g = _gst(request, gst)
+    selling = body.model_dump(exclude_none=True) if body else None
+    try:
+        return ec.regenerate_costing(element_id, company_gst=g, selling=selling)
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.get("/api/costing/{costing_id}")
+def api_get_costing(costing_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory import engineering_costing as ec
+
+    g = _gst(request, gst)
+    row = ec.get_current_costing(costing_id=costing_id, company_gst=g)
+    if not row:
+        raise HTTPException(status_code=404, detail="Costing not found")
+    return row
+
+
+@router.get("/api/costing/{costing_id}/public")
+def api_get_costing_public(costing_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    """Public/commercial view — strips cost/markup/profit (QR/customer safe)."""
+    from WEOS.factory import engineering_costing as ec
+
+    g = _gst(request, gst)
+    row = ec.get_current_costing(costing_id=costing_id, company_gst=g)
+    if not row:
+        raise HTTPException(status_code=404, detail="Costing not found")
+    return ec.public_commercial_view(row)
+
+
+@router.post("/api/costing/{costing_id}/selling")
+def api_update_selling(
+    costing_id: str, body: SellingBody, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory import engineering_costing as ec
+
+    g = _gst(request, gst)
+    try:
+        return ec.update_selling(costing_id, company_gst=g, selling=body.model_dump(exclude_none=True))
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/costing/{costing_id}/lines/{line_id}/override")
+def api_cost_line_override(
+    costing_id: str,
+    line_id: str,
+    body: CostOverrideBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory import engineering_costing as ec
+
+    g = _gst(request, gst)
+    try:
+        return ec.apply_line_override(
+            costing_id,
+            line_id,
+            company_gst=g,
+            override_unit_cost=body.overrideUnitCost,
+            override_extended_cost=body.overrideExtendedCost,
+            reason=body.reason,
+            user=body.user,
+        )
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.get("/api/projects/{project_id}/costing/rollup")
+def api_project_costing_rollup(
+    project_id: str, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory import engineering_costing as ec
+
+    g = _gst(request, gst)
+    try:
+        return ec.rollup_project_costing(project_id=project_id, company_gst=g)
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/engineering/costing/audit-strip")
+def api_audit_strip_cost_fields(body: dict[str, Any]) -> dict[str, Any]:
+    """Dev/audit helper — demonstrate public serialization strips internal cost fields."""
+    from WEOS.factory import engineering_costing as ec
+
+    return {"stripped": ec.strip_internal_cost_fields(body)}

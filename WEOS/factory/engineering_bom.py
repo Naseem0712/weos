@@ -1066,6 +1066,13 @@ def mark_stale_for_element(element_id: str, *, company_gst: str, reason: str = "
             meta["staleReason"] = reason
             r.meta = meta
             n += 1
+    # BOM STALE → Cost STALE (costing domain listens; does not redesign BOM)
+    try:
+        from WEOS.factory import engineering_costing as ec
+
+        ec.mark_stale_for_element(element_id, company_gst=gst, reason=f"bom_{reason}")
+    except Exception as exc:
+        _log.info("costing stale hook skipped: %s", exc)
     return n
 
 
