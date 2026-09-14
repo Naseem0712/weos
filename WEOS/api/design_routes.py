@@ -1237,12 +1237,172 @@ def api_structure_size_change(
 def api_structure_pdf(
     element_id: str, request: Request, gst: str | None = None
 ) -> dict[str, Any]:
-    """PDF safety probe — structural topology or STRUCTURAL_EDIT_PENDING_RENDER."""
+    """PDF safety probe — structural/composite topology or fail-closed."""
     from WEOS.factory.company_workspace import require_company_gst
     from WEOS.factory import member_grid as mg
 
     g = require_company_gst(request, gst)
     try:
-        return {"ok": True, "batch": "CANVAS-E", **mg.pdf_drawing_for_element(element_id, company_gst=g)}
+        return {"ok": True, "batch": "CANVAS-F", **mg.pdf_drawing_for_element(element_id, company_gst=g)}
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+# ── Canvas Batch F — Cell product assignment ─────────────────────────────────
+
+
+class CellAssignBody(BaseModel):
+    productType: str
+    configuration: dict[str, Any] | None = None
+    seriesCode: str | None = None
+    productModel: str | None = None
+
+
+class CellConfigBody(BaseModel):
+    configuration: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.get("/api/cell-assignment/capabilities")
+def api_cell_assignment_capabilities(
+    product_type: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory import cell_assignment as ca
+
+    return ca.adapter_capabilities(product_type)
+
+
+@router.get("/api/cells/{cell_id}/assignment")
+def api_get_cell_assignment(
+    cell_id: str, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import cell_assignment as ca
+
+    g = require_company_gst(request, gst)
+    try:
+        asn = ca.get_active_assignment(cell_id, company_gst=g)
+        return {"ok": True, "assignment": asn, "batch": "CANVAS-F"}
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.post("/api/cells/{cell_id}/assignment")
+def api_assign_cell_product(
+    cell_id: str, body: CellAssignBody, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import cell_assignment as ca
+    from WEOS.factory import member_grid as mg
+
+    g = require_company_gst(request, gst)
+    try:
+        result = ca.assign_product(
+            cell_id=cell_id,
+            company_gst=g,
+            product_type=body.productType,
+            configuration=body.configuration,
+            series_code=body.seriesCode,
+            product_model=body.productModel,
+        )
+        eid = result.get("cell", {}).get("elementId") or result.get("elementId")
+        composite = None
+        if eid:
+            topo = mg.get_element_topology(eid, company_gst=g)
+            assignments = ca.list_assignments_for_element(eid, company_gst=g)
+            svg = ca.render_composite_svg(
+                topo,
+                assignments,
+                width_mm=float(topo["element"]["widthMm"]),
+                height_mm=float(topo["element"]["heightMm"]),
+            )
+            composite = {
+                "svg": svg,
+                "compositionSummary": ca.composition_summary(
+                    assignments, topo.get("cells") or []
+                ),
+            }
+        return {**result, "composite": composite, "batch": "CANVAS-F"}
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.delete("/api/cells/{cell_id}/assignment")
+def api_clear_cell_assignment(
+    cell_id: str, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import cell_assignment as ca
+
+    g = require_company_gst(request, gst)
+    try:
+        return {**ca.clear_assignment(cell_id=cell_id, company_gst=g), "batch": "CANVAS-F"}
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.patch("/api/cells/{cell_id}/assignment")
+def api_patch_cell_assignment(
+    cell_id: str, body: CellConfigBody, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import cell_assignment as ca
+
+    g = require_company_gst(request, gst)
+    try:
+        return {
+            **ca.update_assignment_config(
+                cell_id=cell_id, company_gst=g, configuration=body.configuration
+            ),
+            "batch": "CANVAS-F",
+        }
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.get("/api/elements/{element_id}/assignments")
+def api_list_element_assignments(
+    element_id: str, request: Request, gst: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import cell_assignment as ca
+    from WEOS.factory import member_grid as mg
+
+    g = require_company_gst(request, gst)
+    try:
+        assignments = ca.list_assignments_for_element(element_id, company_gst=g)
+        topo = mg.get_element_topology(element_id, company_gst=g)
+        svg = None
+        if topo.get("gridActivated"):
+            svg = ca.render_composite_svg(
+                topo,
+                assignments,
+                width_mm=float(topo["element"]["widthMm"]),
+                height_mm=float(topo["element"]["heightMm"]),
+            )
+        return {
+            "ok": True,
+            "assignments": assignments,
+            "compositionSummary": ca.composition_summary(
+                assignments, topo.get("cells") or []
+            ),
+            "compositeSvg": svg,
+            "batch": "CANVAS-F",
+        }
+    except Exception as exc:
+        raise _map_err(exc) from exc
+
+
+@router.get("/api/cells/{cell_id}/assignment/schema")
+def api_cell_assignment_schema(
+    cell_id: str, request: Request, gst: str | None = None, productType: str | None = None
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory import cell_assignment as ca
+
+    g = require_company_gst(request, gst)
+    try:
+        asn = ca.get_active_assignment(cell_id, company_gst=g)
+        pt = productType or ((asn or {}).get("productType"))
+        return {"ok": True, "schema": ca.get_cell_property_schema(pt), "batch": "CANVAS-F"}
     except Exception as exc:
         raise _map_err(exc) from exc

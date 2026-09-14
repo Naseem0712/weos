@@ -584,6 +584,21 @@ def place_member(
             else:
                 raise ValueError("no leaf cell found for member placement")
 
+        # Batch F: block split of assigned leaf
+        try:
+            from WEOS.factory import cell_assignment as ca
+
+            ca.assert_no_assignment_conflict(
+                element_id=el["elementId"],
+                company_gst=company_gst,
+                cell_ids=[target.cell_id],
+                action="subdividing this cell",
+            )
+        except ValueError:
+            raise
+        except Exception:
+            pass
+
         pos = _validate_position_in_cell(
             orientation=ori,
             position_mm=pos,
@@ -731,6 +746,15 @@ def apply_equal_grid(
         c = int(columns)
     except (TypeError, ValueError) as exc:
         raise ValueError("rows and columns must be integers") from exc
+    # Batch F: block destructive grid when any leaf has assignment
+    from WEOS.factory import cell_assignment as ca
+
+    ca.assert_no_assignment_conflict(
+        element_id=element_id,
+        company_gst=company_gst,
+        cell_ids=None,
+        action="reapplying equal grid",
+    )
     if r < 1 or c < 1:
         raise ValueError("rows and columns must be >= 1")
     if r == 1 and c == 1:
@@ -951,6 +975,19 @@ def delete_member(
             ]
             if grand:
                 raise ValueError("cannot delete member: nested cell lineage present")
+
+        # Batch F: refuse merge when child leaves have product assignments
+        try:
+            from WEOS.factory import cell_assignment as ca
+
+            ca.assert_no_assignment_conflict(
+                element_id=el["elementId"],
+                company_gst=company_gst,
+                cell_ids=[k.cell_id for k in kids],
+                action="removing this structural member",
+            )
+        except ValueError:
+            raise
 
         # Also refuse if other members span only these kids
         for m in _active_members(s, el["elementId"]):
@@ -1342,7 +1379,7 @@ def render_structural_svg(
 
 
 def pdf_drawing_for_element(element_id: str, *, company_gst: str) -> dict[str, Any]:
-    """PDF safety: if grid activated, use structural SVG or fail-closed — never silent old drawing."""
+    """PDF safety: grid → composite (Batch F) or structural; never silent old SVG."""
     topo = get_element_topology(element_id, company_gst=company_gst)
     el = topo["element"]
     if not topo.get("gridActivated"):
@@ -1353,8 +1390,6 @@ def pdf_drawing_for_element(element_id: str, *, company_gst: str) -> dict[str, A
             "svg": None,
             "topology": topo,
         }
-    geo_ready = True
-    # If topology corrupt (no leaves), fail closed
     leaves = [c for c in (topo.get("cells") or []) if c.get("isLeaf")]
     if not leaves:
         return {
@@ -1365,6 +1400,39 @@ def pdf_drawing_for_element(element_id: str, *, company_gst: str) -> dict[str, A
             "error": "structural topology activated but leaf cells missing",
             "topology": topo,
         }
+    # Batch F: if any assignments exist, require composite preflight
+    try:
+        from WEOS.factory import cell_assignment as ca
+
+        assignments = ca.list_assignments_for_element(element_id, company_gst=company_gst)
+        if assignments or any(
+            (c.get("productAssignment") for c in leaves)
+        ):
+            pre = ca.pdf_preflight_composite(element_id, company_gst=company_gst)
+            if not pre.get("ok"):
+                return {
+                    "mode": "fail_closed",
+                    "pending": True,
+                    "code": "MISSING_CELL_ASSIGNMENT",
+                    "svg": None,
+                    "error": pre.get("error"),
+                    "missing": pre.get("missing") or [],
+                    "topology": topo,
+                    "batch": "CANVAS-F",
+                }
+            return {
+                "mode": "composite",
+                "pending": False,
+                "code": None,
+                "svg": pre.get("svg"),
+                "topology": topo,
+                "compositionSummary": pre.get("compositionSummary"),
+                "compositeReady": True,
+                "batch": "CANVAS-F",
+            }
+    except Exception as exc:
+        _log.warning("composite pdf preflight failed: %s", exc)
+
     svg = render_structural_svg(
         topo,
         width_mm=float(el["widthMm"]),
@@ -1387,7 +1455,7 @@ def pdf_drawing_for_element(element_id: str, *, company_gst: str) -> dict[str, A
         "code": None,
         "svg": svg,
         "topology": topo,
-        "compositeReady": geo_ready,
+        "compositeReady": True,
     }
 
 
@@ -1470,29 +1538,54 @@ def panel_for_member(member: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def panel_for_cell(cell: Mapping[str, Any]) -> dict[str, Any]:
+    from WEOS.factory import cell_assignment as ca
+
+    asn = None
+    gst = cell.get("companyGst")
+    if cell.get("isLeaf") and cell.get("cellId") and gst:
+        try:
+            asn = ca.get_active_assignment(str(cell["cellId"]), company_gst=str(gst))
+        except Exception:
+            asn = None
+    pt = (asn or {}).get("productType")
+    schema = ca.get_cell_property_schema(pt) if cell.get("isLeaf") else cell_panel_schema(cell)
+    values = {
+        "cellId": cell.get("cellId"),
+        "displayCode": cell.get("displayCode"),
+        "widthMm": cell.get("widthMm"),
+        "heightMm": cell.get("heightMm"),
+        "xMm": cell.get("xMm"),
+        "yMm": cell.get("yMm"),
+        "isLeaf": cell.get("isLeaf"),
+        "elementId": cell.get("elementId"),
+        "productType": pt,
+    }
+    if asn:
+        cfg = asn.get("configuration") or {}
+        values.update({k: v for k, v in cfg.items() if not isinstance(v, dict)})
+        if isinstance(cfg.get("glass"), dict):
+            values["glass.thicknessMm"] = cfg["glass"].get("thicknessMm")
+            values["glass.makeup"] = cfg["glass"].get("makeup")
     return {
         "kind": "cell",
         "title": f"Cell {cell.get('displayCode') or cell.get('cellId')}",
-        "guidance": "Cell selected. Product assignment deferred to Batch F.",
-        "schema": cell_panel_schema(cell),
-        "values": {
-            "cellId": cell.get("cellId"),
-            "displayCode": cell.get("displayCode"),
-            "widthMm": cell.get("widthMm"),
-            "heightMm": cell.get("heightMm"),
-            "xMm": cell.get("xMm"),
-            "yMm": cell.get("yMm"),
-            "isLeaf": cell.get("isLeaf"),
-            "elementId": cell.get("elementId"),
-            # Explicitly omit Sliding/Fixed assignment controls
-        },
+        "guidance": (
+            "Leaf cell — assign Fixed/Sliding/Casement/Ventilator/Door/Open."
+            if cell.get("isLeaf")
+            else "Parent cell — assign only leaf cells."
+        ),
+        "schema": schema,
+        "values": values,
+        "assignment": asn,
+        "forbidProductAssignment": not bool(cell.get("isLeaf")),
+        "supportsCellAssignment": bool(cell.get("isLeaf")),
         "selection": {
             "kind": "cell",
             "cellId": cell.get("cellId"),
             "elementId": cell.get("elementId"),
             "memberId": None,
         },
-        "forbidProductAssignment": True,
+        "batch": "CANVAS-F",
     }
 
 
@@ -1518,5 +1611,20 @@ def get_cell(cell_id: str, *, company_gst: str) -> dict[str, Any] | None:
         if row is None or _norm_company_gst(row.company_gst) != gst:
             return None
         d = row.to_dict()
-        d["productAssignment"] = None
-        return d
+    try:
+        from WEOS.factory import cell_assignment as ca
+
+        asn = ca.get_active_assignment(str(cell_id).strip(), company_gst=gst)
+        d["productAssignment"] = (
+            {
+                "assignmentId": asn["assignmentId"],
+                "productType": asn["productType"],
+                "adapterId": asn.get("adapterId"),
+            }
+            if asn
+            else None
+        )
+        d["assignment"] = asn
+    except Exception:
+        pass
+    return d
