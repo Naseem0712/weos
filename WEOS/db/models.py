@@ -1099,8 +1099,79 @@ class DesignCell(Base):
             "splitByMemberId": self.split_by_member_id,
             "sortOrder": self.sort_order,
             "status": self.status,
-            "productAssignment": None,  # Batch F — never expose assignment in E
+            # Batch F: assignment lives in cell_product_assignments; summary may be mirrored
+            "productAssignment": self.product_assignment,
             "meta": self.meta,
             "createdAt": _iso(self.created_at),
             "updatedAt": _iso(self.updated_at),
+        }
+
+
+# ── WEOS V2 Canvas Batch F — CellProductAssignment (behavior/infill, not geometry) ──
+
+
+CELL_ASSIGNMENT_PRODUCT_TYPES = (
+    "FIXED",
+    "SLIDING",
+    "CASEMENT",
+    "VENTILATOR",
+    "DOOR",
+    "OPEN",
+)
+
+CELL_ASSIGNMENT_STATUSES = ("active", "cleared", "superseded")
+
+
+class CellProductAssignment(Base):
+    """Product behavior/infill for one leaf DesignCell — separate from cell geometry.
+
+    Geometry remains on DesignCell (Batch E). At most one active assignment per cell.
+    """
+
+    __tablename__ = "cell_product_assignments"
+
+    assignment_id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    cell_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("design_cells.cell_id"), index=True, nullable=False
+    )
+    element_id: Mapped[str] = mapped_column(
+        String(60), ForeignKey("design_elements.element_id"), index=True, nullable=False
+    )
+    assembly_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    design_document_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    project_id: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    company_gst: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    product_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    product_model: Mapped[str | None] = mapped_column(String(80))
+    adapter_id: Mapped[str] = mapped_column(String(60), nullable=False, default="cell_infill")
+    series_id: Mapped[str | None] = mapped_column(String(80))
+    series_code: Mapped[str | None] = mapped_column(String(80))
+    configuration: Mapped[Any] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="active", index=True)
+    revision_id: Mapped[str | None] = mapped_column(String(60), index=True)
+    meta: Mapped[Any] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    def to_dict(self) -> dict:
+        return {
+            "assignmentId": self.assignment_id,
+            "cellId": self.cell_id,
+            "elementId": self.element_id,
+            "assemblyId": self.assembly_id,
+            "designDocumentId": self.design_document_id,
+            "projectId": self.project_id,
+            "companyGst": self.company_gst,
+            "productType": self.product_type,
+            "productModel": self.product_model,
+            "adapterId": self.adapter_id,
+            "seriesId": self.series_id,
+            "seriesCode": self.series_code,
+            "configuration": self.configuration if isinstance(self.configuration, dict) else (self.configuration or {}),
+            "status": self.status,
+            "revisionId": self.revision_id,
+            "meta": self.meta,
+            "createdAt": _iso(self.created_at),
+            "updatedAt": _iso(self.updated_at),
+            "batch": "CANVAS-F",
         }
