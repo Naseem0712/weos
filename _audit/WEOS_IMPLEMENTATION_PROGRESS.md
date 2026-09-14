@@ -666,14 +666,18 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 ---
 
-### CANVAS BATCH F — Cell Product Assignment (**QUEUED**)
+### CANVAS BATCH F — Cell Product Assignment (**DONE**)
 
 | Field | Value |
 |---|---|
 | **ID** | CANVAS-F |
-| **Status** | **QUEUED** after Canvas E |
-| **Goal** | Fixed / Sliding / Casement / Ventilator / Door / panel; structure vs infill/behavior; contextual schemas; mixed assembly |
-| **Hard stop** | No Design Management polish (Batch G); keep Geometry ≠ behavior ≠ series ≠ config |
+| **Status** | **DONE** — IMPLEMENTED / TESTED / COMMITTED (live browser mixed verify deferred to operator session when logged in) |
+| **Starting HEAD** | `d87df6e` (after Phase 1 UI polish; Batch E tip was `fd54709`) |
+| **Ending HEAD** | see tip after docs stamp |
+| **Goal** | Leaf-cell Fixed/Sliding/Casement/Ventilator/Door/Open assignment; CELL-mode composite render (no double frames); PDF fail-closed for UNASSIGNED; structural conflict blocks |
+| **Domain** | `cell_product_assignments` + `WEOS/factory/cell_assignment.py` |
+| **Tests** | `_smoke_cell_product_assignment.py`, `_smoke_composite_cell_render.py`, `_smoke_cell_assignment_ui.py` + Batch E regression **PASS** |
+| **Hard stop** | No Master Data / BOM; Next eligible: Canvas Batch G |
 | **Authority** | ACD.6–ACD.7, ACD.12 |
 
 ---
@@ -692,9 +696,9 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 ## Remaining batches (from user plan / target doc)
 
-**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → ~~Canvas D~~ **DONE** → ~~Canvas D1~~ **DONE** → ~~Canvas D2~~ **DONE** → ~~Canvas D3~~ **DONE** → ~~Canvas D4~~ **DONE** → ~~Canvas E~~ **DONE** → **Next: Canvas F** → G.  
+**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → ~~Canvas D~~ **DONE** → ~~Canvas D1~~ **DONE** → ~~Canvas D2~~ **DONE** → ~~Canvas D3~~ **DONE** → ~~Canvas D4~~ **DONE** → ~~Canvas E~~ **DONE** → ~~Canvas F~~ **DONE** → **Next: Canvas G**.  
 Engineering Master Data / BOM Foundation remains on the architecture track **after** C–G foundations are stable.  
-**HARD STOP:** Canvas F/G **not started**. Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
+**HARD STOP:** Canvas G **not started**. Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
 
 ---
 
@@ -748,14 +752,26 @@ Engineering Master Data / BOM Foundation remains on the architecture track **aft
 
 ---
 
+## Session checkpoint (Canvas Batch F)
+
+- **Branch:** weos-v2-foundation
+- **Starting HEAD (Phase 1 UI):** fd54709 → d87df6e (header/Floor-Loc/empty-state)
+- **Batch F domain start:** d87df6e
+- **Ending HEAD:** stamped after push
+- **Commits:** `7e4d164` domain; `8a10fce` composite render; `99eb9c4` UI workflow; `6b8123b` tests; docs stamp
+- **Next eligible implementation:** **Canvas Batch G** — Composite Design Management / Duplicate & Template Parity (**QUEUED**)
+- **Do not start:** Master Data/BOM; Production deploy
+- **Preserved:** unrelated dirty product stubs / weos.db / customers / tmp files not committed
+- **Smokes:** `_smoke_cell_product_assignment.py`, `_smoke_composite_cell_render.py`, `_smoke_cell_assignment_ui.py` + Batch E `_smoke_member_grid_cells.py` PASS
+
 ## Session checkpoint (Canvas Batch E)
 
 - **Branch:** weos-v2-foundation
 - **Starting HEAD:** b16101b8348bc64396268ba449407fdeb055346d
 - **Ending HEAD:** 96a7238955f01ce03e07c18db1cbf04f2c271db0 (96a7238) on weos-v2-foundation / origin/weos-v2-foundation
 - **Commits:** `6d9ca14` domain; `8753ff2` tests; `f96af46` drawing UI; `96a7238` docs stamp
-- **Next eligible implementation:** **Canvas Batch F** — Cell Product Assignment (**QUEUED**, not started)
-- **Do not start:** Canvas F automatically; Production deploy
+- **Next eligible implementation:** ~~Canvas Batch F~~ **DONE** → **Canvas Batch G**
+- **Do not start:** Production deploy
 - **Preserved:** unrelated dirty product stubs / weos.db / customers / tmp files not committed
 - **Size change rule:** KEEP_OFFSETS | SCALE | CANCEL — never silent; documented KEEP_OFFSETS keeps absolute mm offsets
 - **PDF:** structural topology SVG when grid activated; STRUCTURAL_EDIT_PENDING_RENDER fail-closed otherwise for pending composite
