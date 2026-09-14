@@ -682,23 +682,29 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 ---
 
-### CANVAS BATCH G — Design Management (**QUEUED**)
+### CANVAS BATCH G — Composite Design Management + Duplicate + Template Parity (**DONE**)
 
 | Field | Value |
 |---|---|
 | **ID** | CANVAS-G |
-| **Status** | **QUEUED** after Canvas F |
-| **Goal** | Add Design; Duplicate Design with explicit scale rules (PROPORTIONAL / FIXED DIMENSION / USER CHOICE — no silent guess); Project Design cards; floor/location workflow |
-| **Hard stop** | Deep Window Master / profile BOM waits until C–G stable; Duplicate = new ID, never mutate original |
+| **Status** | **DONE** — IMPLEMENTED / TESTED / COMMITTED / PUSHED (live browser deferred unless operator session logged in) |
+| **Starting HEAD** | `5b3cf0597ac530de98866b6aa6726ef5d497a303` |
+| **Ending HEAD** | `f8192c7eab984c36905d7746a98ace4a67d250e8` |
+| **Goal** | Design Overview cards manage all designs; Engineering edits one; deep-copy composite Duplicate with multi-size rows; Templates as engineering starters (no customer/quote identity) |
+| **Domain** | `composite_duplicate.py` + `design_templates` SQL + extended Quote Review APIs |
+| **Size rules** | Different-size requires explicit `KEEP_OFFSETS` \| `SCALE` (never silent); KEEP_OFFSETS rejects members outside new opening |
+| **Tests** | `_smoke_composite_duplicate.py`, `_smoke_multi_size_duplicate.py`, `_smoke_design_templates.py`, `_smoke_design_card_management.py` + E/F/D2/PDF gate **PASS** |
+| **Hard stop** | No Master Data / BOM / Costing / QuoteFamily / Payment Ledger |
 | **Authority** | ACD.9–ACD.11, ACD.12 |
+| **Production** | **NOT PERFORMED** |
 
 ---
 
 ## Remaining batches (from user plan / target doc)
 
-**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola 8.5/9.5~~ **DONE** → ~~Batch B PDF Viewer~~ **DONE** → ~~UX Batch C~~ **DONE** → ~~Canvas D0~~ **DONE** → ~~Canvas D~~ **DONE** → ~~Canvas D1~~ **DONE** → ~~Canvas D2~~ **DONE** → ~~Canvas D3~~ **DONE** → ~~Canvas D4~~ **DONE** → ~~Canvas E~~ **DONE** → ~~Canvas F~~ **DONE** → **Next: Canvas G**.  
-Engineering Master Data / BOM Foundation remains on the architecture track **after** C–G foundations are stable.  
-**HARD STOP:** Canvas G **not started**. Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
+**Immediate queue:** ~~Batch A~~ **DONE** → ~~Pergola~~ **DONE** → ~~Batch B~~ **DONE** → ~~UX C~~ **DONE** → ~~Canvas D0–D4~~ **DONE** → ~~Canvas E~~ **DONE** → ~~Canvas F~~ **DONE** → ~~Canvas G~~ **DONE**.  
+**Next eligible:** Engineering Master Data + BOM Foundation (architecture track).  
+**HARD STOP:** Do not auto-start Master Data/BOM. Production deployment — **NOT PERFORMED / NOT AUTHORIZED**.
 
 ---
 
@@ -752,6 +758,18 @@ Engineering Master Data / BOM Foundation remains on the architecture track **aft
 
 ---
 
+## Session checkpoint (Canvas Batch G)
+
+- **Branch:** weos-v2-foundation
+- **Starting HEAD:** 5b3cf0597ac530de98866b6aa6726ef5d497a303
+- **Ending HEAD:** f8192c7eab984c36905d7746a98ace4a67d250e8 on weos-v2-foundation / origin/weos-v2-foundation
+- **Commits:** `c274090` composite dup; `e8ed4a1` multi-size UI; `9bbad78` templates; `406a9ad` cards; `716fff7` tests; `f8192c7` docs stamp
+- **Next eligible implementation:** Engineering Master Data + BOM Foundation (**QUEUED** — do not auto-start)
+- **Do not start:** Master Data/BOM/Costing/QuoteFamily/Payment Ledger; Production deploy
+- **Preserved:** unrelated dirty product stubs / weos.db / customers / tmp files not committed
+- **Smokes:** `_smoke_composite_duplicate.py`, `_smoke_multi_size_duplicate.py`, `_smoke_design_templates.py`, `_smoke_design_card_management.py` + E/F/D2/PDF gate **PASS**
+- **Live:** deferred without authenticated operator browser session (no PIN bypass)
+
 ## Session checkpoint (Canvas Batch F)
 
 - **Branch:** weos-v2-foundation
@@ -759,7 +777,7 @@ Engineering Master Data / BOM Foundation remains on the architecture track **aft
 - **Batch F domain start:** d87df6e
 - **Ending HEAD:** 726c3839f046eacf512cca6827bfd99a97b0d88c on weos-v2-foundation / origin/weos-v2-foundation
 - **Commits:** `7e4d164` domain; `8a10fce` composite render; `99eb9c4` UI workflow; `6b8123b` tests; `726c383` docs stamp
-- **Next eligible implementation:** **Canvas Batch G** — Composite Design Management / Duplicate & Template Parity (**QUEUED**)
+- **Next eligible implementation:** ~~Canvas Batch G~~ **DONE** → Engineering Master Data + BOM Foundation
 - **Do not start:** Master Data/BOM; Production deploy
 - **Preserved:** unrelated dirty product stubs / weos.db / customers / tmp files not committed
 - **Smokes:** `_smoke_cell_product_assignment.py`, `_smoke_composite_cell_render.py`, `_smoke_cell_assignment_ui.py` + Batch E `_smoke_member_grid_cells.py` PASS
