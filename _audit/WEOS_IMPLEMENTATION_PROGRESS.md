@@ -689,7 +689,7 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 | **ID** | CANVAS-G |
 | **Status** | **DONE** — IMPLEMENTED / TESTED / COMMITTED / PUSHED (live browser deferred unless operator session logged in) |
 | **Starting HEAD** | `5b3cf0597ac530de98866b6aa6726ef5d497a303` |
-| **Ending HEAD** | `f8192c7eab984c36905d7746a98ace4a67d250e8` |
+| **Ending HEAD** | `e27740b0a9e4ee61c53658d752dc3159b9271e41` |
 | **Goal** | Design Overview cards manage all designs; Engineering edits one; deep-copy composite Duplicate with multi-size rows; Templates as engineering starters (no customer/quote identity) |
 | **Domain** | `composite_duplicate.py` + `design_templates` SQL + extended Quote Review APIs |
 | **Size rules** | Different-size requires explicit `KEEP_OFFSETS` \| `SCALE` (never silent); KEEP_OFFSETS rejects members outside new opening |
@@ -762,8 +762,8 @@ Gate smokes: durability, canonical customer/project, tenant ownership, design hi
 
 - **Branch:** weos-v2-foundation
 - **Starting HEAD:** 5b3cf0597ac530de98866b6aa6726ef5d497a303
-- **Ending HEAD:** f8192c7eab984c36905d7746a98ace4a67d250e8 on weos-v2-foundation / origin/weos-v2-foundation
-- **Commits:** `c274090` composite dup; `e8ed4a1` multi-size UI; `9bbad78` templates; `406a9ad` cards; `716fff7` tests; `f8192c7` docs stamp
+- **Ending HEAD:** e27740b0a9e4ee61c53658d752dc3159b9271e41 on weos-v2-foundation / origin/weos-v2-foundation
+- **Commits:** `c274090` composite dup; `e8ed4a1` multi-size UI; `9bbad78` templates; `406a9ad` cards; `716fff7` tests; `e27740b` docs stamp
 - **Next eligible implementation:** Engineering Master Data + BOM Foundation (**QUEUED** — do not auto-start)
 - **Do not start:** Master Data/BOM/Costing/QuoteFamily/Payment Ledger; Production deploy
 - **Preserved:** unrelated dirty product stubs / weos.db / customers / tmp files not committed
