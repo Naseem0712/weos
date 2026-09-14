@@ -679,8 +679,100 @@
         box.appendChild(sectBody);
         body.appendChild(box);
       });
+      // Batch F: Assign / Clear for leaf cells
+      if (state.kind === "cell" && payload.supportsCellAssignment && !payload.forbidProductAssignment) {
+        var asnBar = el("div", { className: "uc-pp-assign-bar", style: "margin-top:.55rem;display:flex;flex-wrap:wrap;gap:.35rem" });
+        var types = ["FIXED", "SLIDING", "CASEMENT", "VENTILATOR", "DOOR", "OPEN"];
+        types.forEach(function (pt) {
+          var b = el("button", {
+            type: "button",
+            className: "btn sm" + ((payload.assignment && payload.assignment.productType === pt) ? "" : " ghost"),
+            text: pt.charAt(0) + pt.slice(1).toLowerCase(),
+          });
+          b.setAttribute("data-uc-assign", pt);
+          b.title = "Assign " + pt;
+          b.addEventListener("click", function () {
+            assignCellProduct(sel.cellId || state.values.cellId, pt);
+          });
+          asnBar.appendChild(b);
+        });
+        if (payload.assignment) {
+          var clr = el("button", {
+            type: "button",
+            className: "btn ghost sm",
+            text: "Clear Assignment",
+          });
+          clr.addEventListener("click", function () {
+            clearCellAssignment(sel.cellId || state.values.cellId);
+          });
+          asnBar.appendChild(clr);
+        }
+        body.appendChild(asnBar);
+        if (payload.guidance) {
+          body.appendChild(el("div", { className: "muted", text: String(payload.guidance), style: "font-size:.72rem;margin-top:.35rem" }));
+        }
+      }
       if (actions) actions.style.display = state.kind === "element" ? "flex" : "none";
       setStatus("", false);
+    }
+
+    async function refreshCompositePreview(elementId, compositeSvg) {
+      try {
+        var host = global.WEOS_UNIVERSAL_CANVAS_HOST;
+        if (host && elementId && compositeSvg && typeof host.setElementPreviewSvg === "function") {
+          host.setElementPreviewSvg(elementId, compositeSvg, { fit: false });
+        }
+        if (host && typeof host.paint === "function") host.paint();
+        if (host && host.memberTools && typeof host.memberTools.loadTopology === "function") {
+          host.memberTools.loadTopology(elementId);
+        }
+      } catch (e) {}
+    }
+
+    async function assignCellProduct(cellId, productType) {
+      if (!cellId || !apiFn) return;
+      setHostSave("saving", "Assigning " + productType);
+      try {
+        var res = await apiFn("/api/cells/" + encodeURIComponent(cellId) + "/assignment", {
+          method: "POST",
+          body: { productType: productType },
+        });
+        var eid = (res.cell && res.cell.elementId) || (res.assignment && res.elementId);
+        var svg = res.composite && res.composite.svg;
+        await refreshCompositePreview(eid, svg);
+        setHostSave("saved", "Assigned " + productType);
+        setStatus("Assigned " + productType, false);
+        await loadSelection({ kind: "cell", cellId: cellId });
+      } catch (err) {
+        setHostSave("error", String(err && err.message ? err.message : err));
+        setStatus(String(err && err.message ? err.message : err), true);
+        try {
+          global.alert(err && err.message ? err.message : String(err));
+        } catch (e) {}
+      }
+    }
+
+    async function clearCellAssignment(cellId) {
+      if (!cellId || !apiFn) return;
+      setHostSave("saving", "Clearing assignment");
+      try {
+        var res = await apiFn("/api/cells/" + encodeURIComponent(cellId) + "/assignment", {
+          method: "DELETE",
+        });
+        var eid = res.cell && res.cell.elementId;
+        if (eid) {
+          try {
+            var list = await apiFn("/api/elements/" + encodeURIComponent(eid) + "/assignments");
+            await refreshCompositePreview(eid, list.compositeSvg);
+          } catch (e2) {}
+        }
+        setHostSave("saved", "Assignment cleared");
+        setStatus("Assignment cleared", false);
+        await loadSelection({ kind: "cell", cellId: cellId });
+      } catch (err) {
+        setHostSave("error", String(err && err.message ? err.message : err));
+        setStatus(String(err && err.message ? err.message : err), true);
+      }
     }
 
     async function loadSelection(sel) {
