@@ -326,9 +326,7 @@
 
   function wireQuoteReviewActions(payload) {
     var host = $("qwReviewHost");
-    if (!host || host._qwWired === payload.projectId) {
-      // still rebind buttons each render
-    }
+    if (!host) return;
     var add = $("btnQwAddProduct");
     if (add) {
       add.onclick = function () {
@@ -336,12 +334,13 @@
         if (C.workspace && C.workspace.openAddDesignModal) C.workspace.openAddDesignModal();
       };
     }
+    var fromTpl = $("btnQwFromTemplate");
+    if (fromTpl) fromTpl.onclick = openFromTemplate;
     var man = $("btnQwAddManual");
     if (man) {
       man.onclick = function () {
         goEngineering();
         if (typeof global.setView === "function") global.setView("cart");
-        // Reveal legacy form briefly for manual commercial path only
         var cart = $("view-cart");
         if (cart) {
           cart.classList.add("qw-manual-path");
@@ -362,14 +361,28 @@
     };
     host.querySelectorAll("[data-qw-edit]").forEach(function (btn) {
       btn.onclick = function () {
-        var lid = btn.getAttribute("data-qw-edit");
-        editDesign(lid);
+        editDesign(btn.getAttribute("data-qw-edit"));
       };
     });
     host.querySelectorAll("[data-qw-dup]").forEach(function (btn) {
       btn.onclick = function () {
-        var lid = btn.getAttribute("data-qw-dup");
-        openDupFor(lid, payload);
+        openDupFor(btn.getAttribute("data-qw-dup"), payload);
+      };
+    });
+    host.querySelectorAll("[data-qw-del]").forEach(function (btn) {
+      btn.onclick = function () {
+        deleteDesign(btn.getAttribute("data-qw-del"));
+      };
+    });
+    host.querySelectorAll("[data-qw-tpl]").forEach(function (btn) {
+      btn.onclick = function () {
+        saveAsTemplate(btn.getAttribute("data-qw-tpl"));
+      };
+    });
+    ["qwFilterFloor", "qwFilterLoc", "qwFilterPt"].forEach(function (id) {
+      var el = $(id);
+      if (el) el.onchange = function () {
+        if (C.designCards && C.designCards.applyCardFilters) C.designCards.applyCardFilters();
       };
     });
   }
@@ -389,9 +402,113 @@
         qty: card && card.qty,
         floor: card && card.floor,
         location: card && card.location,
+        floorId: card && card.floorId,
+        locationId: card && card.locationId,
         mark: card && card.mark,
         sellingRate: card && card.sellingRate,
+        composition: card && (card.composition || card.compositionSummary),
+        isComposite: card && card.isComposite,
       });
+    }
+  }
+
+  async function deleteDesign(lineId) {
+    var st = stateObj();
+    if (!st.projectId || !lineId) return;
+    if (!global.confirm || !global.confirm("Delete design " + lineId + "? This retires linked engineering topology.")) {
+      return;
+    }
+    try {
+      var res = await global.api(
+        "/api/projects/" + encodeURIComponent(st.projectId) + "/designs/" + encodeURIComponent(lineId),
+        { method: "DELETE" }
+      );
+      if (res && res.project && res.project.lines) {
+        st.lines = res.project.lines;
+      }
+      if (typeof global.toast === "function") global.toast("Deleted " + lineId);
+      await showQuoteReview();
+    } catch (e) {
+      if (typeof global.toast === "function") global.toast((e && e.message) || String(e));
+    }
+  }
+
+  async function saveAsTemplate(lineId) {
+    var st = stateObj();
+    if (!st.projectId || !lineId) return;
+    var name = global.prompt && global.prompt("Template name", "Reusable design");
+    if (!name) return;
+    var category = (global.prompt && global.prompt("Category (optional)", "Combination")) || "";
+    try {
+      var res = await global.api(
+        "/api/projects/" +
+          encodeURIComponent(st.projectId) +
+          "/designs/" +
+          encodeURIComponent(lineId) +
+          "/save-as-template",
+        { method: "POST", body: { name: name, category: category } }
+      );
+      if (typeof global.toast === "function") {
+        global.toast("Saved template " + ((res.template && res.template.name) || name));
+      }
+    } catch (e) {
+      if (typeof global.toast === "function") global.toast((e && e.message) || String(e));
+    }
+  }
+
+  async function openFromTemplate() {
+    var st = stateObj();
+    if (!st.projectId) {
+      if (typeof global.toast === "function") global.toast("Open a quote first");
+      return;
+    }
+    try {
+      var list = await global.api("/api/design-templates");
+      var templates = (list && list.templates) || [];
+      if (!templates.length) {
+        if (typeof global.toast === "function") global.toast("No templates yet — Save as Template from a card");
+        return;
+      }
+      var names = templates
+        .map(function (t, i) {
+          return i + 1 + ". " + t.name + (t.compositionSummary ? " — " + t.compositionSummary : "");
+        })
+        .join("\n");
+      var pick = global.prompt("Choose template number:\n" + names, "1");
+      var idx = parseInt(pick, 10) - 1;
+      if (!(idx >= 0 && idx < templates.length)) return;
+      var tpl = templates[idx];
+      var defW = (tpl.defaultSize && tpl.defaultSize.widthMm) || 1200;
+      var defH = (tpl.defaultSize && tpl.defaultSize.heightMm) || 1500;
+      var w = Number(global.prompt("Width mm", String(defW)));
+      var h = Number(global.prompt("Height mm", String(defH)));
+      if (!(w > 0 && h > 0)) return;
+      var rule = null;
+      if (Math.abs(w - defW) > 0.5 || Math.abs(h - defH) > 0.5) {
+        var choice = global.prompt("Size differs — type KEEP_OFFSETS or SCALE", "SCALE");
+        rule = String(choice || "").toUpperCase();
+        if (rule !== "KEEP_OFFSETS" && rule !== "SCALE") {
+          if (typeof global.toast === "function") global.toast("Cancelled — rule required");
+          return;
+        }
+      }
+      var res = await global.api(
+        "/api/projects/" +
+          encodeURIComponent(st.projectId) +
+          "/design-templates/" +
+          encodeURIComponent(tpl.templateId) +
+          "/instantiate",
+        {
+          method: "POST",
+          body: { widthMm: w, heightMm: h, sizeChangeRule: rule },
+        }
+      );
+      if (res && res.project && res.project.lines) st.lines = res.project.lines;
+      if (typeof global.toast === "function") global.toast("Created design from template");
+      await showQuoteReview();
+      if (res && res.lineId) editDesign(res.lineId);
+    } catch (e) {
+      if (typeof global.toast === "function") global.toast((e && e.message) || String(e));
     }
   }
 
@@ -399,7 +516,6 @@
     var idx = findLineIndex(lineId);
     goEngineering();
     if (idx < 0) {
-      // Reload from server then try again
       try {
         if (stateObj().projectId && typeof global.openProject === "function") {
           await global.openProject(stateObj().projectId);
@@ -409,7 +525,6 @@
     }
     if (idx >= 0 && typeof global.renderCart === "function") {
       stateObj().selectedLine = idx;
-      // Trigger select path used by cart table
       try {
         var row = document.querySelector('#cartBody [data-sel="' + idx + '"]');
         if (row) row.click();
@@ -482,7 +597,6 @@
     var hint = $("qwHomeHint");
     var st = stateObj();
 
-    // Prefer local session project if already known (refresh persistence)
     if (st.projectId && !opts.forceHome) {
       try {
         await global.openProject(st.projectId);
@@ -500,7 +614,6 @@
           " — Restore or start New Quote.";
       }
       if (typeof global.setView === "function") global.setView("quote-home");
-      // auto-restore for refresh continuity when preferRestore
       if (opts.autoRestore !== false) {
         await restoreDraft(plan.projectId);
         return plan;
