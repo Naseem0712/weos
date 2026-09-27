@@ -105,26 +105,36 @@ def _company_ok(doc: Mapping[str, Any], company_gst: str | None) -> bool:
 
 def _cart_quote_row(doc: Mapping[str, Any]) -> dict[str, Any] | None:
     from WEOS.factory.project_store import cart_quote_money
+    from WEOS.factory.quote_line_versions import lines_for_commercial_display
 
-    lines = doc.get("lines") or []
+    lines = lines_for_commercial_display(doc)
     pkg = package_money_for_doc(doc)
     money = cart_quote_money(doc)
     cart_grand = _money(money.get("totalGrand"))
-    has_lines = isinstance(lines, list) and len(lines) > 0
-    if not has_lines and cart_grand <= 0:
-        return None
-    if not has_lines and pkg.get("quoteCount"):
-        return None
+    has_lines = len(lines) > 0
     qid = str(doc.get("quotationId") or "").strip() or None
+    # A saved quote number is a quote even before lines are priced. Package-only
+    # jobs still hide the empty cart row so outside quotes are not double-counted.
+    if not has_lines and cart_grand <= 0 and not qid:
+        return None
+    if not has_lines and cart_grand <= 0 and pkg.get("quoteCount"):
+        return None
     pid = str(doc.get("projectId") or "").strip()
+    try:
+        ver = int(doc.get("approvedVersion") or doc.get("version") or 1)
+    except (TypeError, ValueError):
+        ver = 1
+    status = str(doc.get("status") or "draft")
     return {
         "id": f"cart:{pid}" if pid else "cart",
         "kind": "weos",
         "projectId": doc.get("projectId"),
         "quotationId": qid,
         "name": doc.get("name"),
-        "status": doc.get("status"),
-        "lineCount": len(lines) if isinstance(lines, list) else 0,
+        "status": status,
+        "version": ver,
+        "versionLabel": f"v{ver}" + (" · approved" if status.strip().lower() == "approved" else ""),
+        "lineCount": len(lines),
         "totalTaxable": _money(money.get("totalTaxable")),
         "gstAmount": _money(money.get("totalGst")),
         "totalGrand": cart_grand,
@@ -141,6 +151,43 @@ def job_quote_rows(docs: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
         cart = _cart_quote_row(doc)
         if cart:
             rows.append(cart)
+        try:
+            from WEOS.factory.project_store import cart_quote_money
+            from WEOS.factory.quote_line_versions import version_quote_rows
+
+            pid = str(doc.get("projectId") or "").strip()
+            for snap in version_quote_rows(doc):
+                shadow = {
+                    "lines": snap.get("lines") or [],
+                    "status": "draft",
+                    "quoteDiscount": doc.get("quoteDiscount"),
+                    "projectId": pid,
+                }
+                money = cart_quote_money(shadow)
+                grand = _money(money.get("totalGrand"))
+                ver = int(snap.get("version") or 0)
+                rows.append(
+                    {
+                        "id": f"cart:{pid}::v{ver}" if pid else f"ver:{ver}",
+                        "kind": "version",
+                        "projectId": doc.get("projectId"),
+                        "quotationId": snap.get("quotationId") or doc.get("quotationId"),
+                        "name": doc.get("name"),
+                        "status": snap.get("status") or "version",
+                        "version": ver,
+                        "versionLabel": f"v{ver}" + (" · approved" if snap.get("status") == "approved" else ""),
+                        "lineCount": len(snap.get("lines") or []),
+                        "totalTaxable": _money(money.get("totalTaxable")),
+                        "gstAmount": _money(money.get("totalGst")),
+                        "totalGrand": grand,
+                        "projectValue": grand,
+                        "gstMode": "exclude",
+                        "gstPercent": money.get("gstPercent"),
+                        "items": [],
+                    }
+                )
+        except Exception:
+            pass
         pkg = package_money_for_doc(doc)
         for q in pkg.get("quotes") or []:
             rows.append(

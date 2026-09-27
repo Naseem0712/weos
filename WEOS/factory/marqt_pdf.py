@@ -1251,6 +1251,30 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     show_group_headers = len(distinct_groups) > 1
     last_quote_group = None
 
+    removed = [ln for ln in (payload.get("removedLines") or []) if isinstance(ln, Mapping)]
+    if removed:
+        c.setFillColorRGB(0.70, 0.12, 0.12)
+        set_font(c, 8, bold=True)
+        c.drawString(M, y, "Removed since previous version")
+        y -= 12
+        set_font(c, 8)
+        for ln in removed:
+            if y < bottom_limit + 24:
+                y = header(page_no + 1)
+                page_no += 1
+            loc = ""
+            try:
+                from WEOS.factory.line_kind import line_location_name
+
+                loc = line_location_name(ln)
+            except Exception:
+                loc = str(ln.get("locationName") or "")
+            label = loc or str(ln.get("product") or ln.get("displayName") or "Item")
+            c.setFillColorRGB(0.70, 0.12, 0.12)
+            c.drawString(M, y, f"REMOVED  {label}"[:90])
+            y -= 12
+        y -= 8
+
     for idx, line in enumerate(lines):
         gname = line_quote_group(line) if isinstance(line, Mapping) else "Main"
         if show_group_headers and gname != last_quote_group:
@@ -1342,8 +1366,21 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         code = f"W{idx + 1}"
         loc = line_location_name(line)
         design_label = design_serial_label(idx, line)
+        flag = str(line.get("changeFlag") or "").strip().lower() if isinstance(line, Mapping) else ""
+        if flag == "added":
+            design_label = f"{design_label}  ADDED"
+        elif flag == "reduced":
+            design_label = f"{design_label}  REDUCED"
+        elif flag == "removed":
+            design_label = f"{design_label}  REMOVED"
         # Design column — reddish serial; location prints with it (under / beside W8).
-        c.setFillColorRGB(*accent)
+        # Green = added since the previous version. Red = reduced or removed.
+        if flag == "added":
+            c.setFillColorRGB(0.04, 0.45, 0.28)
+        elif flag in {"reduced", "removed"}:
+            c.setFillColorRGB(0.70, 0.12, 0.12)
+        else:
+            c.setFillColorRGB(*accent)
         max_code_w = draw_w - 6
         if loc:
             try:

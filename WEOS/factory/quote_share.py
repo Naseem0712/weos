@@ -616,6 +616,12 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
             doc["updatedAt"] = doc.get("updatedAt") or quote_row.get("updatedAt")
     if not doc:
         return None
+    try:
+        from WEOS.factory.quote_line_versions import presentation_doc
+
+        doc = presentation_doc(doc)
+    except Exception:
+        _log.exception("public quote version view skipped")
 
     token = ensure_project_share_token(doc, persist=bool(doc.get("projectId")))
     gst = _norm_gst(doc.get("companyGst"))

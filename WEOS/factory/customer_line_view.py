@@ -300,6 +300,7 @@ def public_product_row(index: int, line: Mapping[str, Any] | None) -> dict[str, 
         "colour": line_colour(line) or "—",
         "rate": rate_label,
         "amount": amt,
+        "changeFlag": str(line.get("changeFlag") or "").strip().lower() or None,
     }
 
 
@@ -377,7 +378,13 @@ def public_products_from_doc(doc: Mapping[str, Any] | None) -> list[dict[str, An
         if calc_ln is None and i < len(calc_lines):
             calc_ln = calc_lines[i]
         merged = merge_calc_line(ln, calc_ln)
+        merged["changeFlag"] = ln.get("changeFlag") or merged.get("changeFlag")
         out.append(public_product_row(i, merged))
     if not out and calc_lines:
         out = [public_product_row(i, ln) for i, ln in enumerate(calc_lines)]
+    for extra in doc.get("removedLines") or []:
+        if isinstance(extra, Mapping):
+            row = public_product_row(len(out), extra)
+            row["changeFlag"] = "removed"
+            out.append(row)
     return out

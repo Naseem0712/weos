@@ -242,6 +242,13 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
     if bump_version:
         ver += 1
     doc["version"] = ver
+    if bump_version and isinstance(prev_doc, dict):
+        try:
+            from WEOS.factory.quote_line_versions import remember_previous_version
+
+            remember_previous_version(doc, prev_doc)
+        except Exception:
+            _log.exception("quote version snapshot skipped for %s", pid)
 
     # undo stack (last 20 snapshots of lines+meta for client undo)
     undo = list(doc.get("_undoStack") or [])
@@ -307,6 +314,12 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
         doc["quoteNumberVersioned"] = True
     # Keep customer profile in sync so Project Setup and Customers tab share one record.
     _sync_customer_from_project(out)
+    try:
+        from WEOS.factory.quote_line_versions import stamp_change_flags
+
+        stamp_change_flags(doc)
+    except Exception:
+        _log.debug("change flags on save response skipped for %s", pid, exc_info=True)
     return doc
 
 
@@ -377,6 +390,12 @@ def set_project_status(
             doc["approvedVersion"] = int(approved_version)
         except (TypeError, ValueError):
             pass
+    elif st in {"approved", "confirmed", "accepted", "finalized", "ordered", "order", "won"}:
+        try:
+            doc["approvedVersion"] = int(doc.get("approvedVersion") or doc.get("version") or 1)
+            approval_event["quoteVersion"] = doc["approvedVersion"]
+        except (TypeError, ValueError):
+            doc["approvedVersion"] = 1
     had_customer = bool(str(doc.get("customer") or "").strip())
     if st in {"approved", "confirmed", "accepted", "finalized", "ordered", "order", "won"}:
         doc["approvedAt"] = now
@@ -426,6 +445,13 @@ def set_project_status(
             doc["approvalHistory"] = hist[-30:]
         except Exception:
             doc["approvalHistory"] = [approval_event]
+    if st in {"approved", "confirmed", "accepted", "finalized", "ordered", "order", "won"}:
+        try:
+            from WEOS.factory.quote_line_versions import pin_approved_snapshot
+
+            pin_approved_snapshot(doc)
+        except Exception:
+            _log.exception("approved version pin skipped for %s", project_id)
     return save_project(doc, bump_version=False, action=f"status_{st}")
 
 
@@ -567,6 +593,17 @@ def load_project(project_id: str) -> dict[str, Any]:
             path = dest
     doc = json.loads(path.read_text(encoding="utf-8"))
     doc["_path"] = path.as_posix()
+    try:
+        from WEOS.factory.quote_line_versions import hydrate_commercial_lines, stamp_change_flags
+
+        if hydrate_commercial_lines(doc):
+            try:
+                save_project(doc, bump_version=False, action="recover_lines")
+            except Exception:
+                _log.exception("recover lines save failed for %s", project_id)
+        stamp_change_flags(doc)
+    except Exception:
+        _log.exception("commercial line hydrate skipped for %s", project_id)
     return doc
 
 
@@ -603,9 +640,15 @@ def cart_quote_money(doc: Mapping[str, Any] | None) -> dict[str, float]:
     from WEOS.factory.ledger_store import quote_money_parts
 
     doc = doc if isinstance(doc, Mapping) else {}
+    try:
+        from WEOS.factory.quote_line_versions import lines_for_commercial_display
+
+        money_lines = lines_for_commercial_display(doc)
+    except Exception:
+        money_lines = list(doc.get("lines") or [])
     line_sum = 0.0
     any_amt = False
-    for ln in doc.get("lines") or []:
+    for ln in money_lines:
         if not isinstance(ln, Mapping):
             continue
         amt = customer_line_amount(ln)
@@ -740,6 +783,12 @@ def list_projects(
     for p in files:
         try:
             d = json.loads(p.read_text(encoding="utf-8"))
+            try:
+                from WEOS.factory.quote_line_versions import hydrate_commercial_lines
+
+                hydrate_commercial_lines(d)
+            except Exception:
+                pass
             st = d.get("status", "active")
             if status and st != status:
                 continue

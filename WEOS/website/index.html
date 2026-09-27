@@ -5439,8 +5439,15 @@ function renderCart() {
     && new Set((state.lines || []).map(lineQuoteGroup)).size > 1;
   let html = '';
   let lastGroup = null;
+  const removed = state.removedLines || [];
+  if (removed.length) {
+    removed.forEach(ln => {
+      const name = (ln && (ln.locationName || ln.positionName || ln.displayName || ln.product)) || 'Item';
+      html += `<tr style="background:#fdecec"><td></td><td colspan="6"><span style="color:#b42318;font-weight:700">REMOVED</span> ${esc(name)} <span class="muted">since previous version</span></td></tr>`;
+    });
+  }
   if (!visible.length) {
-    html = '<tr><td colspan="7" class="muted">Cart empty — add products' +
+    html = (html || '') + '<tr><td colspan="7" class="muted">Cart empty — add products' +
       (state.quoteGroupFilter && state.quoteGroupFilter !== 'All' ? ' to section “' + esc(state.quoteGroupFilter) + '”' : '') +
       '</td></tr>';
   } else {
@@ -5459,10 +5466,16 @@ function renderCart() {
         lastGroup = g;
       }
       rowNo += 1;
+      const flag = ln.changeFlag === 'added'
+        ? '<span style="color:#0a7a45;font-weight:700;font-size:.72rem"> ADDED</span>'
+        : (ln.changeFlag === 'reduced'
+          ? '<span style="color:#b42318;font-weight:700;font-size:.72rem"> REDUCED</span>'
+          : '');
+      const rowBg = ln.changeFlag === 'added' ? '#eefaf3' : (ln.changeFlag === 'reduced' ? '#fdecec' : (i===state.selectedLine ? '#f3faf6' : ''));
       html += `
-    <tr style="${i===state.selectedLine?'background:#f3faf6':''}">
+    <tr style="${rowBg?'background:'+rowBg:''}">
       <td>${rowNo}</td>
-      <td>${cartLineProductLabel(ln)}${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${esc(ln.locationName||ln.positionName)}</div>`:''}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}${showHeaders?'':`<div class="muted" style="font-size:.68rem">${esc(g)}</div>`}</td>
+      <td>${cartLineProductLabel(ln)}${flag}${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${esc(ln.locationName||ln.positionName)}</div>`:''}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}${showHeaders?'':`<div class="muted" style="font-size:.68rem">${esc(g)}</div>`}</td>
       <td><input data-f="width" data-i="${i}" type="number" value="${ln.width != null ? ln.width : ''}" style="width:70px"/>×<input data-f="height" data-i="${i}" type="number" value="${ln.height != null ? ln.height : ''}" style="width:70px"/></td>
       <td><input data-f="qty" data-i="${i}" type="number" min="1" value="${ln.qty != null ? ln.qty : ''}" style="width:56px"/></td>
       <td style="font-size:.8rem">${ln.glass||''}<br>${ln.colour||''}</td>
@@ -6986,6 +6999,16 @@ async function saveProject(silent) {
           doc = await api('/api/projects/'+state.projectId, {method:'PUT', body});
         }
         adoptSavedProject(doc);
+        if (doc && Array.isArray(doc.lines)) {
+          const byId = {};
+          doc.lines.forEach(ln => { if (ln && ln.lineId) byId[String(ln.lineId)] = ln.changeFlag || ''; });
+          (state.lines || []).forEach(ln => {
+            if (!ln || !ln.lineId || !(String(ln.lineId) in byId)) return;
+            if (byId[String(ln.lineId)]) ln.changeFlag = byId[String(ln.lineId)];
+            else delete ln.changeFlag;
+          });
+          state.removedLines = doc.removedLines || [];
+        }
         if (!silent) toast('Saved v'+doc.version+(doc.quoteNumberVersioned ? ' · quote versioned' : ''));
         refreshSetupSummary();
         adoptPackageQuotes(doc);
@@ -7001,6 +7024,12 @@ async function saveProject(silent) {
 
 function scheduleSave() {
   persistCartSession();
+  clearTimeout(state._saveTimer);
+  state._saveTimer = setTimeout(() => {
+    const n = (state.lines || []).length;
+    if (!state.projectId && !n) return;
+    saveProject(true).catch(() => {});
+  }, 700);
 }
 
 async function openProject(id) {
@@ -7023,6 +7052,7 @@ async function openProject(id) {
   adoptPackageQuotes(doc);
   adoptQuoteDiscount(doc);
   adoptCartQuoteGroups(doc);
+  state.removedLines = Array.isArray(doc.removedLines) ? doc.removedLines : [];
   lookupSetupClient().catch(() => {});
   state.memoryAskedFor = null;
   if (doc.lastCalculation?.price) {
@@ -10160,7 +10190,8 @@ function renderMasterLedger(wrap){
     const want = String(forPid||'');
     const subset = want ? quotes.filter(q => !q.projectId || String(q.projectId)===want) : [];
     return `<option value="any">Any — this project’s quotes</option>` + subset.map(q => {
-      const label = (q.kind==='weos'?'WEOS · ':'Outside · ') + (q.quotationId || q.id || 'quote') + ' · ' + money(q.projectValue);
+      const kindLabel = q.kind==='version' ? 'Version · ' : (q.kind==='weos' ? 'WEOS · ' : 'Outside · ');
+      const label = kindLabel + (q.quotationId || q.id || 'quote') + (q.versionLabel ? (' · ' + q.versionLabel) : '') + ' · ' + money(q.projectValue);
       return `<option value="${esc(q.id)}" data-pid="${esc(q.projectId||'')}">${esc(label)}</option>`;
     }).join('');
   }
@@ -10193,7 +10224,7 @@ function renderMasterLedger(wrap){
     <p class="muted" style="margin:.15rem 0 .35rem;font-size:.75rem">Open a project to see only that job’s quotes, advances and running balance. Client total stays the sum of every project.</p>
     <div style="overflow:auto;margin:.35rem 0 .8rem"><table><thead><tr><th>Quote no. / project</th><th>Quotes</th><th>Value</th><th>Advance</th><th>Running</th><th></th></tr></thead><tbody>${
       projects.map(p => `<tr>
-        <td>${esc(p.quotationId||p.projectId)}<div class="muted" style="font-size:.72rem">${esc(p.name||'')} · ${esc(p.status||'')}</div></td>
+        <td>${esc(p.quotationId||p.projectId)}<div class="muted" style="font-size:.72rem">${esc(p.name||'')} · ${esc(p.status||'draft')}${p.status==='approved'?' · approved version on this row':''}</div></td>
         <td>${p.quoteCount||0}</td>
         <td>${money(p.projectValue)}</td>
         <td>${money(p.totalAdvances)}</td>
@@ -10260,8 +10291,8 @@ function renderMasterLedger(wrap){
     <p class="muted" style="margin:.15rem 0 .35rem;font-size:.75rem">${scope==='client'?'Client total = every project. Select a project for that job’s quotes and running balance.':'WEOS + outside quotes on this quote number. Discount applies to this project value.'}</p>
     <div style="overflow:auto;margin:.35rem 0 .8rem"><table><thead><tr><th>Quote</th><th>Kind</th><th>Taxable</th><th>GST</th><th>Value</th><th>PDF / photos</th></tr></thead><tbody>${
       quotes.length ? quotes.map(q => `<tr>
-        <td>${esc(q.quotationId||q.id||'—')}${q.projectId?`<div class="muted" style="font-size:.72rem">${esc(q.projectId)}</div>`:''}${q.items&&q.items.length?`<div class="muted" style="font-size:.72rem">${q.items.map(it=>esc((it.categoryLabel||it.category||'')+' '+(it.qty||'')+(it.size?(' · '+it.size):'')+' · '+money(it.amount))).join('<br/>')}</div>`:''}</td>
-        <td>${q.kind==='weos'?'WEOS quote':'Outside quote'}</td>
+        <td>${esc(q.quotationId||q.id||'—')}${q.versionLabel?` <span class="muted">${esc(q.versionLabel)}</span>`:''}${q.projectId?`<div class="muted" style="font-size:.72rem">${esc(q.projectId)}</div>`:''}${q.items&&q.items.length?`<div class="muted" style="font-size:.72rem">${q.items.map(it=>esc((it.categoryLabel||it.category||'')+' '+(it.qty||'')+(it.size?(' · '+it.size):'')+' · '+money(it.amount))).join('<br/>')}</div>`:''}</td>
+        <td>${q.kind==='version'?'Saved version':(q.kind==='weos'?'WEOS quote':'Outside quote')}</td>
         <td>${money(q.totalTaxable)}</td>
         <td>${money(q.gstAmount)}</td>
         <td>${money(q.projectValue)}</td>
@@ -10271,20 +10302,23 @@ function renderMasterLedger(wrap){
     ${outsideBox}
     <strong style="font-size:.88rem">Record advance</strong>
     <p class="muted" style="margin:.15rem 0 .4rem;font-size:.75rem">Search client → select <strong>project</strong> → quote (or Any on that project) → amount → mode. Entry reduces this project’s balance and the client’s total business.</p>
-    <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.55rem">
-      <div class="grow"><label class="l">Project</label><select id="mlAdvProject" style="min-width:180px"><option value="">Select project</option>${projectOpts}</select></div>
-      <div class="grow"><label class="l">Against quote</label><select id="mlAdvQuote" style="min-width:180px"><option value="">Select quote or Any</option>${quoteOpts}</select></div>
-      <div><label class="l">Amount ₹</label><input id="mlAdvAmt" type="number" min="0" step="0.01" style="width:110px"/></div>
-      <div><label class="l">Mode</label>
-        <select id="mlAdvMode" style="width:110px">
+    <div class="ledger-entry" id="mlAdvEntry">
+      <div class="ledger-field"><label class="l">Project</label><select id="mlAdvProject"><option value="">Select project</option>${projectOpts}</select></div>
+      <div class="ledger-field"><label class="l">Against quote</label><select id="mlAdvQuote"><option value="">Select quote or Any</option>${quoteOpts}</select></div>
+      <div class="ledger-field"><label class="l">Amount ₹</label><input id="mlAdvAmt" type="number" min="0" step="0.01"/></div>
+      <div class="ledger-field"><label class="l">Mode</label>
+        <select id="mlAdvMode">
           <option value="cash">Cash</option><option value="upi">UPI</option><option value="neft">NEFT</option>
           <option value="rtgs">RTGS</option><option value="cheque">Cheque</option><option value="card">Card</option><option value="other">Other</option>
         </select>
       </div>
-      <div><label class="l">Date</label><input id="mlAdvDate" type="date" style="width:140px"/></div>
-      <div class="grow"><label class="l">Purpose / name</label><input id="mlAdvPurpose" placeholder="who paid / purpose"/></div>
-      <div class="grow"><label class="l">Ref / note</label><input id="mlAdvRef" placeholder="cheque / UTR / note"/></div>
-      <button class="btn sm" id="btnMlAdvAdd" type="button">Add advance</button>
+      <div class="ledger-field"><label class="l">Date</label><input id="mlAdvDate" type="date"/></div>
+      <div class="ledger-field"><label class="l">Purpose / name</label><input id="mlAdvPurpose" placeholder="who paid / purpose"/></div>
+      <div class="ledger-field"><label class="l">Ref / note</label><input id="mlAdvRef" placeholder="cheque / UTR / note"/></div>
+      <div class="ledger-actions">
+        <button class="btn sm" id="btnMlAdvAdd" type="button">Add advance</button>
+        <button class="btn sm sec" id="btnMlApprove" type="button">Approve this version</button>
+      </div>
     </div>
     <p class="muted" style="margin:0 0 .4rem;font-size:.75rem">Slip is optional — generate anytime from the table.</p>
     <strong style="font-size:.88rem">Transactions</strong>
@@ -10413,6 +10447,24 @@ function renderMasterLedger(wrap){
       if ($('mlAdvRef')) $('mlAdvRef').value = '';
       if ($('mlAdvPurpose')) $('mlAdvPurpose').value = '';
       toast('Advance saved — generate a slip from the table anytime');
+      await loadMasterLedger({ projectId: advPid });
+    } catch (e) { if ($('mlErr')) $('mlErr').textContent = e.message; toast(e.message); }
+  };
+  if ($('btnMlApprove')) $('btnMlApprove').onclick = async () => {
+    const advPid = ($('mlAdvProject') && $('mlAdvProject').value) || (scope === 'project' ? pid : '');
+    if (typeof requireCompanyLogin === 'function' && !requireCompanyLogin()) return;
+    if (!advPid) { toast('Select the project first'); return; }
+    const qsel = $('mlAdvQuote');
+    const opt = qsel && qsel.selectedOptions && qsel.selectedOptions[0];
+    const label = (opt && opt.textContent) || '';
+    const verMatch = label.match(/v(\d+)/i);
+    const quoteVersion = verMatch ? +verMatch[1] : undefined;
+    try {
+      await api('/api/projects/'+encodeURIComponent(advPid)+'/approve', {
+        method:'POST',
+        body: { quoteVersion: quoteVersion || undefined, note: quoteVersion ? ('Approved version v'+quoteVersion) : 'Approved from Master Ledger' },
+      });
+      toast(quoteVersion ? ('Approved v'+quoteVersion) : 'Quote approved');
       await loadMasterLedger({ projectId: advPid });
     } catch (e) { if ($('mlErr')) $('mlErr').textContent = e.message; toast(e.message); }
   };
@@ -12841,7 +12893,13 @@ async function loadPublicScan(token) {
       <tbody>${prods.length ? prods.map(p => {
         const loc = p.location || p.locationName || p.positionName || '—';
         const extra = [p.glass && p.glass !== '—' ? p.glass : '', p.colour && p.colour !== '—' ? p.colour : ''].filter(Boolean).join(' · ');
-        return `<tr><td>${esc(p.serial)}</td><td>${esc(loc)}</td><td>${esc(p.type)}${extra?`<div class="muted" style="font-size:.72rem">${esc(extra)}</div>`:''}</td><td>${esc(p.size)}</td><td>${esc(p.qty)}</td><td>${p.amount!=null?money(p.amount):'—'}</td></tr>`;
+        const flag = p.changeFlag === 'added'
+          ? ' <span style="color:#0a7a45;font-weight:700">ADDED</span>'
+          : (p.changeFlag === 'reduced'
+            ? ' <span style="color:#b42318;font-weight:700">REDUCED</span>'
+            : (p.changeFlag === 'removed' ? ' <span style="color:#b42318;font-weight:700">REMOVED</span>' : ''));
+        const bg = p.changeFlag === 'added' ? ' style="background:#eefaf3"' : (p.changeFlag === 'reduced' || p.changeFlag === 'removed' ? ' style="background:#fdecec"' : '');
+        return `<tr${bg}><td>${esc(p.serial)}${flag}</td><td>${esc(loc)}</td><td>${esc(p.type)}${extra?`<div class="muted" style="font-size:.72rem">${esc(extra)}</div>`:''}</td><td>${esc(p.size)}</td><td>${esc(p.qty)}</td><td>${p.amount!=null?money(p.amount):'—'}</td></tr>`;
       }).join('') : '<tr><td colspan="6" class="muted">No products</td></tr>'}</tbody></table>
       ${renderScanPack(rec)}
       <div class="row" style="gap:.4rem;flex-wrap:wrap">

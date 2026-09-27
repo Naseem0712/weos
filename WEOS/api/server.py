@@ -954,6 +954,12 @@ def _pdf_response(
         # real traceback and still print the live cart lines.
         _log.exception("calculate_project failed for %s during %s PDF export", project_id, kind)
         result = {"lines": list(doc.get("lines") or []), "combined": {}, "price": {}}
+    try:
+        from WEOS.factory.quote_line_versions import stamp_change_flags
+
+        stamp_change_flags(doc)
+    except Exception:
+        _log.debug("quote change flags skipped for %s", project_id, exc_info=True)
     created_at = doc.get("createdAt")
     updated_at = doc.get("updatedAt")
     version = int(doc.get("version") or 1)
@@ -983,7 +989,25 @@ def _pdf_response(
         # Absolute base + stable ref so the PDF QR opens the quote from the DB.
         "publicBaseUrl": _public_base_url(request),
         "quoteRef": doc.get("quotationId") or doc.get("quoteNumber") or doc.get("quoteId") or project_id,
+        "removedLines": list(doc.get("removedLines") or []),
     }
+    try:
+        from WEOS.factory.quote_line_versions import line_key
+
+        flagged: dict[str, str] = {}
+        for ln in doc.get("lines") or []:
+            if isinstance(ln, dict) and ln.get("changeFlag"):
+                flagged[line_key(ln)] = str(ln.get("changeFlag"))
+                if ln.get("lineId"):
+                    flagged[str(ln.get("lineId"))] = str(ln.get("changeFlag"))
+        for ln in payload.get("lines") or []:
+            if not isinstance(ln, dict):
+                continue
+            flag = ln.get("changeFlag") or flagged.get(str(ln.get("lineId") or "")) or flagged.get(line_key(ln))
+            if flag:
+                ln["changeFlag"] = flag
+    except Exception:
+        _log.debug("pdf change-flag copy skipped for %s", project_id, exc_info=True)
     try:
         from WEOS.factory.company_store import company_branding, load_company, load_company_by_gst
 
