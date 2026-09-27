@@ -210,20 +210,26 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
 .chip button{border:0;background:transparent;cursor:pointer;font-size:.85rem;line-height:1;padding:0;color:#666}
 .two{display:grid;grid-template-columns:1.1fr .9fr;gap:1rem}
 @media(max-width:1000px){.two{grid-template-columns:1fr}}
-#view-cart.grid{height:calc(100vh - 5.75rem);grid-template-rows:auto minmax(0,1fr);overflow:hidden;align-content:stretch}
+#view-cart.grid{height:calc(100vh - 5.75rem);grid-template-rows:minmax(0,1fr);overflow:hidden;align-content:stretch}
+#view-cart.grid:has(#memoryBanner.show){grid-template-rows:auto minmax(0,1fr)}
 #view-cart > .two.cart-split{align-items:stretch;height:100%;min-height:0;overflow:hidden;grid-template-columns:minmax(0,.92fr) minmax(0,1.18fr)}
 #view-cart .cart-tools,#view-cart .cart-preview{min-height:0;overscroll-behavior:contain}
-#view-cart .cart-tools{overflow:auto}
+#view-cart .cart-tools{
+  height:100%;max-height:100%;min-height:0;
+  overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;touch-action:pan-x pan-y
+}
 #view-cart .cart-preview{display:flex;flex-direction:column;overflow:hidden}
 #view-cart .cart-preview .preview-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.55rem;flex-wrap:wrap;flex:0 0 auto;margin-bottom:.45rem}
 #view-cart .cart-preview .preview-zoom{display:flex;align-items:center;gap:.28rem}
 #view-cart .cart-preview .preview{
   flex:1 1 auto;min-height:0;height:clamp(520px,72vh,880px);
   overflow:hidden;display:flex;align-items:center;justify-content:center;
-  padding:16px;overscroll-behavior:contain
+  padding:16px;overscroll-behavior:contain;cursor:grab;touch-action:none
 }
+#view-cart .cart-preview .preview.is-panning{cursor:grabbing;user-select:none}
 #view-cart .cart-preview .preview.zoomed{
-  overflow:auto;align-items:flex-start;justify-content:center
+  overflow:hidden;align-items:center;justify-content:center
 }
 #view-cart .cart-preview .preview svg,#view-cart .cart-preview .preview img{
   max-width:none;max-height:none;width:auto;height:auto;display:block;flex-shrink:0
@@ -233,6 +239,10 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
 #view-cart.preview-roomy > .two.cart-split{
   height:auto;min-height:calc(100vh - 8rem);overflow:visible;
   grid-template-columns:minmax(260px,.72fr) minmax(480px,1.55fr)
+}
+#view-cart.preview-roomy .cart-tools{
+  height:auto;max-height:calc(100vh - 6.75rem);
+  overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch
 }
 #view-cart.preview-roomy .cart-preview{overflow:visible}
 #view-cart.preview-roomy .cart-preview .preview{
@@ -244,7 +254,10 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
 @media(max-width:1000px){
   #view-cart.grid{height:auto;overflow:visible;grid-template-rows:none}
   #view-cart > .two.cart-split{height:auto;overflow:visible;min-height:0}
-  #view-cart .cart-tools{max-height:58vh}
+  #view-cart .cart-tools{
+    height:auto;max-height:calc(100vh - 8.25rem);
+    overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch
+  }
   #view-cart .cart-preview{max-height:none;overflow:visible}
   #view-cart .cart-preview .preview{height:min(70vh,640px);min-height:360px}
 }
@@ -408,7 +421,10 @@ textarea{max-width:100%}
   .preview{min-height:220px;border-radius:10px;padding:.4rem}
   #view-cart.grid{height:auto;overflow:visible;grid-template-rows:none}
   #view-cart > .two.cart-split{height:auto;overflow:visible}
-  #view-cart .cart-tools{max-height:none;overflow:visible}
+  #view-cart .cart-tools,#view-cart.preview-roomy .cart-tools{
+    height:auto;max-height:calc(100vh - 8.25rem);
+    overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch
+  }
   #view-cart .cart-preview{overflow:visible}
   #view-cart .cart-preview .preview-head{display:grid;grid-template-columns:1fr;gap:.4rem}
   #view-cart .cart-preview .preview-zoom{overflow-x:auto;justify-content:flex-start;padding-bottom:.15rem;-webkit-overflow-scrolling:touch}
@@ -3265,12 +3281,19 @@ function applyPreviewFit() {
   if (box._fitRaf) cancelAnimationFrame(box._fitRaf);
   box._fitRaf = requestAnimationFrame(() => {
     const el = box.querySelector('svg') || box.querySelector('img');
+    if (el && el.tagName && el.tagName.toLowerCase() === 'svg') {
+      normalizePreviewSvgViewport(el);
+      el.removeAttribute('width');
+      el.removeAttribute('height');
+      el.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    }
     const sig = _previewElementSignature(el);
     if (sig && sig !== box._previewSig) {
       box._previewSig = sig;
       state.previewZoom = 1;
+      state.previewPanX = 0;
+      state.previewPanY = 0;
     }
-    if (el && el.tagName && el.tagName.toLowerCase() === 'svg') normalizePreviewSvgViewport(el);
     const zoom = previewZoomValue();
     const label = $('prevZoomLabel');
     if (label) label.textContent = Math.abs(zoom - 1) < 0.02 ? 'Fit' : Math.round(zoom * 100) + '%';
@@ -3282,11 +3305,6 @@ function applyPreviewFit() {
     const ch = Math.max(80, box.clientHeight - pad);
     const size = _previewIntrinsicSize(el);
     if (!(size.w > 0 && size.h > 0 && cw > 0 && ch > 0)) return;
-    if (el.tagName && el.tagName.toLowerCase() === 'svg') {
-      el.removeAttribute('width');
-      el.removeAttribute('height');
-      el.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-    }
     const fit = Math.min(cw / size.w, ch / size.h);
     const s = fit * zoom;
     const pw = Math.max(1, size.w * s);
@@ -3295,10 +3313,17 @@ function applyPreviewFit() {
     el.style.maxHeight = 'none';
     el.style.width = pw + 'px';
     el.style.height = ph + 'px';
-    el.style.transform = '';
-    box.scrollTop = 0;
-    box.scrollLeft = 0;
+    applyPreviewPan(box);
   });
+}
+function applyPreviewPan(box) {
+  const host = box || $('livePreview');
+  if (!host) return;
+  const el = host.querySelector('svg') || host.querySelector('img');
+  if (!el) return;
+  const x = Number(state.previewPanX) || 0;
+  const y = Number(state.previewPanY) || 0;
+  el.style.transform = (Math.abs(x) < 0.5 && Math.abs(y) < 0.5) ? '' : `translate(${x}px, ${y}px)`;
 }
 function setPreviewZoom(next) {
   const z = Math.max(0.5, Math.min(3, Math.round(Number(next) * 100) / 100));
@@ -3309,7 +3334,13 @@ function initPreviewZoom() {
   const box = $('livePreview');
   if (!box) return;
   if (!state.previewZoom) state.previewZoom = 1;
-  if ($('btnPrevFit')) $('btnPrevFit').onclick = () => setPreviewZoom(1);
+  if (state.previewPanX == null) state.previewPanX = 0;
+  if (state.previewPanY == null) state.previewPanY = 0;
+  if ($('btnPrevFit')) $('btnPrevFit').onclick = () => {
+    state.previewPanX = 0;
+    state.previewPanY = 0;
+    setPreviewZoom(1);
+  };
   if ($('btnPrevZoomIn')) $('btnPrevZoomIn').onclick = () => setPreviewZoom(previewZoomValue() * 1.25);
   if ($('btnPrevZoomOut')) $('btnPrevZoomOut').onclick = () => {
     const z = previewZoomValue() / 1.25;
@@ -3317,10 +3348,51 @@ function initPreviewZoom() {
   };
   if (!box._zoomBound) {
     box._zoomBound = true;
-    box.addEventListener('wheel', (ev) => {
-      if (!(ev.ctrlKey || ev.metaKey)) return;
+    let drag = null;
+    const endDrag = () => {
+      drag = null;
+      box.classList.remove('is-panning');
+    };
+    box.addEventListener('pointerdown', (ev) => {
+      if (ev.button != null && ev.button !== 0) return;
+      const hit = ev.target && ev.target.closest;
+      if (hit && ev.target.closest('[data-handle], button, a, input, select, textarea, label')) return;
+      drag = {
+        id: ev.pointerId,
+        x: ev.clientX,
+        y: ev.clientY,
+        ox: Number(state.previewPanX) || 0,
+        oy: Number(state.previewPanY) || 0,
+        moved: false,
+      };
+    });
+    box.addEventListener('pointermove', (ev) => {
+      if (!drag || ev.pointerId !== drag.id) return;
+      const dx = ev.clientX - drag.x;
+      const dy = ev.clientY - drag.y;
+      if (!drag.moved && (dx * dx + dy * dy) < 36) return;
+      if (!drag.moved) {
+        drag.moved = true;
+        box.classList.add('is-panning');
+        try { box.setPointerCapture(ev.pointerId); } catch (_) {}
+      }
+      state.previewPanX = drag.ox + dx;
+      state.previewPanY = drag.oy + dy;
+      applyPreviewPan(box);
       ev.preventDefault();
-      setPreviewZoom(previewZoomValue() * (ev.deltaY < 0 ? 1.12 : 1 / 1.12));
+    });
+    box.addEventListener('pointerup', endDrag);
+    box.addEventListener('pointercancel', endDrag);
+    box.addEventListener('wheel', (ev) => {
+      ev.preventDefault();
+      if (ev.ctrlKey || ev.metaKey) {
+        setPreviewZoom(previewZoomValue() * (ev.deltaY < 0 ? 1.12 : 1 / 1.12));
+        return;
+      }
+      const unit = ev.deltaMode === 1 ? 16 : (ev.deltaMode === 2 ? Math.max(box.clientHeight, 1) : 1);
+      state.previewPanX = (Number(state.previewPanX) || 0) - ev.deltaX * unit;
+      state.previewPanY = (Number(state.previewPanY) || 0) - ev.deltaY * unit;
+      applyPreviewPan(box);
     }, { passive: false });
     const obs = new MutationObserver(() => applyPreviewFit());
     obs.observe(box, { childList: true, subtree: true });
