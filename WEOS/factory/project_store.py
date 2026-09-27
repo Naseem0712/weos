@@ -345,6 +345,7 @@ def set_project_status(
     by_name: Any = None,
     by_mobile: Any = None,
     note: Any = None,
+    approved_version: int | None = None,
 ) -> dict[str, Any]:
     """Set project status (draft → approved → rejected/cancelled; archive)."""
     st = (status or "").strip().lower() or "draft"
@@ -370,6 +371,12 @@ def set_project_status(
     }
     if note:
         approval_event["note"] = str(note).strip()
+    if approved_version is not None:
+        try:
+            approval_event["quoteVersion"] = int(approved_version)
+            doc["approvedVersion"] = int(approved_version)
+        except (TypeError, ValueError):
+            pass
     had_customer = bool(str(doc.get("customer") or "").strip())
     if st in {"approved", "confirmed", "accepted", "finalized", "ordered", "order", "won"}:
         doc["approvedAt"] = now

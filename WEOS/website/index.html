@@ -150,6 +150,31 @@ h1{font-family:var(--serif);font-size:clamp(1.5rem,2.5vw,2rem);margin:0;letter-s
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:1rem;box-shadow:var(--shadow)}
 .row{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
 .grow{flex:1;min-width:140px}
+.ledger-entry{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(11.5rem,1fr));
+  gap:.55rem .7rem;
+  align-items:end;
+  margin-bottom:.55rem;
+}
+.ledger-entry .ledger-field{min-width:0}
+.ledger-entry input,
+.ledger-entry select{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  box-sizing:border-box;
+}
+.ledger-entry .ledger-actions{
+  grid-column:1 / -1;
+  display:flex;
+  flex-wrap:wrap;
+  gap:.45rem .75rem;
+  align-items:center;
+}
+@media(max-width:700px){
+  .ledger-entry{grid-template-columns:1fr}
+}
 label.l{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 .25rem}
 input,select{width:100%;padding:.55rem .65rem;border:1px solid var(--line);border-radius:10px;background:#fff}
 button,a.btn,label.btn{-webkit-tap-highlight-color:rgba(10,90,72,.2)}
@@ -204,6 +229,15 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
   max-width:none;max-height:none;width:auto;height:auto;display:block;flex-shrink:0
 }
 #view-cart .cart-preview #wrapDesignPhoto,#view-cart .cart-preview #lineSpecs{flex:0 0 auto}
+#view-cart.preview-roomy.grid{height:auto;min-height:calc(100vh - 5.75rem);overflow:visible}
+#view-cart.preview-roomy > .two.cart-split{
+  height:auto;min-height:calc(100vh - 8rem);overflow:visible;
+  grid-template-columns:minmax(260px,.72fr) minmax(480px,1.55fr)
+}
+#view-cart.preview-roomy .cart-preview{overflow:visible}
+#view-cart.preview-roomy .cart-preview .preview{
+  flex:0 0 auto;min-height:680px;height:clamp(680px,78vh,1100px);max-height:1100px
+}
 .admin-split{align-items:stretch}
 .admin-split > div:first-child{min-height:0;display:flex;flex-direction:column}
 .admin-split .canvas-wrap{flex:1 1 auto;min-height:280px;max-height:calc(100vh - 12rem);overscroll-behavior:contain}
@@ -379,6 +413,9 @@ textarea{max-width:100%}
   #view-cart .cart-preview .preview-head{display:grid;grid-template-columns:1fr;gap:.4rem}
   #view-cart .cart-preview .preview-zoom{overflow-x:auto;justify-content:flex-start;padding-bottom:.15rem;-webkit-overflow-scrolling:touch}
   #view-cart .cart-preview .preview{height:min(58vh,440px);min-height:260px;padding:8px}
+  #view-cart.preview-roomy.grid{height:auto;overflow:visible}
+  #view-cart.preview-roomy > .two.cart-split{grid-template-columns:1fr;min-height:0}
+  #view-cart.preview-roomy .cart-preview .preview{min-height:420px;height:min(74vh,620px)}
   .canvas-wrap{height:min(62vh,520px);border-radius:10px}
   .canvas-page{margin:8px auto}
   .rail-tools,.rail-run,.livebox,.agent,.memory-banner,.safe-banner{border-radius:10px;padding:.62rem}
@@ -1753,16 +1790,16 @@ textarea{max-width:100%}
             <div class="kpi"><label class="l">Balance</label><div class="big" style="font-size:1.05rem" id="cpTotBal">₹ —</div></div>
           </div>
           <p class="muted" id="cpLedgerScopeNote" style="margin:0 0 .55rem;font-size:.75rem"></p>
-          <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.55rem">
-            <div class="grow"><label class="l">1. Project</label>
-              <select id="cpAdvProject" style="min-width:180px"><option value="">— All projects —</option></select>
+          <div class="ledger-entry" id="cpLedgerEntry">
+            <div class="ledger-field"><label class="l">1. Project</label>
+              <select id="cpAdvProject"><option value="">— All projects —</option></select>
             </div>
-            <div class="grow"><label class="l">2. Quote</label>
-              <select id="cpAdvQuote" style="min-width:180px"><option value="">— Select project first —</option></select>
+            <div class="ledger-field"><label class="l">2. Quote / version</label>
+              <select id="cpAdvQuote"><option value="">— Select project first —</option></select>
             </div>
-            <div><label class="l">Advance ₹</label><input id="cpAdvAmt" type="number" min="0" step="0.01" style="width:110px"/></div>
-            <div><label class="l">Mode</label>
-              <select id="cpAdvMode" style="width:110px">
+            <div class="ledger-field"><label class="l">Advance ₹</label><input id="cpAdvAmt" type="number" min="0" step="0.01"/></div>
+            <div class="ledger-field"><label class="l">Mode</label>
+              <select id="cpAdvMode">
                 <option value="cash">Cash</option>
                 <option value="upi">UPI</option>
                 <option value="neft">NEFT</option>
@@ -1772,17 +1809,20 @@ textarea{max-width:100%}
                 <option value="other">Other</option>
               </select>
             </div>
-            <div><label class="l">Date</label><input id="cpAdvDate" type="date" style="width:140px"/></div>
-            <div class="grow"><label class="l">Purpose / name</label><input id="cpAdvPurpose" placeholder="who paid / purpose"/></div>
-            <div class="grow"><label class="l">Ref / note</label><input id="cpAdvRef" placeholder="cheque no / UTR / note"/></div>
-            <label class="muted" style="font-size:.78rem;display:flex;align-items:center;gap:.35rem;margin:0 0 .15rem">
-              <input id="cpAdvApprove" type="checkbox" checked style="width:auto"/> Mark quote approved
-            </label>
-            <label class="muted" style="font-size:.78rem;display:flex;align-items:center;gap:.35rem;margin:0 0 .15rem">
-              <input id="cpAdvSlipNow" type="checkbox" style="width:auto"/> Also generate slip
-            </label>
-            <button class="btn sm" id="btnCpAdvAdd" type="button">Add advance</button>
-            <button class="btn ghost sm" id="btnCpRefund" type="button">Record refund</button>
+            <div class="ledger-field"><label class="l">Date</label><input id="cpAdvDate" type="date"/></div>
+            <div class="ledger-field"><label class="l">Purpose / name</label><input id="cpAdvPurpose" placeholder="who paid / purpose"/></div>
+            <div class="ledger-field"><label class="l">Ref / note</label><input id="cpAdvRef" placeholder="cheque no / UTR / note"/></div>
+            <div class="ledger-actions">
+              <label class="muted" style="font-size:.78rem;display:flex;align-items:center;gap:.35rem;margin:0">
+                <input id="cpAdvApprove" type="checkbox" checked style="width:auto"/> Mark quote approved
+              </label>
+              <label class="muted" style="font-size:.78rem;display:flex;align-items:center;gap:.35rem;margin:0">
+                <input id="cpAdvSlipNow" type="checkbox" style="width:auto"/> Also generate slip
+              </label>
+              <button class="btn sm" id="btnCpAdvAdd" type="button">Add advance</button>
+              <button class="btn ghost sm" id="btnCpApproveQuote" type="button">Approve this version</button>
+              <button class="btn ghost sm" id="btnCpRefund" type="button">Record refund</button>
+            </div>
           </div>
           <p class="muted" style="margin:0 0 .45rem;font-size:.75rem">Add the advance first. Slip is optional — generate <strong>Slip PDF</strong> · <strong>Print</strong> · <strong>Excel</strong> anytime from the table (stamp/signature if uploaded).</p>
           <div id="cpAdvances" style="margin-bottom:.8rem"></div>
@@ -4701,10 +4741,20 @@ function setSpecialProductToolMode(world) {
     if (title) title.textContent = world === 'louver' ? 'Louver design' : 'Add feature';
   }
 }
+function syncPreviewRoomy(world) {
+  const view = document.getElementById('view-cart');
+  if (!view) return;
+  const sys = String(($('lineSystem') && $('lineSystem').value) || '').toLowerCase();
+  const w = String(world || '').toLowerCase();
+  const roomy = w === 'shower' || w === 'ventilator' || sys === 'bifold' || sys.indexOf('fold') >= 0;
+  view.classList.toggle('preview-roomy', roomy);
+  if (roomy && typeof applyPreviewFit === 'function') applyPreviewFit();
+}
 function applyProductWorld(opts) {
   opts = opts || {};
   const p = selectedProductMeta();
   const world = productWorldOf(p, null);
+  syncPreviewRoomy(world);
   const win = $('windowCartTools');
   const addBtn = $('btnAddLine');
   const bulk = $('bulkSizesBox');
@@ -5646,11 +5696,16 @@ function markSpecialPreview() {
   _specialPreviewAt = Date.now();
   if (typeof applyPreviewFit === 'function') applyPreviewFit();
 }
-function specialPreviewFresh() { return (Date.now() - _specialPreviewAt) < 450; }
+function specialPreviewFresh() {
+  const box = $('livePreview');
+  if (!box || !box.querySelector('svg')) return false;
+  return (Date.now() - _specialPreviewAt) < 450;
+}
 
 async function refreshPreview() {
   const gen = ++_previewGen;
   const world = designerWorld();
+  syncPreviewRoomy(world);
   if (world === 'ventilator') {
     if (specialPreviewFresh()) return;
     try {
@@ -12810,10 +12865,16 @@ async function loadPublicScan(token) {
     const hash = location.hash || '';
     const qs = new URLSearchParams(location.search || '');
     let token = qs.get('scan') || '';
-    const m1 = path.match(/\/(?:q|scan)\/([^/?#]+)/i);
-    const m2 = hash.match(/#\/?(?:q|scan)\/([^/?#]+)/i);
-    if (m1) token = decodeURIComponent(m1[1]);
-    else if (m2) token = decodeURIComponent(m2[1]);
+    const m1 = path.match(/\/(?:q|scan)\/(.+)$/i);
+    const m2 = hash.match(/#\/?(?:q|scan)\/(.+)$/i);
+    function scanToken(raw) {
+      let token = String(raw || '').replace(/\/+$/, '');
+      token = token.replace(/\/(?:ledger|all\.pdf)$/i, '');
+      try { token = decodeURIComponent(token); } catch (_) {}
+      return token;
+    }
+    if (m1) token = scanToken(m1[1]);
+    else if (m2) token = scanToken(m2[1]);
     if (token) {
       window.WEOS_SCAN_TOKEN = token;
       setTimeout(() => setView('scan'), 0);
@@ -12968,6 +13029,12 @@ function fillCustomerLedgerSelectors(led, quotesFallback) {
   }
   fillCustomerQuoteSelector();
 }
+function ledgerQuoteVersions(q) {
+  const pid = String((q && q.projectId) || '');
+  if (q && Array.isArray(q.versions) && q.versions.length) return q.versions;
+  const hit = (state._custQuotesFallback || []).find((x) => String(x.projectId || '') === pid);
+  return (hit && hit.versions) || [];
+}
 function fillCustomerQuoteSelector() {
   const selP = $('cpAdvProject');
   const selQ = $('cpAdvQuote');
@@ -12981,11 +13048,21 @@ function fillCustomerQuoteSelector() {
   }
   const g = grouped.find((x) => x.projectId === pid);
   const quotes = (g && g.quotes) || [];
-  selQ.innerHTML = '<option value="">— Select quote —</option>' + quotes.map((q) => {
+  const opts = ['<option value="">— Select quote —</option>'];
+  quotes.forEach((q) => {
     const qid = q.quotationId || q.projectId || '';
-    return `<option value="${esc(qid)}" data-pid="${esc(q.projectId||pid)}" data-ver="${q.version||1}" data-qid="${esc(qid)}">${esc(qid)}${q.version?(' · v'+q.version):''}</option>`;
-  }).join('');
-  if (keep && quotes.some((q) => ledgerNormQid(q.quotationId || q.projectId) === ledgerNormQid(keep))) selQ.value = keep;
+    const curVer = q.version || 1;
+    const moneyBit = (q.totalGrand != null) ? (' · ' + money(q.totalGrand)) : ((q.grandTotal != null) ? (' · ' + money(q.grandTotal)) : '');
+    opts.push(`<option value="${esc(qid)}" data-pid="${esc(q.projectId||pid)}" data-ver="${curVer}" data-qid="${esc(qid)}">${esc(qid)} · current v${curVer}${moneyBit}</option>`);
+    ledgerQuoteVersions(q).forEach((v) => {
+      const vv = v && v.version;
+      if (vv == null || String(vv) === String(curVer)) return;
+      const gt = (v.grandTotal != null) ? (' · ' + money(v.grandTotal)) : '';
+      opts.push(`<option value="${esc(qid)}::v${vv}" data-pid="${esc(q.projectId||pid)}" data-ver="${vv}" data-qid="${esc(qid)}">${esc(qid)} · saved v${vv}${gt}</option>`);
+    });
+  });
+  selQ.innerHTML = opts.join('');
+  if (keep && Array.from(selQ.options).some((o) => o.value === keep)) selQ.value = keep;
   else if (quotes.length === 1) selQ.value = quotes[0].quotationId || quotes[0].projectId || '';
 }
 function filterLedgerClient(led, pid, qid) {
@@ -13017,7 +13094,8 @@ function paintCustomerLedgerScope() {
   const led = state._custLedger;
   if (!led) return;
   const pid = ($('cpAdvProject') && $('cpAdvProject').value) || '';
-  const qid = ($('cpAdvQuote') && $('cpAdvQuote').value) || '';
+  const optQ = $('cpAdvQuote') && $('cpAdvQuote').selectedOptions && $('cpAdvQuote').selectedOptions[0];
+  const qid = (optQ && optQ.dataset && optQ.dataset.qid) || ($('cpAdvQuote') && $('cpAdvQuote').value) || '';
   const scoped = filterLedgerClient(led, pid, qid);
   const t = scoped.totals || {};
   if ($('cpTotTaxable')) $('cpTotTaxable').textContent = money(t.totalTaxable);
@@ -13108,8 +13186,10 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
   const selP = $('cpAdvProject');
   const selQ = $('cpAdvQuote');
   const opt = selQ && selQ.selectedOptions && selQ.selectedOptions[0];
-  const projectId = (selP && selP.value) || '';
-  const quoteId = (selQ && selQ.value) || (opt && opt.dataset && opt.dataset.qid) || '';
+  const projectId = (selP && selP.value) || (opt && opt.dataset && opt.dataset.pid) || '';
+  const quoteId = (opt && opt.dataset && opt.dataset.qid) || (selQ && selQ.value) || '';
+  const quoteVersion = (opt && opt.dataset && opt.dataset.ver) ? +opt.dataset.ver : null;
+  const approveQuote = !!($('cpAdvApprove') && $('cpAdvApprove').checked);
   if (!projectId || !quoteId) {
     toast('Select project, then quote, then add the advance');
     $('cpErr').textContent = 'Customer → project → quote required before advance';
@@ -13126,7 +13206,8 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
         note: ($('cpAdvPurpose') && $('cpAdvPurpose').value) || undefined,
         projectId,
         quoteId,
-        quoteVersion: (opt && opt.dataset && opt.dataset.ver) ? +opt.dataset.ver : null,
+        quoteVersion,
+        approveQuote,
         customerName: name,
       },
     });
@@ -13140,19 +13221,38 @@ if ($('btnCpAdvAdd')) $('btnCpAdvAdd').onclick = async () => {
       toast('Advance saved — slip opened. You can generate it again from the table anytime.');
       try { window.open(slip, '_blank'); } catch(_) {}
     } else {
-      toast('Advance saved — generate Slip PDF / Print / Excel from the table anytime');
+      toast(approveQuote ? 'Advance saved and quote marked approved' : 'Advance saved — generate Slip PDF / Print / Excel from the table anytime');
     }
     await loadCustomerLedger(name);
     if (state.companyGst) refreshCompanyHub(state.companyGst);
   } catch(e) { $('cpErr').textContent = e.message; toast(e.message); }
+};
+if ($('btnCpApproveQuote')) $('btnCpApproveQuote').onclick = async () => {
+  const selP = $('cpAdvProject');
+  const selQ = $('cpAdvQuote');
+  const opt = selQ && selQ.selectedOptions && selQ.selectedOptions[0];
+  const projectId = (selP && selP.value) || (opt && opt.dataset && opt.dataset.pid) || '';
+  const ver = (opt && opt.dataset && opt.dataset.ver) ? +opt.dataset.ver : null;
+  const qid = (opt && opt.dataset && opt.dataset.qid) || '';
+  if (!projectId || !qid) { toast('Select project, then the quote version to approve'); return; }
+  try {
+    await api('/api/projects/'+encodeURIComponent(projectId)+'/approve', {
+      method:'POST',
+      body: { quoteVersion: ver, note: qid ? ('Approved '+qid+(ver?(' v'+ver):'')) : undefined },
+    });
+    toast('Quote approved' + (ver ? (' · v'+ver) : '') + (qid ? (' · '+qid) : ''));
+    const name = state.selectedCustomer || ($('cpName') && $('cpName').value.trim()) || '';
+    if (name) await openCustomer(name);
+    if (state.companyGst) refreshCompanyHub(state.companyGst);
+  } catch(e) { if ($('cpErr')) $('cpErr').textContent = e.message; toast(e.message); }
 };
 if ($('btnCpRefund')) $('btnCpRefund').onclick = async () => {
   const name = state.selectedCustomer || ($('cpName') && $('cpName').value.trim()) || '';
   const selP = $('cpAdvProject');
   const selQ = $('cpAdvQuote');
   const opt = selQ && selQ.selectedOptions && selQ.selectedOptions[0];
-  const projectId = (selP && selP.value) || '';
-  const quoteId = (selQ && selQ.value) || (opt && opt.dataset && opt.dataset.qid) || '';
+  const projectId = (selP && selP.value) || (opt && opt.dataset && opt.dataset.pid) || '';
+  const quoteId = (opt && opt.dataset && opt.dataset.qid) || (selQ && selQ.value) || '';
   if (!projectId || !quoteId) { toast('Select project, then quote, then record the refund'); return; }
   try {
     const res = await recordQuoteRefund(
@@ -13216,7 +13316,7 @@ async function renderCustomerQuotes(quotes) {
   }));
   $('cpQuotes').innerHTML = `<p class="muted" style="font-size:.78rem;margin:0 0 .5rem">All quotes listed. Grand total of these quotes: <strong>${money(billed)}</strong> — dashboard year turnover uses <strong>Approved</strong> projects only.</p>` + quotes.map(q => {
     const versions = (q.versions||[]).map(v =>
-      `<span class="chip">v${v.version} ${v.grandTotal!=null?money(v.grandTotal):''} <a href="${API_BASE}/api/projects/${q.projectId}/customer-pdf" target="_blank" title="Print current">🖨</a></span>`
+      `<button type="button" class="chip" data-pick-ver="${esc(q.projectId)}" data-pick-qid="${esc(q.quotationId||q.projectId||'')}" data-pick-v="${v.version}">v${v.version} ${v.grandTotal!=null?money(v.grandTotal):''}</button>`
     ).join(' ');
     const st = (q.status||'').toLowerCase();
     const confLabel = isQuoteApprovedStatus(st) ? 'Approved' : 'Approve';
@@ -13244,6 +13344,26 @@ async function renderCustomerQuotes(quotes) {
     </div>`;
   }).join('');
   $('cpQuotes').querySelectorAll('[data-open-q]').forEach(b => b.onclick = async () => { await openProject(b.dataset.openQ); setView('cart'); });
+  $('cpQuotes').querySelectorAll('[data-pick-ver]').forEach(b => b.onclick = () => {
+    const selP = $('cpAdvProject');
+    const selQ = $('cpAdvQuote');
+    if (selP && b.dataset.pickVer) {
+      selP.value = b.dataset.pickVer;
+      fillCustomerQuoteSelector();
+    }
+    if (selQ) {
+      const qid = b.dataset.pickQid || '';
+      const ver = b.dataset.pickV || '';
+      const want = qid + '::v' + ver;
+      const hit = Array.from(selQ.options).find((o) => o.value === want)
+        || Array.from(selQ.options).find((o) => o.dataset && o.dataset.qid === qid && String(o.dataset.ver) === String(ver));
+      if (hit) selQ.value = hit.value;
+    }
+    paintCustomerLedgerScope();
+    const box = $('cpLedgerEntry');
+    if (box && box.scrollIntoView) box.scrollIntoView({behavior:'smooth', block:'center'});
+    toast('Version v' + (b.dataset.pickV || '') + ' selected for approve / advance');
+  });
   $('cpQuotes').querySelectorAll('[data-reuse-q]').forEach(b => b.onclick = async () => {
     const d = await api('/api/projects/'+b.dataset.reuseQ+'/duplicate', {method:'POST'});
     toast('Reused → '+d.projectId);

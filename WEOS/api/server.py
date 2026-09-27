@@ -439,6 +439,12 @@ class AdvanceBody(BaseModel):
     paidAt: str | None = None
     customerName: str | None = None
     entryType: str | None = None  # advance | refund
+    approveQuote: bool | None = None  # ledger checkbox; omit = approve on advance
+
+
+class QuoteApproveBody(BaseModel):
+    quoteVersion: int | None = None
+    note: str | None = None
 
 
 class ProjectStatusBody(BaseModel):
@@ -2101,11 +2107,23 @@ def api_project_set_status(project_id: str, body: ProjectStatusBody) -> dict[str
 
 
 @app.post("/api/projects/{project_id}/approve")
-def api_project_approve(project_id: str) -> dict[str, Any]:
+def api_project_approve(project_id: str, body: QuoteApproveBody | None = None) -> dict[str, Any]:
     from WEOS.factory.project_store import set_project_status
 
+    body = body or QuoteApproveBody()
+    note = (body.note or "").strip() or None
+    ver = body.quoteVersion
+    if ver and not note:
+        note = f"Approved version v{int(ver)}"
     try:
-        return set_project_status(project_id, "approved", source="admin", by_name="Admin")
+        return set_project_status(
+            project_id,
+            "approved",
+            source="admin",
+            by_name="Admin",
+            note=note,
+            approved_version=ver,
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2552,7 +2570,9 @@ def api_pdf_factory_alias(project_id: str, request: Request, brand: str | None =
 
 def _public_scan_response(ref: str, request: Request, *, fmt: str | None = None) -> Response:
     """Live public quote page (HTML) or optional PDF download."""
-    from WEOS.factory.quote_share import build_public_quote_record, render_scan_html
+    from WEOS.factory.quote_share import build_public_quote_record, clean_public_ref, render_scan_html
+
+    ref = clean_public_ref(ref)
 
     base = _public_base_url(request)
     kind = (fmt or "").strip().lower()
@@ -2832,6 +2852,41 @@ def api_public_pack_file(ref: str, item_id: str) -> Response:
         media_type=ct or "application/octet-stream",
         headers={"Content-Disposition": f'inline; filename="{name}"'},
     )
+
+
+def _slashed_public_ref(ref: str) -> tuple[str, str | None]:
+    """Split ``AK-26/00026/A1`` or ``AK-26/00026/A1/ledger`` after %2F decoding."""
+    from WEOS.factory.quote_share import clean_public_ref
+
+    text = clean_public_ref(ref)
+    low = text.lower()
+    if low.endswith("/all.pdf"):
+        return text[: -len("/all.pdf")].rstrip("/"), "all"
+    if low.endswith("/ledger"):
+        return text[: -len("/ledger")].rstrip("/"), "ledger"
+    return text, None
+
+
+@app.get("/q/{ref:path}")
+@app.get("/scan/{ref:path}")
+def public_quote_slashed(ref: str, request: Request, format: str | None = Query(None)) -> Response:
+    """Quote numbers contain slashes (``AK-26/00026/A1``). ``{ref}`` cannot match those."""
+    text, suffix = _slashed_public_ref(ref)
+    return _public_scan_response(text, request, fmt=suffix or format)
+
+
+@app.get("/api/public/quote/{ref:path}")
+def api_public_quote_slashed(ref: str) -> dict[str, Any]:
+    """JSON for a slash quote number. One-segment tokens still hit the earlier route."""
+    from WEOS.factory.quote_share import build_public_quote_record
+
+    text, suffix = _slashed_public_ref(ref)
+    if suffix == "all":
+        raise HTTPException(status_code=404, detail="Use /q/{quote}/all.pdf for the scan PDF")
+    rec = build_public_quote_record(text)
+    if not rec:
+        raise HTTPException(status_code=404, detail=f"Quote not found: {text}")
+    return rec
 
 
 @app.post("/api/projects/import")
@@ -3588,18 +3643,39 @@ def api_add_customer_advance(customer: str, body: AdvanceBody, request: Request,
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     pid = str(created.get("projectId") or payload.get("projectId") or "").strip()
     entry_type = str(created.get("entryType") or payload.get("entryType") or "advance").strip().lower()
-    if pid and entry_type not in ("refund", "reversal", "return"):
+    # Ledger "Mark quote approved" sends false to record money without approving.
+    # Older clients omit the flag and still approve when an advance is posted.
+    want_approve = payload.get("approveQuote")
+    if want_approve is None:
+        want_approve = True
+    if pid and want_approve and entry_type not in ("refund", "reversal", "return"):
         try:
             from WEOS.factory.ledger_store import CONFIRMED_STATUSES
             from WEOS.factory.project_store import load_project, set_project_status
 
             doc = load_project(pid)
             st = str(doc.get("status") or "").strip().lower()
+            qver = created.get("quoteVersion") if created.get("quoteVersion") is not None else payload.get("quoteVersion")
+            note = None
+            try:
+                if qver is not None and str(qver).strip() != "":
+                    note = f"Approved with advance on version v{int(qver)}"
+            except (TypeError, ValueError):
+                qver = None
             if st in {"rejected", "cancelled", "canceled"}:
                 created["projectStatus"] = st
             elif st not in CONFIRMED_STATUSES:
-                set_project_status(pid, "approved")
+                set_project_status(
+                    pid,
+                    "approved",
+                    source="ledger",
+                    by_name="Ledger",
+                    note=note,
+                    approved_version=int(qver) if str(qver or "").strip().isdigit() else None,
+                )
                 created["projectStatus"] = "approved"
+                if qver is not None:
+                    created["approvedVersion"] = qver
             else:
                 created["projectStatus"] = st or "approved"
         except Exception:

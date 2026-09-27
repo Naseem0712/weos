@@ -466,9 +466,28 @@ def find_project_by_share_token(token: str) -> dict[str, Any] | None:
     return None
 
 
+def clean_public_ref(ref: str) -> str:
+    """Decode a public scan ref, including quote numbers that contain slashes.
+
+    QR links quote ``AK-26/00026/A1`` as ``/q/AK-26%2F00026%2FA1``. Uvicorn
+    ``unquote``s that into ``/q/AK-26/00026/A1`` before routing. Callers that
+    still see a percent-encoded segment must decode here too, or the lookup
+    searches for the literal ``%2F`` text and returns nothing.
+    """
+    from urllib.parse import unquote
+
+    text = str(ref or "").strip()
+    for _ in range(2):
+        nxt = unquote(text).strip()
+        if nxt == text:
+            break
+        text = nxt
+    return text.strip().strip("/")
+
+
 def resolve_public_ref(ref: str) -> dict[str, Any] | None:
     """Resolve ``/q/{ref}`` — token, quote number, quote id, or project id."""
-    ref = (ref or "").strip()
+    ref = clean_public_ref(ref)
     if not ref:
         return None
     doc = find_project_by_share_token(ref)
