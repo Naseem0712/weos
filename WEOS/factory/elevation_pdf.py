@@ -522,16 +522,39 @@ def draw_model_elevation(
                     c.line(px(prev[0]), prev[1], px(bx), yy)
                 prev = (bx, yy)
         elif system in ("casement", "openable", "opening") and glass_meta:
-            # Openable plan: sash bar + swing line toward the hinge stile
+            # A single leaf or a top-hung vent must not stroke into the sash
+            # centre — that reads as a false mid rail. Hinge ticks sit on the
+            # real hinge edge (head for top-hung, stile for side-hung).
+            single = len(glass_meta) == 1
             for s in glass_meta:
                 sx0, sx1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
                 c.setStrokeColorRGB(0.09, 0.23, 0.39)
                 _hollow_plan_band(c, px(sx0), ymid - band / 2, (sx1 - sx0) * scale, band, lw=0.55)
-                hinge = s.get("hingeSide") or "left"
-                hx = sx0 if hinge == "left" else sx1
+                hinge = str(s.get("hingeSide") or "").lower()
+                if not hinge:
+                    hinge = "left" if float(s.get("openDir") or 1) >= 0 else "right"
+                top_hung = hinge == "top" or str(s.get("pack") or "") == "top_hung"
                 c.setStrokeColorRGB(0.55, 0.12, 0.10)
                 c.setLineWidth(0.5)
-                c.line(px(hx), ymid, px((sx0 + sx1) / 2), ymid + band * 1.1)
+                span = max(sx1 - sx0, 1.0)
+                if top_hung or single:
+                    if top_hung:
+                        yb = ymid + band / 2.0
+                        tick = band * 0.55
+                        for frac in (0.22, 0.78):
+                            hx = sx0 + span * frac
+                            c.line(px(hx), yb, px(hx), yb - tick)
+                    else:
+                        side_left = hinge != "right"
+                        hx = sx0 if side_left else sx1
+                        stub = max(span * 0.045, 8.0)
+                        direction = 1.0 if side_left else -1.0
+                        for frac in (0.22, 0.78):
+                            yy = (ymid - band / 2.0) + band * frac
+                            c.line(px(hx), yy, px(hx + direction * stub), yy)
+                else:
+                    hx = sx0 if hinge == "left" else sx1
+                    c.line(px(hx), ymid, px((sx0 + sx1) / 2), ymid + band * 1.1)
         elif glass_meta:
             # Sliding: External / Internal offset track indicator (reference Image B)
             depths = sorted({int(s.get("depth") or 1) for s in glass_meta}) or [1]
