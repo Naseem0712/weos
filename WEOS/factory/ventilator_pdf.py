@@ -8,7 +8,14 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from WEOS.factory.geometry import HINGE_FILL_RGB, hinge_capsule_geom, hinge_capsule_size_mm, hinge_centers_span_mm, hinge_gap_axis
+from WEOS.factory.geometry import (
+    HINGE_FILL_RGB,
+    hinge_capsule_geom,
+    hinge_capsule_size_mm,
+    hinge_centers_mm,
+    hinge_centers_span_mm,
+    hinge_gap_axis,
+)
 from WEOS.factory.ventilator_engine import TOP_HUNG_OVERLAP_MM, compute_ventilator, ensure_ventilator_dims
 
 
@@ -71,6 +78,9 @@ def draw_ventilator_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
     fan_d = max(_f(q.get("fanDiameterMm"), 200), 40.0)
     hinge_n = min(max(_i(q.get("hingeCount") or q.get("hingesPerDoor"), 2), 2), 6)
     handle_on = bool(q.get("handle"))
+    hinge_pos = _s(q.get("hingePosition") or q.get("hingeSide"), "top").lower()
+    if hinge_pos not in ("top", "left", "right"):
+        hinge_pos = "top"
     frame_t = 50.0
     sash_t = 42.0
     mull_t = 35.0
@@ -142,8 +152,10 @@ def draw_ventilator_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
         c.setFillColorRGB(0.35, 0.35, 0.38)
         c.drawCentredString(px(cx_mm), py(cy_mm) - 2.5, f"FAN Ø{int(round(d))}")
 
-    def _hinge_h(cx_mm: float, cy_mm: float, leaf_w: float, stile: float) -> None:
-        ww, hh = hinge_capsule_size_mm(leaf_w, stile, orientation="horizontal")
+    def _hinge_mark(cx_mm: float, cy_mm: float, leaf_span: float, stile: float, *, horizontal: bool) -> None:
+        ww, hh = hinge_capsule_size_mm(
+            leaf_span, stile, orientation="horizontal" if horizontal else "vertical",
+        )
         g = hinge_capsule_geom(cx_mm, cy_mm, ww, hh)
         c.setFillColorRGB(*HINGE_FILL_RGB)
         c.setStrokeColorRGB(*stroke)
@@ -182,14 +194,23 @@ def draw_ventilator_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
                 bar = max(sash_t * 0.22, 4.0) * scale
                 ly = hy + ry * 0.28
                 c.roundRect(px(hx), py(ly) - bar / 2.0, arm * scale, bar, bar / 2.0, fill=0, stroke=1)
-            head_inner = height - frame_t
-            cy = hinge_gap_axis(sy + sh, head_inner, toward_frame=1.0)
-            for x_off in hinge_centers_span_mm(swd, hinge_n):
-                _hinge_h(sx + x_off, cy, swd, sash_t)
-            c.setStrokeColorRGB(0.04, 0.24, 0.48)
-            c.setLineWidth(0.70)
-            mx = sx + swd / 2.0
-            c.line(px(mx), py(sy + sh * 0.55), px(mx), py(sy + sash_t + 8))
+            if hinge_pos in ("left", "right"):
+                frame_face = (width - frame_t) if hinge_pos == "right" else frame_t
+                sash_face = (sx + swd) if hinge_pos == "right" else sx
+                if abs(sash_face - frame_face) > frame_t * 2.5:
+                    hx = sash_face
+                else:
+                    hx = hinge_gap_axis(
+                        sash_face, frame_face,
+                        toward_frame=1.0 if hinge_pos == "right" else -1.0,
+                    )
+                for y_from_top in hinge_centers_mm(sh, hinge_n):
+                    _hinge_mark(hx, sy + sh - y_from_top, sh, sash_t, horizontal=False)
+            else:
+                head_inner = height - frame_t
+                cy = hinge_gap_axis(sy + sh, head_inner, toward_frame=1.0)
+                for x_off in hinge_centers_span_mm(swd, hinge_n):
+                    _hinge_mark(sx + x_off, cy, swd, sash_t, horizontal=True)
             return
         _glass(bx, by, bw, bh)
 

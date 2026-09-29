@@ -9,7 +9,6 @@ from WEOS.factory.geometry import (
     hinge_capsule_geom,
     hinge_capsule_size_mm,
     hinge_centers_mm,
-    hinge_gap_axis,
 )
 from WEOS.factory.shower_engine import (
     DOOR_BOTTOM_CLEAR_MM,
@@ -19,6 +18,7 @@ from WEOS.factory.shower_engine import (
     _front_role,
     _handle_side,
     _hinge_side,
+    shower_hinge_x,
 )
 
 
@@ -278,14 +278,6 @@ def draw_shower_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w:
             _frame_ring(fix_x0, fix_y0, fix_w, fix_h, frame_t, skip=fix_skip)
         _u_chokhat(0.0, 0.0, front_w, height, chok_t)
         door_box = (door_x0, door_y0, door_w, door_h)
-        # Hinges on outer | door gap
-        if hinge_side in ("left", "right"):
-            chok_inner = (front_w - chok_t) if hinge_side == "right" else chok_t
-            sash_face = (door_x0 + door_w) if hinge_side == "right" else door_x0
-            hx = hinge_gap_axis(sash_face, chok_inner, toward_frame=1.0 if hinge_side == "right" else -1.0)
-            for y_from_top in hinge_centers_mm(door_h, hinge_count):
-                cy = door_y0 + door_h - y_from_top
-                _hinge_at(hx, cy, door_h, frame_t)
     elif op == "sliding" and len(geom) >= 2:
         junction = geom[0][1] + geom[0][2]
         stile_x = junction - frame_t / 2.0
@@ -315,6 +307,20 @@ def draw_shower_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w:
             role = str(door_g[0].get("role") or "")
             dh = height - (clear if role in ("sliding", "openable") else 0.0)
             door_box = (door_g[1], clear if role in ("sliding", "openable") else 0.0, door_g[2], dh)
+
+    if op == "hinged" and not frameless and door_box and hinge_side in ("left", "right"):
+        dx, dy, dw, dh = door_box
+        hx = shower_hinge_x(
+            dx,
+            dw,
+            hinge_side,
+            frame_left=chok_t,
+            frame_right=front_w - chok_t,
+            jamb_t=chok_t,
+        )
+        for y_from_top in hinge_centers_mm(dh, hinge_count):
+            cy = dy + dh - y_from_top
+            _hinge_at(hx, cy, dh, frame_t)
 
     if door_box and handle_on:
         dx, dy, dw, dh = door_box

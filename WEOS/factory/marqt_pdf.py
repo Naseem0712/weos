@@ -901,6 +901,45 @@ def _spec_lines(line: Mapping[str, Any], *, audience: str = "customer") -> list[
     return out
 
 
+def _spec_table_layout(
+    c,
+    rows: list[tuple[str, str]],
+    *,
+    max_width: float,
+    font_size: float,
+    label_col: float,
+    line_h: float,
+) -> tuple[float, list[tuple[str, list[str], float]]]:
+    """Label | value rows. Returns (label column width, [(label, wrapped value, row height)])."""
+    pad_x = 3.0
+    pad_y = 2.0
+    bold_face = "Helvetica-Bold"
+    try:
+        bold_face = _set_font(c, font_size, bold=True) or bold_face
+    except Exception:
+        pass
+    widest = 0.0
+    for label, _value in rows:
+        if not label:
+            continue
+        try:
+            widest = max(widest, c.stringWidth(str(label), bold_face, font_size))
+        except Exception:
+            widest = max(widest, len(str(label)) * font_size * 0.55)
+    label_w = min(max(widest + pad_x * 2.0, min(label_col, max_width * 0.42), 36.0), max_width * 0.46)
+    value_w = max(24.0, max_width - label_w - pad_x * 2.0)
+    title_w = max(24.0, max_width - pad_x * 2.0)
+    laid: list[tuple[str, list[str], float]] = []
+    for label, value in rows:
+        if label:
+            wrapped = _wrap_text(c, value, value_w, font_size) or [""]
+        else:
+            wrapped = _wrap_text(c, value, title_w, font_size, bold=True) or [""]
+        rh = max(line_h, len(wrapped) * line_h) + pad_y * 2.0
+        laid.append((label, wrapped, rh))
+    return label_w, laid
+
+
 def _draw_spec_rows(
     c,
     rows: list[tuple[str, str]],
@@ -915,41 +954,51 @@ def _draw_spec_rows(
     bottom_limit: float | None = None,
     new_page=None,
 ) -> float:
-    """Draw aligned LABEL: / value columns; returns y after last line."""
-    value_x = x + label_col
-    value_w = max(36.0, max_width - label_col)
-    sy = y
-    for label, value in rows:
-        lab = f"{label}:" if label else ""
-        if lab:
-            wrapped = _wrap_text(c, value, value_w, font_size) or [""]
-            needed = len(wrapped) * line_h
-            if bottom_limit is not None and new_page is not None and sy - needed < bottom_limit:
-                sy = new_page()
+    """Draw specifications as a real label | value table. Returns y under the table."""
+    pad_x = 3.0
+    pad_y = 2.0
+    label_w, laid = _spec_table_layout(
+        c, rows, max_width=max_width, font_size=font_size, label_col=label_col, line_h=line_h,
+    )
+    # y is the first-line anchor used by QTY; keep the table top just above it.
+    top = y + font_size * 0.85
+    for label, wrapped, rh in laid:
+        if bottom_limit is not None and new_page is not None and top - rh < bottom_limit:
+            top = new_page() + font_size * 0.85
+        bot = top - rh
+        c.setStrokeColorRGB(0.45, 0.48, 0.52)
+        c.setLineWidth(0.45)
+        if label:
+            c.setFillColorRGB(0.94, 0.95, 0.96)
+            c.rect(x, bot, label_w, rh, stroke=0, fill=1)
+            c.setFillColorRGB(1, 1, 1)
+            c.rect(x + label_w, bot, max_width - label_w, rh, stroke=0, fill=1)
+            c.setStrokeColorRGB(0.45, 0.48, 0.52)
+            c.rect(x, bot, max_width, rh, stroke=1, fill=0)
+            c.line(x + label_w, bot, x + label_w, top)
             set_font(c, font_size, bold=True)
-            c.drawString(x, sy, lab)
+            c.setFillColorRGB(0.1, 0.12, 0.16)
+            c.drawString(x + pad_x, top - pad_y - font_size * 0.8, str(label))
             set_font(c, font_size)
-            c.drawString(value_x, sy, wrapped[0])
-            sy -= line_h
-            for cont in wrapped[1:]:
-                if bottom_limit is not None and new_page is not None and sy < bottom_limit:
-                    sy = new_page()
-                set_font(c, font_size)
-                c.drawString(value_x, sy, cont)
-                sy -= line_h
+            c.setFillColorRGB(0, 0, 0)
+            ty = top - pad_y - font_size * 0.8
+            for line in wrapped:
+                c.drawString(x + label_w + pad_x, ty, line)
+                ty -= line_h
         else:
-            wrapped = _wrap_text(c, value, max_width, font_size, bold=True) or [""]
-            needed = len(wrapped) * line_h + 3.5
-            if bottom_limit is not None and new_page is not None and sy - needed < bottom_limit:
-                sy = new_page()
-            for wl in wrapped:
-                if bottom_limit is not None and new_page is not None and sy < bottom_limit:
-                    sy = new_page()
-                set_font(c, font_size, bold=True)
-                c.drawString(x, sy, wl)
-                sy -= line_h
-            sy -= 3.5  # small heading-to-heading gap (not a wall of text)
-    return sy
+            c.setFillColorRGB(0.90, 0.93, 0.96)
+            c.rect(x, bot, max_width, rh, stroke=0, fill=1)
+            c.setStrokeColorRGB(0.45, 0.48, 0.52)
+            c.rect(x, bot, max_width, rh, stroke=1, fill=0)
+            set_font(c, font_size, bold=True)
+            c.setFillColorRGB(0.05, 0.1, 0.2)
+            ty = top - pad_y - font_size * 0.8
+            for line in wrapped:
+                c.drawString(x + pad_x, ty, line)
+                ty -= line_h
+        top = bot
+    c.setFillColorRGB(0, 0, 0)
+    return top - 2.0
 
 
 def _measure_spec_rows(
@@ -961,19 +1010,11 @@ def _measure_spec_rows(
     label_col: float = 72.0,
     line_h: float = 10.0,
 ) -> float:
-    """Estimate vertical space for tabular specs."""
-    value_w = max(36.0, max_width - label_col)
-    lines = 0
-    extra = 0.0
-    for label, value in rows:
-        if label:
-            wrapped = _wrap_text(c, value, value_w, font_size) or [""]
-            lines += len(wrapped)
-        else:
-            wrapped = _wrap_text(c, value, max_width, font_size, bold=True) or [""]
-            lines += len(wrapped)
-            extra += 3.5
-    return max(lines * line_h + extra, 24.0)
+    """Estimate vertical space for the specifications table."""
+    _label_w, laid = _spec_table_layout(
+        c, rows, max_width=max_width, font_size=font_size, label_col=label_col, line_h=line_h,
+    )
+    return max(sum(rh for _l, _w, rh in laid) + font_size, 24.0)
 
 
 def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) -> bytes:

@@ -113,6 +113,36 @@ def _hinge_side(handle_side: str) -> str:
     return "left" if handle_side == "right" else "right"
 
 
+def shower_hinge_x(
+    door_x0: float,
+    door_w: float,
+    hinge_side: str,
+    *,
+    frame_left: float,
+    frame_right: float,
+    jamb_t: float,
+) -> float:
+    """Hinge-centre x on the jamb the door leaf actually meets.
+
+    Opposite-of-handle used to be averaged with the far jamb, which dropped the
+    capsules in the fix glass. If the named side is the meeting stile, snap to
+    the stile that sits against the frame.
+    """
+    side = "left" if str(hinge_side or "").lower() == "left" else "right"
+    near = max(float(jamb_t) * 2.8, 1.0)
+    left_face = float(door_x0)
+    right_face = float(door_x0) + float(door_w)
+    left_gap = abs(left_face - float(frame_left))
+    right_gap = abs(right_face - float(frame_right))
+    if side == "left" and left_gap <= near:
+        return hinge_gap_axis(left_face, frame_left, toward_frame=-1.0)
+    if side == "right" and right_gap <= near:
+        return hinge_gap_axis(right_face, frame_right, toward_frame=1.0)
+    if right_gap <= left_gap:
+        return hinge_gap_axis(right_face, frame_right, toward_frame=1.0)
+    return hinge_gap_axis(left_face, frame_left, toward_frame=-1.0)
+
+
 def _front_role(cfg: Mapping[str, Any]) -> str:
     """Foreground leaf at the meeting: operable door/slide, or fix."""
     raw = _s(cfg.get("frontPanel") or cfg.get("frontLeaf"), "").lower()
@@ -260,7 +290,12 @@ def compute_shower(cfg: Mapping[str, Any]) -> dict[str, Any]:
     hinge_count = min(max(_i(cfg.get("hingesPerDoor") or cfg.get("hingeCount"), 3), 2), 6)
     hinge_type = _s(cfg.get("hingeType"), DEFAULT_HINGE)
     door_side = _door_side(cfg)
+    handle_explicit = _s(cfg.get("handleSide"), "").lower() in ("left", "right")
     handle_side = _handle_side(cfg, door_side=door_side)
+    # Hinged leaf: handle on the meeting stile, hinges on the outer jamb.
+    # Sliding still defaults the pull to the door side.
+    if op == "hinged" and not handle_explicit:
+        handle_side = "left" if door_side == "right" else "right"
     hinge_side = _hinge_side(handle_side) if op == "hinged" else None
     sale_unit = _s(cfg.get("saleUnit"), "sqft").lower()
     if sale_unit in ("sft", "sq.ft", "sq.ft."):
@@ -1101,12 +1136,14 @@ def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -
                     glass_side=("left" if handle_side == "right" else "right"),
                 )
         if op == "hinged" and not frameless:
-            # Stile gap: sash outer vs chokhat inner (half on outer, half on door).
-            chok_inner = (x0 + elev_w - chok_t) if hinge_side == "right" else (x0 + chok_t)
-            hx_h = hinge_gap_axis(
-                (dx + dw) if hinge_side == "right" else dx,
-                chok_inner if len(panel_geom) >= 2 else None,
-                toward_frame=1.0 if hinge_side == "right" else -1.0,
+            # Stile gap on the jamb this leaf meets — never the far jamb or the glass.
+            hx_h = shower_hinge_x(
+                dx,
+                dw,
+                hinge_side,
+                frame_left=x0 + chok_t,
+                frame_right=x0 + elev_w - chok_t,
+                jamb_t=chok_t,
             )
             leaf_h_mm = dh / scale if scale else height
             for y_mm in hinge_centers_mm(leaf_h_mm, hinge_count):

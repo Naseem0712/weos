@@ -243,6 +243,44 @@ def _hollow_plan_band(
         )
 
 
+def _plan_hinge_ticks(
+    parts: list[str],
+    *,
+    tx,
+    ty,
+    x0: float,
+    x1: float,
+    y_mid: float,
+    band: float,
+    hinge: str,
+    stroke_scale: float,
+) -> None:
+    """Hinge marks on the real hinge edge. No stroke across the leaf."""
+    sw = max(0.7 * stroke_scale, 0.45)
+    span = max(float(x1) - float(x0), 1.0)
+    if hinge == "top":
+        yb = y_mid + band * 0.5
+        for frac in (0.22, 0.78):
+            hx = x0 + span * frac
+            parts.append(
+                f'<line x1="{tx(hx):.2f}" y1="{ty(yb):.2f}" x2="{tx(hx):.2f}" '
+                f'y2="{ty(yb - band * 0.55):.2f}" stroke="#8b1e1a" stroke-width="{sw:.2f}" '
+                f'data-plan-hinge="top"/>'
+            )
+        return
+    side = "left" if hinge == "left" else "right"
+    hx = x0 if side == "left" else x1
+    stub = min(span * 0.045, max(band * 0.8, 8.0))
+    direction = 1.0 if side == "left" else -1.0
+    for frac in (0.22, 0.78):
+        yy = (y_mid - band * 0.5) + band * frac
+        parts.append(
+            f'<line x1="{tx(hx):.2f}" y1="{ty(yy):.2f}" '
+            f'x2="{tx(hx + direction * stub):.2f}" y2="{ty(yy):.2f}" '
+            f'stroke="#8b1e1a" stroke-width="{sw:.2f}" data-plan-hinge="{side}"/>'
+        )
+
+
 def _handle_finish_colors(finish: str) -> dict[str, str]:
     """2D outline handle palette — line colour only (no solid fill)."""
     if str(finish).lower() in ("black", "black_texture", "matte_black", "dark"):
@@ -507,16 +545,27 @@ def _draw_plan(
         return
 
     if system in ("casement", "openable", "opening"):
-        # Openable plan: sash + swing arc toward the hinge stile
+        # Openable plan. A single leaf (or a top-hung vent) must not stroke a
+        # line to the centre of the sash — that reads as a false mid rail.
+        single = len(glass) == 1
         for s in glass:
             x0, x1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
-            hinge = s.get("hingeSide") or ("left" if float(s.get("openDir") or 1) >= 0 else "right")
+            hinge = str(s.get("hingeSide") or "").lower()
+            if not hinge:
+                hinge = "left" if float(s.get("openDir") or 1) >= 0 else "right"
+            top_hung = hinge == "top" or str(s.get("pack") or "") == "top_hung"
             _hollow_plan_band(parts, tx=tx, ty=ty, x0=x0, x1=x1, y_bot=y_mid - band * 0.5, y_top=y_mid + band * 0.5, stroke="#173a63", stroke_width=sw)
-            hx = x0 if hinge == "left" else x1
-            parts.append(
-                f'<line x1="{tx(hx):.2f}" y1="{ty(y_mid):.2f}" x2="{tx((x0 + x1) / 2):.2f}" '
-                f'y2="{ty(y_mid + band * 1.3):.2f}" stroke="#8b1e1a" stroke-width="{0.8 * stroke_scale:.2f}"/>'
-            )
+            if top_hung or single:
+                _plan_hinge_ticks(
+                    parts, tx=tx, ty=ty, x0=x0, x1=x1, y_mid=y_mid, band=band,
+                    hinge="top" if top_hung else hinge, stroke_scale=stroke_scale,
+                )
+            else:
+                hx = x0 if hinge == "left" else x1
+                parts.append(
+                    f'<line x1="{tx(hx):.2f}" y1="{ty(y_mid):.2f}" x2="{tx((x0 + x1) / 2):.2f}" '
+                    f'y2="{ty(y_mid + band * 1.3):.2f}" stroke="#8b1e1a" stroke-width="{0.8 * stroke_scale:.2f}"/>'
+                )
         parts.append(
             f'<text x="{tx(W / 2):.2f}" y="{ty(y_mid - band * 1.4):.2f}" text-anchor="middle" '
             f'font-family="Segoe UI, Arial, sans-serif" font-size="{14 * stroke_scale:.0f}" fill="#173a63">OPENABLE · hinge side</text>'

@@ -13,7 +13,13 @@ from typing import Any, Mapping
 from xml.sax.saxutils import escape
 
 from WEOS.factory.fmt import mm_n, money_n
-from WEOS.factory.geometry import casement_hinge_svg, hinge_capsule_size_mm, hinge_centers_span_mm, hinge_gap_axis
+from WEOS.factory.geometry import (
+    casement_hinge_svg,
+    hinge_capsule_size_mm,
+    hinge_centers_mm,
+    hinge_centers_span_mm,
+    hinge_gap_axis,
+)
 
 MM_PER_FT = 304.8
 SQMM_PER_SQFT = 92903.04
@@ -319,7 +325,11 @@ def compute_ventilator(cfg: Mapping[str, Any] | None = None) -> dict[str, Any]:
         "hingeType": hinge_type,
         "hingeCount": hinge_count if (remain_fill == "top_hung" and mode == "split") else 0,
         "hingesPerDoor": hinge_count,
-        "hingePosition": "top",
+        "hingePosition": (
+            _s(cfg.get("hingeSide") or cfg.get("hingePosition"), "top").lower()
+            if _s(cfg.get("hingeSide") or cfg.get("hingePosition"), "top").lower() in ("left", "right", "top")
+            else "top"
+        ),
         "hardwareBrand": hw_brand,
         "hardwareOrigin": hw_origin,
         "panels": panels,
@@ -465,6 +475,41 @@ def _top_hinges(
         )
 
 
+def _stile_hinges(
+    parts: list[str],
+    y: float,
+    h: float,
+    count: int,
+    stroke: str,
+    *,
+    gap_x: float,
+    leaf_h_mm: float,
+    stile_t_mm: float,
+    scale: float,
+    pos: str,
+) -> None:
+    """Side-hung ventilator hinges: vertical capsule on the stile | frame gap."""
+    count = min(max(int(count), 2), 4)
+    sc = max(float(scale), 1e-6)
+    span_mm = max(float(leaf_h_mm), 40.0)
+    stile_mm = max(float(stile_t_mm), 4.0)
+    hw_mm, hh_mm = hinge_capsule_size_mm(span_mm, stile_mm, orientation="vertical")
+    hw, hh = max(hw_mm * sc, 0.9), max(hh_mm * sc, 2.4)
+    for y_mm in hinge_centers_mm(span_mm, count):
+        cy = y + y_mm * sc
+        parts.append(
+            casement_hinge_svg(
+                gap_x,
+                cy,
+                w=hw,
+                h=hh,
+                stroke=stroke,
+                stroke_width=0.55,
+                extra_attrs=f'data-hinge-style="casement" data-hinge-pos="{pos}"',
+            )
+        )
+
+
 def _fan_opening(parts: list[str], cx: float, cy: float, d: float, stroke: str) -> None:
     r = max(d / 2.0, 8.0)
     box = r * 1.18
@@ -552,6 +597,9 @@ def ventilator_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = Non
     exhaust_side = _s(q.get("exhaustSide"), "center")
     hinge_n = _i(q.get("hingeCount") or q.get("hingesPerDoor"), 2)
     handle_on = bool(q.get("handle"))
+    hinge_pos = _s(q.get("hingePosition") or q.get("hingeSide"), "top").lower()
+    if hinge_pos not in ("top", "left", "right"):
+        hinge_pos = "top"
 
     parts: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{svg_w:.1f}" height="{svg_h:.1f}" '
@@ -617,19 +665,36 @@ def ventilator_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = Non
             _sash_frame(parts, sx, sy, swd, sh, sash_t, stroke, sw)
             if handle_on:
                 _handle_bottom(parts, sx + sash_t, sy + sh - sash_t, max(swd - 2 * sash_t, 8), sash_t)
-            # SVG y-down: sash top vs outer-frame inner head.
-            _top_hinges(
-                parts, sx, sy, swd, sash_t, hinge_n, stroke,
-                gap_y=hinge_gap_axis(sy, y0 + frame_t, toward_frame=-1.0),
-                leaf_w_mm=swd / max(scale, 1e-6),
-                stile_t_mm=50.0 * 0.85,
-                scale=scale,
-            )
-            mx = sx + swd / 2.0
-            parts.append(
-                f'<line x1="{mx:.1f}" y1="{sy + sh * 0.42:.1f}" x2="{mx:.1f}" y2="{sy + sh * 0.78:.1f}" '
-                f'stroke="#0b3d7a" stroke-width="0.8" data-arrow="1" data-arrow-dir="down"/>'
-            )
+            # Hinges on the configured stile/rail. No centre stroke through the glass.
+            leaf_h_mm = sh / max(scale, 1e-6)
+            stile_mm = 50.0 * 0.85
+            if hinge_pos in ("left", "right"):
+                frame_face = (x0 + elev_w - frame_t) if hinge_pos == "right" else (x0 + frame_t)
+                sash_face = (sx + swd) if hinge_pos == "right" else sx
+                if abs(sash_face - frame_face) > frame_t * 2.5:
+                    gap_x = sash_face
+                else:
+                    gap_x = hinge_gap_axis(
+                        sash_face, frame_face,
+                        toward_frame=1.0 if hinge_pos == "right" else -1.0,
+                    )
+                _stile_hinges(
+                    parts, sy, sh, hinge_n, stroke,
+                    gap_x=gap_x,
+                    leaf_h_mm=leaf_h_mm,
+                    stile_t_mm=stile_mm,
+                    scale=scale,
+                    pos=hinge_pos,
+                )
+            else:
+                # SVG y-down: sash top vs outer-frame inner head.
+                _top_hinges(
+                    parts, sx, sy, swd, sash_t, hinge_n, stroke,
+                    gap_y=hinge_gap_axis(sy, y0 + frame_t, toward_frame=-1.0),
+                    leaf_w_mm=swd / max(scale, 1e-6),
+                    stile_t_mm=stile_mm,
+                    scale=scale,
+                )
             return sx, sy, swd, sh
 
         _fix_bay(left_role, lx, left_inner_w, "left")

@@ -113,9 +113,18 @@ def subtract_intervals(
 
 
 def hinge_centers_mm(leaf_h_mm: float, count: int = 3) -> list[float]:
-    """Casement hinge cy from top of leaf (mm): 100 from top/bottom; extras stacked then mid-span."""
+    """Casement hinge cy from top of leaf (mm): 100 from top/bottom; extras stacked then mid-span.
+
+    Shallow leaves (ventilators) keep two hinges inset on the stile. Forcing a
+    240 mm span used to drop a third hinge through the middle of the glass.
+    """
     count = min(max(int(count), 2), 6)
-    h = max(float(leaf_h_mm), 240.0)
+    h = max(float(leaf_h_mm), 40.0)
+    if h < 260.0:
+        inset = min(max(h * 0.18, 10.0), h * 0.32)
+        if inset * 2.0 >= h - 8.0:
+            inset = h * 0.22
+        return [inset, h - inset]
     top = 100.0 if h >= 280.0 else min(100.0, h * 0.16)
     bot = (h - 100.0) if h >= 280.0 else max(h - 100.0, h * 0.84)
     if bot <= top + 30.0:
