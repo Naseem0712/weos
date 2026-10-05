@@ -575,6 +575,7 @@ textarea{max-width:100%}
             <select id="setupProjectPick" style="width:100%">
               <option value="new">New project — new quote number</option>
             </select>
+            <select id="setupVersionPick" style="width:100%;margin-top:.35rem" title="Every saved version and Excel sheet on this project"></select>
           </div>
           <div class="grow"><label class="l">Quote number (one per project — add text for a new version)</label><input id="projQuoteNo" placeholder="saves as this project’s quote number"/></div>
         </div>
@@ -659,6 +660,7 @@ textarea{max-width:100%}
           <div class="setup-summary" id="setupSummaryBar">
             <span class="muted">Active setup</span>
             <strong id="setupSummaryText">No setup yet</strong>
+            <select id="cartVersionPick" style="max-width:100%;min-width:12rem" title="Load a quote version or Excel sheet"></select>
             <button class="btn ghost sm" id="btnEditSetup" type="button">Edit Project Setup</button>
             <button class="btn ghost sm" id="btnCartOutsideQuote" type="button">Add outside quote</button>
           </div>
@@ -1296,6 +1298,33 @@ textarea{max-width:100%}
                   <button type="button" data-sh-op="fixed">Fix only</button>
                 </div>
               </div>
+              <div class="rt-row" id="shPresetRow" style="flex-wrap:wrap">
+                <span class="l" style="margin:0;width:100%">Layouts from site</span>
+                <div class="rt-shapes" id="shPresetBtns" style="flex-wrap:wrap"></div>
+              </div>
+              <div id="shPanelBox" style="margin:.35rem 0 .2rem">
+                <div class="row" style="justify-content:space-between;align-items:center;gap:.35rem;flex-wrap:wrap">
+                  <span class="l" style="margin:0">Panels (left to right) — each has its own width and height</span>
+                  <span>
+                    <button class="btn ghost sm" type="button" id="btnShAddPanel">+ panel</button>
+                    <button class="btn ghost sm" type="button" id="btnShAddLeg">+ leg</button>
+                    <button class="btn ghost sm" type="button" id="btnShClearPanels">Clear list</button>
+                  </span>
+                </div>
+                <div style="overflow:auto">
+                  <table>
+                    <thead><tr><th>Type</th><th>W mm</th><th>H mm</th><th>Slide / hinge</th><th></th></tr></thead>
+                    <tbody id="shPanelBody"></tbody>
+                  </table>
+                </div>
+                <div class="rt-row">
+                  <div><label class="l">Head track mm</label><input id="shTrackSpan" type="number" placeholder="if longer than the door" style="width:88px"/></div>
+                  <div><label class="l">Door on track</label>
+                    <select id="shGlassAlign" style="width:110px"><option value="left">Left</option><option value="right">Right</option></select>
+                  </div>
+                </div>
+                <p class="muted" style="font-size:.72rem;margin:.2rem 0 0">Track only is not glass, so it is not in the area. Amount = glass area × selling rate × qty.</p>
+              </div>
               <div class="rt-row">
                 <span class="l" style="margin:0">Frame</span>
                 <div class="rt-shapes" id="shFrameBtns">
@@ -1476,6 +1505,7 @@ textarea{max-width:100%}
               <div class="muted" id="liveMargin" style="flex:1"></div>
               <button class="btn ghost sm" id="btnSaveRate" type="button">Save rate for customer</button>
               <button class="btn" id="btnAddLine" type="button">Add to cart</button>
+              <button class="btn ghost sm" id="btnAddAsNew" type="button" style="display:none">Add as new</button>
             </div>
           </div>
           <div class="bulk-sizes-box" id="bulkSizesBox">
@@ -2620,6 +2650,15 @@ const state = {
   activeQuoteGroup: 'Main',
   quoteGroupFilter: 'All',
   bulkSizeRows: [{ width: '', height: '', qty: 1, location: '', rate: '' }],
+  editingLineId: null,
+  shLayout: '',
+  shPanels: [],
+  shLegs: [],
+  shTrackSpan: 0,
+  shGlassAlign: 'left',
+  quoteVersionChoices: [],
+  loadedQuoteVersion: 'current',
+  excelFocus: '',
 };
 const $ = (id) => document.getElementById(id);
 const toast = (m) => {
@@ -3138,6 +3177,7 @@ function setView(v) {
   if (v==='projects') loadProjects();
   if (v==='library') initAdmin();
   if (v==='cart') { renderCart(); refreshPreview(); refreshSetupSummary(); refreshExportSetupSelect(); }
+  if (typeof syncProjectHeader === 'function') syncProjectHeader();
   if (v==='customers') initCustomers();
   if (v==='company') initCompany();
   if (v==='scan' && window.WEOS_SCAN_TOKEN) loadPublicScan(window.WEOS_SCAN_TOKEN);
@@ -4555,7 +4595,15 @@ function currentLocationName() {
   return ($('lineLocation') && $('lineLocation').value.trim()) || '';
 }
 function designSerialLabel(index, ln) {
-  const code = 'W' + (Math.max(0, parseInt(index, 10) || 0) + 1);
+  let n = Math.max(0, parseInt(index, 10) || 0);
+  if (ln && ln.serialIndex != null && ln.serialIndex !== '') {
+    const parsed = parseInt(ln.serialIndex, 10);
+    if (!Number.isNaN(parsed)) n = Math.max(0, parsed);
+  } else if (ln && ln.serial) {
+    const m = String(ln.serial).match(/(\d+)/);
+    if (m) n = Math.max(0, parseInt(m[1], 10) - 1);
+  }
+  const code = 'W' + (n + 1);
   const loc = lineLocationName(ln) || currentLocationName();
   return loc ? (code + ' · ' + loc) : code;
 }
@@ -4858,7 +4906,7 @@ function applyProductWorld(opts) {
     if (world === 'louver' && $('lineFillType')) $('lineFillType').value = 'louvers';
     if ((world === 'pergola' || world === 'surface') && $('lineFillType')) $('lineFillType').value = 'glass';
     syncFillFeatureUi();
-    if (addBtn) addBtn.textContent = world === 'pergola' ? 'Add pergola to cart' : (world === 'surface' ? 'Add panel to cart' : 'Add louver to cart');
+    syncAddButton(world === 'pergola' ? 'Add pergola to cart' : (world === 'surface' ? 'Add panel to cart' : 'Add louver to cart'));
     applySystemUiRules();
     return;
   }
@@ -4871,7 +4919,7 @@ function applyProductWorld(opts) {
     showRailTools(false);
     showShowerTools(false);
     showVentTools(true);
-    if (addBtn) addBtn.textContent = 'Add ventilator to cart';
+    syncAddButton('Add ventilator to cart');
     if ($('lineSeries')) $('lineSeries').value = '';
     setSpecialProductToolMode('');
     ventCalc();
@@ -4886,7 +4934,7 @@ function applyProductWorld(opts) {
     showRailTools(false);
     showVentTools(false);
     showShowerTools(true);
-    if (addBtn) addBtn.textContent = 'Add shower to cart';
+    syncAddButton('Add shower to cart');
     if ($('lineSeries')) $('lineSeries').value = '';
     setSpecialProductToolMode('');
     showerCalc();
@@ -4912,7 +4960,7 @@ function applyProductWorld(opts) {
     if (win) win.classList.add('hidden');
     setSpecialProductToolMode('');
     showRailTools(true);
-    if (addBtn) addBtn.textContent = 'Add railing to cart';
+    syncAddButton('Add railing to cart');
     // Drop window series leftovers under the canvas when entering railing world.
     if ($('lineSeries')) $('lineSeries').value = '';
     railingCalc();
@@ -4921,7 +4969,7 @@ function applyProductWorld(opts) {
   state.railingMode = false;
   if (win) win.classList.remove('hidden');
   showRailTools(false);
-  if (addBtn) addBtn.textContent = 'Add to cart';
+  syncAddButton('Add to cart');
   const sysEl = $('lineSystem');
   const sys = systemForProduct(p) || 'sliding';
   // Always sync implied system from the selected product so canvas regenerates
@@ -5077,6 +5125,14 @@ function syncDraftFromLine(ln) {
     setSh('shHinges', sh.hingeCount || sh.hingesPerDoor);
     setSh('shColour', sh.colour);
     setSh('shSellRate', sh.manualRatePerUnit || sh.sellingRate || ln.sellingRate);
+    if (sh.layout === 'panels' || (Array.isArray(sh.panels) && sh.panels.length) || (Array.isArray(sh.legs) && sh.legs.length)) {
+      state.shLayout = 'panels';
+      state.shPanels = (sh.panels || []).map(p => ({ ...p, type: p.type || p.role || 'fixed' }));
+      state.shLegs = (sh.legs || []).map(p => ({ ...p, type: p.type || 'fixed' }));
+      state.shTrackSpan = sh.trackSpanMm || 0;
+      state.shGlassAlign = sh.glassAlign || 'left';
+      if (typeof renderShowerPanelEditor === 'function') renderShowerPanelEditor();
+    }
     if (sh.lock != null && $('shLock')) $('shLock').checked = !!sh.lock;
     if (sh.handle != null && $('shHandle')) $('shHandle').checked = !!sh.handle;
   }
@@ -5518,11 +5574,15 @@ function renderCart() {
       html += `<tr style="background:#fdecec"><td></td><td colspan="6"><span style="color:#b42318;font-weight:700">REMOVED</span> ${esc(name)} <span class="muted">since previous version</span></td></tr>`;
     });
   }
-  if (!visible.length) {
-    html = (html || '') + '<tr><td colspan="7" class="muted">Cart empty — add products' +
+  const importedRows = (typeof importedCartRows === 'function') ? importedCartRows() : [];
+  if (!visible.length && !importedRows.length) {
+    html = (html || '') + '<tr><td colspan="7" class="muted">This quote has no lines yet — add a product' +
       (state.quoteGroupFilter && state.quoteGroupFilter !== 'All' ? ' to section “' + esc(state.quoteGroupFilter) + '”' : '') +
       '</td></tr>';
-  } else {
+  } else if (!visible.length && importedRows.length) {
+    html = (html || '') + '<tr><td colspan="7" class="muted">No Window Cart lines yet. Imported Excel lines are listed below.</td></tr>';
+  }
+  if (visible.length) {
     let rowNo = 0;
     visible.forEach(({ ln, i }) => {
       const g = lineQuoteGroup(ln);
@@ -5538,6 +5598,8 @@ function renderCart() {
         lastGroup = g;
       }
       rowNo += 1;
+      const serialCode = designSerialLabel(i, ln).split(' · ')[0];
+      const shArea = ln.options && ln.options.showerQuote && ln.options.showerQuote.areaSqft;
       const flag = ln.changeFlag === 'added'
         ? '<span style="color:#0a7a45;font-weight:700;font-size:.72rem"> ADDED</span>'
         : (ln.changeFlag === 'reduced'
@@ -5546,20 +5608,31 @@ function renderCart() {
       const rowBg = ln.changeFlag === 'added' ? '#eefaf3' : (ln.changeFlag === 'reduced' ? '#fdecec' : (i===state.selectedLine ? '#f3faf6' : ''));
       html += `
     <tr style="${rowBg?'background:'+rowBg:''}">
-      <td>${rowNo}</td>
-      <td>${cartLineProductLabel(ln)}${flag}${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${esc(ln.locationName||ln.positionName)}</div>`:''}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}${showHeaders?'':`<div class="muted" style="font-size:.68rem">${esc(g)}</div>`}</td>
+      <td>${esc(serialCode)}</td>
+      <td>${cartLineProductLabel(ln)}${flag}${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${esc(ln.locationName||ln.positionName)}</div>`:''}${shArea?`<div class="muted" style="font-size:.72rem">${esc(shArea)} sft</div>`:''}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}${showHeaders?'':`<div class="muted" style="font-size:.68rem">${esc(g)}</div>`}</td>
       <td><input data-f="width" data-i="${i}" type="number" value="${ln.width != null ? ln.width : ''}" style="width:70px"/>×<input data-f="height" data-i="${i}" type="number" value="${ln.height != null ? ln.height : ''}" style="width:70px"/></td>
       <td><input data-f="qty" data-i="${i}" type="number" min="1" value="${ln.qty != null ? ln.qty : ''}" style="width:56px"/></td>
       <td style="font-size:.8rem">${ln.glass||''}<br>${ln.colour||''}</td>
       <td style="white-space:nowrap;font-weight:600">${money(lineLiveAmount(ln))}</td>
       <td class="actions-inline">
-        <button class="btn ghost sm" data-sel="${i}">👁</button>
+        <button class="btn ghost sm" data-sel="${i}">Edit</button>
         <button class="btn ghost sm" data-dup="${i}">Dup</button>
         <button class="btn ghost sm" data-del="${i}">Del</button>
       </td>
     </tr>`;
     });
   }
+  importedRows.forEach((row) => {
+    html += `<tr style="background:#f7f5ef">
+      <td>Excel</td>
+      <td>${esc(row.name)}<div class="muted" style="font-size:.72rem">${esc(row.quote)}</div></td>
+      <td>${esc(row.size || '—')}</td>
+      <td>${esc(row.qty || '—')}</td>
+      <td class="muted">Imported</td>
+      <td style="white-space:nowrap;font-weight:600">${row.amount ? money(row.amount) : '—'}</td>
+      <td></td>
+    </tr>`;
+  });
   $('cartBody').innerHTML = html;
   $('cartBody').querySelectorAll('input[data-f]').forEach(inp => {
     inp.onchange = () => {
@@ -5598,7 +5671,7 @@ function renderCart() {
     };
   });
   $('cartBody').querySelectorAll('[data-sel]').forEach(b => b.onclick = () => {
-    state.selectedLine=+b.dataset.sel;
+    beginLineEdit(+b.dataset.sel);
     const ln = state.lines[state.selectedLine];
     if (ln) {
       ensureProductOptionFromLine(ln);
@@ -5632,7 +5705,7 @@ function renderCart() {
       }
       refreshDesignPhotoUi();
     }
-    renderCart(); refreshPreview(); scheduleLivePrice();
+    renderCart(); refreshPreview(); scheduleLivePrice(); syncAddButton();
   });
   $('cartBody').querySelectorAll('[data-dup]').forEach(b => b.onclick = () => {
     const i = +b.dataset.dup;
@@ -5985,7 +6058,8 @@ function updatePdfLinks(){
   const id = state.projectId;
   const pill = $('projPill');
   if (id) {
-    if (pill) pill.textContent = id;
+    const nm = (typeof projectDisplayName === 'function') ? projectDisplayName() : '';
+    if (pill) pill.textContent = nm ? (id + ' · ' + nm) : id;
   } else if (state.workspace && state.workspace.gstNo) {
     const name = (state.workspace.company && (state.workspace.company.companyName || state.workspace.company.name))
       || ('GST ' + state.workspace.gstNo);
@@ -6006,21 +6080,136 @@ function updatePdfLinks(){
   if ($('linkFact')) $('linkFact').href = `${API_BASE}/api/projects/${id}/factory-pdf`+q;
 }
 
+function projectDisplayName() {
+  const raw = ($('cartName') && $('cartName').value.trim()) || '';
+  if (raw && !/^weos project$/i.test(raw)) return raw;
+  const cust = ($('projCustName') && $('projCustName').value.trim()) || '';
+  if (cust) return cust;
+  const qn = ($('projQuoteNo') && $('projQuoteNo').value.trim()) || '';
+  return qn || '';
+}
+function syncProjectHeader() {
+  const name = projectDisplayName();
+  const title = $('title');
+  const view = state.view || '';
+  if (title && (view === 'cart' || view === 'setup')) {
+    const base = view === 'cart' ? 'Window Cart' : 'Project Setup';
+    title.textContent = name ? (base + ' · ' + name) : base;
+  }
+  const sub = $('subtitle');
+  if (sub && (view === 'cart' || view === 'setup') && name) sub.textContent = name;
+  refreshSetupSummary();
+}
 function refreshSetupSummary(){
   const sel = $('exportSetupSelect');
   const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
   const fromSelect = (opt && sel.value)
     ? String(opt.textContent || '').replace(/\s*\(current\)\s*$/i, '').trim()
     : '';
-  const name = ($('cartName') && $('cartName').value.trim()) || '';
+  const name = projectDisplayName();
   const cust = ($('projCustName') && $('projCustName').value.trim())
     || ($('projMobile') && $('projMobile').value.trim()) || '';
-  const bits = fromSelect ? [fromSelect] : [name, cust].filter(Boolean);
+  const bits = name ? [name, cust].filter(Boolean) : (fromSelect && !/^weos project$/i.test(fromSelect) ? [fromSelect] : [cust].filter(Boolean));
   const el = $('setupSummaryText');
   if (el) el.textContent = bits.length ? bits.join(' · ') : 'No setup yet — open Project Setup';
-  if ($('projPill') && state.projectId) {
-    const label = cust || name || state.projectId;
-    $('projPill').textContent = state.projectId + (fromSelect ? ' · ' + fromSelect : (bits.length ? ' · ' + label : ''));
+  const pill = $('projPill');
+  if (pill) {
+    if (name && state.projectId) pill.textContent = state.projectId + ' · ' + name;
+    else if (name) pill.textContent = name;
+    else if (state.projectId) pill.textContent = state.projectId;
+  }
+}
+function importedCartRows() {
+  const focus = String(state.excelFocus || '');
+  const rows = [];
+  (state.packageQuotes || []).forEach((q, qi) => {
+    const qid = String((q && q.id) || qi);
+    if (focus && focus !== qid) return;
+    (q.items || []).forEach(it => {
+      if (!it) return;
+      const amt = Number(it.amount) || 0;
+      const note = String(it.note || '').trim();
+      const size = String(it.size || '').trim();
+      if (!(amt > 0) && !note && !size) return;
+      rows.push({
+        name: note || it.category || 'Imported line',
+        size: size,
+        qty: it.qty == null ? '' : it.qty,
+        amount: amt,
+        quote: q.quotationId || q.sheetName || 'Excel',
+      });
+    });
+  });
+  return rows;
+}
+function buildQuoteVersionChoices(doc) {
+  doc = doc || {};
+  const choices = [];
+  const lines = Array.isArray(doc.lines) ? doc.lines : [];
+  choices.push({
+    id: 'current',
+    label: 'Current v' + (doc.version || 1) + ' · ' + lines.length + ' line(s)',
+    lines: lines,
+  });
+  const seen = {};
+  (doc.quoteVersions || []).forEach(snap => {
+    if (!snap) return;
+    const ver = snap.version;
+    if (ver == null || seen[String(ver)]) return;
+    seen[String(ver)] = true;
+    const n = Array.isArray(snap.lines) ? snap.lines.length : 0;
+    choices.push({
+      id: 'v:' + ver,
+      label: 'Saved v' + ver + (snap.quotationId ? ' · ' + snap.quotationId : '') + ' · ' + n + ' line(s)',
+      lines: snap.lines || [],
+    });
+  });
+  (doc.packageQuotes || []).forEach((q, i) => {
+    const items = (q && q.items || []).filter(it => it && (Number(it.amount) > 0 || it.note || it.size));
+    if (!items.length) return;
+    const id = String(q.id || i);
+    choices.push({
+      id: 'excel:' + id,
+      excelId: id,
+      label: 'Excel ' + (q.quotationId || q.sheetName || ('sheet ' + (i + 1))) + ' · ' + items.length + ' line(s)',
+    });
+  });
+  return choices;
+}
+function renderVersionPickers() {
+  const choices = state.quoteVersionChoices || [];
+  ['setupVersionPick', 'cartVersionPick'].forEach(id => {
+    const sel = $(id);
+    if (!sel) return;
+    const cur = state.loadedQuoteVersion || 'current';
+    if (!choices.length) {
+      sel.innerHTML = '<option value="current">Current quote</option>';
+      return;
+    }
+    sel.innerHTML = choices.map(c => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join('');
+    if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+  });
+}
+function applyLoadedQuoteChoice(choiceId) {
+  const choices = state.quoteVersionChoices || [];
+  const hit = choices.find(c => c.id === choiceId) || choices[0];
+  if (!hit) return;
+  state.loadedQuoteVersion = hit.id;
+  if (String(hit.id).indexOf('excel:') === 0) {
+    state.excelFocus = hit.excelId || '';
+  } else {
+    state.excelFocus = '';
+    state.lines = hydrateCartLines(hit.lines || []);
+    state.editingLineId = null;
+    state.selectedLine = state.lines.length ? 0 : null;
+    if (state._saveTimer) { clearTimeout(state._saveTimer); state._saveTimer = null; }
+  }
+  persistCartSession();
+  renderVersionPickers();
+  if (typeof renderCart === 'function' && $('cartBody')) renderCart();
+  syncProjectHeader();
+  if (String(hit.id).indexOf('excel:') !== 0 && !(state.lines || []).length && !importedCartRows().length) {
+    toast('This quote is empty — add a product and it stays on this quote');
   }
 }
 
@@ -6252,12 +6441,25 @@ async function lookupSetupClient(){
   }
   syncProjectCustomer();
   if (pick) {
-    pick.innerHTML = '<option value="new">New project — new quote number</option>' +
-      projects.map(p => {
-        const qn = p.quotationId || p.projectId;
-        const sel = state.projectId && p.projectId === state.projectId ? ' selected' : '';
-        return `<option value="${esc(p.projectId)}"${sel}>${esc(qn)} · ${esc(p.name||'')} · ${money(p.totalGrand != null ? p.totalGrand : p.grandTotal)}</option>`;
-      }).join('');
+    const opts = ['<option value="new">New project — new quote number</option>'];
+    projects.forEach(p => {
+      const qn = p.quotationId || p.projectId;
+      const sel = state.projectId && p.projectId === state.projectId && (state.loadedQuoteVersion || 'current') === 'current' ? ' selected' : '';
+      const choices = p.quoteChoices || {};
+      const verCount = (choices.versions || []).length;
+      const excelCount = (choices.excel || []).length;
+      const extra = (verCount || excelCount) ? ` · ${verCount} version(s)${excelCount ? ', ' + excelCount + ' Excel' : ''}` : '';
+      opts.push(`<option value="${esc(p.projectId)}"${sel}>${esc(qn)} · ${esc(p.name||'')} · ${money(p.totalGrand != null ? p.totalGrand : p.grandTotal)}${extra}</option>`);
+      (choices.versions || []).forEach(v => {
+        const id = esc(p.projectId) + '::v:' + v.version;
+        opts.push(`<option value="${id}">${esc(qn)} · saved v${esc(v.version)} · ${esc(v.lineCount || 0)} line(s)</option>`);
+      });
+      (choices.excel || []).forEach(v => {
+        const id = esc(p.projectId) + '::excel:' + esc(v.id);
+        opts.push(`<option value="${id}">${esc(qn)} · Excel ${esc(v.quotationId || v.sheetName || 'sheet')} · ${esc(v.lineCount || 0)} line(s)</option>`);
+      });
+    });
+    pick.innerHTML = opts.join('');
   }
   if (box) {
     if (!projects.length) {
@@ -6284,7 +6486,13 @@ async function lookupSetupClient(){
 }
 async function applySetupProjectPick(){
   const pick = $('setupProjectPick');
-  const v = pick && pick.value;
+  let v = pick && pick.value;
+  let choiceId = '';
+  if (v && v.indexOf('::') > 0) {
+    const cut = v.indexOf('::');
+    choiceId = v.slice(cut + 2);
+    v = v.slice(0, cut);
+  }
   if (!v || v === 'new') {
     const keepMob = ($('projMobile') && $('projMobile').value) || '';
     const keepName = ($('projCustName') && $('projCustName').value) || '';
@@ -6311,6 +6519,7 @@ async function applySetupProjectPick(){
     return;
   }
   await openProject(v);
+  if (choiceId) applyLoadedQuoteChoice(choiceId);
   setView('setup');
   renderSetupDiscount();
   toast('Running project opened. Add text to the quote number for a new version, then add WEOS or outside items.');
@@ -7112,7 +7321,8 @@ async function openProject(id) {
   if (same) adoptServerLines(doc.lines || [], { allowShrink: false });
   else state.lines = hydrateCartLines(doc.lines || []);
   persistCartSession();
-  $('cartName').value = doc.name || '';
+  if (doc.name && !/^weos project$/i.test(String(doc.name).trim())) $('cartName').value = doc.name;
+  else if (!projectDisplayName()) $('cartName').value = doc.name || '';
   if ($('cartCustomer')) $('cartCustomer').value = doc.customer || '';
   if ($('projCustName')) $('projCustName').value = doc.customer || '';
   if ($('projMobile')) $('projMobile').value = doc.customerMobile || '';
@@ -7132,10 +7342,18 @@ async function openProject(id) {
     $('cartTotal').textContent = money(doc.lastCalculation.price.total);
     $('optBox').textContent = JSON.stringify(doc.lastCalculation.optimization || {}, null, 2);
   }
+  state.quoteVersionChoices = buildQuoteVersionChoices(doc);
+  state.loadedQuoteVersion = 'current';
+  state.excelFocus = '';
+  state.editingLineId = null;
+  renderVersionPickers();
   renderCart(); refreshPreview(); updatePdfLinks();
-  refreshSetupSummary();
+  syncProjectHeader();
   refreshDesignPhotoUi();
-  toast('Loaded '+id);
+  syncAddButton();
+  const nLines = (state.lines || []).length;
+  const nExcel = importedCartRows().length;
+  toast('Loaded ' + id + (nLines ? (' · ' + nLines + ' line(s)') : (nExcel ? (' · ' + nExcel + ' Excel line(s)') : ' · empty quote')));
   maybeAskCustomerMemory();
 }
 
@@ -7222,14 +7440,87 @@ async function calculate() {
   } catch(e) { $('cartErr').textContent = e.message; }
 }
 
-$('btnAddLine').onclick = () => {
-  // Product-type lock: railing world never pushes a window draft into the cart
-  // (that caused PDF to print Track/Fold window drawings while canvas showed railing).
-  if (isRailingMode()) { railingAdd(); return; }
-  if (isVentMode() || state.ventMode) { ventAdd(); return; }
-  if (isShowerMode() || state.showerMode) { showerAdd(); return; }
-  addDraftLineToCart(null, { toastMsg: 'Line added — location cleared for the next design' });
-};
+function editingTargetIndex() {
+  const id = state.editingLineId;
+  if (!id) return -1;
+  return (state.lines || []).findIndex((ln) => ln && (String(ln.lineId) === String(id) || String(ln.id) === String(id)));
+}
+function stampSerialSlot(ln, index) {
+  if (!ln || typeof ln !== 'object') return ln;
+  if (ln.serialIndex == null || ln.serialIndex === '') ln.serialIndex = index;
+  const n = Math.max(0, parseInt(ln.serialIndex, 10) || 0);
+  ln.serial = 'W' + (n + 1);
+  ln.serialLabel = ln.serial;
+  return ln;
+}
+function syncAddButton(fallback) {
+  const addBtn = $('btnAddLine');
+  const neu = $('btnAddAsNew');
+  const idx = editingTargetIndex();
+  if (idx >= 0) {
+    const ln = state.lines[idx];
+    const code = designSerialLabel(ln && ln.serialIndex != null ? ln.serialIndex : idx, ln).split(' · ')[0];
+    if (addBtn) addBtn.textContent = 'Update ' + code;
+    if (neu) neu.style.display = '';
+  } else {
+    if (addBtn) addBtn.textContent = fallback || 'Add to cart';
+    if (neu) neu.style.display = 'none';
+  }
+}
+function beginLineEdit(i) {
+  const ln = state.lines[i];
+  if (!ln) return;
+  ensureLineId(ln);
+  if (ln.serialIndex == null || ln.serialIndex === '') ln.serialIndex = i;
+  stampSerialSlot(ln, i);
+  state.editingLineId = ln.lineId;
+  state.selectedLine = i;
+  syncAddButton();
+}
+function clearLineEdit() {
+  state.editingLineId = null;
+  syncAddButton();
+}
+function commitCartLine(line, opts) {
+  opts = opts || {};
+  const idx = opts.forceNew ? -1 : editingTargetIndex();
+  if (idx >= 0) {
+    const prev = state.lines[idx];
+    line.lineId = prev.lineId;
+    line.serialIndex = (prev.serialIndex != null && prev.serialIndex !== '') ? prev.serialIndex : idx;
+    stampSerialSlot(line, idx);
+    stampQuoteGroup(line, lineQuoteGroup(prev));
+    state.lines[idx] = ensureLineId(line);
+    state.selectedLine = idx;
+    clearLineEdit();
+    return { line: state.lines[idx], updated: true };
+  }
+  delete line.lineId;
+  delete line.serialIndex;
+  delete line.serial;
+  delete line.serialLabel;
+  const added = ensureLineId(line);
+  added.serialIndex = state.lines.length;
+  stampSerialSlot(added, state.lines.length);
+  state.lines.push(added);
+  state.selectedLine = state.lines.length - 1;
+  clearLineEdit();
+  return { line: added, updated: false };
+}
+function placeCartLine(line, opts) {
+  const placed = commitCartLine(line, opts);
+  if (placed.updated) toast('Updated ' + (placed.line.serial || 'line') + ' in the same place');
+  return placed;
+}
+function addCurrentDesign(opts) {
+  opts = opts || {};
+  if (isRailingMode()) { railingAdd(opts); return; }
+  if (isVentMode() || state.ventMode) { ventAdd(opts); return; }
+  if (isShowerMode() || state.showerMode) { showerAdd(opts); return; }
+  addDraftLineToCart(null, Object.assign({ toastMsg: 'Line added — location cleared for the next design' }, opts));
+}
+$('btnAddLine').onclick = () => addCurrentDesign();
+if ($('btnAddAsNew')) $('btnAddAsNew').onclick = () => addCurrentDesign({ forceNew: true });
 
 /** Build a cart line from the current design form, optionally overriding size/qty/location/rate. */
 function addDraftLineToCart(overrides, opts) {
@@ -7315,17 +7606,18 @@ function addDraftLineToCart(overrides, opts) {
       stampLinePreviewSvg(added, liveSvg);
     }
   }
-  state.lines.push(added);
+  const placed = placeCartLine(added, opts);
   if (!opts.silentSeries) {
     try { saveCurrentSeriesDesign({ silent: true, name: ($('lineSavedDesignName') && $('lineSavedDesignName').value) || 'default' }); } catch (_) {}
   }
-  if (!opts.skipReset) resetDraftPlacementAfterAdd();
+  if (!opts.skipReset && !placed.updated) resetDraftPlacementAfterAdd();
   if (!opts.skipRender) {
     invalidatePdfCache();
     renderCart(); scheduleSave(); refreshPreview(); scheduleLivePrice();
   }
-  if (opts.toastMsg) toast(opts.toastMsg);
-  return added;
+  if (opts.toastMsg && !placed.updated) toast(opts.toastMsg);
+  syncAddButton();
+  return placed.line;
 }
 
 function emptyBulkSizeRow(seed) {
@@ -8815,7 +9107,7 @@ function syncSelectedRailingLineFromTools() {
   delete ln.meshShutters;
   return true;
 }
-async function railingAdd(){
+async function railingAdd(opts){
   const res = await railingCalc();
   if (!res || !state.railing) return;
   if (res._lengthMissing) {
@@ -8857,14 +9149,14 @@ async function railingAdd(){
   stampQuoteGroup(railLine, targetQuoteGroupForAdd());
   const addedRail = ensureLineId(railLine);
   if (res && res.svg) stampLinePreviewSvg(addedRail, res.svg);
-  state.lines.push(addedRail);
-  // Never inherit window series from the product dropdown onto a railing line.
-  delete state.lines[state.lines.length - 1].sectionSeries;
+  const placedRail = placeCartLine(addedRail, opts);
+  delete placedRail.line.sectionSeries;
   if ($('lineSeries')) $('lineSeries').value = '';
   state.railingMode = true;
   invalidatePdfCache();
-  resetDraftPlacementAfterAdd();
-  renderCart(); scheduleSave(); toast('Railing added — location cleared for the next design');
+  if (!placedRail.updated) resetDraftPlacementAfterAdd();
+  renderCart(); scheduleSave(); syncAddButton();
+  if (!placedRail.updated) toast('Railing added — location cleared for the next design');
 }
 
 function isShowerMode() {
@@ -8897,6 +9189,7 @@ function syncShowerUi() {
   if ($('wrapShDoorW')) $('wrapShDoorW').style.display = op === 'hinged' ? '' : 'none';
   const frameless = frameKind === 'frameless';
   if ($('wrapShHinges')) $('wrapShHinges').style.display = (op === 'hinged' && !frameless) ? '' : 'none';
+  if (typeof renderShowerPanelEditor === 'function' && $('shPanelBody') && !$('shPanelBody').childElementCount) renderShowerPanelEditor();
 }
 function parseShowerGlass(id) {
   const s = String(id || '');
@@ -8921,7 +9214,7 @@ function showerConfig() {
   const g = parseShowerGlass(($('shGlass') && $('shGlass').value) || '8mm_grey_toughened');
   const rateRaw = $('shSellRate') ? $('shSellRate').value : '';
   const rate = rateRaw === '' ? null : +rateRaw;
-  return {
+  const cfg = {
     shape: state.shShape || 'straight',
     operation: state.shOp || 'sliding',
     widthMm: ($('shW') && +$('shW').value) || 1200,
@@ -8954,6 +9247,166 @@ function showerConfig() {
     qty: ($('shQty') && +$('shQty').value) || 1,
     ...g,
   };
+  if (state.shLayout === 'panels' && ((state.shPanels && state.shPanels.length) || (state.shLegs && state.shLegs.length))) {
+    cfg.layout = 'panels';
+    cfg.panels = (state.shPanels || []).map(p => ({
+      type: p.type || 'fixed',
+      widthMm: +p.widthMm || 0,
+      heightMm: +p.heightMm || 0,
+      direction: p.direction || 'right',
+      hingeSide: p.hingeSide || '',
+      topRoof: !!p.topRoof,
+      label: p.label || '',
+    }));
+    cfg.legs = (state.shLegs || []).map(p => ({
+      type: p.type || 'fixed',
+      widthMm: +p.widthMm || 0,
+      heightMm: +p.heightMm || 0,
+      label: p.label || 'Leg',
+    }));
+    cfg.trackSpanMm = +state.shTrackSpan || (($('shTrackSpan') && +$('shTrackSpan').value) || 0);
+    cfg.glassAlign = state.shGlassAlign || (($('shGlassAlign') && $('shGlassAlign').value) || 'left');
+    const frontW = cfg.panels.reduce((s, p) => s + (+p.widthMm || 0), 0);
+    const heights = cfg.panels.concat(cfg.legs).map(p => +p.heightMm || 0);
+    if (frontW > 0) cfg.widthMm = frontW;
+    const maxH = Math.max.apply(null, heights.concat([0]));
+    if (maxH > 0) cfg.heightMm = maxH;
+  }
+  return cfg;
+}
+const SHOWER_PRESETS = [
+  { id: 'inline', name: 'Inline sliding', panels: [
+    { type: 'fixed', widthMm: 660, heightMm: 2290 },
+    { type: 'sliding', widthMm: 685, heightMm: 2290, direction: 'right' },
+    { type: 'fixed', widthMm: 1030, heightMm: 2290 },
+  ]},
+  { id: 'uneven', name: 'Two doors, uneven heights', panels: [
+    { type: 'sliding', widthMm: 685, heightMm: 500, direction: 'right' },
+    { type: 'sliding', widthMm: 685, heightMm: 1520, direction: 'right' },
+    { type: 'fixed', widthMm: 1115, heightMm: 2290 },
+  ]},
+  { id: 'split', name: 'Split washroom', panels: [
+    { type: 'sliding', widthMm: 1225, heightMm: 2290, direction: 'left', topRoof: true },
+    { type: 'sliding', widthMm: 1760, heightMm: 2290, direction: 'right' },
+  ], legs: [{ type: 'fixed', widthMm: 900, heightMm: 1638, label: 'Lower return' }]},
+  { id: 'half', name: 'Half wall + side door', trackSpanMm: 1475, glassAlign: 'right', panels: [
+    { type: 'gap', widthMm: 785, heightMm: 2290, label: 'WALL' },
+    { type: 'sliding', widthMm: 690, heightMm: 2290, direction: 'left' },
+  ]},
+  { id: 'leg', name: 'Return + spigot leg', panels: [
+    { type: 'fixed', widthMm: 1750, heightMm: 2290 },
+    { type: 'sliding', widthMm: 680, heightMm: 2290, direction: 'right' },
+  ], legs: [
+    { type: 'fixed', widthMm: 1545, heightMm: 2290, label: 'Side return' },
+    { type: 'fixed', widthMm: 1170, heightMm: 915, label: 'Leg' },
+  ]},
+  { id: 'short', name: 'Opening + short return', panels: [
+    { type: 'fixed', widthMm: 1080, heightMm: 2290 },
+  ], legs: [
+    { type: 'fixed', widthMm: 180, heightMm: 1005, label: 'Return' },
+    { type: 'fixed', widthMm: 180, heightMm: 1285, label: 'Return' },
+  ]},
+  { id: 'legonly', name: 'Glass leg only', panels: [], legs: [
+    { type: 'fixed', widthMm: 1220, heightMm: 910, label: 'Leg' },
+  ]},
+];
+function blankShowerPanel(kind) {
+  return { type: kind === 'leg' ? 'fixed' : 'fixed', widthMm: '', heightMm: '', direction: 'right', hingeSide: 'left', topRoof: false, label: kind === 'leg' ? 'Leg' : '' };
+}
+function readShowerPanelTable() {
+  const body = $('shPanelBody');
+  if (!body) return;
+  const panels = [];
+  const legs = [];
+  body.querySelectorAll('tr[data-sh-row]').forEach(tr => {
+    const kind = tr.dataset.kind || 'panel';
+    const q = (name) => { const el = tr.querySelector('[data-sf="' + name + '"]'); return el ? el.value : ''; };
+    const row = {
+      type: q('type') || 'fixed',
+      widthMm: q('w'),
+      heightMm: q('h'),
+      direction: q('dir') || 'right',
+      hingeSide: q('hinge') || 'left',
+      topRoof: !!(tr.querySelector('[data-sf="roof"]') && tr.querySelector('[data-sf="roof"]').checked),
+      label: q('label') || (kind === 'leg' ? 'Leg' : ''),
+    };
+    if (kind === 'leg') legs.push(row);
+    else panels.push(row);
+  });
+  state.shPanels = panels;
+  state.shLegs = legs;
+  if ($('shTrackSpan')) state.shTrackSpan = +$('shTrackSpan').value || 0;
+  if ($('shGlassAlign')) state.shGlassAlign = $('shGlassAlign').value || 'left';
+  if (panels.length || legs.length) state.shLayout = 'panels';
+}
+function renderShowerPanelEditor() {
+  const body = $('shPanelBody');
+  const presets = $('shPresetBtns');
+  if (presets && !presets.childElementCount) {
+    presets.innerHTML = SHOWER_PRESETS.map(p =>
+      `<button type="button" data-sh-preset="${esc(p.id)}">${esc(p.name)}</button>`
+    ).join('');
+    presets.querySelectorAll('[data-sh-preset]').forEach(btn => {
+      btn.onclick = () => applyShowerPreset(btn.dataset.shPreset);
+    });
+  }
+  if (!body) return;
+  const rows = (state.shPanels || []).map(p => ({ ...p, kind: 'panel' }))
+    .concat((state.shLegs || []).map(p => ({ ...p, kind: 'leg' })));
+  const typeOpts = (cur) => ['fixed', 'sliding', 'open', 'gap'].map(t => {
+    const label = t === 'gap' ? 'Track only' : (t === 'open' ? 'Open' : (t === 'sliding' ? 'Sliding' : 'Fixed'));
+    return `<option value="${t}"${cur === t ? ' selected' : ''}>${label}</option>`;
+  }).join('');
+  body.innerHTML = rows.map((r, i) => `
+    <tr data-sh-row="${i}" data-kind="${r.kind}">
+      <td><select data-sf="type" style="width:92px">${typeOpts(r.type || 'fixed')}</select>${r.kind === 'leg' ? '<div class="muted" style="font-size:.68rem">Leg</div>' : ''}</td>
+      <td><input data-sf="w" type="number" value="${r.widthMm != null ? r.widthMm : ''}" style="width:72px"/></td>
+      <td><input data-sf="h" type="number" value="${r.heightMm != null ? r.heightMm : ''}" style="width:72px"/></td>
+      <td>
+        <select data-sf="dir" style="width:72px" title="Sliding direction">
+          <option value="right"${r.direction === 'left' ? '' : ' selected'}>Slide →</option>
+          <option value="left"${r.direction === 'left' ? ' selected' : ''}>Slide ←</option>
+        </select>
+        <select data-sf="hinge" style="width:78px" title="Hinge jamb for an open door">
+          <option value="left"${r.hingeSide === 'right' ? '' : ' selected'}>Hinge L</option>
+          <option value="right"${r.hingeSide === 'right' ? ' selected' : ''}>Hinge R</option>
+        </select>
+        <label class="chk" style="font-size:.72rem"><input data-sf="roof" type="checkbox"${r.topRoof ? ' checked' : ''}/> Roof</label>
+      </td>
+      <td><button class="btn ghost sm" type="button" data-sh-del="${i}">×</button></td>
+    </tr>`).join('') || '<tr><td colspan="5" class="muted">No panel list — Straight / L / U still uses one size. Pick a layout or add a panel.</td></tr>';
+  if ($('shTrackSpan') && document.activeElement !== $('shTrackSpan')) $('shTrackSpan').value = state.shTrackSpan || '';
+  if ($('shGlassAlign')) $('shGlassAlign').value = state.shGlassAlign || 'left';
+  body.querySelectorAll('input,select').forEach(el => {
+    const go = () => { readShowerPanelTable(); if (state.showerMode || isShowerMode()) showerCalc(); };
+    el.addEventListener('change', go);
+    el.addEventListener('input', () => { clearTimeout(state._shPanelT); state._shPanelT = setTimeout(go, 280); });
+  });
+  body.querySelectorAll('[data-sh-del]').forEach(btn => {
+    btn.onclick = () => {
+      readShowerPanelTable();
+      const i = +btn.dataset.shDel;
+      const all = (state.shPanels || []).map(p => ({ ...p, kind: 'panel' })).concat((state.shLegs || []).map(p => ({ ...p, kind: 'leg' })));
+      all.splice(i, 1);
+      state.shPanels = all.filter(p => p.kind !== 'leg');
+      state.shLegs = all.filter(p => p.kind === 'leg');
+      if (!state.shPanels.length && !state.shLegs.length) state.shLayout = '';
+      renderShowerPanelEditor();
+      showerCalc();
+    };
+  });
+}
+function applyShowerPreset(id) {
+  const preset = SHOWER_PRESETS.find(p => p.id === id);
+  if (!preset) return;
+  state.shLayout = 'panels';
+  state.shPanels = (preset.panels || []).map(p => ({ ...p }));
+  state.shLegs = (preset.legs || []).map(p => ({ ...p }));
+  state.shTrackSpan = preset.trackSpanMm || 0;
+  state.shGlassAlign = preset.glassAlign || 'left';
+  state.showerMode = true;
+  renderShowerPanelEditor();
+  showerCalc();
 }
 function renderShowerBom(q) {
   if (!$('showerBom')) return;
@@ -9033,7 +9486,7 @@ async function showerCalc() {
     if ($('livePreview')) $('livePreview').innerHTML = '<span class="muted">Shower preview failed</span>';
   }
 }
-async function showerAdd() {
+async function showerAdd(opts) {
   const res = await showerCalc();
   if (!res || !state.shower) return;
   const { cfg, quote: q } = state.shower;
@@ -9062,13 +9515,14 @@ async function showerAdd() {
   stampQuoteGroup(shLine, targetQuoteGroupForAdd());
   const addedSh = ensureLineId(shLine);
   if (res && res.svg) stampLinePreviewSvg(addedSh, res.svg);
-  state.lines.push(addedSh);
-  delete state.lines[state.lines.length - 1].sectionSeries;
-  delete state.lines[state.lines.length - 1].trackCount;
+  const placedSh = placeCartLine(addedSh, opts);
+  delete placedSh.line.sectionSeries;
+  delete placedSh.line.trackCount;
   state.showerMode = true;
   invalidatePdfCache();
-  resetDraftPlacementAfterAdd();
-  renderCart(); scheduleSave(); toast('Shower added — location cleared for the next design');
+  if (!placedSh.updated) resetDraftPlacementAfterAdd();
+  renderCart(); scheduleSave(); syncAddButton();
+  if (!placedSh.updated) toast('Shower added — location cleared for the next design');
 }
 function isVentMode() {
   return designerWorld() === 'ventilator';
@@ -9235,7 +9689,7 @@ async function ventCalc() {
     if ($('livePreview')) $('livePreview').innerHTML = '<span class="muted">Ventilator preview failed</span>';
   }
 }
-async function ventAdd() {
+async function ventAdd(opts) {
   const res = await ventCalc();
   if (!res || !state.ventilator) return;
   const { cfg, quote: q } = state.ventilator;
@@ -9263,13 +9717,14 @@ async function ventAdd() {
   stampQuoteGroup(ventLine, targetQuoteGroupForAdd());
   const addedVent = ensureLineId(ventLine);
   if (res && res.svg) stampLinePreviewSvg(addedVent, res.svg);
-  state.lines.push(addedVent);
-  delete state.lines[state.lines.length - 1].sectionSeries;
-  delete state.lines[state.lines.length - 1].trackCount;
+  const placedVent = placeCartLine(addedVent, opts);
+  delete placedVent.line.sectionSeries;
+  delete placedVent.line.trackCount;
   state.ventMode = true;
   invalidatePdfCache();
-  resetDraftPlacementAfterAdd();
-  renderCart(); scheduleSave(); toast('Ventilator added — location cleared for the next design');
+  if (!placedVent.updated) resetDraftPlacementAfterAdd();
+  renderCart(); scheduleSave(); syncAddButton();
+  if (!placedVent.updated) toast('Ventilator added — location cleared for the next design');
 }
 function applyRailingModeFromProduct() {
   applyProductWorld();
@@ -9293,6 +9748,36 @@ if ($('btnRailCollapse')) $('btnRailCollapse').onclick = () => {
 if ($('btnRailCalc')) $('btnRailCalc').onclick = railingCalc;
 if ($('btnRailAdd')) $('btnRailAdd').onclick = railingAdd;
 if ($('btnShowerCalc')) $('btnShowerCalc').onclick = showerCalc;
+if ($('btnShAddPanel')) $('btnShAddPanel').onclick = () => {
+  readShowerPanelTable();
+  state.shLayout = 'panels';
+  state.shPanels = state.shPanels || [];
+  state.shPanels.push({ type: 'fixed', widthMm: 600, heightMm: ($('shH') && +$('shH').value) || 2100, direction: 'right', hingeSide: 'left' });
+  renderShowerPanelEditor();
+  showerCalc();
+};
+if ($('btnShAddLeg')) $('btnShAddLeg').onclick = () => {
+  readShowerPanelTable();
+  state.shLayout = 'panels';
+  state.shLegs = state.shLegs || [];
+  state.shLegs.push({ type: 'fixed', widthMm: 300, heightMm: 900, label: 'Leg' });
+  renderShowerPanelEditor();
+  showerCalc();
+};
+if ($('btnShClearPanels')) $('btnShClearPanels').onclick = () => {
+  state.shLayout = '';
+  state.shPanels = [];
+  state.shLegs = [];
+  state.shTrackSpan = 0;
+  renderShowerPanelEditor();
+  showerCalc();
+};
+['shTrackSpan', 'shGlassAlign'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('change', () => { readShowerPanelTable(); showerCalc(); });
+  el.addEventListener('input', () => { clearTimeout(state._shTrackT); state._shTrackT = setTimeout(() => { readShowerPanelTable(); showerCalc(); }, 280); });
+});
+renderShowerPanelEditor();
 if ($('btnShowerAdd')) $('btnShowerAdd').onclick = showerAdd;
 if ($('btnVentCalc')) $('btnVentCalc').onclick = ventCalc;
 if ($('btnVentAdd')) $('btnVentAdd').onclick = ventAdd;
@@ -9315,7 +9800,16 @@ if ($('btnVtAddGlass')) $('btnVtAddGlass').onclick = () => {
   toast('Fill custom glass below, then Save to library');
 };
 document.querySelectorAll('#shShapeBtns [data-sh-shape]').forEach(btn => {
-  btn.onclick = () => { state.shShape = btn.dataset.shShape; state.showerMode = true; syncShowerUi(); showerCalc(); };
+  btn.onclick = () => {
+    state.shShape = btn.dataset.shShape;
+    state.shLayout = '';
+    state.shPanels = [];
+    state.shLegs = [];
+    state.showerMode = true;
+    renderShowerPanelEditor();
+    syncShowerUi();
+    showerCalc();
+  };
 });
 document.querySelectorAll('#shOpBtns [data-sh-op]').forEach(btn => {
   btn.onclick = () => {
@@ -9946,7 +10440,7 @@ function syncProjectCustomer(){
 }
 ['projMobile','projCustName'].forEach(id => {
   const el = $(id); if (!el) return;
-  el.addEventListener('input', () => { syncProjectCustomer(); refreshSetupSummary(); });
+  el.addEventListener('input', () => { syncProjectCustomer(); syncProjectHeader(); });
   el.addEventListener('change', () => {
     syncProjectCustomer();
     refreshSetupSummary();
@@ -9968,7 +10462,7 @@ if ($('setupProjectPick') && !$('setupProjectPick')._bound) {
 ['projCustAddress','projCustGst','projQuoteNo','projDescription','projTerms','cartName'].forEach(id => {
   const el = $(id); if (!el) return;
   el.addEventListener('input', () => {
-    if (id === 'cartName') refreshSetupSummary();
+    if (id === 'cartName' || id === 'projQuoteNo') syncProjectHeader();
     if (id === 'projDescription' || id === 'projTerms') syncPrintCopyTwins('proj');
   });
   el.addEventListener('change', () => {
@@ -10085,10 +10579,22 @@ async function upsertCustomerFromSetup() {
 if ($('btnSetupToCart')) $('btnSetupToCart').onclick = async () => {
   try {
     syncProjectCustomer();
+    const pick = $('setupProjectPick') && $('setupProjectPick').value;
+    const pid = pick && pick !== 'new' ? String(pick).split('::')[0] : '';
+    if (pid && String(state.projectId || '') !== pid) await applySetupProjectPick();
+    else if (pid && !(state.lines || []).length && !importedCartRows().length) await openProject(pid);
     persistCartSession();
+    syncProjectHeader();
     setView('cart');
+    renderCart();
   } catch(e) { toast(e.message); }
 };
+['setupVersionPick', 'cartVersionPick'].forEach(id => {
+  const el = $(id);
+  if (!el || el._verBound) return;
+  el._verBound = true;
+  el.addEventListener('change', () => applyLoadedQuoteChoice(el.value));
+});
 if ($('btnSetupLoadList')) $('btnSetupLoadList').onclick = loadSetupList;
 if ($('btnEditSetup')) $('btnEditSetup').onclick = () => setView('setup');
 if ($('btnSetupMaster')) $('btnSetupMaster').onclick = () => setView('master');

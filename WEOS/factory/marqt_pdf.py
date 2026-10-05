@@ -840,6 +840,12 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         add("HARDWARE", " · ".join(hw_s))
         add("COLOUR", str(q.get("colour") or line.get("colour") or "").replace("_", " "))
         add("AREA", f"{q.get('areaSqft') or 0} Sq.Ft.")
+        rate_s = q.get("sellingPerUnit") if q.get("sellingPerUnit") not in (None, "") else line.get("sellingRate")
+        amt_s = q.get("sellingTotal")
+        if amt_s in (None, ""):
+            amt_s = line.get("commercialTotal") or (line.get("selling") or {}).get("sellingAmount")
+        sale_s = str(q.get("saleUnit") or line.get("saleUnit") or "sqft").upper()
+        add("AMOUNT", f"{rate_s if rate_s not in (None, '') else '—'} / {sale_s} → {amt_s if amt_s not in (None, '') else '—'}")
         return rows
 
     from WEOS.factory.line_kind import is_louver_cart_line

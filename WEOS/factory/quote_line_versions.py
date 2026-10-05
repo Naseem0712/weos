@@ -432,6 +432,62 @@ def presentation_doc(doc: Mapping[str, Any]) -> dict[str, Any]:
     return out
 
 
+def quote_choice_summaries(doc: Mapping[str, Any]) -> dict[str, Any]:
+    """Current cart, saved versions, and Excel/outside sheets for one project."""
+    versions: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for snap in doc.get("quoteVersions") or []:
+        if not isinstance(snap, Mapping):
+            continue
+        try:
+            ver = int(snap.get("version") or 0)
+        except (TypeError, ValueError):
+            ver = 0
+        if ver in seen:
+            continue
+        seen.add(ver)
+        versions.append(
+            {
+                "version": ver,
+                "quotationId": snap.get("quotationId") or doc.get("quotationId") or "",
+                "lineCount": len(_usable(snap.get("lines"))),
+                "kind": "version",
+            }
+        )
+    excel: list[dict[str, Any]] = []
+    for i, quote in enumerate(doc.get("packageQuotes") or []):
+        if not isinstance(quote, Mapping):
+            continue
+        useful = 0
+        for item in quote.get("items") or []:
+            if not isinstance(item, Mapping):
+                continue
+            try:
+                amt = float(item.get("amount") or 0)
+            except (TypeError, ValueError):
+                amt = 0.0
+            if amt > 0 or str(item.get("note") or item.get("size") or "").strip():
+                useful += 1
+        if not useful:
+            continue
+        excel.append(
+            {
+                "id": quote.get("id") if quote.get("id") not in (None, "") else i,
+                "quotationId": quote.get("quotationId") or "",
+                "sheetName": quote.get("sheetName") or "",
+                "lineCount": useful,
+                "kind": "excel",
+            }
+        )
+    return {
+        "version": doc.get("version"),
+        "quotationId": doc.get("quotationId") or "",
+        "lineCount": len(_usable(doc.get("lines"))),
+        "versions": versions,
+        "excel": excel,
+    }
+
+
 def version_quote_rows(doc: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Extra ledger rows for older versions. The caller prices them."""
     current_sig = line_signature(lines_for_commercial_display(doc))

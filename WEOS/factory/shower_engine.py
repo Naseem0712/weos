@@ -67,6 +67,8 @@ def _shape(cfg: Mapping[str, Any]) -> str:
         return "L"
     if raw in ("u", "u_shape", "u-shape"):
         return "U"
+    if raw in ("custom", "panels", "layout", "panel"):
+        return "custom"
     return "straight"
 
 
@@ -186,16 +188,144 @@ def format_shower_description(q: Mapping[str, Any] | None = None, cfg: Mapping[s
         col = q.get("glassColour") or cfg.get("glassColour") or ""
         glass = " ".join(str(x) for x in (f"{thk} mm" if thk else "", col) if x).strip()
     bits = ["Shower partition", shape, op, f"{mm_n(w)}×{mm_n(h)} mm"]
+    if _s(q.get("layout") or cfg.get("layout")).lower() in ("panels", "custom", "run"):
+        parts = q.get("panels") if isinstance(q.get("panels"), list) else cfg.get("panels")
+        if isinstance(parts, list) and parts:
+            summary = []
+            for panel in parts:
+                if not isinstance(panel, Mapping):
+                    continue
+                role = _s(panel.get("label") or panel.get("role") or panel.get("type"))
+                pw = panel.get("widthMm") or panel.get("width") or ""
+                ph = panel.get("heightMm") or panel.get("height") or ""
+                if str(panel.get("role") or panel.get("type") or "") in ("track", "gap"):
+                    summary.append(f"{role} {pw} track")
+                elif pw and ph:
+                    summary.append(f"{role} {pw}×{ph}")
+            if summary:
+                bits.append(" + ".join(summary[:8]))
+        area = q.get("areaSqft")
+        if area:
+            bits.append(f"{area} sft")
     fk = _s(q.get("frameKind") or cfg.get("frameKind"), "frameless" if q.get("frameless") or cfg.get("frameless") else "profile")
     if fk:
         bits.append(fk)
     if glass:
         bits.append(glass)
+    if shape == "custom":
+        n = len(q.get("panels") or cfg.get("panels") or [])
+        if n:
+            bits.append(f"{n} panels")
+        area = q.get("areaSqft")
+        if area:
+            bits.append(f"{area} sft")
     return " · ".join(str(b) for b in bits if b)
+
+
+def _panel_role(raw: Any) -> str:
+    role = _s(raw, "fixed").lower().replace("-", " ").replace("_", " ")
+    if role in ("sliding", "slide", "slider"):
+        return "sliding"
+    if role in ("open", "openable", "hinged", "hinge", "swing", "door"):
+        return "openable"
+    if role in ("track", "track only", "head track"):
+        return "track"
+    if role in ("gap", "none", "solid", "wall", "no glass", "opening"):
+        return "gap"
+    return "fix"
+
+
+def _glass_area_sqmm(panels: list[Mapping[str, Any]]) -> float:
+    """Glass area only. Track-only and non-glass bays are not billable.
+
+    Same rule as the original shower engine: each glass panel is width × height
+    with no extra bottom-clear deduction (the 20 mm door gap is drawn, not priced).
+    """
+    total = 0.0
+    for panel in panels:
+        if str(panel.get("role") or "") in ("track", "gap"):
+            continue
+        total += max(_f(panel.get("widthMm")), 0.0) * max(_f(panel.get("heightMm")), 0.0)
+    return total
+
+
+def _explicit_run(cfg: Mapping[str, Any]) -> list[dict[str, Any]] | None:
+    """User panel list (presets or edited). None keeps straight / L / U."""
+    if _s(cfg.get("layout")).lower() not in ("panels", "custom", "run"):
+        return None
+    raw = cfg.get("panels") if isinstance(cfg.get("panels"), list) else []
+    legs_in: list[Any] = []
+    if isinstance(cfg.get("leg"), Mapping):
+        legs_in.append(cfg.get("leg"))
+    if isinstance(cfg.get("legs"), list):
+        legs_in.extend(cfg.get("legs") or [])
+    default_h = _f(cfg.get("heightMm") or cfg.get("height"), 2000.0) or 2000.0
+    out: list[dict[str, Any]] = []
+    track_span = _f(cfg.get("trackSpanMm") or cfg.get("trackMm"))
+
+    def one(src: Mapping[str, Any], *, wall: str) -> None:
+        nonlocal track_span
+        role = _panel_role(src.get("type") or src.get("role"))
+        width = _f(src.get("widthMm") or src.get("width") or src.get("w"))
+        height = _f(src.get("heightMm") or src.get("height") or src.get("h"))
+        span = _s(src.get("span")).lower()
+        if role == "track" and (span in ("head", "track", "") or height <= 0):
+            if width > 0:
+                track_span = max(track_span, width)
+            return
+        if width <= 0:
+            return
+        if height <= 0:
+            height = default_h if role != "gap" else 0.0
+        if height <= 0 and role == "gap":
+            if width > 0:
+                track_span = max(track_span, width)
+            return
+        labels = {
+            "fix": "FIX",
+            "sliding": "SLIDE",
+            "openable": "OPEN",
+            "gap": "WALL",
+            "track": "TRACK",
+        }
+        label = _s(src.get("label"), labels.get(role, role.upper()))
+        direction = _s(src.get("direction") or src.get("slide") or src.get("arrow"), "right").lower()
+        if direction not in ("left", "right"):
+            direction = "right"
+        hinge_side = _s(src.get("hingeSide")).lower()
+        if hinge_side not in ("left", "right"):
+            hinge_side = ""
+        out.append(
+            {
+                "role": role,
+                "label": label,
+                "widthMm": mm_n(width),
+                "heightMm": mm_n(height),
+                "wall": wall,
+                "direction": direction if role == "sliding" else None,
+                "hingeSide": hinge_side or None,
+                "topRoof": _bool(src.get("topRoof") or src.get("top_roof"), False),
+            }
+        )
+
+    for src in raw:
+        if isinstance(src, Mapping):
+            one(src, wall="front")
+    for src in legs_in:
+        if isinstance(src, Mapping):
+            one(src, wall="leg")
+    if isinstance(cfg, dict):
+        cfg["_trackSpanMm"] = track_span
+    if not out and track_span <= 0:
+        return None
+    return out
 
 
 def _panel_plan(cfg: Mapping[str, Any], *, width_mm: float, depth_a: float, depth_b: float) -> list[dict[str, Any]]:
     """Elevation panels + footprint segments for straight / L / U."""
+    explicit = _explicit_run(cfg)
+    if explicit is not None:
+        return explicit
     shape = _shape(cfg)
     op = _operation(cfg)
     door_side = _door_side(cfg)
@@ -246,6 +376,102 @@ def _panel_plan(cfg: Mapping[str, Any], *, width_mm: float, depth_a: float, dept
     return panels
 
 
+def _norm_panel_role(raw: Any) -> str:
+    s = _s(raw, "fix").lower().replace("-", "_").replace(" ", "_")
+    if s in ("slide", "sliding", "slider"):
+        return "sliding"
+    if s in ("open", "openable", "hinged", "hinge", "door", "swing"):
+        return "openable"
+    if s in ("track", "track_only", "trackonly", "head_track"):
+        return "track"
+    return "fix"
+
+
+def _panel_glass_sqmm(panel: Mapping[str, Any]) -> float:
+    """Glass area only. A track-only strip is not glass."""
+    if str(panel.get("role") or "") == "track" or _bool(panel.get("trackOnly"), False):
+        return 0.0
+    width = _f(panel.get("widthMm"))
+    height = _f(panel.get("heightMm"))
+    if width <= 0 or height <= 0:
+        return 0.0
+    area = width * height
+    roof = _f(panel.get("roofMm") or panel.get("roofHeightMm"))
+    if roof > 0:
+        area += width * roof
+    return area
+
+
+def _one_layout_panel(item: Mapping[str, Any], *, wall: str = "front") -> dict[str, Any] | None:
+    role = _norm_panel_role(item.get("role") or item.get("type") or item.get("kind"))
+    width = _f(item.get("widthMm") or item.get("width") or item.get("w"))
+    height = _f(item.get("heightMm") or item.get("height") or item.get("h"))
+    if width <= 0:
+        return None
+    if role != "track" and height <= 0:
+        return None
+    roof = _f(item.get("roofMm") or item.get("roofHeightMm") or item.get("topRoofMm"))
+    if roof < 0:
+        roof = 0.0
+    slide = _s(item.get("slideDir") or item.get("direction") or item.get("arrow"), "").lower()
+    if slide not in ("left", "right"):
+        slide = "right" if role == "sliding" else ""
+    hinge = _s(item.get("hingeSide"), "").lower()
+    if role == "openable" and hinge not in ("left", "right"):
+        hinge = "left"
+    if role != "openable":
+        hinge = ""
+    where = _s(item.get("wall"), wall).lower()
+    if where not in ("front", "return", "leg"):
+        where = wall if wall in ("front", "return", "leg") else "front"
+    labels = {"fix": "FIXED", "sliding": "SLIDING", "openable": "OPEN", "track": "TRACK"}
+    return {
+        "role": role,
+        "label": labels.get(role, "FIXED"),
+        "widthMm": mm_n(width),
+        "heightMm": mm_n(height) if role != "track" else 0,
+        "roofMm": mm_n(roof) if roof > 0 and role != "track" else 0,
+        "wall": where,
+        "slideDir": slide or None,
+        "hingeSide": hinge or None,
+        "trackOnly": role == "track",
+    }
+
+
+def _explicit_layout(cfg: Mapping[str, Any]) -> list[dict[str, Any]] | None:
+    """Panel list for site layouts. None means keep straight / L / U."""
+    custom = _shape(cfg) == "custom" or _bool(cfg.get("customLayout") or cfg.get("panelLayout"), False)
+    if not custom:
+        return None
+    panels: list[dict[str, Any]] = []
+    raw = cfg.get("panels") if isinstance(cfg.get("panels"), list) else []
+    for item in raw:
+        if not isinstance(item, Mapping):
+            continue
+        pane = _one_layout_panel(item, wall="front")
+        if pane:
+            panels.append(pane)
+    leg = cfg.get("leg") if isinstance(cfg.get("leg"), Mapping) else None
+    if leg:
+        pane = _one_layout_panel(leg, wall="leg")
+        if pane and pane.get("role") != "track":
+            pane["wall"] = "leg"
+            pane["label"] = "LEG"
+            panels.append(pane)
+    return panels
+
+
+def _custom_operation(panels: list[Mapping[str, Any]]) -> str:
+    roles = {str(p.get("role") or "") for p in panels}
+    if "sliding" in roles and "openable" in roles:
+        return "mixed"
+    if "sliding" in roles:
+        return "sliding"
+    if "openable" in roles:
+        return "hinged"
+    return "fixed"
+
+
 def compute_shower(cfg: Mapping[str, Any]) -> dict[str, Any]:
     cfg = dict(cfg or {})
     width_mm = _f(cfg.get("widthMm") or cfg.get("width"), 1200.0)
@@ -254,13 +480,15 @@ def compute_shower(cfg: Mapping[str, Any]) -> dict[str, Any]:
     depth_b = _f(cfg.get("depthBMm") or cfg.get("legBMm"), depth_a if _shape(cfg) == "U" else 0.0)
     shape = _shape(cfg)
     op = _operation(cfg)
+    explicit = _explicit_layout(cfg)
+    custom_layout = explicit is not None
     if width_mm <= 0:
         width_mm = 1200.0
     if height_mm <= 0:
         height_mm = 2000.0
-    if shape == "L" and depth_a <= 0:
+    if not custom_layout and shape == "L" and depth_a <= 0:
         depth_a = 900.0
-    if shape == "U":
+    if not custom_layout and shape == "U":
         if depth_a <= 0:
             depth_a = 800.0
         if depth_b <= 0:
@@ -318,7 +546,22 @@ def compute_shower(cfg: Mapping[str, Any]) -> dict[str, Any]:
     r_glass = _f(cfg.get("glassRatePerSqft") or (cfg.get("rates") or {}).get("glassPerSqft"), 0.0)
 
     panels = _panel_plan(cfg, width_mm=width_mm, depth_a=depth_a, depth_b=depth_b)
-    area_sqmm = sum(_f(p.get("widthMm")) * _f(p.get("heightMm")) for p in panels)
+    layout_panels = _s(cfg.get("layout")).lower() in ("panels", "custom", "run")
+    if layout_panels and panels:
+        front_only = [p for p in panels if str(p.get("wall") or "front") != "leg"]
+        if front_only:
+            width_mm = sum(_f(p.get("widthMm")) for p in front_only) or width_mm
+        height_mm = max((_f(p.get("heightMm")) for p in panels), default=height_mm) or height_mm
+        roles = {str(p.get("role") or "") for p in panels}
+        if "sliding" in roles and "openable" in roles:
+            op = "mixed"
+        elif "openable" in roles:
+            op = "hinged"
+        elif "sliding" in roles:
+            op = "sliding"
+        else:
+            op = "fixed"
+    area_sqmm = _glass_area_sqmm(panels)
     area_sqft = area_sqmm / SQMM_PER_SQFT
     doors = sum(1 for p in panels if p.get("role") in ("sliding", "openable"))
     fix_n = sum(1 for p in panels if p.get("role") == "fix")
@@ -330,7 +573,7 @@ def compute_shower(cfg: Mapping[str, Any]) -> dict[str, Any]:
     if frameless:
         vert_len_mm = height_mm * max(fix_n + slide_n + open_n, 1)
     horiz_len_mm = 0.0
-    if op == "sliding":
+    if any(p.get("role") == "sliding" for p in panels):
         slide_w = sum(_f(p.get("widthMm")) for p in panels if p.get("role") == "sliding")
         horiz_len_mm = slide_w * 2.0  # top + bottom on sliding only
     chokhat_len_mm = 0.0 if frameless else (2.0 * height_mm + width_mm)
@@ -374,16 +617,18 @@ def compute_shower(cfg: Mapping[str, Any]) -> dict[str, Any]:
         add("chokhat", f"Chokhat / frame · {chokhat_name}{side_bit}", round(chokhat_len_mm / MM_PER_FT, 3), "rft", r_chok, sizeMm=chokhat_name)
     if doors and gi_per_door:
         add("giConnector", f"GI connectors · {gi_per_door}/door", doors * gi_per_door, "pc", r_gi)
-    if op == "sliding":
+    if op in ("sliding", "mixed") or any(p.get("role") == "sliding" for p in panels):
         slide_w = sum(_f(p.get("widthMm")) for p in panels if p.get("role") == "sliding")
+        track_span = _f(cfg.get("_trackSpanMm") or cfg.get("trackSpanMm"))
+        slide_w = max(slide_w, track_span)
         add("track", "Sliding track (top)", round(slide_w / MM_PER_FT, 3), "rft", r_track)
         add("coverPlate", "Track cover plate (top)", round(slide_w / MM_PER_FT, 3), "rft", r_cover)
     if handle_on and doors:
         add("handle", f"Handle · {handle_name}", doors, "pc", r_handle, handleType=handle_type)
     if lock_on and doors:
         add("lock", f"Lock · {lock_name}", doors, "pc", r_lock)
-    if op == "hinged" and not frameless and doors:
-        add("hinge", f"{hinge_type.title()} hinges · {hinge_count}/door", doors * hinge_count, "pc", r_hinge)
+    if open_n and not frameless:
+        add("hinge", f"{hinge_type.title()} hinges · {hinge_count}/door", open_n * hinge_count, "pc", r_hinge)
 
     extras_in = cfg.get("extras") if isinstance(cfg.get("extras"), (list, tuple)) else []
     extras_total = 0.0
@@ -422,10 +667,11 @@ def compute_shower(cfg: Mapping[str, Any]) -> dict[str, Any]:
         footprint["rightMm"] = mm_n(depth_b)
 
     return {
-        "shape": shape,
-        "designType": shape,
+        "shape": "custom" if custom_layout else shape,
+        "designType": "custom" if custom_layout else shape,
+        "customLayout": custom_layout,
         "operation": op,
-        "slidingFormat": "1+1" if op == "sliding" else None,
+        "slidingFormat": None if layout_panels else ("1+1" if op == "sliding" else None),
         "slidingSide": door_side if op == "sliding" else None,
         "doorSide": door_side,
         "handleSide": handle_side if handle_on and op in ("sliding", "hinged") else None,
@@ -453,9 +699,12 @@ def compute_shower(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "lockName": lock_name if lock_on else None,
         "hardwareBrand": hw_brand or None,
         "hardwareOrigin": hw_origin or None,
-        "hingesPerDoor": hinge_count if op == "hinged" and not frameless else None,
-        "hingeCount": hinge_count if op == "hinged" and not frameless else None,
-        "hingeType": hinge_type if op == "hinged" and not frameless else None,
+        "hingesPerDoor": hinge_count if open_n and not frameless else None,
+        "hingeCount": hinge_count if open_n and not frameless else None,
+        "hingeType": hinge_type if open_n and not frameless else None,
+        "layout": "panels" if layout_panels else None,
+        "trackSpanMm": mm_n(_f(cfg.get("_trackSpanMm") or cfg.get("trackSpanMm"))) or None,
+        "glassAlign": "right" if _s(cfg.get("glassAlign")).lower() == "right" else "left",
         "giConnectorsPerDoor": gi_per_door,
         "panels": panels,
         "doorCount": doors,
@@ -766,9 +1015,153 @@ def _open_arrow(parts: list[str], x0: float, x1: float, y: float, *, toward_left
     )
 
 
+def shower_panels_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> str:
+    """Panel-run elevation: mixed widths/heights, sliding arrows, optional leg."""
+    q = quote if isinstance(quote, Mapping) and quote else compute_shower(cfg)
+    panels = [p for p in (q.get("panels") or []) if isinstance(p, Mapping)]
+    front = [p for p in panels if str(p.get("wall") or "front") != "leg"]
+    legs = [p for p in panels if str(p.get("wall")) == "leg"]
+    if not front and not legs:
+        return (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="160">'
+            '<text x="16" y="80" font-size="14">Add a glass panel</text></svg>'
+        )
+    show = front + legs
+    max_h = max((_f(p.get("heightMm")) for p in show), default=1.0) or 1.0
+    front_mm = sum(_f(p.get("widthMm")) for p in front)
+    track_span = _f(q.get("trackSpanMm"))
+    track_mm = max(track_span, front_mm, 1.0)
+    leg_mm = sum(_f(p.get("widthMm")) for p in legs)
+    leg_gaps = 70.0 * len(legs)
+    total_mm = track_mm + leg_mm + (80.0 if legs else 0.0)
+    elev_h = 320.0
+    scale = min(elev_h / max_h, 760.0 / max(total_mm, 1.0))
+    margin = 46.0
+    gap_px = 28.0
+    sw = 1.15
+    stroke = "#111111"
+    glass_fill = "rgba(170, 205, 230, 0.28)"
+    slide_fill = "rgba(120, 170, 210, 0.38)"
+    open_fill = "rgba(210, 190, 140, 0.32)"
+    wall_fill = "rgba(80, 80, 80, 0.08)"
+    has_slide = any(str(p.get("role")) == "sliding" for p in panels) or track_span > 0
+    track_h = 22.0 * scale if has_slide else 0.0
+    cover_h = 10.0 * scale if has_slide else 0.0
+    track_extra = track_h + cover_h
+    draw_w = total_mm * scale + gap_px * max(len(legs), 0)
+    svg_w = draw_w + margin * 2 + 24
+    svg_h = 36.0 + track_extra + elev_h + 46.0
+    align_right = _s(q.get("glassAlign")).lower() == "right" and track_mm > front_mm + 1
+    front_offset = (track_mm - front_mm) * scale if align_right else 0.0
+    y_floor = 28.0 + track_extra + elev_h
+    frameless = bool(q.get("frameless")) or _s(q.get("frameKind")).lower() == "frameless"
+    hinge_count = min(max(_i(q.get("hingeCount") or q.get("hingesPerDoor"), 3), 2), 6)
+    parts: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{svg_w:.1f}" height="{svg_h:.1f}" '
+        f'viewBox="0 0 {svg_w:.1f} {svg_h:.1f}" data-model-system="shower" data-layout="panels" '
+        f'data-frame-kind="{escape(_s(q.get("frameKind"), "profile"))}">',
+        '<rect width="100%" height="100%" fill="#ffffff"/>',
+        '<defs><marker id="shArrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">'
+        '<path d="M0,0 L7,3.5 L0,7 Z" fill="#0b3d7a"/></marker></defs>',
+        f'<text x="{margin:.1f}" y="16" font-size="12" font-family="sans-serif" fill="#222">'
+        f'Shower panels · {mm_n(q.get("areaSqft") or 0)} sft</text>',
+    ]
+    if has_slide:
+        tx = margin
+        tw = track_mm * scale
+        parts.append(
+            f'<rect x="{tx:.1f}" y="22" width="{tw:.1f}" height="{max(cover_h, 6):.1f}" '
+            f'fill="#dcdce0" stroke="{stroke}" stroke-width="{sw:.2f}" data-track="cover"/>'
+        )
+        parts.append(
+            f'<rect x="{tx:.1f}" y="{22 + max(cover_h, 6):.1f}" width="{tw:.1f}" height="{max(track_h, 8):.1f}" '
+            f'fill="#cfcfd4" stroke="{stroke}" stroke-width="{sw:.2f}" data-track="top"/>'
+        )
+        parts.append(
+            f'<text x="{tx + tw / 2:.1f}" y="{22 + max(cover_h, 6) + max(track_h, 8) * 0.75:.1f}" '
+            f'text-anchor="middle" font-size="9" font-family="sans-serif" fill="#444">'
+            f'TRACK {mm_n(track_mm)} mm</text>'
+        )
+
+    def paint(panel: Mapping[str, Any], x: float, *, leg: bool) -> float:
+        role = str(panel.get("role") or "fix")
+        pw = max(_f(panel.get("widthMm")) * scale, 1.0)
+        ph = max(_f(panel.get("heightMm")) * scale, 1.0)
+        y = y_floor - ph
+        if role == "gap":
+            fill = wall_fill
+        elif role == "sliding":
+            fill = slide_fill
+        elif role == "openable":
+            fill = open_fill
+        else:
+            fill = glass_fill
+        parts.append(
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{pw:.1f}" height="{ph:.1f}" '
+            f'fill="{fill}" stroke="{stroke}" stroke-width="{sw:.2f}" data-panel="{escape(role)}"/>'
+        )
+        if panel.get("topRoof") and role not in ("gap", "track"):
+            parts.append(
+                f'<rect x="{x:.1f}" y="{max(y - 14, 20):.1f}" width="{pw:.1f}" height="12" '
+                f'fill="none" stroke="{stroke}" stroke-width="0.8" stroke-dasharray="3 2" data-top-roof="1"/>'
+            )
+            parts.append(
+                f'<text x="{x + pw / 2:.1f}" y="{max(y - 4, 30):.1f}" text-anchor="middle" '
+                f'font-size="8" font-family="sans-serif" fill="#333">TOP ROOF</text>'
+            )
+        parts.append(
+            f'<text x="{x + pw / 2:.1f}" y="{y + ph / 2:.1f}" text-anchor="middle" '
+            f'font-size="12" font-family="sans-serif" font-weight="700" fill="#0b3d7a">'
+            f'{escape(str(panel.get("label") or role.upper()))}</text>'
+        )
+        parts.append(
+            f'<text x="{x + pw / 2:.1f}" y="{y_floor + 14:.1f}" text-anchor="middle" '
+            f'font-size="10" font-family="sans-serif" fill="#333">{mm_n(panel.get("widthMm"))} mm</text>'
+        )
+        parts.append(
+            f'<text x="{x - 4:.1f}" y="{y + ph / 2:.1f}" text-anchor="end" '
+            f'font-size="9" font-family="sans-serif" fill="#555">{mm_n(panel.get("heightMm"))}</text>'
+        )
+        if role == "sliding":
+            toward_left = _s(panel.get("direction"), "right") == "left"
+            y_mid = y + ph * 0.62
+            _open_arrow(parts, x + pw * 0.18, x + pw * 0.82, y_mid, toward_left=toward_left)
+        if role == "openable" and not frameless:
+            side = _s(panel.get("hingeSide")).lower()
+            if side not in ("left", "right"):
+                side = "left"
+            leaf_h = _f(panel.get("heightMm")) or max_h
+            stile = 18.0
+            hx = x + 2.0 if side == "left" else x + pw - 2.0
+            for from_top in hinge_centers_mm(leaf_h, hinge_count):
+                cy = y + from_top * scale
+                _casement_hinge(
+                    parts, hx, cy, stroke,
+                    from_top_mm=from_top, leaf_h_mm=leaf_h, stile_t_mm=stile, scale=scale,
+                )
+        if leg:
+            parts.append(
+                f'<text x="{x + pw / 2:.1f}" y="{y_floor + 28:.1f}" text-anchor="middle" '
+                f'font-size="9" font-family="sans-serif" fill="#555">LEG</text>'
+            )
+        return pw
+
+    x = margin + front_offset
+    for panel in front:
+        x += paint(panel, x, leg=False)
+    if legs:
+        x = margin + track_mm * scale + gap_px
+        for panel in legs:
+            x += paint(panel, x, leg=True) + gap_px
+    parts.append("</svg>")
+    return "".join(parts)
+
+
 def shower_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> str:
     """Elevation + floor-plan SVG used by live canvas and customer PDF."""
     q = quote if isinstance(quote, Mapping) and quote else compute_shower(cfg)
+    if _s((q or {}).get("layout") or (cfg or {}).get("layout")).lower() in ("panels", "custom", "run"):
+        return shower_panels_svg(cfg, q)
     panels = list(q.get("panels") or [])
     if not panels:
         return (

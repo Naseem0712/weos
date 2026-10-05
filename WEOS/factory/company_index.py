@@ -50,6 +50,15 @@ def _empty(gst: str) -> dict[str, Any]:
     }
 
 
+def _quote_choices(doc: Mapping[str, Any]) -> dict[str, Any]:
+    try:
+        from WEOS.factory.quote_line_versions import quote_choice_summaries
+
+        return quote_choice_summaries(doc)
+    except Exception:
+        return {}
+
+
 def compact_project(doc: Mapping[str, Any]) -> dict[str, Any] | None:
     pid = str(doc.get("projectId") or "").strip()
     if not pid:
@@ -85,6 +94,7 @@ def compact_project(doc: Mapping[str, Any]) -> dict[str, Any] | None:
         "masterJobId": doc.get("masterJobId") or pid,
         "quoteKind": doc.get("quoteKind") or ("package" if pkg else "cart"),
         "packageQuoteCount": len(pkg),
+        "quoteChoices": _quote_choices(doc),
         "archived": str(doc.get("status") or "") == "archived",
     }
 

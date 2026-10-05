@@ -58,8 +58,99 @@ def _cfg_and_quote(line: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, A
     return cfg, dict(q)
 
 
+def _draw_panel_quote(c, q: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
+    """Mixed-height panel run for the customer PDF. Sliding leaves have no hinges."""
+    panels = [p for p in (q.get("panels") or []) if isinstance(p, Mapping)]
+    front = [p for p in panels if str(p.get("wall") or "front") != "leg"]
+    legs = [p for p in panels if str(p.get("wall")) == "leg"]
+    if not front and not legs:
+        return False
+    max_h = max((_f(p.get("heightMm")) for p in front + legs), default=1.0) or 1.0
+    front_mm = sum(_f(p.get("widthMm")) for p in front) or 1.0
+    track_mm = max(_f(q.get("trackSpanMm")), front_mm)
+    leg_mm = sum(_f(p.get("widthMm")) for p in legs)
+    gaps = 40.0 * len(legs)
+    total = track_mm + leg_mm + gaps
+    m = 8.0
+    draw_w = max(box_w - m * 2, 12.0)
+    draw_h = max(box_h - 22.0, 12.0)
+    scale = min(draw_w / max(total, 1.0), draw_h / max_h)
+    floor = y + 16.0
+    ox = x + m
+    align_right = _s(q.get("glassAlign")).lower() == "right" and track_mm > front_mm + 1
+    c.setFillColorRGB(1, 1, 1)
+    c.rect(x, y, box_w, box_h, fill=1, stroke=0)
+    has_slide = any(str(p.get("role")) == "sliding" for p in panels) or _f(q.get("trackSpanMm")) > 0
+    if has_slide:
+        c.setFillColorRGB(0.82, 0.82, 0.85)
+        c.setStrokeColorRGB(0.1, 0.1, 0.1)
+        c.setLineWidth(0.4)
+        c.rect(ox, floor + max_h * scale, track_mm * scale, max(4.0, 8 * scale), fill=1, stroke=1)
+    cursor = ox + ((track_mm - front_mm) * scale if align_right else 0.0)
+    hinge_n = min(max(_i(q.get("hingeCount") or 3), 2), 6)
+    frameless = bool(q.get("frameless"))
+
+    def bay(panel: Mapping[str, Any], px0: float) -> float:
+        role = str(panel.get("role") or "fix")
+        pw = _f(panel.get("widthMm")) * scale
+        ph = _f(panel.get("heightMm")) * scale
+        if role == "gap":
+            c.setFillColorRGB(0.93, 0.93, 0.94)
+        elif role == "sliding":
+            c.setFillColorRGB(0.82, 0.88, 0.94)
+        elif role == "openable":
+            c.setFillColorRGB(0.91, 0.88, 0.80)
+        else:
+            c.setFillColorRGB(0.90, 0.94, 0.97)
+        c.setStrokeColorRGB(0.07, 0.07, 0.08)
+        c.setLineWidth(0.55)
+        c.rect(px0, floor, max(pw, 0.8), max(ph, 0.8), fill=1, stroke=1)
+        c.setFillColorRGB(0.05, 0.24, 0.48)
+        c.setFont("Helvetica-Bold", 6)
+        c.drawCentredString(px0 + pw / 2.0, floor + ph / 2.0, str(panel.get("label") or role.upper())[:12])
+        c.setFillColorRGB(0.2, 0.2, 0.2)
+        c.setFont("Helvetica", 5.5)
+        c.drawCentredString(px0 + pw / 2.0, floor - 8, f"{_i(panel.get('widthMm'))}")
+        if role == "sliding":
+            ymid = floor + ph * 0.62
+            toward_left = _s(panel.get("direction"), "right") == "left"
+            c.setStrokeColorRGB(0.04, 0.24, 0.48)
+            c.setLineWidth(0.7)
+            if toward_left:
+                c.line(px0 + pw * 0.75, ymid, px0 + pw * 0.25, ymid)
+            else:
+                c.line(px0 + pw * 0.25, ymid, px0 + pw * 0.75, ymid)
+        if role == "openable" and not frameless:
+            side = _s(panel.get("hingeSide")).lower()
+            if side not in ("left", "right"):
+                side = "left"
+            leaf_h = _f(panel.get("heightMm")) or max_h
+            hx = px0 + 1.2 if side == "left" else px0 + pw - 1.2
+            for frm in hinge_centers_mm(leaf_h, hinge_n):
+                cy = floor + (leaf_h - frm) * scale
+                c.setFillColorRGB(*HINGE_FILL_RGB)
+                c.circle(hx, cy, 1.6, fill=1, stroke=1)
+        if panel.get("topRoof"):
+            c.setFont("Helvetica", 5)
+            c.drawCentredString(px0 + pw / 2.0, floor + ph + 7, "TOP ROOF")
+        return pw
+
+    for panel in front:
+        cursor += bay(panel, cursor)
+    if legs:
+        cursor = ox + track_mm * scale + 10
+        for panel in legs:
+            cursor += bay(panel, cursor) + 8
+    c.setFillColorRGB(0.15, 0.15, 0.15)
+    c.setFont("Helvetica", 6)
+    c.drawString(ox, y + 4, f"{_f(q.get('areaSqft') or 0):.2f} sft")
+    return True
+
+
 def draw_shower_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
     cfg, q = _cfg_and_quote(line)
+    if _s(q.get("layout")).lower() in ("panels", "custom", "run"):
+        return _draw_panel_quote(c, q, x, y, box_w, box_h)
     panels = list(q.get("panels") or [])
     if not panels:
         return False

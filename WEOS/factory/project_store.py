@@ -798,6 +798,12 @@ def list_projects(
                 continue
             money = live_quote_money(d)
             pkg_quotes = d.get("packageQuotes") if isinstance(d.get("packageQuotes"), list) else []
+            try:
+                from WEOS.factory.quote_line_versions import quote_choice_summaries
+
+                quote_choices = quote_choice_summaries(d)
+            except Exception:
+                quote_choices = {}
             pkg_nos = " ".join(
                 str((pq or {}).get("quotationId") or "")
                 for pq in pkg_quotes
@@ -827,6 +833,7 @@ def list_projects(
                 "masterJobId": d.get("masterJobId") or d.get("projectId", p.stem),
                 "quoteKind": d.get("quoteKind") or ("package" if pkg_quotes else "cart"),
                 "packageQuoteCount": len(pkg_quotes),
+                "quoteChoices": quote_choices,
                 "lastFollowUpAt": d.get("lastFollowUpAt") or "",
             }
             if q:

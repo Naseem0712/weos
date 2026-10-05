@@ -552,11 +552,27 @@ def line_location_name(line: Mapping[str, Any] | None) -> str:
 
 
 def design_serial_label(index: int, line: Mapping[str, Any] | None = None, *, prefix: str = "W") -> str:
-    """PDF DESIGN serial, e.g. ``W8`` or ``W8 · Master Bedroom``."""
-    try:
-        n = int(index) + 1
-    except (TypeError, ValueError):
-        n = 1
+    """PDF DESIGN serial, e.g. ``W8`` or ``W8 · Master Bedroom``.
+
+    A line edited in place keeps ``serialIndex`` so W1 stays W1.
+    """
+    n = None
+    if isinstance(line, Mapping) and line.get("serialIndex") not in (None, ""):
+        try:
+            n = int(line.get("serialIndex")) + 1
+        except (TypeError, ValueError):
+            n = None
+    if n is None and isinstance(line, Mapping):
+        stored = str(line.get("serial") or line.get("serialLabel") or "").strip()
+        code = stored.split("·")[0].strip()
+        if code.upper().startswith(prefix) and code[len(prefix):].isdigit():
+            loc = line_location_name(line)
+            return f"{code} · {loc}" if loc else code
+    if n is None:
+        try:
+            n = int(index) + 1
+        except (TypeError, ValueError):
+            n = 1
     code = f"{prefix}{max(n, 1)}"
     loc = line_location_name(line)
     return f"{code} · {loc}" if loc else code

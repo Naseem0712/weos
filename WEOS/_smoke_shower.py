@@ -292,6 +292,59 @@ def main() -> int:
         if "FIX" not in cspecs:
             fails.append(f"casement PDF missing panel roles: {cspecs[:200]}")
 
+    # Panel runs from site photos — glass area only, rate × area, hinges on open doors only.
+    sqmm = 92903.04
+    inline = compute_shower({
+        "layout": "panels",
+        "panels": [
+            {"type": "fixed", "widthMm": 660, "heightMm": 2290},
+            {"type": "sliding", "widthMm": 685, "heightMm": 2290, "direction": "right"},
+            {"type": "fixed", "widthMm": 1030, "heightMm": 2290},
+        ],
+        "sellingRate": 100,
+        "saleUnit": "sqft",
+        "qty": 2,
+    })
+    inline_area = (660 * 2290 + 685 * 2290 + 1030 * 2290) / sqmm
+    if abs(float(inline.get("areaSqft") or 0) - inline_area) > 0.05:
+        fails.append(f"inline area {inline.get('areaSqft')} != {inline_area:.4f}")
+    if abs(float(inline.get("sellingTotal") or 0) - inline_area * 100 * 2) > 1.5:
+        fails.append(f"inline amount {inline.get('sellingTotal')}")
+    inline_svg = shower_svg({"layout": "panels"}, inline)
+    if 'data-hinge="1"' in inline_svg:
+        fails.append("inline sliding panels must not draw hinges")
+    if "660" not in inline_svg or "SLIDE" not in inline_svg:
+        fails.append("inline drawing missing panels")
+    half = compute_shower({
+        "layout": "panels",
+        "trackSpanMm": 1475,
+        "glassAlign": "right",
+        "panels": [
+            {"type": "gap", "widthMm": 785, "heightMm": 2290},
+            {"type": "sliding", "widthMm": 690, "heightMm": 2290},
+        ],
+        "sellingRate": 500,
+        "qty": 1,
+    })
+    door_area = (690 * 2290) / sqmm
+    if abs(float(half.get("areaSqft") or 0) - door_area) > 0.05:
+        fails.append(f"track-only bay counted as glass {half.get('areaSqft')} != {door_area:.4f}")
+    mixed = compute_shower({
+        "layout": "panels",
+        "frameKind": "profile",
+        "hingeCount": 3,
+        "panels": [
+            {"type": "sliding", "widthMm": 700, "heightMm": 2100},
+            {"type": "open", "widthMm": 700, "heightMm": 2100, "hingeSide": "right"},
+        ],
+    })
+    mixed_svg = shower_svg({"layout": "panels"}, mixed)
+    hinges = mixed_svg.count('data-hinge="1"')
+    if hinges != 3:
+        fails.append(f"open door should have 3 hinges, sliding none, got {hinges}")
+    if 'data-arrow="1"' not in mixed_svg:
+        fails.append("sliding panel missing direction arrow")
+
     if fails:
         print("FAIL:", "; ".join(fails))
         return 1
