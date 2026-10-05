@@ -329,6 +329,22 @@ def main() -> int:
     door_area = (690 * 2290) / sqmm
     if abs(float(half.get("areaSqft") or 0) - door_area) > 0.05:
         fails.append(f"track-only bay counted as glass {half.get('areaSqft')} != {door_area:.4f}")
+    track_bay = compute_shower({
+        "layout": "panels",
+        "trackSpanMm": 1475,
+        "glassAlign": "right",
+        "panels": [
+            {"type": "track", "widthMm": 785, "heightMm": 2290, "label": "TRACK"},
+            {"type": "sliding", "widthMm": 690, "heightMm": 2290, "direction": "left"},
+        ],
+        "sellingRate": 500,
+        "qty": 1,
+    })
+    if abs(float(track_bay.get("areaSqft") or 0) - door_area) > 0.05:
+        fails.append(f"TRACK bay counted as glass {track_bay.get('areaSqft')} != {door_area:.4f}")
+    track_svg = shower_svg({"layout": "panels"}, track_bay)
+    if "TRACK" not in track_svg or "690" not in track_svg:
+        fails.append("track-longer drawing missing TRACK bay or door")
     mixed = compute_shower({
         "layout": "panels",
         "frameKind": "profile",

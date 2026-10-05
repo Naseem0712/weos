@@ -261,6 +261,16 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
   #view-cart .cart-preview{max-height:none;overflow:visible}
   #view-cart .cart-preview .preview{height:min(70vh,640px);min-height:360px}
 }
+/* Tool column always shows a vertical scrollbar so shower layout settings stay reachable. */
+#view-cart .cart-tools{
+  overflow-y:scroll;
+  scrollbar-gutter:stable;
+  scrollbar-width:auto;
+  scrollbar-color:#5c6b74 #e4e0d6;
+}
+#view-cart .cart-tools::-webkit-scrollbar{width:12px;height:12px}
+#view-cart .cart-tools::-webkit-scrollbar-track{background:#e4e0d6}
+#view-cart .cart-tools::-webkit-scrollbar-thumb{background:#5c6b74;border-radius:8px;border:2px solid #e4e0d6}
 .prodgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.85rem}
 .prod{cursor:pointer;overflow:hidden;transition:transform .2s,box-shadow .2s}
 .prod:hover{transform:translateY(-3px);box-shadow:0 14px 36px rgba(20,20,16,.1)}
@@ -423,7 +433,8 @@ textarea{max-width:100%}
   #view-cart > .two.cart-split{height:auto;overflow:visible}
   #view-cart .cart-tools,#view-cart.preview-roomy .cart-tools{
     height:auto;max-height:calc(100vh - 8.25rem);
-    overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch
+    overflow-x:auto;overflow-y:scroll;-webkit-overflow-scrolling:touch;
+    scrollbar-gutter:stable
   }
   #view-cart .cart-preview{overflow:visible}
   #view-cart .cart-preview .preview-head{display:grid;grid-template-columns:1fr;gap:.4rem}
@@ -1282,6 +1293,47 @@ textarea{max-width:100%}
               </div>
             </div>
             <div class="rt-body">
+              <div id="shLayoutBlock" style="margin:0 0 .45rem;padding:.45rem .5rem;border:1px solid var(--line);border-radius:8px;background:#fff">
+                <div class="rt-row" id="shPresetRow" style="flex-wrap:wrap;margin-top:0">
+                  <div class="grow" style="min-width:200px;flex:1 1 240px">
+                    <label class="l" for="shLayoutPreset">Layout</label>
+                    <select id="shLayoutPreset" style="width:100%;min-width:220px">
+                      <option value="straight" selected>Straight (current)</option>
+                      <option value="inline">Inline sliding (660+685+1030)</option>
+                      <option value="uneven">Uneven two-door</option>
+                      <option value="split">Steam + shower split</option>
+                      <option value="tracklong">Track longer than door</option>
+                      <option value="returnleg">Return + leg</option>
+                      <option value="legonly">Glass leg only</option>
+                      <option value="custom">Custom panels</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="rt-shapes" id="shPresetBtns" style="flex-wrap:wrap;margin-top:.35rem"></div>
+                <div id="shPanelBox" style="margin:.4rem 0 0">
+                  <div class="row" style="justify-content:space-between;align-items:center;gap:.35rem;flex-wrap:wrap">
+                    <span class="l" style="margin:0">Panels — left to right</span>
+                    <span>
+                      <button class="btn ghost sm" type="button" id="btnShAddPanel">Add panel</button>
+                      <button class="btn ghost sm" type="button" id="btnShAddLeg">Add leg</button>
+                      <button class="btn ghost sm" type="button" id="btnShClearPanels">Clear list</button>
+                    </span>
+                  </div>
+                  <table>
+                    <thead><tr><th>Type</th><th>W mm</th><th>H mm</th><th>Slide / hinge</th><th></th></tr></thead>
+                    <tbody id="shPanelBody"></tbody>
+                  </table>
+                  <div class="rt-row">
+                    <div><label class="l">Optional leg W mm</label><input id="shLegW" type="number" placeholder="none" style="width:88px"/></div>
+                    <div><label class="l">Optional leg H mm</label><input id="shLegH" type="number" placeholder="none" style="width:88px"/></div>
+                    <div><label class="l">Head track mm</label><input id="shTrackSpan" type="number" placeholder="longer than the door" style="width:110px"/></div>
+                    <div><label class="l">Door on track</label>
+                      <select id="shGlassAlign" style="width:100px"><option value="left">Left</option><option value="right">Right</option></select>
+                    </div>
+                  </div>
+                  <p class="muted" style="font-size:.72rem;margin:.25rem 0 0">FIX, SLIDE and OPEN count as glass. TRACK does not. Amount = glass area × selling rate × qty. Empty list keeps Straight / L / U on one size.</p>
+                </div>
+              </div>
               <div class="rt-row">
                 <span class="l" style="margin:0">Design</span>
                 <div class="rt-shapes" id="shShapeBtns">
@@ -1297,33 +1349,6 @@ textarea{max-width:100%}
                   <button type="button" data-sh-op="hinged">Hinged / openable</button>
                   <button type="button" data-sh-op="fixed">Fix only</button>
                 </div>
-              </div>
-              <div class="rt-row" id="shPresetRow" style="flex-wrap:wrap">
-                <span class="l" style="margin:0;width:100%">Layouts from site</span>
-                <div class="rt-shapes" id="shPresetBtns" style="flex-wrap:wrap"></div>
-              </div>
-              <div id="shPanelBox" style="margin:.35rem 0 .2rem">
-                <div class="row" style="justify-content:space-between;align-items:center;gap:.35rem;flex-wrap:wrap">
-                  <span class="l" style="margin:0">Panels (left to right) — each has its own width and height</span>
-                  <span>
-                    <button class="btn ghost sm" type="button" id="btnShAddPanel">+ panel</button>
-                    <button class="btn ghost sm" type="button" id="btnShAddLeg">+ leg</button>
-                    <button class="btn ghost sm" type="button" id="btnShClearPanels">Clear list</button>
-                  </span>
-                </div>
-                <div style="overflow:auto">
-                  <table>
-                    <thead><tr><th>Type</th><th>W mm</th><th>H mm</th><th>Slide / hinge</th><th></th></tr></thead>
-                    <tbody id="shPanelBody"></tbody>
-                  </table>
-                </div>
-                <div class="rt-row">
-                  <div><label class="l">Head track mm</label><input id="shTrackSpan" type="number" placeholder="if longer than the door" style="width:88px"/></div>
-                  <div><label class="l">Door on track</label>
-                    <select id="shGlassAlign" style="width:110px"><option value="left">Left</option><option value="right">Right</option></select>
-                  </div>
-                </div>
-                <p class="muted" style="font-size:.72rem;margin:.2rem 0 0">Track only is not glass, so it is not in the area. Amount = glass area × selling rate × qty.</p>
               </div>
               <div class="rt-row">
                 <span class="l" style="margin:0">Frame</span>
@@ -2652,6 +2677,7 @@ const state = {
   bulkSizeRows: [{ width: '', height: '', qty: 1, location: '', rate: '' }],
   editingLineId: null,
   shLayout: '',
+  shPreset: 'straight',
   shPanels: [],
   shLegs: [],
   shTrackSpan: 0,
@@ -5127,10 +5153,11 @@ function syncDraftFromLine(ln) {
     setSh('shSellRate', sh.manualRatePerUnit || sh.sellingRate || ln.sellingRate);
     if (sh.layout === 'panels' || (Array.isArray(sh.panels) && sh.panels.length) || (Array.isArray(sh.legs) && sh.legs.length)) {
       state.shLayout = 'panels';
-      state.shPanels = (sh.panels || []).map(p => ({ ...p, type: p.type || p.role || 'fixed' }));
-      state.shLegs = (sh.legs || []).map(p => ({ ...p, type: p.type || 'fixed' }));
+      state.shPanels = (sh.panels || []).filter(p => String((p && p.wall) || 'front') !== 'leg').map(p => ({ ...p, type: normShowerPanelType(p.type || p.role) }));
+      state.shLegs = (sh.legs || []).map(p => ({ ...p, type: normShowerPanelType(p.type || p.role) }));
       state.shTrackSpan = sh.trackSpanMm || 0;
       state.shGlassAlign = sh.glassAlign || 'left';
+      state.shPreset = 'custom';
       if (typeof renderShowerPanelEditor === 'function') renderShowerPanelEditor();
     }
     if (sh.lock != null && $('shLock')) $('shLock').checked = !!sh.lock;
@@ -9249,6 +9276,7 @@ function showerConfig() {
   };
   if (state.shLayout === 'panels' && ((state.shPanels && state.shPanels.length) || (state.shLegs && state.shLegs.length))) {
     cfg.layout = 'panels';
+    cfg.customLayout = true;
     cfg.panels = (state.shPanels || []).map(p => ({
       type: p.type || 'fixed',
       widthMm: +p.widthMm || 0,
@@ -9275,41 +9303,48 @@ function showerConfig() {
   return cfg;
 }
 const SHOWER_PRESETS = [
-  { id: 'inline', name: 'Inline sliding', panels: [
+  { id: 'straight', name: 'Straight (current)', clear: true, panels: [], legs: [] },
+  { id: 'inline', name: 'Inline sliding (660+685+1030)', panels: [
     { type: 'fixed', widthMm: 660, heightMm: 2290 },
     { type: 'sliding', widthMm: 685, heightMm: 2290, direction: 'right' },
     { type: 'fixed', widthMm: 1030, heightMm: 2290 },
   ]},
-  { id: 'uneven', name: 'Two doors, uneven heights', panels: [
+  { id: 'uneven', name: 'Uneven two-door', panels: [
     { type: 'sliding', widthMm: 685, heightMm: 500, direction: 'right' },
     { type: 'sliding', widthMm: 685, heightMm: 1520, direction: 'right' },
     { type: 'fixed', widthMm: 1115, heightMm: 2290 },
   ]},
-  { id: 'split', name: 'Split washroom', panels: [
+  { id: 'split', name: 'Steam + shower split', panels: [
     { type: 'sliding', widthMm: 1225, heightMm: 2290, direction: 'left', topRoof: true },
     { type: 'sliding', widthMm: 1760, heightMm: 2290, direction: 'right' },
   ], legs: [{ type: 'fixed', widthMm: 900, heightMm: 1638, label: 'Lower return' }]},
-  { id: 'half', name: 'Half wall + side door', trackSpanMm: 1475, glassAlign: 'right', panels: [
-    { type: 'gap', widthMm: 785, heightMm: 2290, label: 'WALL' },
+  { id: 'tracklong', name: 'Track longer than door', trackSpanMm: 1475, glassAlign: 'right', panels: [
+    { type: 'track', widthMm: 785, heightMm: 2290, label: 'TRACK' },
     { type: 'sliding', widthMm: 690, heightMm: 2290, direction: 'left' },
   ]},
-  { id: 'leg', name: 'Return + spigot leg', panels: [
+  { id: 'returnleg', name: 'Return + leg', panels: [
     { type: 'fixed', widthMm: 1750, heightMm: 2290 },
     { type: 'sliding', widthMm: 680, heightMm: 2290, direction: 'right' },
   ], legs: [
     { type: 'fixed', widthMm: 1545, heightMm: 2290, label: 'Side return' },
     { type: 'fixed', widthMm: 1170, heightMm: 915, label: 'Leg' },
   ]},
-  { id: 'short', name: 'Opening + short return', panels: [
-    { type: 'fixed', widthMm: 1080, heightMm: 2290 },
-  ], legs: [
-    { type: 'fixed', widthMm: 180, heightMm: 1005, label: 'Return' },
-    { type: 'fixed', widthMm: 180, heightMm: 1285, label: 'Return' },
-  ]},
   { id: 'legonly', name: 'Glass leg only', panels: [], legs: [
     { type: 'fixed', widthMm: 1220, heightMm: 910, label: 'Leg' },
   ]},
 ];
+function normShowerPanelType(raw) {
+  const t = String(raw || 'fixed').toLowerCase();
+  if (t === 'slide' || t === 'sliding') return 'sliding';
+  if (t === 'open' || t === 'openable' || t === 'hinged') return 'open';
+  if (t === 'track' || t === 'gap' || t === 'wall') return 'track';
+  return 'fixed';
+}
+function markShowerPreset(id) {
+  state.shPreset = id || 'straight';
+  const sel = $('shLayoutPreset');
+  if (sel && sel.value !== state.shPreset && [...sel.options].some(o => o.value === state.shPreset)) sel.value = state.shPreset;
+}
 function blankShowerPanel(kind) {
   return { type: kind === 'leg' ? 'fixed' : 'fixed', widthMm: '', heightMm: '', direction: 'right', hingeSide: 'left', topRoof: false, label: kind === 'leg' ? 'Leg' : '' };
 }
@@ -9342,6 +9377,8 @@ function readShowerPanelTable() {
 function renderShowerPanelEditor() {
   const body = $('shPanelBody');
   const presets = $('shPresetBtns');
+  const block = $('shLayoutBlock');
+  if (block) block.style.display = '';
   if (presets && !presets.childElementCount) {
     presets.innerHTML = SHOWER_PRESETS.map(p =>
       `<button type="button" data-sh-preset="${esc(p.id)}">${esc(p.name)}</button>`
@@ -9350,11 +9387,16 @@ function renderShowerPanelEditor() {
       btn.onclick = () => applyShowerPreset(btn.dataset.shPreset);
     });
   }
+  if (presets) {
+    presets.querySelectorAll('[data-sh-preset]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.shPreset === (state.shPreset || 'straight'));
+    });
+  }
+  markShowerPreset(state.shPreset || 'straight');
   if (!body) return;
-  const rows = (state.shPanels || []).map(p => ({ ...p, kind: 'panel' }))
-    .concat((state.shLegs || []).map(p => ({ ...p, kind: 'leg' })));
-  const typeOpts = (cur) => ['fixed', 'sliding', 'open', 'gap'].map(t => {
-    const label = t === 'gap' ? 'Track only' : (t === 'open' ? 'Open' : (t === 'sliding' ? 'Sliding' : 'Fixed'));
+  const rows = (state.shPanels || []).map(p => ({ ...p, kind: 'panel', type: normShowerPanelType(p.type || p.role) }))
+    .concat((state.shLegs || []).map(p => ({ ...p, kind: 'leg', type: normShowerPanelType(p.type || p.role) })));
+  const typeOpts = (cur) => [['fixed', 'FIX'], ['sliding', 'SLIDE'], ['open', 'OPEN'], ['track', 'TRACK']].map(([t, label]) => {
     return `<option value="${t}"${cur === t ? ' selected' : ''}>${label}</option>`;
   }).join('');
   body.innerHTML = rows.map((r, i) => `
@@ -9377,8 +9419,18 @@ function renderShowerPanelEditor() {
     </tr>`).join('') || '<tr><td colspan="5" class="muted">No panel list — Straight / L / U still uses one size. Pick a layout or add a panel.</td></tr>';
   if ($('shTrackSpan') && document.activeElement !== $('shTrackSpan')) $('shTrackSpan').value = state.shTrackSpan || '';
   if ($('shGlassAlign')) $('shGlassAlign').value = state.shGlassAlign || 'left';
+  const leg0 = (state.shLegs || [])[0];
+  if ($('shLegW') && document.activeElement !== $('shLegW')) $('shLegW').value = leg0 && leg0.widthMm != null && leg0.widthMm !== '' ? leg0.widthMm : '';
+  if ($('shLegH') && document.activeElement !== $('shLegH')) $('shLegH').value = leg0 && leg0.heightMm != null && leg0.heightMm !== '' ? leg0.heightMm : '';
   body.querySelectorAll('input,select').forEach(el => {
-    const go = () => { readShowerPanelTable(); if (state.showerMode || isShowerMode()) showerCalc(); };
+    const go = () => {
+      readShowerPanelTable();
+      markShowerPreset('custom');
+      const leg0 = (state.shLegs || [])[0];
+      if ($('shLegW') && document.activeElement !== $('shLegW')) $('shLegW').value = leg0 && leg0.widthMm != null ? leg0.widthMm : '';
+      if ($('shLegH') && document.activeElement !== $('shLegH')) $('shLegH').value = leg0 && leg0.heightMm != null ? leg0.heightMm : '';
+      if (state.showerMode || isShowerMode()) showerCalc();
+    };
     el.addEventListener('change', go);
     el.addEventListener('input', () => { clearTimeout(state._shPanelT); state._shPanelT = setTimeout(go, 280); });
   });
@@ -9390,21 +9442,54 @@ function renderShowerPanelEditor() {
       all.splice(i, 1);
       state.shPanels = all.filter(p => p.kind !== 'leg');
       state.shLegs = all.filter(p => p.kind === 'leg');
-      if (!state.shPanels.length && !state.shLegs.length) state.shLayout = '';
+      if (!state.shPanels.length && !state.shLegs.length) {
+        state.shLayout = '';
+        markShowerPreset('straight');
+      } else markShowerPreset('custom');
       renderShowerPanelEditor();
       showerCalc();
     };
   });
 }
-function applyShowerPreset(id) {
-  const preset = SHOWER_PRESETS.find(p => p.id === id);
-  if (!preset) return;
+function applyOptionalLegFields() {
+  readShowerPanelTable();
+  const w = $('shLegW') ? String($('shLegW').value || '').trim() : '';
+  const h = $('shLegH') ? String($('shLegH').value || '').trim() : '';
+  if (!w && !h) {
+    if (state.shLegs && state.shLegs.length) state.shLegs.shift();
+    if (!(state.shPanels && state.shPanels.length) && !(state.shLegs && state.shLegs.length)) {
+      state.shLayout = '';
+      markShowerPreset('straight');
+    }
+    return;
+  }
+  state.shLegs = state.shLegs || [];
+  if (!state.shLegs.length) state.shLegs.push({ type: 'fixed', widthMm: w, heightMm: h, label: 'Leg' });
+  else state.shLegs[0] = { ...state.shLegs[0], type: state.shLegs[0].type || 'fixed', widthMm: w, heightMm: h, label: state.shLegs[0].label || 'Leg' };
   state.shLayout = 'panels';
-  state.shPanels = (preset.panels || []).map(p => ({ ...p }));
-  state.shLegs = (preset.legs || []).map(p => ({ ...p }));
+  markShowerPreset('custom');
+}
+function applyShowerPreset(id) {
+  if (id === 'custom') return;
+  const preset = SHOWER_PRESETS.find(p => p.id === id);
+  state.showerMode = true;
+  if (!preset || preset.clear || id === 'straight') {
+    state.shLayout = '';
+    state.shPanels = [];
+    state.shLegs = [];
+    state.shTrackSpan = 0;
+    state.shGlassAlign = 'left';
+    markShowerPreset('straight');
+    renderShowerPanelEditor();
+    showerCalc();
+    return;
+  }
+  state.shLayout = 'panels';
+  state.shPanels = (preset.panels || []).map(p => ({ ...p, type: normShowerPanelType(p.type) }));
+  state.shLegs = (preset.legs || []).map(p => ({ ...p, type: normShowerPanelType(p.type) }));
   state.shTrackSpan = preset.trackSpanMm || 0;
   state.shGlassAlign = preset.glassAlign || 'left';
-  state.showerMode = true;
+  markShowerPreset(preset.id);
   renderShowerPanelEditor();
   showerCalc();
 }
@@ -9748,11 +9833,13 @@ if ($('btnRailCollapse')) $('btnRailCollapse').onclick = () => {
 if ($('btnRailCalc')) $('btnRailCalc').onclick = railingCalc;
 if ($('btnRailAdd')) $('btnRailAdd').onclick = railingAdd;
 if ($('btnShowerCalc')) $('btnShowerCalc').onclick = showerCalc;
+if ($('shLayoutPreset')) $('shLayoutPreset').onchange = () => applyShowerPreset($('shLayoutPreset').value);
 if ($('btnShAddPanel')) $('btnShAddPanel').onclick = () => {
   readShowerPanelTable();
   state.shLayout = 'panels';
   state.shPanels = state.shPanels || [];
   state.shPanels.push({ type: 'fixed', widthMm: 600, heightMm: ($('shH') && +$('shH').value) || 2100, direction: 'right', hingeSide: 'left' });
+  markShowerPreset('custom');
   renderShowerPanelEditor();
   showerCalc();
 };
@@ -9761,6 +9848,7 @@ if ($('btnShAddLeg')) $('btnShAddLeg').onclick = () => {
   state.shLayout = 'panels';
   state.shLegs = state.shLegs || [];
   state.shLegs.push({ type: 'fixed', widthMm: 300, heightMm: 900, label: 'Leg' });
+  markShowerPreset('custom');
   renderShowerPanelEditor();
   showerCalc();
 };
@@ -9769,9 +9857,20 @@ if ($('btnShClearPanels')) $('btnShClearPanels').onclick = () => {
   state.shPanels = [];
   state.shLegs = [];
   state.shTrackSpan = 0;
+  markShowerPreset('straight');
   renderShowerPanelEditor();
   showerCalc();
 };
+['shLegW', 'shLegH'].forEach(id => {
+  const el = $(id); if (!el) return;
+  const go = (rerender) => {
+    applyOptionalLegFields();
+    if (rerender) renderShowerPanelEditor();
+    if (state.showerMode || isShowerMode()) showerCalc();
+  };
+  el.addEventListener('change', () => go(true));
+  el.addEventListener('input', () => { clearTimeout(state._shLegT); state._shLegT = setTimeout(() => go(false), 280); });
+});
 ['shTrackSpan', 'shGlassAlign'].forEach(id => {
   const el = $(id); if (!el) return;
   el.addEventListener('change', () => { readShowerPanelTable(); showerCalc(); });
@@ -9805,6 +9904,8 @@ document.querySelectorAll('#shShapeBtns [data-sh-shape]').forEach(btn => {
     state.shLayout = '';
     state.shPanels = [];
     state.shLegs = [];
+    state.shTrackSpan = 0;
+    markShowerPreset('straight');
     state.showerMode = true;
     renderShowerPanelEditor();
     syncShowerUi();

@@ -269,7 +269,8 @@ def _explicit_run(cfg: Mapping[str, Any]) -> list[dict[str, Any]] | None:
         width = _f(src.get("widthMm") or src.get("width") or src.get("w"))
         height = _f(src.get("heightMm") or src.get("height") or src.get("h"))
         span = _s(src.get("span")).lower()
-        if role == "track" and (span in ("head", "track", "") or height <= 0):
+        # A head-track length has no glass height. A TRACK bay with height is drawn, not billed.
+        if role == "track" and (span == "head" or height <= 0):
             if width > 0:
                 track_span = max(track_span, width)
             return
@@ -1088,7 +1089,7 @@ def shower_panels_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = 
         pw = max(_f(panel.get("widthMm")) * scale, 1.0)
         ph = max(_f(panel.get("heightMm")) * scale, 1.0)
         y = y_floor - ph
-        if role == "gap":
+        if role in ("gap", "track"):
             fill = wall_fill
         elif role == "sliding":
             fill = slide_fill
