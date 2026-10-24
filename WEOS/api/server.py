@@ -1149,15 +1149,24 @@ def _pdf_response(
         try:
             from datetime import datetime as _dt, timezone as _tz
 
+            # Keep the saved quote on its real customer. Print-only bill-to overlays
+            # must not re-own this project when the PDF snapshot is written.
+            live_doc = load_project(project_id)
+            for _keep in ("customer", "customerMobile", "customerAddress", "customerGst", "name"):
+                if _keep in live_doc:
+                    doc[_keep] = live_doc.get(_keep)
+            for _fld in ("description", "terms", "quotationId", "companyGst", "cartQuoteGroups", "activeQuoteGroup"):
+                if overlay.get(_fld) is not None:
+                    doc[_fld] = overlay[_fld]
             doc["lastPdfExport"] = {
                 "kind": kind,
                 "exportedAt": _dt.now(_tz.utc).isoformat(),
                 "projectId": project_id,
                 "quotationId": payload.get("quotationId"),
-                "customer": payload.get("customer"),
-                "customerMobile": doc.get("customerMobile"),
-                "customerGst": doc.get("customerGst"),
-                "companyGst": payload.get("companyGst"),
+                "customer": live_doc.get("customer") or payload.get("customer"),
+                "customerMobile": live_doc.get("customerMobile"),
+                "customerGst": live_doc.get("customerGst"),
+                "companyGst": payload.get("companyGst") or live_doc.get("companyGst"),
                 "templateId": payload.get("templateId") or ("marqt_customer" if kind == "customer" else None),
                 "brand": payload.get("brand"),
                 "lineCount": len(payload.get("lines") or []),

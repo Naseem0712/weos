@@ -2676,6 +2676,7 @@ const state = {
   quoteGroupFilter: 'All',
   bulkSizeRows: [{ width: '', height: '', qty: 1, location: '', rate: '' }],
   editingLineId: null,
+  _quoteCopySource: 'proj',
   shLayout: '',
   shPreset: 'straight',
   shPanels: [],
@@ -6285,6 +6286,38 @@ async function refreshExportSetupSelect(){
   }
 }
 
+function captureBillToForm() {
+  return {
+    customer: ($('projCustName') && $('projCustName').value) || '',
+    cartCustomer: ($('cartCustomer') && $('cartCustomer').value) || '',
+    mobile: ($('projMobile') && $('projMobile').value) || '',
+    address: ($('projCustAddress') && $('projCustAddress').value) || '',
+    gst: ($('projCustGst') && $('projCustGst').value) || '',
+    quoteNo: ($('projQuoteNo') && $('projQuoteNo').value) || '',
+    description: ($('projDescription') && $('projDescription').value) || '',
+    terms: ($('projTerms') && $('projTerms').value) || '',
+    printDescription: ($('printDescription') && $('printDescription').value) || '',
+    printTerms: ($('printTerms') && $('printTerms').value) || '',
+    name: ($('cartName') && $('cartName').value) || '',
+  };
+}
+function restoreBillToForm(snap) {
+  if (!snap) return;
+  if ($('projCustName')) $('projCustName').value = snap.customer || '';
+  if ($('cartCustomer')) $('cartCustomer').value = snap.cartCustomer || snap.customer || '';
+  if ($('projMobile')) $('projMobile').value = snap.mobile || '';
+  if ($('projCustAddress')) $('projCustAddress').value = snap.address || '';
+  if ($('projCustGst')) $('projCustGst').value = snap.gst || '';
+  if ($('projQuoteNo')) $('projQuoteNo').value = snap.quoteNo || '';
+  if ($('projDescription')) $('projDescription').value = snap.description || '';
+  if ($('projTerms')) $('projTerms').value = snap.terms || '';
+  if ($('printDescription')) $('printDescription').value = snap.printDescription != null ? snap.printDescription : (snap.description || '');
+  if ($('printTerms')) $('printTerms').value = snap.printTerms != null ? snap.printTerms : (snap.terms || '');
+  if ($('cartName') && snap.name != null) $('cartName').value = snap.name;
+  syncProjectCustomer();
+  refreshSetupSummary();
+}
+
 /** Copy bill-to from a setup project for PDF print. Never overwrites description/terms
  *  from another project — those stay on the active quote unless it is the same project. */
 async function applySetupFromProject(setupId, opts){
@@ -6296,18 +6329,20 @@ async function applySetupFromProject(setupId, opts){
   if ($('projMobile')) $('projMobile').value = doc.customerMobile || '';
   if ($('projCustAddress')) $('projCustAddress').value = doc.customerAddress || '';
   if ($('projCustGst')) $('projCustGst').value = doc.customerGst || '';
-  if (sameProject || opts.includeQuoteText) {
+  // billToOnly: print another account's address without wiping this quote's description/terms/number.
+  // skipQuoteText: never reload quote text from server (protects unsaved edits before PDF).
+  if (!opts.billToOnly && !opts.skipQuoteText && (sameProject || opts.includeQuoteText)) {
     if ($('projQuoteNo')) $('projQuoteNo').value = doc.quotationId || '';
     if ($('projDescription')) $('projDescription').value = doc.description || '';
     if ($('projTerms')) $('projTerms').value = doc.terms || '';
     syncPrintCopyTwins('proj');
   }
-  if ($('cartName') && (doc.name || '').trim() && sameProject) {
+  if ($('cartName') && (doc.name || '').trim() && sameProject && !opts.billToOnly) {
     $('cartName').value = doc.name;
   }
   syncProjectCustomer();
   refreshSetupSummary();
-  if (state.projectId && (sameProject || opts.persist)) {
+  if (!opts.billToOnly && state.projectId && (sameProject || opts.persist)) {
     await api('/api/projects/'+state.projectId, {method:'PUT', body:{
       name: ($('cartName') && $('cartName').value) || undefined,
       customer: ($('cartCustomer') && $('cartCustomer').value) || '',
@@ -6321,18 +6356,25 @@ async function applySetupFromProject(setupId, opts){
 
 async function ensureExportSetupApplied(){
   const sel = $('exportSetupSelect');
-  if (!sel || !sel.value) return;
-  // Always re-apply selected setup onto current project before PDF so print matches the dropdown.
-  await applySetupFromProject(sel.value);
+  if (!sel || !sel.value) return { swapped: false, setupId: '' };
+  const setupId = sel.value;
+  // Same as the open quote: do NOT reload from server — that wiped unsaved description/terms.
+  if (String(setupId) === String(state.projectId || '')) {
+    return { swapped: false, setupId };
+  }
+  // Different account selected for bill-to print only — never persist onto the open quote.
+  await applySetupFromProject(setupId, { billToOnly: true });
+  return { swapped: true, setupId };
 }
 
 // Project-setup bill-to + quote text that must persist and print on the quote.
 function projectBillTo() {
   const val = id => ($(id) && $(id).value.trim()) || '';
-  const printDesc = $('printDescription');
-  const printTerms = $('printTerms');
-  const desc = (printDesc && printDesc.value) || val('projDescription');
-  const terms = (printTerms && printTerms.value) || val('projTerms');
+  // Align twins from the last editor so print matches what the user just typed.
+  const src = state._quoteCopySource === 'print' ? 'print' : 'proj';
+  if (typeof syncPrintCopyTwins === 'function') syncPrintCopyTwins(src);
+  const desc = val('printDescription') || val('projDescription');
+  const terms = val('printTerms') || val('projTerms');
   const out = {
     customerMobile: val('projMobile'),
     customerAddress: val('projCustAddress'),
@@ -6525,19 +6567,14 @@ async function applySetupProjectPick(){
     const keepName = ($('projCustName') && $('projCustName').value) || '';
     const keepAddr = ($('projCustAddress') && $('projCustAddress').value) || '';
     const keepGst = ($('projCustGst') && $('projCustGst').value) || '';
-    state.projectId = null;
-    state.lines = [];
-    state.lastResult = null;
-    state.packageQuotes = [emptyPkgQuote()];
-    state.packageQuoteIndex = 0;
-    state.masterJobId = null;
-    state.quoteDiscount = emptyQuoteDiscount();
-    if ($('cartName')) $('cartName').value = 'WEOS Project';
-    if ($('projQuoteNo')) $('projQuoteNo').value = '';
+    // Full reset so products / description / old quote number never leak into the new job.
+    resetSetupFormForNew();
     if ($('projMobile')) $('projMobile').value = keepMob;
     if ($('projCustName')) $('projCustName').value = keepName;
     if ($('projCustAddress')) $('projCustAddress').value = keepAddr;
     if ($('projCustGst')) $('projCustGst').value = keepGst;
+    if ($('cartCustomer')) $('cartCustomer').value = keepName;
+    if ($('setupProjectPick')) $('setupProjectPick').value = 'new';
     syncProjectCustomer();
     persistCartSession();
     renderPackageQuotes();
@@ -7253,8 +7290,10 @@ async function ensureProject() {
   }});
   state.projectId = doc.projectId;
   if (doc.masterJobId) state.masterJobId = doc.masterJobId;
+  if (doc.quotationId && $('projQuoteNo')) $('projQuoteNo').value = doc.quotationId;
   persistCartSession();
   updatePdfLinks();
+  syncProjectHeader();
   toast('Created '+(doc.quotationId || doc.projectId));
   return doc.projectId;
 }
@@ -7268,6 +7307,7 @@ function adoptSavedProject(doc) {
   if (doc.quotationId && $('projQuoteNo')) $('projQuoteNo').value = doc.quotationId;
   persistCartSession();
   updatePdfLinks();
+  syncProjectHeader();
   return doc;
 }
 
@@ -7343,6 +7383,8 @@ function scheduleSave() {
 async function openProject(id) {
   const same = state.projectId && id && String(state.projectId) === String(id);
   const localLen = (state.lines || []).length;
+  // Switching quotes: cancel pending save so products do not write into the wrong project.
+  if (!same && state._saveTimer) { clearTimeout(state._saveTimer); state._saveTimer = null; }
   const doc = await api('/api/projects/'+id);
   state.projectId = doc.projectId;
   if (same) adoptServerLines(doc.lines || [], { allowShrink: false });
@@ -7358,6 +7400,8 @@ async function openProject(id) {
   if ($('projQuoteNo')) $('projQuoteNo').value = doc.quotationId || '';
   if ($('projDescription')) $('projDescription').value = doc.description || '';
   if ($('projTerms')) $('projTerms').value = doc.terms || '';
+  if (typeof syncPrintCopyTwins === 'function') syncPrintCopyTwins('proj');
+  state._quoteCopySource = 'proj';
   adoptPackageQuotes(doc);
   adoptQuoteDiscount(doc);
   adoptCartQuoteGroups(doc);
@@ -7373,6 +7417,7 @@ async function openProject(id) {
   state.loadedQuoteVersion = 'current';
   state.excelFocus = '';
   state.editingLineId = null;
+  invalidatePdfCache();
   renderVersionPickers();
   renderCart(); refreshPreview(); updatePdfLinks();
   syncProjectHeader();
@@ -10564,19 +10609,36 @@ if ($('setupProjectPick') && !$('setupProjectPick')._bound) {
   const el = $(id); if (!el) return;
   el.addEventListener('input', () => {
     if (id === 'cartName' || id === 'projQuoteNo') syncProjectHeader();
-    if (id === 'projDescription' || id === 'projTerms') syncPrintCopyTwins('proj');
+    if (id === 'projDescription' || id === 'projTerms') {
+      state._quoteCopySource = 'proj';
+      syncPrintCopyTwins('proj');
+      invalidatePdfCache();
+      if (typeof scheduleSave === 'function') scheduleSave();
+    }
+    if (id === 'projQuoteNo' && typeof scheduleSave === 'function') scheduleSave();
   });
   el.addEventListener('change', () => {
     refreshSetupSummary();
-    if (id === 'projDescription' || id === 'projTerms') syncPrintCopyTwins('proj');
+    if (id === 'projDescription' || id === 'projTerms') {
+      state._quoteCopySource = 'proj';
+      syncPrintCopyTwins('proj');
+      invalidatePdfCache();
+    }
     if (typeof scheduleSave === 'function') scheduleSave();
   });
 });
 ['printDescription','printTerms'].forEach(id => {
   const el = $(id); if (!el) return;
-  el.addEventListener('input', () => syncPrintCopyTwins('print'));
-  el.addEventListener('change', () => {
+  el.addEventListener('input', () => {
+    state._quoteCopySource = 'print';
     syncPrintCopyTwins('print');
+    invalidatePdfCache();
+    if (typeof scheduleSave === 'function') scheduleSave();
+  });
+  el.addEventListener('change', () => {
+    state._quoteCopySource = 'print';
+    syncPrintCopyTwins('print');
+    invalidatePdfCache();
     if (typeof scheduleSave === 'function') scheduleSave();
   });
 });
@@ -10601,21 +10663,32 @@ if ($('btnAgentRefresh')) $('btnAgentRefresh').onclick = refreshAgent;
 if ($('btnMemoryApply')) $('btnMemoryApply').onclick = () => applyCustomerMemoryFromBanner();
 if ($('btnMemoryDismiss')) $('btnMemoryDismiss').onclick = () => hideMemoryBanner(true);
 function resetSetupFormForNew() {
+  // Cancel any pending autosave so the previous quote cannot receive this empty cart,
+  // and a new quote cannot inherit the previous project's products mid-save.
+  if (state._saveTimer) { clearTimeout(state._saveTimer); state._saveTimer = null; }
+  state._saveAgain = false;
   state.projectId = null;
   state.lines = [];
   state.lastResult = null;
   state.customerMemory = null;
   state.memoryAskedFor = null;
+  state.editingLineId = null;
+  state.selectedLine = null;
+  state.removedLines = [];
+  state.quoteVersionChoices = [];
+  state.loadedQuoteVersion = 'current';
+  state.excelFocus = '';
   state.cartQuoteGroups = DEFAULT_CART_QUOTE_GROUPS.slice();
   state.activeQuoteGroup = 'Main';
   state.quoteGroupFilter = 'All';
   state.bulkSizeRows = [emptyBulkSizeRow()];
+  state._quoteCopySource = 'proj';
   if (typeof hideMemoryBanner === 'function') hideMemoryBanner(false);
   if ($('cartName')) $('cartName').value = 'WEOS Project';
   if ($('cartCustomer')) $('cartCustomer').value = '';
   if ($('projCustName')) $('projCustName').value = '';
   if ($('projMobile')) $('projMobile').value = '';
-  ['projCustAddress','projCustGst','projQuoteNo','projDescription','projTerms'].forEach(id => { if ($(id)) $(id).value = ''; });
+  ['projCustAddress','projCustGst','projQuoteNo','projDescription','projTerms','printDescription','printTerms'].forEach(id => { if ($(id)) $(id).value = ''; });
   if (typeof syncPrintCopyTwins === 'function') syncPrintCopyTwins('proj');
   if ($('setupProjectPick')) $('setupProjectPick').value = 'new';
   if ($('setupClientBox')) $('setupClientBox').innerHTML = '';
@@ -10629,11 +10702,19 @@ function resetSetupFormForNew() {
   if ($('cartTotal')) $('cartTotal').textContent = '₹ —';
   state._previewLineId = null;
   if (typeof invalidatePdfCache === 'function') invalidatePdfCache();
+  try {
+    if (typeof WEOS_CART_KEY === 'string') {
+      sessionStorage.removeItem(WEOS_CART_KEY);
+      localStorage.removeItem(WEOS_CART_KEY);
+    }
+  } catch (_) {}
   if (typeof persistCartSession === 'function') persistCartSession();
   if (typeof refreshSetupSummary === 'function') refreshSetupSummary();
+  if (typeof syncProjectHeader === 'function') syncProjectHeader();
   if (typeof renderCart === 'function' && $('cartBody')) renderCart();
   if (typeof renderPackageQuotes === 'function') renderPackageQuotes();
   if (typeof renderSetupDiscount === 'function') renderSetupDiscount();
+  if (typeof renderVersionPickers === 'function') renderVersionPickers();
   if (typeof lookupSetupClient === 'function') lookupSetupClient().catch(() => {});
 }
 
@@ -11211,14 +11292,16 @@ function _exportFingerprint(kind) {
     });
   } catch (e) { return String(Date.now()); }
 }
-function _liveExportBody(brand) {
+function _liveExportBody(brand, opts) {
+  opts = opts || {};
   return {
     lines: serializeCartLinesForPdf(state.lines),
     customer: ($('cartCustomer') && $('cartCustomer').value) || ($('projCustName') && $('projCustName').value) || '',
     name: ($('cartName') && $('cartName').value) || undefined,
     ...projectBillTo(),
     brand,
-    persist: true,
+    // Never persist a temporary print-only bill-to from another setup onto this quote.
+    persist: opts.persist !== false && !opts.swapped,
     cartQuoteGroups: ensureCartQuoteGroups(),
     activeQuoteGroup: state.activeQuoteGroup || 'Main',
   };
@@ -11232,6 +11315,10 @@ async function openProjectPdf(kind, opts) {
       state.lines[state.selectedLine] = { ...state.lines[state.selectedLine], ...draft };
     } catch (_) {}
   }
+  // Lock in the live description/terms before any setup reload can wipe them.
+  if (typeof syncPrintCopyTwins === 'function') {
+    syncPrintCopyTwins(state._quoteCopySource === 'print' ? 'print' : 'proj');
+  }
   const cacheKind = kind === 'factory' ? 'factory' : 'customer';
   const cacheKey = _exportFingerprint(cacheKind);
   const downloadName = pdfDownloadFilename(cacheKind);
@@ -11242,13 +11329,31 @@ async function openProjectPdf(kind, opts) {
   showPdfMachine(label);
   toast('Preparing latest quote data...');
   updatePdfMachineStep('project', 'Checking project, customer and bill-to details...');
-  await ensureProject();
+  // Persist quote text first so PDF + DB match what is on screen.
+  try { await saveProject(true); } catch (_) { await ensureProject(); }
   updatePdfMachineStep('design', 'Collecting saved 2D designs and product drawings...');
-  try { await ensureExportSetupApplied(); } catch (_) {}
-  if (typeof syncPrintCopyTwins === 'function') syncPrintCopyTwins('print');
+  const liveSnap = captureBillToForm();
+  let swapped = false;
+  try {
+    const applied = await ensureExportSetupApplied();
+    swapped = !!(applied && applied.swapped);
+  } catch (_) {}
+  if (typeof syncPrintCopyTwins === 'function') {
+    syncPrintCopyTwins(state._quoteCopySource === 'print' ? 'print' : 'proj');
+  }
+  // If another account was picked only for bill-to, keep THIS quote's description/terms/number.
+  if (swapped && liveSnap) {
+    if ($('projQuoteNo')) $('projQuoteNo').value = liveSnap.quoteNo || '';
+    if ($('projDescription')) $('projDescription').value = liveSnap.description || '';
+    if ($('projTerms')) $('projTerms').value = liveSnap.terms || '';
+    if ($('printDescription')) $('printDescription').value = liveSnap.printDescription || liveSnap.description || '';
+    if ($('printTerms')) $('printTerms').value = liveSnap.printTerms || liveSnap.terms || '';
+  }
   updatePdfLinks();
   const brand = (typeof activePdfBrand === 'function' && activePdfBrand()) || 'marqt';
-  const body = _liveExportBody(brand);
+  const body = _liveExportBody(brand, { swapped });
+  // Restore this quote's customer form so a print-only bill-to swap cannot contaminate save.
+  if (swapped && liveSnap) restoreBillToForm(liveSnap);
   toast(kind === 'factory' ? 'Generating factory PDF...' : 'Generating quote PDF...');
   updatePdfMachineStep('specs', 'Calculating specs, totals, notes and terms...');
   const res = await fetch(`${API_BASE}/api/projects/${state.projectId}/${kind}-pdf?brand=${encodeURIComponent(brand)}`, {
@@ -11271,9 +11376,10 @@ async function openProjectPdf(kind, opts) {
     try { URL.revokeObjectURL(state._custPdfCache.url); } catch (_) {}
   }
   const url = URL.createObjectURL(blob);
-  if (cacheKind === 'customer') state._custPdfCache = { key: cacheKey, url, blob };
+  if (cacheKind === 'customer') state._custPdfCache = { key: cacheKey, url: url, blob };
   finishPdfMachine(url, label, !!opts.print, downloadName);
   toast(kind === 'factory' ? 'Factory PDF ready' : 'Quote PDF ready');
+  // Save the restored (real) quote — never the temporary print bill-to from another setup.
   saveProject(true).catch(() => {});
   return url;
 }
@@ -11312,14 +11418,31 @@ if ($('linkCustXlsx')) $('linkCustXlsx').addEventListener('click', async (e) => 
         state.lines[state.selectedLine] = { ...state.lines[state.selectedLine], ...draft };
       } catch (_) {}
     }
-    await ensureProject();
-    try { await ensureExportSetupApplied(); } catch (_) {}
+    if (typeof syncPrintCopyTwins === 'function') {
+      syncPrintCopyTwins(state._quoteCopySource === 'print' ? 'print' : 'proj');
+    }
+    try { await saveProject(true); } catch (_) { await ensureProject(); }
+    const liveSnap = captureBillToForm();
+    let swapped = false;
+    try {
+      const applied = await ensureExportSetupApplied();
+      swapped = !!(applied && applied.swapped);
+    } catch (_) {}
+    if (swapped && liveSnap) {
+      if ($('projQuoteNo')) $('projQuoteNo').value = liveSnap.quoteNo || '';
+      if ($('projDescription')) $('projDescription').value = liveSnap.description || '';
+      if ($('projTerms')) $('projTerms').value = liveSnap.terms || '';
+      if ($('printDescription')) $('printDescription').value = liveSnap.printDescription || liveSnap.description || '';
+      if ($('printTerms')) $('printTerms').value = liveSnap.printTerms || liveSnap.terms || '';
+    }
     updatePdfLinks();
     const brand = (typeof activePdfBrand === 'function' && activePdfBrand()) || 'marqt';
+    const body = _liveExportBody(brand, { swapped });
+    if (swapped && liveSnap) restoreBillToForm(liveSnap);
     const res = await fetch(`${API_BASE}/api/projects/${state.projectId}/customer.xlsx?brand=${encodeURIComponent(brand)}&drawings=thumb`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(_liveExportBody(brand)),
+      body: JSON.stringify(body),
       signal: (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(90000) : undefined,
     });
     if (!res.ok) {
@@ -11347,10 +11470,15 @@ if ($('exportSetupSelect')) {
     const id = $('exportSetupSelect').value;
     if (!id) return;
     try {
-      await applySetupFromProject(id);
-      const who = ($('projCustName') && $('projCustName').value.trim())
-        || ($('projMobile') && $('projMobile').value.trim()) || 'selected account';
-      toast('Quote will print for ' + who);
+      // Do not rewrite the open quote when picking another account — that mixed
+      // customers onto one quote. Bill-to swap happens only at PDF/Excel time.
+      if (String(id) === String(state.projectId || '')) {
+        toast('Quote will print for this project’s customer');
+        return;
+      }
+      const doc = await api('/api/projects/'+id);
+      const who = (doc.customer || doc.customerMobile || 'selected account').trim();
+      toast('Next PDF bill-to: ' + who + ' — open quote stays on its own customer');
     } catch (e) {
       toast((e && e.message) || String(e));
     }
@@ -13196,11 +13324,11 @@ async function refreshCompanyHub(gst) {
   }
 }
 async function hubNewQuoteForCustomer(name) {
-  state.projectId=null; state.lines=[]; state.lastResult=null;
+  resetSetupFormForNew();
   $('cartName').value = (name || 'Customer') + ' — new quote';
   if ($('projCustName')) $('projCustName').value = name || '';
   if ($('cartCustomer')) $('cartCustomer').value = name || '';
-  if ($('projQuoteNo')) $('projQuoteNo').value = '';
+  syncProjectCustomer();
   setView('setup');
   await ensureProject();
   toast('New quote for ' + (name||'customer'));
@@ -14229,14 +14357,22 @@ if ($('btnCpSave')) $('btnCpSave').onclick = async () => {
 if ($('btnCpNewQuote')) $('btnCpNewQuote').onclick = async () => {
   const name = ($('cpName').value||'').trim();
   if (!name) { $('cpErr').textContent = 'Save customer first'; return; }
-  state.projectId=null; state.lines=[]; state.lastResult=null;
-  state.customerMemory=null; state.memoryAskedFor=null;
+  const phone = ($('cpPhone') && $('cpPhone').value.trim()) || '';
+  const address = ($('cpAddress') && $('cpAddress').value.trim()) || '';
+  const gstNo = ($('cpGst') && $('cpGst').value.trim()) || '';
+  resetSetupFormForNew();
   $('cartName').value = name+' — Quote';
   if ($('cartCustomer')) $('cartCustomer').value = name;
   if ($('projCustName')) $('projCustName').value = name;
+  if ($('projMobile') && phone) $('projMobile').value = phone;
+  if ($('projCustAddress') && address) $('projCustAddress').value = address;
+  if ($('projCustGst') && gstNo) $('projCustGst').value = gstNo;
   syncProjectCustomer();
   refreshSetupSummary();
-  $('cartTotal').textContent='₹ —'; renderCart(); setView('setup'); await ensureProject(); scheduleLivePrice();
+  renderCart();
+  setView('setup');
+  await ensureProject();
+  scheduleLivePrice();
 };
 
 // ── Engines & Memory view ────────────────────────────────────────────────
