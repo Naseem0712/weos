@@ -1298,30 +1298,8 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     show_group_headers = len(distinct_groups) > 1
     last_quote_group = None
 
-    removed = [ln for ln in (payload.get("removedLines") or []) if isinstance(ln, Mapping)]
-    if removed:
-        c.setFillColorRGB(0.70, 0.12, 0.12)
-        set_font(c, 8, bold=True)
-        c.drawString(M, y, "Removed since previous version")
-        y -= 12
-        set_font(c, 8)
-        for ln in removed:
-            if y < bottom_limit + 24:
-                y = header(page_no + 1)
-                page_no += 1
-            loc = ""
-            try:
-                from WEOS.factory.line_kind import line_location_name
-
-                loc = line_location_name(ln)
-            except Exception:
-                loc = str(ln.get("locationName") or "")
-            label = loc or str(ln.get("product") or ln.get("displayName") or "Item")
-            c.setFillColorRGB(0.70, 0.12, 0.12)
-            c.drawString(M, y, f"REMOVED  {label}"[:90])
-            y -= 12
-        y -= 8
-
+    # Deleted items stay off the customer print. "Removed since previous version"
+    # is an internal version note, not a quote line.
     for idx, line in enumerate(lines):
         gname = line_quote_group(line) if isinstance(line, Mapping) else "Main"
         if show_group_headers and gname != last_quote_group:
