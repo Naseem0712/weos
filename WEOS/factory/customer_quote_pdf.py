@@ -240,16 +240,8 @@ def render_customer_quote_sheet(
     else:
         for p in products:
             ensure(36)
-            flag = str(p.get("changeFlag") or "").strip().lower()
             serial = str(p.get("serial") or "—")
-            if flag == "added":
-                serial = f"{serial} +"
-                c.setFillColorRGB(0.04, 0.45, 0.28)
-            elif flag in {"reduced", "removed"}:
-                serial = f"{serial} -"
-                c.setFillColorRGB(0.70, 0.12, 0.12)
-            else:
-                c.setFillColorRGB(*ink)
+            c.setFillColorRGB(*ink)
             c.setFont("Helvetica-Bold", 8)
             c.drawString(M, y, serial[:12])
             c.setFillColorRGB(*ink)

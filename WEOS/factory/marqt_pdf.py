@@ -193,24 +193,64 @@ def draw_window_elevation(c, x, y, box_w, box_h, width_mm: float, height_mm: flo
     c.restoreState()
 
 
-def _line_design_photo_bytes(line: Mapping[str, Any]) -> tuple[bytes | None, str | None]:
-    """Uploaded design photo (durable blob), if the line has one."""
+def _photo_map(line: Mapping[str, Any]) -> Mapping[str, Any] | None:
     photo = line.get("designPhoto") if isinstance(line.get("designPhoto"), Mapping) else None
-    if not photo:
-        opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
-        photo = opts.get("designPhoto") if isinstance(opts.get("designPhoto"), Mapping) else None
-    if not isinstance(photo, Mapping):
-        return None, None
-    key = str(photo.get("key") or "").strip()
-    if not key:
-        return None, None
-    try:
-        from WEOS.factory.design_photo import design_photo_bytes_by_key
+    if photo:
+        return photo
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    photo = opts.get("designPhoto") if isinstance(opts.get("designPhoto"), Mapping) else None
+    return photo if isinstance(photo, Mapping) else None
 
-        return design_photo_bytes_by_key(key)
+
+def _line_design_photo_bytes(
+    line: Mapping[str, Any], *, project_id: str | None = None
+) -> tuple[bytes | None, str | None]:
+    """Uploaded design photo for the DESIGN cell.
+
+    Lookup order: blob key, then this project's line file. A missing pointer
+    still finds a photo saved for this line id, so the print is not stuck on
+    the generated window drawing.
+    """
+    from WEOS.factory.design_photo import design_photo_bytes, design_photo_bytes_by_key
+
+    photo = _photo_map(line)
+    key = str((photo or {}).get("key") or "").strip()
+    if key:
+        try:
+            raw, ct = design_photo_bytes_by_key(key)
+            if raw:
+                return raw, ct
+        except Exception:
+            _log.exception("design photo load failed for %s", key)
+    pid = str(project_id or line.get("projectId") or "").strip()
+    lid = str(line.get("lineId") or line.get("id") or "").strip()
+    if pid and lid:
+        try:
+            raw, ct = design_photo_bytes(pid, lid)
+            if raw:
+                return raw, ct
+        except Exception:
+            _log.exception("design photo line lookup failed for %s/%s", pid, lid)
+    return None, None
+
+
+def _png_for_pdf(raw: bytes) -> bytes:
+    """ReportLab draws PNG reliably. Phone uploads are usually JPEG."""
+    if not raw:
+        return raw
+    try:
+        from PIL import Image
+
+        im = Image.open(io.BytesIO(raw))
+        im.load()
+        if im.mode not in ("RGB", "RGBA"):
+            im = im.convert("RGBA")
+        buf = io.BytesIO()
+        im.save(buf, format="PNG")
+        return buf.getvalue() or raw
     except Exception:
-        _log.exception("design photo load failed")
-        return None, None
+        _log.debug("design photo png convert skipped", exc_info=True)
+        return raw
 
 
 def line_elevation_png_bytes(line: Mapping[str, Any], *, scale: float = 0.55, max_px: int | None = 220) -> bytes | None:
@@ -350,11 +390,18 @@ def _embed_png(c, png: bytes, x: float, y: float, box_w: float, box_h: float) ->
         return False
     scale = min(box_w / float(iw), box_h / float(ih))
     dw, dh = iw * scale, ih * scale
-    c.drawImage(img, x + (box_w - dw) / 2.0, y + (box_h - dh) / 2.0, width=dw, height=dh, mask="auto")
+    ix = x + (box_w - dw) / 2.0
+    iy = y + (box_h - dh) / 2.0
+    try:
+        c.drawImage(img, ix, iy, width=dw, height=dh, mask="auto")
+    except Exception:
+        c.drawImage(img, ix, iy, width=dw, height=dh)
     return True
 
 
-def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
+def draw_line_elevation(
+    c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float, *, project_id: str | None = None
+) -> bool:
     """DESIGN column: uploaded photo, else #livePreview SVG, else schematic.
 
     Railing / shower / ventilator MUST print the canvas SVG (sanitized +
@@ -377,20 +424,17 @@ def draw_line_elevation(c, line: Mapping[str, Any], x: float, y: float, box_w: f
     except Exception:
         pass
 
-    photo_raw, _photo_ct = _line_design_photo_bytes(line)
+    photo_raw, _photo_ct = _line_design_photo_bytes(line, project_id=project_id)
     if photo_raw:
         try:
             from WEOS.factory.elevation_cache import _resize_png
 
-            thumb = _resize_png(photo_raw, max_px=_PDF_ELEV_MAX_PX) or photo_raw
+            png = _png_for_pdf(photo_raw)
+            thumb = _resize_png(png, max_px=_PDF_ELEV_MAX_PX) or png
             if _embed_png(c, thumb, x, y, box_w, box_h):
                 return True
         except Exception:
-            try:
-                if _embed_png(c, photo_raw, x, y, box_w, box_h):
-                    return True
-            except Exception:
-                _log.exception("design photo embed failed; falling back to canvas SVG")
+            _log.exception("design photo embed failed; falling back to canvas SVG")
 
     special = (
         is_railing_cart_line(line)
@@ -1391,21 +1435,9 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         code = f"W{idx + 1}"
         loc = line_location_name(line)
         design_label = design_serial_label(idx, line)
-        flag = str(line.get("changeFlag") or "").strip().lower() if isinstance(line, Mapping) else ""
-        if flag == "added":
-            design_label = f"{design_label}  ADDED"
-        elif flag == "reduced":
-            design_label = f"{design_label}  REDUCED"
-        elif flag == "removed":
-            design_label = f"{design_label}  REMOVED"
-        # Design column — reddish serial; location prints with it (under / beside W8).
-        # Green = added since the previous version. Red = reduced or removed.
-        if flag == "added":
-            c.setFillColorRGB(0.04, 0.45, 0.28)
-        elif flag in {"reduced", "removed"}:
-            c.setFillColorRGB(0.70, 0.12, 0.12)
-        else:
-            c.setFillColorRGB(*accent)
+        # Version flags stay on the saved line. They must not print beside the
+        # product serial or the product name.
+        c.setFillColorRGB(*accent)
         max_code_w = draw_w - 6
         if loc:
             try:
@@ -1424,7 +1456,9 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             set_font(c, 9, bold=True)
             c.drawString(M + 2, y + 4, code)
         try:
-            draw_line_elevation(c, line, M, y - draw_h, draw_w, draw_h)
+            draw_line_elevation(
+                c, line, M, y - draw_h, draw_w, draw_h, project_id=str(payload.get("projectId") or "")
+            )
         except Exception:
             _log.exception("marqt elevation draw failed for line %d; leaving cell blank", idx)
 

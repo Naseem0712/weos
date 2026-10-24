@@ -185,16 +185,8 @@ def render_scan_all_pdf(record: Mapping[str, Any]) -> bytes:
         c.setFont("Helvetica", 8)
         for p in products:
             ensure(18)
-            flag = str(p.get("changeFlag") or "").strip().lower()
             serial = _txt(p.get("serial") or "—")
-            if flag == "added":
-                serial = f"{serial} +"
-                c.setFillColorRGB(0.04, 0.45, 0.28)
-            elif flag in {"reduced", "removed"}:
-                serial = f"{serial} -"
-                c.setFillColorRGB(0.70, 0.12, 0.12)
-            else:
-                c.setFillColorRGB(*ink)
+            c.setFillColorRGB(*ink)
             c.drawString(M, y, serial[:12])
             c.setFillColorRGB(*ink)
             loc = _txt(p.get("location") or p.get("locationName") or "—")

@@ -5628,16 +5628,11 @@ function renderCart() {
       rowNo += 1;
       const serialCode = designSerialLabel(i, ln).split(' · ')[0];
       const shArea = ln.options && ln.options.showerQuote && ln.options.showerQuote.areaSqft;
-      const flag = ln.changeFlag === 'added'
-        ? '<span style="color:#0a7a45;font-weight:700;font-size:.72rem"> ADDED</span>'
-        : (ln.changeFlag === 'reduced'
-          ? '<span style="color:#b42318;font-weight:700;font-size:.72rem"> REDUCED</span>'
-          : '');
-      const rowBg = ln.changeFlag === 'added' ? '#eefaf3' : (ln.changeFlag === 'reduced' ? '#fdecec' : (i===state.selectedLine ? '#f3faf6' : ''));
+      const rowBg = i===state.selectedLine ? '#f3faf6' : '';
       html += `
     <tr style="${rowBg?'background:'+rowBg:''}">
       <td>${esc(serialCode)}</td>
-      <td>${cartLineProductLabel(ln)}${flag}${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${esc(ln.locationName||ln.positionName)}</div>`:''}${shArea?`<div class="muted" style="font-size:.72rem">${esc(shArea)} sft</div>`:''}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}${showHeaders?'':`<div class="muted" style="font-size:.68rem">${esc(g)}</div>`}</td>
+      <td>${cartLineProductLabel(ln)}${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${esc(ln.locationName||ln.positionName)}</div>`:''}${shArea?`<div class="muted" style="font-size:.72rem">${esc(shArea)} sft</div>`:''}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}${showHeaders?'':`<div class="muted" style="font-size:.68rem">${esc(g)}</div>`}</td>
       <td><input data-f="width" data-i="${i}" type="number" value="${ln.width != null ? ln.width : ''}" style="width:70px"/>×<input data-f="height" data-i="${i}" type="number" value="${ln.height != null ? ln.height : ''}" style="width:70px"/></td>
       <td><input data-f="qty" data-i="${i}" type="number" min="1" value="${ln.qty != null ? ln.qty : ''}" style="width:56px"/></td>
       <td style="font-size:.8rem">${ln.glass||''}<br>${ln.colour||''}</td>
@@ -13700,13 +13695,7 @@ async function loadPublicScan(token) {
       <tbody>${prods.length ? prods.map(p => {
         const loc = p.location || p.locationName || p.positionName || '—';
         const extra = [p.glass && p.glass !== '—' ? p.glass : '', p.colour && p.colour !== '—' ? p.colour : ''].filter(Boolean).join(' · ');
-        const flag = p.changeFlag === 'added'
-          ? ' <span style="color:#0a7a45;font-weight:700">ADDED</span>'
-          : (p.changeFlag === 'reduced'
-            ? ' <span style="color:#b42318;font-weight:700">REDUCED</span>'
-            : (p.changeFlag === 'removed' ? ' <span style="color:#b42318;font-weight:700">REMOVED</span>' : ''));
-        const bg = p.changeFlag === 'added' ? ' style="background:#eefaf3"' : (p.changeFlag === 'reduced' || p.changeFlag === 'removed' ? ' style="background:#fdecec"' : '');
-        return `<tr${bg}><td>${esc(p.serial)}${flag}</td><td>${esc(loc)}</td><td>${esc(p.type)}${extra?`<div class="muted" style="font-size:.72rem">${esc(extra)}</div>`:''}</td><td>${esc(p.size)}</td><td>${esc(p.qty)}</td><td>${p.amount!=null?money(p.amount):'—'}</td></tr>`;
+        return `<tr><td>${esc(p.serial)}</td><td>${esc(loc)}</td><td>${esc(p.type)}${extra?`<div class="muted" style="font-size:.72rem">${esc(extra)}</div>`:''}</td><td>${esc(p.size)}</td><td>${esc(p.qty)}</td><td>${p.amount!=null?money(p.amount):'—'}</td></tr>`;
       }).join('') : '<tr><td colspan="6" class="muted">No products</td></tr>'}</tbody></table>
       ${renderScanPack(rec)}
       <div class="row" style="gap:.4rem;flex-wrap:wrap">
