@@ -145,7 +145,57 @@ def _persist_window_options(
         options["casementPanels"] = list(cp)
     if lo.get("productType") or line.get("productType"):
         options["productType"] = lo.get("productType") or line.get("productType")
+    # Pleated / rolling mesh add-on (type · placement · size · rate · amount)
+    try:
+        from WEOS.factory.mesh_addon import mesh_addon_for_line, persist_mesh_addon_options
+
+        addon = mesh_addon_for_line(line)
+        persist_mesh_addon_options(options, line, addon)
+        if addon:
+            options["mesh"] = True
+    except Exception:
+        pass
     return options
+
+
+def _apply_mesh_addon_to_result(result: dict[str, Any], line: Mapping[str, Any]) -> None:
+    """Add the pleated / rolling mesh amount as its own row + into the line price."""
+    try:
+        from WEOS.factory.mesh_addon import mesh_addon_for_line, mesh_addon_quote_line
+    except Exception:
+        return
+    addon = mesh_addon_for_line(line)
+    if not addon:
+        result.pop("meshAddon", None)
+        return
+    result["meshAddon"] = addon
+    result["mesh"] = True
+    price = result.get("price") if isinstance(result.get("price"), dict) else None
+    if price is None:
+        price = {}
+        result["price"] = price
+    amt = float(addon.get("amount") or 0.0)
+    unit_amt = float(addon.get("amountUnit") or 0.0)
+    if amt > 0:
+        price["meshAmount"] = round(amt, 2)
+        price["total"] = round(float(price.get("total") or 0.0) + amt, 2)
+        if price.get("unitTotal") is not None:
+            price["unitTotal"] = round(float(price.get("unitTotal") or 0.0) + unit_amt, 2)
+        if price.get("subtotal") is not None:
+            price["subtotal"] = round(float(price.get("subtotal") or 0.0) + amt, 2)
+        row = mesh_addon_quote_line(addon)
+        lines_ = price.get("lines")
+        if isinstance(lines_, list):
+            price["lines"] = list(lines_) + [row]
+        else:
+            price["lines"] = [row]
+        qd = result.get("quotationDetail")
+        if isinstance(qd, dict):
+            qd = dict(qd)
+            qd["lines"] = list(qd.get("lines") or []) + [row]
+            qd["meshAmount"] = round(unit_amt, 2)
+            qd["total"] = round(float(qd.get("total") or 0.0) + unit_amt, 2)
+            result["quotationDetail"] = qd
 
 
 def _augment_weight_with_louvers(
@@ -1130,6 +1180,12 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
                 top_shape=lo.get("topShape") or line.get("topShape"),
                 curve_rise_mm=lo.get("curveRiseMm") or line.get("curveRiseMm"),
             )
+            try:
+                from WEOS.factory.mesh_addon import attach_mesh_addon_to_drawing, mesh_addon_for_line
+
+                attach_mesh_addon_to_drawing(job.drawing, mesh_addon_for_line(line))
+            except Exception:
+                pass
             result["preview"] = (
                 preview_svgs_for_drawing(
                     job.drawing,
@@ -1185,6 +1241,7 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
                 result["sectionSeries"] = line.get("sectionSeries")
         except Exception as exc:  # keep the manual-rate result even if drawing fails
             _log.warning("stub preview render failed for %s: %s", product_id, exc)
+        _apply_mesh_addon_to_result(result, line)
         return apply_selling_to_line_result(result, line)
 
     # Thread the FULL window configuration (system / fold / grid / shutter counts /
@@ -1231,6 +1288,12 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
         top_shape=lo.get("topShape") or line.get("topShape"),
         curve_rise_mm=lo.get("curveRiseMm") or line.get("curveRiseMm"),
     )
+    try:
+        from WEOS.factory.mesh_addon import attach_mesh_addon_to_drawing, mesh_addon_for_line
+
+        attach_mesh_addon_to_drawing(job.drawing, mesh_addon_for_line(line))
+    except Exception:
+        pass
     quote = job.quotation.as_dict() if job.quotation else {}
     weight = job.weight.as_dict() if job.weight else {}
     colour = (line.get("colour") or "white")
@@ -1372,6 +1435,7 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
         ],
     }
     _augment_weight_with_louvers(result_base, lo.get("panelFill"), width=width, height=height, qty=qty)
+    _apply_mesh_addon_to_result(result_base, line)
     return apply_selling_to_line_result(result_base, line)
 
 

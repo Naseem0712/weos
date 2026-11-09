@@ -665,6 +665,7 @@ class GlassSpecBody(BaseModel):
     glass2Mm: float | None = None
     airGapMm: float | None = None
     pvbMm: float | None = None
+    glass3Mm: float | None = None
     colour: str = "clear"
     brand: str = ""
     toughened: bool = False
@@ -1560,8 +1561,15 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
                 series_doc = get_series(str(section_series))
             except Exception:
                 series_doc = None
+        # Pleated / rolling mesh is a priced add-on drawn over the window — it
+        # is NOT a mesh sash, so it must not add a mesh track or mesh shutters.
+        from WEOS.factory.mesh_addon import attach_mesh_addon_to_drawing, is_addon_mesh, mesh_addon_for_line
+
+        _body_line = body.model_dump()
+        addon_mesh = is_addon_mesh(_body_line)
+        sash_mesh = bool(body.mesh) and not addon_mesh
         mesh_res = resolve_mesh_track(
-            mesh=bool(body.mesh),
+            mesh=sash_mesh,
             track_count=body.trackCount,
             series=series_doc,
         )
@@ -1593,11 +1601,11 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
                     colour=body.colour,
                     handle=body.handle,
                     partitions=body.partitions,
-                    mesh=bool(body.mesh),
+                    mesh=sash_mesh,
                     track_count=mesh_res["trackCount"],
                     section_series=section_series,
                     glass_count=body.glassShutters,
-                    mesh_count=body.meshShutters,
+                    mesh_count=(0 if addon_mesh else body.meshShutters),
                     opening=body.opening,
                     opening_side=getattr(body, "openingSide", None),
                     opening_explicit=bool(getattr(body, "openingExplicit", False)),
@@ -1641,6 +1649,13 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             top_shape=getattr(body, "topShape", None),
             curve_rise_mm=getattr(body, "curveRiseMm", None),
         )
+        mesh_addon = None
+        if addon_mesh:
+            try:
+                mesh_addon = mesh_addon_for_line(_body_line)
+                attach_mesh_addon_to_drawing(job.drawing, mesh_addon)
+            except Exception:
+                mesh_addon = None
         colour_raw = str(body.colour or "white")
         svg = render_svg_string(
             job.drawing,
@@ -1664,7 +1679,8 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             "layout": layout,
             "meshTrack": mesh_res,
             "trackCount": mesh_res["trackCount"],
-            "mesh": bool(job.layout_meta.get("mesh")),
+            "mesh": bool(job.layout_meta.get("mesh")) or bool(mesh_addon),
+            "meshAddon": mesh_addon,
             "system": job.layout_meta.get("system") or body.system or "sliding",
             "glassShutters": glass_shutters,
             "meshShutters": job.layout_meta.get("mesh_count"),
@@ -5139,6 +5155,7 @@ def api_glass_compute(body: GlassComputeBody) -> dict[str, Any]:
             glass2_mm=spec.get("glass2Mm"),
             air_gap_mm=spec.get("airGapMm"),
             pvb_mm=spec.get("pvbMm"),
+            glass3_mm=spec.get("glass3Mm"),
             colour=str(spec.get("colour") or "clear"),
             brand=str(spec.get("brand") or ""),
             toughened=bool(spec.get("toughened")),

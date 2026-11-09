@@ -46,8 +46,32 @@ LAMINATED_MAKEUPS_MM: dict[float, dict[str, float]] = {
     17.52: {"glass1Mm": 8.0, "pvbMm": 1.52, "glass2Mm": 8.0},   # 8+1.52+8
 }
 
+# Laminated + DGU overall thickness → laminated pane (glass1 + PVB + glass2),
+# air gap and the single outer pane (glass3). E.g. 29.52 = 5+1.52+5 / 12A / 6.
+LAM_DGU_MAKEUPS_MM: dict[float, dict[str, float]] = {
+    28.52: {"glass1Mm": 5.0, "pvbMm": 1.52, "glass2Mm": 5.0, "airGapMm": 12.0, "glass3Mm": 5.0},
+    29.52: {"glass1Mm": 5.0, "pvbMm": 1.52, "glass2Mm": 5.0, "airGapMm": 12.0, "glass3Mm": 6.0},
+    30.52: {"glass1Mm": 6.0, "pvbMm": 1.52, "glass2Mm": 5.0, "airGapMm": 12.0, "glass3Mm": 6.0},
+    31.52: {"glass1Mm": 6.0, "pvbMm": 1.52, "glass2Mm": 6.0, "airGapMm": 12.0, "glass3Mm": 6.0},
+    33.52: {"glass1Mm": 6.0, "pvbMm": 1.52, "glass2Mm": 6.0, "airGapMm": 12.0, "glass3Mm": 8.0},
+}
+
+LAM_DGU_KINDS = ("lam_dgu", "laminated_dgu", "lamdgu", "lam+dgu", "dgu_laminated")
+
 # Tinted colours commonly offered on single toughened panes (cart + railing).
 TINTED_COLOURS = ("clear", "black", "grey", "brown")
+
+
+def normalize_makeup_kind(makeup: Any) -> str:
+    """``single`` / ``dgu`` / ``laminated`` / ``lam_dgu`` from any user/API spelling."""
+    kind = str(makeup or "single").strip().lower().replace("-", "_").replace(" ", "_")
+    if kind in LAM_DGU_KINDS or ("lam" in kind and "dgu" in kind):
+        return "lam_dgu"
+    if kind in ("dgu", "double", "insulated", "igu"):
+        return "dgu"
+    if kind in ("laminated", "lami", "lam"):
+        return "laminated"
+    return "single"
 
 
 def _now() -> str:
@@ -84,6 +108,12 @@ def makeup_options() -> dict[str, Any]:
             "label": "Laminated (PVB)",
             "note": "Two glass leaves + PVB interlayer thickness.",
         },
+        "lam_dgu": {
+            "overallMm": sorted(LAM_DGU_MAKEUPS_MM.keys()),
+            "makeups": {str(k): v for k, v in LAM_DGU_MAKEUPS_MM.items()},
+            "label": "Laminated + DGU",
+            "note": "Laminated pane (glass + PVB + glass) + air gap + single glass.",
+        },
         "colours": ["clear", "green", "blue", "grey", "bronze", "black", "reflective", "frosted"],
         "toughened": [True, False],
         "rateUnits": ["sqft", "sqm"],
@@ -91,11 +121,17 @@ def makeup_options() -> dict[str, Any]:
 
 
 def default_layers_for(makeup: str, overall_mm: float | None) -> dict[str, float]:
-    kind = (makeup or "single").strip().lower()
-    if kind in ("dgu", "double", "insulated") and overall_mm in DGU_MAKEUPS_MM:
-        return dict(DGU_MAKEUPS_MM[overall_mm])
-    if kind in ("laminated", "lami") and overall_mm in LAMINATED_MAKEUPS_MM:
-        return dict(LAMINATED_MAKEUPS_MM[overall_mm])
+    kind = normalize_makeup_kind(makeup)
+    try:
+        key = float(overall_mm) if overall_mm is not None else None
+    except (TypeError, ValueError):
+        key = None
+    if kind == "dgu" and key in DGU_MAKEUPS_MM:
+        return dict(DGU_MAKEUPS_MM[key])
+    if kind == "laminated" and key in LAMINATED_MAKEUPS_MM:
+        return dict(LAMINATED_MAKEUPS_MM[key])
+    if kind == "lam_dgu" and key in LAM_DGU_MAKEUPS_MM:
+        return dict(LAM_DGU_MAKEUPS_MM[key])
     return {}
 
 
@@ -108,6 +144,7 @@ def build_glass_spec(
     glass2_mm: float | None = None,
     air_gap_mm: float | None = None,
     pvb_mm: float | None = None,
+    glass3_mm: float | None = None,
     colour: str = "clear",
     brand: str = "",
     toughened: bool = False,
@@ -118,22 +155,33 @@ def build_glass_spec(
     glass_id: str | None = None,
     status: str = "draft",
 ) -> dict[str, Any]:
-    """Normalize a full glass spec (single / DGU / laminated) for reuse + printing."""
-    kind = (makeup or "single").strip().lower()
+    """Normalize a full glass spec (single / DGU / laminated / laminated+DGU) for reuse + printing."""
+    kind = normalize_makeup_kind(makeup)
+    # Quick-save sends only ``thicknessMm`` for multi-layer makeups — treat it as the overall.
+    if kind != "single" and overall_mm in (None, 0, "") and thickness_mm:
+        overall_mm = thickness_mm
     layers = default_layers_for(kind, overall_mm)
     g1 = glass1_mm if glass1_mm is not None else layers.get("glass1Mm")
     g2 = glass2_mm if glass2_mm is not None else layers.get("glass2Mm")
+    g3 = glass3_mm if glass3_mm is not None else layers.get("glass3Mm")
     gap = air_gap_mm if air_gap_mm is not None else layers.get("airGapMm")
     pvb = pvb_mm if pvb_mm is not None else layers.get("pvbMm")
 
-    if kind in ("dgu", "double", "insulated"):
+    if kind == "dgu":
         thickness_mm = overall_mm or ((g1 or 0) + (gap or 0) + (g2 or 0))
-        makeup_label = f"{g1:g}+{gap:g}A+{g2:g}" if g1 and gap and g2 else f"DGU {thickness_mm:g}mm"
+        makeup_label = f"{g1:g}+{gap:g}A+{g2:g}" if g1 and gap and g2 else f"DGU {float(thickness_mm or 0):g}mm"
         layers_mm = [g1 or 0, g2 or 0]
-    elif kind in ("laminated", "lami"):
+    elif kind == "laminated":
         thickness_mm = overall_mm or ((g1 or 0) + (pvb or 0) + (g2 or 0))
-        makeup_label = f"{g1:g}+{pvb:g}PVB+{g2:g}" if g1 and pvb and g2 else f"Laminated {thickness_mm:g}mm"
+        makeup_label = f"{g1:g}+{pvb:g}PVB+{g2:g}" if g1 and pvb and g2 else f"Laminated {float(thickness_mm or 0):g}mm"
         layers_mm = [g1 or 0, g2 or 0]
+    elif kind == "lam_dgu":
+        thickness_mm = overall_mm or ((g1 or 0) + (pvb or 0) + (g2 or 0) + (gap or 0) + (g3 or 0))
+        if g1 and pvb and g2 and gap and g3:
+            makeup_label = f"{g1:g}+{pvb:g}PVB+{g2:g} Lam + {gap:g}A + {g3:g}"
+        else:
+            makeup_label = f"Laminated + DGU {float(thickness_mm or 0):g}mm"
+        layers_mm = [g1 or 0, g2 or 0, g3 or 0]
     else:
         kind = "single"
         thickness_mm = thickness_mm or overall_mm or 5.0
@@ -141,14 +189,24 @@ def build_glass_spec(
         layers_mm = [thickness_mm]
 
     tuff = "Toughened" if toughened else "Non-toughened"
-    if kind in ("laminated", "lami") and g1 and pvb and g2:
+    if kind == "laminated" and g1 and pvb and g2:
         display_label = f"{g1:g}+{pvb:g}+{g2:g} mm Laminated"
-    elif kind in ("dgu", "double", "insulated") and g1 and gap and g2:
+    elif kind == "dgu" and g1 and gap and g2:
         display_label = f"{g1:g}+{gap:g}A+{g2:g} mm DGU"
+    elif kind == "lam_dgu" and g1 and pvb and g2 and gap and g3:
+        display_label = f"{g1:g}+{pvb:g}+{g2:g} Lam + {gap:g}A + {g3:g} mm DGU"
+    elif kind == "lam_dgu":
+        display_label = f"{float(thickness_mm or 0):g} mm Laminated + DGU"
+    elif kind == "dgu":
+        display_label = f"{float(thickness_mm or 0):g} mm DGU"
+    elif kind == "laminated":
+        display_label = f"{float(thickness_mm or 0):g} mm Laminated"
     else:
         display_label = f"{float(thickness_mm or 0):g} mm"
-        if toughened:
-            display_label += " Toughened"
+    # Layered makeups (5+1.52+5 …) print the layer identity only; plain
+    # thickness labels keep the Toughened tag as before.
+    if toughened and "+" not in display_label and "toughened" not in display_label.lower():
+        display_label += " Toughened"
     display = name or (
         f"{makeup_label} {colour.title()} {tuff}"
         + (f" · {brand}" if brand else "")
@@ -163,6 +221,7 @@ def build_glass_spec(
         "overallMm": round(float(thickness_mm or 0), 2),
         "glass1Mm": g1,
         "glass2Mm": g2,
+        "glass3Mm": g3,
         "airGapMm": gap,
         "pvbMm": pvb,
         "layersMm": layers_mm,
@@ -291,13 +350,14 @@ def save_glass(spec: Mapping[str, Any]) -> dict[str, Any]:
         glass2_mm=spec.get("glass2Mm"),
         air_gap_mm=spec.get("airGapMm"),
         pvb_mm=spec.get("pvbMm"),
+        glass3_mm=spec.get("glass3Mm"),
         colour=str(spec.get("colour") or "clear"),
         brand=str(spec.get("brand") or ""),
         toughened=bool(spec.get("toughened")),
         rate=spec.get("rate"),
         rate_unit=str(spec.get("rateUnit") or "sqft"),
         density=float(spec.get("densityKgPerM3") or 2500.0),
-        name=spec.get("name"),
+        name=(str(spec.get("name") or "").strip() or None),
         glass_id=spec.get("id") or f"glass_{uuid.uuid4().hex[:8]}",
         status=str(spec.get("status") or "active"),
     )
@@ -450,11 +510,14 @@ def library_as_cart_options() -> list[dict[str, Any]]:
         out.append({
             "id": gid,
             "label": g.get("name") or g.get("specLine") or gid,
+            "name": g.get("name"),
+            "display_label": g.get("display_label"),
             "thicknessMm": g.get("thicknessMm") or g.get("overallMm"),
             "overallMm": g.get("overallMm"),
             "makeup": g.get("makeup") or "single",
             "glass1Mm": g.get("glass1Mm"),
             "glass2Mm": g.get("glass2Mm"),
+            "glass3Mm": g.get("glass3Mm"),
             "airGapMm": g.get("airGapMm"),
             "pvbMm": g.get("pvbMm"),
             "colour": g.get("colour") or "clear",

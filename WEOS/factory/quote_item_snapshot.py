@@ -112,35 +112,46 @@ def glass_display_label(spec: Mapping[str, Any] | None) -> str:
     """
     if not isinstance(spec, Mapping) or not spec:
         return ""
+    gid = str(spec.get("glass_id") or spec.get("id") or "").strip()
     existing = str(spec.get("display_label") or spec.get("displayLabel") or "").strip()
     # Dual strings like "12 mm · 5+1.52+5mm" must never win over layers.
     if existing and re.search(r"(?i)\d+\s*mm\s*[·•,]\s*\d+\s*\+", existing):
         existing = ""
+    # A raw library id (glass_ab43e888) is never a customer-facing label.
+    if existing and looks_like_glass_id(existing, gid):
+        existing = ""
+    saved_name = str(spec.get("name") or spec.get("label") or "").strip()
+    if saved_name and looks_like_glass_id(saved_name, gid):
+        saved_name = ""
     kind = str(
         spec.get("glass_construction")
         or spec.get("glass_type")
         or spec.get("makeup")
         or spec.get("kind")
         or ""
-    ).strip().lower()
+    ).strip().lower().replace("-", "_").replace(" ", "_")
     layers = spec.get("layers") if isinstance(spec.get("layers"), Mapping) else {}
     g1 = spec.get("glass1Mm") if spec.get("glass1Mm") is not None else layers.get("glass1Mm")
     g2 = spec.get("glass2Mm") if spec.get("glass2Mm") is not None else layers.get("glass2Mm")
+    g3 = spec.get("glass3Mm") if spec.get("glass3Mm") is not None else layers.get("glass3Mm")
     pvb = spec.get("pvbMm") if spec.get("pvbMm") is not None else layers.get("pvbMm")
     gap = (
         spec.get("air_gap_mm")
         if spec.get("air_gap_mm") is not None
         else (spec.get("airGapMm") if spec.get("airGapMm") is not None else layers.get("airGapMm"))
     )
+    lam_dgu = kind in ("lam_dgu", "laminated_dgu", "lamdgu", "lam+dgu", "dgu_laminated") or ("lam" in kind and "dgu" in kind)
     laminated = bool(spec.get("laminated")) or kind in ("laminated", "lami")
     dgu = bool(spec.get("dgu")) or kind in ("dgu", "igu", "double", "insulated")
     toughened = bool(spec.get("toughened"))
     colour = str(spec.get("colour") or spec.get("color") or "").strip()
     finish = str(spec.get("finish") or "").strip()
 
-    if (laminated or (g1 and pvb and g2)) and g1 and pvb and g2:
+    if (lam_dgu or (g1 and pvb and g2 and gap and g3)) and g1 and pvb and g2 and gap and g3:
+        label = f"{_fmt_mm(g1)}+{_fmt_mm(pvb)}+{_fmt_mm(g2)} Lam + {_fmt_mm(gap)}A + {_fmt_mm(g3)} mm DGU"
+    elif (laminated or (g1 and pvb and g2)) and g1 and pvb and g2 and not lam_dgu:
         label = f"{_fmt_mm(g1)}+{_fmt_mm(pvb)}+{_fmt_mm(g2)} mm Laminated"
-    elif (dgu or (g1 and gap and g2)) and g1 and gap and g2:
+    elif (dgu or (g1 and gap and g2)) and g1 and gap and g2 and not lam_dgu:
         label = f"{_fmt_mm(g1)}+{_fmt_mm(gap)}A+{_fmt_mm(g2)} mm DGU"
     elif existing and "+" in existing:
         label = existing
@@ -148,10 +159,22 @@ def glass_display_label(spec: Mapping[str, Any] | None) -> str:
         thk = spec.get("total_thickness_mm") or spec.get("thicknessMm") or spec.get("overallMm")
         if existing:
             label = existing
-        elif thk in (None, ""):
-            label = str(spec.get("makeupLabel") or spec.get("name") or spec.get("label") or "").strip()
+        elif thk in (None, "", 0):
+            label = saved_name or str(spec.get("makeupLabel") or "").strip()
+        elif saved_name and (lam_dgu or laminated or dgu):
+            # Multi-layer library glass whose layers were never captured: the
+            # user's own name (e.g. "Lam+DGU 29.52 clear tuff") beats "29.52 mm".
+            label = saved_name
+            if not re.search(r"\d", label):
+                label = f"{_fmt_mm(thk)} mm · {label}"
         else:
             bits = [f"{_fmt_mm(thk)} mm"]
+            if lam_dgu:
+                bits.append("Laminated + DGU")
+            elif laminated:
+                bits.append("Laminated")
+            elif dgu:
+                bits.append("DGU")
             if toughened:
                 bits.append("Toughened")
             label = " ".join(bits)
@@ -164,6 +187,21 @@ def glass_display_label(spec: Mapping[str, Any] | None) -> str:
     if extra:
         label = f"{label} · " + " · ".join(extra) if label else " · ".join(extra)
     return label
+
+
+_GLASS_UUID_ID = re.compile(r"(?i)^glass[\s_\-]*[0-9a-f]{6,}$")
+
+
+def looks_like_glass_id(text: Any, glass_id: Any = None) -> bool:
+    """True when ``text`` is a machine id (``glass_ab43e888``) rather than a label."""
+    s = str(text or "").strip()
+    if not s:
+        return False
+    norm = s.lower().replace(" ", "_").replace("-", "_")
+    gid = str(glass_id or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if gid and norm == gid and not re.search(r"\d+\s*mm", s, re.I) and "+" not in s:
+        return True
+    return bool(_GLASS_UUID_ID.match(s))
 
 
 def _fmt_mm(val: Any) -> str:
@@ -271,10 +309,17 @@ def build_glass_snapshot(
     stale_layers = parsed_hint.get("makeup") in ("laminated", "dgu") and not (
         layers_ex.get("pvbMm") or layers_ex.get("airGapMm")
     )
-    if existing.get("display_label") and existing.get("glass_id") and not stale_layers:
+    if (
+        existing.get("display_label")
+        and existing.get("glass_id")
+        and not stale_layers
+        and not looks_like_glass_id(existing.get("display_label"), existing.get("glass_id"))
+    ):
         healed = dict(existing)
         healed["display_label"] = glass_display_label(healed)
         return healed
+    # Otherwise (no snapshot, or one stamped with a raw id as its label because
+    # the library glass was missing from the dropdown) rebuild from the library.
 
     if railing or rail_cfg or rail_q:
         looked = _lookup_glass_option(gid_hint) if gid_hint else {}
@@ -367,6 +412,7 @@ def build_glass_snapshot(
         or (line.get("glass") if isinstance(line, Mapping) and isinstance(line.get("glass"), str) else "")
         or (line.get("glassId") if isinstance(line, Mapping) else "")
         or opts.get("glassId")
+        or existing.get("glass_id")
         or ""
     ).split("@")[0].strip()
     if isinstance(line, Mapping) and isinstance(line.get("glass"), Mapping):
@@ -377,19 +423,29 @@ def build_glass_snapshot(
 
     looked = _lookup_glass_option(gid) if gid else {}
     merged = {**looked, **src}
-    makeup = str(merged.get("makeup") or merged.get("kind") or looked.get("makeup") or "").lower()
+    makeup = str(merged.get("makeup") or merged.get("kind") or looked.get("makeup") or "").lower().replace("-", "_").replace(" ", "_")
     parsed = _parse_layers_from_id(gid) if gid else {}
     if not makeup:
         makeup = str(parsed.get("makeup") or "single")
     g1 = merged.get("glass1Mm") if merged.get("glass1Mm") is not None else parsed.get("glass1Mm")
     g2 = merged.get("glass2Mm") if merged.get("glass2Mm") is not None else parsed.get("glass2Mm")
+    g3 = merged.get("glass3Mm")
     pvb = merged.get("pvbMm") if merged.get("pvbMm") is not None else parsed.get("pvbMm")
     gap = merged.get("airGapMm") if merged.get("airGapMm") is not None else parsed.get("airGapMm")
-    laminated = makeup in ("laminated", "lami") or bool(pvb)
-    dgu = makeup in ("dgu", "igu", "double", "insulated") or bool(gap and not pvb)
-    construction = "laminated" if laminated else ("dgu" if dgu else "single")
+    lam_dgu = makeup in ("lam_dgu", "laminated_dgu", "lamdgu", "lam+dgu", "dgu_laminated") or ("lam" in makeup and "dgu" in makeup) or bool(pvb and gap)
+    laminated = (makeup in ("laminated", "lami") or bool(pvb)) and not lam_dgu
+    dgu = (makeup in ("dgu", "igu", "double", "insulated") or bool(gap and not pvb)) and not lam_dgu
+    construction = "lam_dgu" if lam_dgu else ("laminated" if laminated else ("dgu" if dgu else "single"))
+    saved_name = str(merged.get("name") or merged.get("label") or "").strip()
+    if looks_like_glass_id(saved_name, gid):
+        saved_name = ""
     layers: dict[str, Any] = {}
-    if laminated:
+    if lam_dgu:
+        layers = {"glass1Mm": g1, "pvbMm": pvb, "glass2Mm": g2, "airGapMm": gap, "glass3Mm": g3}
+        total = merged.get("overallMm") or merged.get("thicknessMm")
+        if total in (None, "", 0) and g1 and pvb and g2 and gap and g3:
+            total = float(g1) + float(pvb) + float(g2) + float(gap) + float(g3)
+    elif laminated:
         layers = {"glass1Mm": g1, "pvbMm": pvb, "glass2Mm": g2}
         total = merged.get("overallMm") or merged.get("thicknessMm")
         if total in (None, "") and g1 and pvb and g2:
@@ -415,15 +471,17 @@ def build_glass_snapshot(
         "colour": str(merged.get("colour") or parsed.get("colour") or "clear"),
         "finish": str(merged.get("finish") or ""),
         "toughened": bool(tough),
-        "laminated": laminated,
-        "dgu": dgu,
+        "laminated": laminated or lam_dgu,
+        "dgu": dgu or lam_dgu,
         "air_gap_mm": gap,
         "rate": merged.get("rate"),
         "weight": merged.get("weightKg") or merged.get("weight"),
         "glass1Mm": g1,
         "glass2Mm": g2,
+        "glass3Mm": g3,
         "pvbMm": pvb,
         "airGapMm": gap,
+        "name": saved_name or None,
         "makeup": construction,
         "thicknessMm": _num(total) if total not in (None, "") else None,
         "overallMm": _num(total) if total not in (None, "") else None,

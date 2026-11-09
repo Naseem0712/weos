@@ -745,15 +745,39 @@ textarea{max-width:100%}
             <label id="wrapMeshChk" style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;cursor:pointer">
               <input id="lineMesh" type="checkbox"/> Apply mesh
             </label>
+            <div id="wrapMeshType" style="display:none"><label class="l">Mesh type</label>
+              <select id="lineMeshType" style="width:230px" title="Sliding mesh shutter = extra sash on its own track. Pleated / rolling mesh = add-on priced separately by area.">
+                <option value="sliding" selected>Sliding mesh shutter (wire, SS304)</option>
+                <option value="pleated">Pleated mesh</option>
+                <option value="rolling">Rolling mesh</option>
+              </select>
+            </div>
             <div id="wrapMeshName" style="display:none"><label class="l">Mesh name</label><input id="lineMeshName" type="text" placeholder="e.g. SS304 mesh" style="width:150px"/></div>
             <div id="wrapTrack"><label class="l">Track</label>
               <select id="lineTrack" style="width:110px">
                 <option value="2" selected>2 track</option>
                 <option value="2.5">2.5 track</option>
                 <option value="3">3 track</option>
+                <option value="4">4 track</option>
               </select>
             </div>
             <div class="muted" id="meshHint" style="font-size:.78rem;flex:1"></div>
+          </div>
+          <div id="wrapMeshAddon" class="row" style="display:none;margin-top:.4rem;padding:.45rem .6rem;border:1px dashed var(--line);border-radius:10px;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
+            <div><label class="l">Mesh placement</label>
+              <select id="lineMeshPlacement" style="width:200px">
+                <option value="full" selected>Whole window</option>
+                <option value="left">Left side (one shutter width)</option>
+                <option value="right">Right side (one shutter width)</option>
+                <option value="custom">Custom size</option>
+              </select>
+            </div>
+            <div id="wrapMeshSize" class="row" style="display:none;gap:.4rem">
+              <div><label class="l">Mesh W mm</label><input id="lineMeshW" type="number" min="1" step="1" placeholder="1200" style="width:84px"/></div>
+              <div><label class="l">Mesh H mm</label><input id="lineMeshH" type="number" min="1" step="1" placeholder="1500" style="width:84px"/></div>
+            </div>
+            <div><label class="l">Mesh rate ₹/sqft</label><input id="lineMeshRate" type="number" min="0" step="0.01" placeholder="0" style="width:92px"/></div>
+            <div class="muted" id="meshAddonHint" style="font-size:.74rem;flex:1;min-width:200px">Pleated / rolling mesh is priced separately: area × rate × qty, printed as its own MESH row.</div>
           </div>
           <div id="casementPanelBox" style="display:none;margin-top:.45rem;padding:.5rem .6rem;border:1px dashed var(--line);border-radius:10px;background:rgba(0,0,0,.02)">
             <strong style="font-size:.82rem">Partitions / panels</strong>
@@ -772,9 +796,17 @@ textarea{max-width:100%}
             <strong style="font-size:.8rem">Custom glass → Glass Library</strong>
             <div class="row" style="margin-top:.35rem;flex-wrap:wrap;gap:.4rem .6rem;align-items:flex-end">
               <div><label class="l">Makeup</label>
-                <select id="cgMakeup" style="width:110px"><option value="single">Single</option><option value="dgu">DGU</option><option value="laminated">Laminated</option></select>
+                <select id="cgMakeup" style="width:140px"><option value="single">Single</option><option value="dgu">DGU</option><option value="laminated">Laminated</option><option value="lam_dgu">Laminated + DGU</option></select>
               </div>
-              <div><label class="l">Thk mm</label><input id="cgThk" type="number" step="0.1" value="8" style="width:64px"/></div>
+              <div><label class="l">Thk mm</label><input id="cgThk" type="number" step="0.01" value="8" style="width:64px"/></div>
+              <div id="cgLayersRow" class="row" style="display:none;gap:.35rem .5rem;flex-wrap:wrap;align-items:flex-end;width:100%">
+                <div><label class="l">Glass 1</label><input id="cgG1" type="number" step="0.1" placeholder="5" style="width:58px"/></div>
+                <div id="cgPvbWrap"><label class="l">PVB</label><input id="cgPvb" type="number" step="0.01" placeholder="1.52" style="width:58px"/></div>
+                <div><label class="l">Glass 2</label><input id="cgG2" type="number" step="0.1" placeholder="5" style="width:58px"/></div>
+                <div id="cgGapWrap"><label class="l">Air gap</label><input id="cgGap" type="number" step="0.1" placeholder="12" style="width:58px"/></div>
+                <div id="cgG3Wrap"><label class="l">Glass 3</label><input id="cgG3" type="number" step="0.1" placeholder="6" style="width:58px"/></div>
+                <span class="muted" style="font-size:.7rem">Layers in mm — thickness auto-fills (e.g. 5 + 1.52 + 5 lam / 12 air / 6 = 29.52).</span>
+              </div>
               <div><label class="l">Colour</label><input id="cgColour" type="text" value="clear" style="width:90px"/></div>
               <label class="chk" style="font-size:.78rem"><input id="cgTuff" type="checkbox" checked/> Toughened</label>
               <div><label class="l">Rate ₹/sft</label><input id="cgRate" type="number" step="0.01" value="" style="width:72px"/></div>
@@ -807,6 +839,11 @@ textarea{max-width:100%}
             </div>
             <div id="wrapMeshShutters"><label class="l">Mesh shutters</label><input id="lineMeshShutters" type="number" min="0" value="0" style="width:90px"/></div>
             <div id="wrapFixShutters"><label class="l">Mark fix (e.g. 1,3)</label><input id="lineFixShutters" type="text" placeholder="none" style="width:100px"/></div>
+          </div>
+          <div id="wrapSlidingHandles" style="display:none;margin-top:.45rem;padding:.45rem .6rem;border:1px dashed var(--line);border-radius:10px">
+            <label class="l">Handle position (4+ shutters)</label>
+            <p class="muted" style="font-size:.72rem;margin:.1rem 0 .35rem">Sliding handles sit on the side (outer) stiles by rule. With 4 or more shutters choose per shutter which stile carries the handle — never the interlock of a 2 / 3 shutter window.</p>
+            <div id="slidingHandleList" class="row" style="gap:.5rem .8rem;flex-wrap:wrap;align-items:flex-end"></div>
           </div>
           <div class="row" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
             <div><label class="l">Handle level <span id="handleLevelVal" class="muted"></span></label>
@@ -2500,7 +2537,7 @@ textarea{max-width:100%}
           </div>
           <div class="row" style="flex-wrap:wrap;gap:.4rem">
             <div><label class="l">Makeup</label>
-              <select id="glMakeup"><option value="single">Single</option><option value="dgu">DGU</option><option value="laminated">Laminated</option></select>
+              <select id="glMakeup"><option value="single">Single</option><option value="dgu">DGU</option><option value="laminated">Laminated</option><option value="lam_dgu">Laminated + DGU</option></select>
             </div>
             <div><label class="l">Thickness / Overall (mm)</label><select id="glThk"></select></div>
             <div><label class="l">Colour</label>
@@ -3569,6 +3606,11 @@ function captureSeriesDesignFromForm(opts) {
     handleName: draft.handleName,
     hardwareBrand: draft.hardwareBrand,
     meshName: draft.meshName,
+    meshType: draft.meshType || 'sliding',
+    meshPlacement: draft.meshPlacement,
+    meshW: draft.meshW,
+    meshH: draft.meshH,
+    meshRate: draft.meshRate,
     description: draft.description,
     mesh: !!draft.mesh,
     trackCount: draft.trackCount,
@@ -3803,7 +3845,11 @@ function lineLiveAmount(ln) {
   else if (unit === 'rft') billable = (isRailCartLine(ln) ? (w / 304.8) : (2 * (w + h) / 304.8)) * qty;
   else if (unit === 'rmt') billable = (isRailCartLine(ln) ? (w / 1000) : (2 * (w + h) / 1000)) * qty;
   else if (unit === 'opening' || unit === 'pc' || unit === 'nos' || unit === 'each') billable = qty;
-  const amt = billable * rate;
+  let amt = billable * rate;
+  // Pleated / rolling mesh add-on is a separate amount on top of the window
+  // (mirrors live_pricing._add_mesh_addon_to_sell).
+  const ma = (typeof meshAddonDraftAmount === 'function') ? meshAddonDraftAmount(ln) : null;
+  if (ma && ma.amount > 0) amt += ma.amount;
   return Number.isFinite(amt) && amt > 0 ? Math.round(amt * 100) / 100 : null;
 }
 function stampLineAmount(ln) {
@@ -4185,17 +4231,38 @@ async function loadCartGlassOptions(preferId) {
   if (p && Array.isArray(p.glassOptions) && p.glassOptions.length) {
     opts = p.glassOptions.slice();
   }
-  if (!opts.length) {
-    try {
-      const d = await api('/api/glass/cart-options');
-      opts = d.options || [];
-    } catch (_) {}
-  }
-  if (!opts.length) {
+  // Always merge the shared catalogue + Glass Library so a glass the user saved
+  // (custom lam+DGU etc.) is selectable on EVERY product with its real label —
+  // otherwise the cart stamps the raw id (glass_ab43e888) into the quote.
+  let shared = [];
+  try {
+    const d = await api('/api/glass/cart-options');
+    shared = d.options || [];
+  } catch (_) {}
+  if (!shared.length) {
     try {
       const d = await api('/api/glass/library');
-      opts = (d.glass || []).map(g => ({ id: g.id, label: g.name || g.specLine || g.id }));
+      shared = (d.glass || []).map(g => Object.assign({}, g, { label: g.name || g.display_label || g.specLine || g.id }));
     } catch (_) {}
+  }
+  if (!opts.length) opts = shared.slice();
+  else {
+    const have = new Set(opts.map(o => String((o && o.id) || '').trim()));
+    shared.forEach(o => {
+      const id = String((o && o.id) || '').trim();
+      if (!id) return;
+      if (!have.has(id)) { opts.push(o); have.add(id); return; }
+      // Product option without makeup detail → enrich from the shared record.
+      const idx = opts.findIndex(x => x && String(x.id) === id);
+      if (idx >= 0) {
+        const cur = opts[idx] || {};
+        const fill = {};
+        ['makeup','thicknessMm','overallMm','glass1Mm','glass2Mm','glass3Mm','airGapMm','pvbMm','colour','toughened','brand','rate','rateUnit','name','display_label'].forEach(k => {
+          if ((cur[k] == null || cur[k] === '') && o[k] != null && o[k] !== '') fill[k] = o[k];
+        });
+        opts[idx] = Object.assign({}, cur, fill);
+      }
+    });
   }
   if (!opts.length) return; // keep static HTML fallback
   const seen = new Set();
@@ -4207,11 +4274,14 @@ async function loadCartGlassOptions(preferId) {
     cleaned.push({
       id,
       label: (o.label || o.name || o.display_label || id),
+      name: o.name || o.label || null,
+      display_label: o.display_label || null,
       makeup: o.makeup,
       thicknessMm: o.thicknessMm,
       overallMm: o.overallMm,
       glass1Mm: o.glass1Mm,
       glass2Mm: o.glass2Mm,
+      glass3Mm: o.glass3Mm,
       airGapMm: o.airGapMm,
       pvbMm: o.pvbMm,
       colour: o.colour,
@@ -4333,6 +4403,86 @@ function casementHandleSide(p) {
   return (p && p.handleSide) === 'left' ? 'left' : 'right';
 }
 
+// ── Sliding handle position (4+ shutters only) ───────────────────────────────
+// 2 / 3 shutter sliders always carry handles on the OUTER stiles — no choice.
+// From 4 shutters the user picks, per shutter, left stile / right stile / none.
+const SLIDING_HANDLE_CHOICE_MIN = 4;
+function slidingShutterCount() {
+  return Math.max(parseInt(($('lineGlassShutters') && $('lineGlassShutters').value) || '2', 10) || 2, 1);
+}
+function slidingHandleChoiceActive() {
+  const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
+  return sys === 'sliding' && slidingShutterCount() >= SLIDING_HANDLE_CHOICE_MIN;
+}
+function slidingHandleOverrides() {
+  if (!slidingHandleChoiceActive()) return null;
+  const n = slidingShutterCount();
+  const src = state.draftSlidingHandles || {};
+  const ov = {};
+  for (let i = 0; i < n; i++) {
+    const side = String(src[i] || '').toLowerCase();
+    if (side === 'left' || side === 'right' || side === 'none') ov[i] = { side };
+  }
+  return Object.keys(ov).length ? ov : null;
+}
+function slidingHandlesFromOverrides(ov, n) {
+  const out = {};
+  if (!ov || typeof ov !== 'object') return out;
+  const count = Math.max(parseInt(n, 10) || 0, 0);
+  Object.keys(ov).forEach(k => {
+    const i = parseInt(k, 10);
+    const o = ov[k] || {};
+    const side = String(o.side || o.handleSide || '').toLowerCase();
+    if (!Number.isFinite(i) || i < 0 || (count && i >= count)) return;
+    if (side === 'left' || side === 'right' || side === 'none') out[i] = side;
+  });
+  return out;
+}
+function renderSlidingHandleList() {
+  const host = $('slidingHandleList');
+  const wrap = $('wrapSlidingHandles');
+  if (!host || !wrap) return;
+  const active = slidingHandleChoiceActive();
+  wrap.style.display = active ? '' : 'none';
+  if (!active) { host.innerHTML = ''; return; }
+  const n = slidingShutterCount();
+  const src = state.draftSlidingHandles || {};
+  const opening = String(($('lineOpening') && $('lineOpening').value) || 'auto').toLowerCase();
+  const center = opening === 'center' || (opening === 'auto' && n === 4);
+  const cl = Math.floor((n - 1) / 2);
+  const autoSide = (i) => {
+    if (center) return i === 0 ? 'left' : (i === n - 1 ? 'right' : (i <= cl ? 'right' : 'left'));
+    return i === 0 ? 'left' : (i === n - 1 ? 'right' : 'none');
+  };
+  const cells = [];
+  for (let i = 0; i < n; i++) {
+    const cur = String(src[i] || 'auto');
+    // Drawing labels A1 from the RIGHT; keep the same name here.
+    const label = 'A' + (n - i);
+    const auto = autoSide(i);
+    const autoTxt = auto === 'none' ? 'no handle' : (auto + ' stile');
+    cells.push(`<div style="display:flex;flex-direction:column;gap:.15rem">
+      <span class="muted" style="font-size:.7rem">${label}</span>
+      <select data-sh="${i}" style="width:118px">
+        <option value="auto"${cur === 'auto' ? ' selected' : ''}>Auto (${autoTxt})</option>
+        <option value="left"${cur === 'left' ? ' selected' : ''}>Left stile</option>
+        <option value="right"${cur === 'right' ? ' selected' : ''}>Right stile</option>
+        <option value="none"${cur === 'none' ? ' selected' : ''}>No handle</option>
+      </select></div>`);
+  }
+  host.innerHTML = cells.join('');
+  host.querySelectorAll('[data-sh]').forEach(sel => {
+    sel.onchange = () => {
+      const i = +sel.dataset.sh;
+      state.draftSlidingHandles = state.draftSlidingHandles || {};
+      if (sel.value === 'auto') delete state.draftSlidingHandles[i];
+      else state.draftSlidingHandles[i] = sel.value;
+      refreshPreview();
+      scheduleLivePrice();
+    };
+  });
+}
+
 function ensureCasementPanels() {
   const n = Math.max(parseInt(($('lineGlassShutters') && $('lineGlassShutters').value) || '2', 10) || 2, 1);
   let panels = Array.isArray(state.draftCasementPanels) ? state.draftCasementPanels.slice() : [];
@@ -4435,14 +4585,77 @@ function renderPartChips() {
   });
 }
 
+// Mesh type helpers — 'sliding' = wire mesh sash on its own track (geometry);
+// 'pleated' / 'rolling' = priced add-on over the opening (no extra track).
+function currentMeshType() {
+  const el = $('lineMeshType');
+  const v = el ? String(el.value || 'sliding').toLowerCase() : 'sliding';
+  return (v === 'pleated' || v === 'rolling') ? v : 'sliding';
+}
+function isAddonMeshType(t) { t = String(t || '').toLowerCase(); return t === 'pleated' || t === 'rolling'; }
+function applyMeshAddonVisibility() {
+  const meshOn = !!($('lineMesh') && $('lineMesh').checked);
+  const addon = meshOn && isAddonMeshType(currentMeshType());
+  const show = (id, on) => { const el = $(id); if (el) el.style.display = on ? '' : 'none'; };
+  show('wrapMeshType', meshOn);
+  show('wrapMeshAddon', addon);
+  const pl = $('lineMeshPlacement') ? String($('lineMeshPlacement').value || 'full') : 'full';
+  show('wrapMeshSize', addon && pl === 'custom');
+  // Wire mesh shutters only make sense for the sliding mesh sash
+  const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
+  const ms = $('wrapMeshShutters');
+  if (ms && meshOn && addon) ms.style.display = 'none';
+  else if (ms && meshOn && sys === 'sliding') ms.style.display = '';
+  const hint = $('meshAddonHint');
+  if (hint && addon) {
+    const d = meshAddonDraftAmount();
+    hint.textContent = d && d.amount > 0
+      ? `${d.label} → ₹${d.amount.toFixed(2)} (${d.areaSqft.toFixed(2)} sft × ₹${d.rate} × ${d.qty}) added as a separate MESH row`
+      : 'Pleated / rolling mesh is priced separately: area × rate × qty, printed as its own MESH row.';
+  }
+}
+// Local estimate of the add-on (mirrors WEOS.factory.mesh_addon) for the hint / live total.
+function meshAddonDraftAmount(ln) {
+  const src = ln || null;
+  const meshOn = src ? !!(src.mesh || (src.options && src.options.mesh)) : !!($('lineMesh') && $('lineMesh').checked);
+  const type = src ? String(src.meshType || (src.options && src.options.meshType) || 'sliding') : currentMeshType();
+  if (!meshOn || !isAddonMeshType(type)) return null;
+  const W = src ? (+src.width || 0) : (parseFloat($('lineW') && $('lineW').value) || 0);
+  const H = src ? (+src.height || 0) : (parseFloat($('lineH') && $('lineH').value) || 0);
+  const qty = Math.max(1, src ? (parseInt(src.qty, 10) || 1) : (parseInt($('lineQty') && $('lineQty').value, 10) || 1));
+  const placement = String(src ? (src.meshPlacement || (src.options && src.options.meshPlacement) || 'full') : (($('lineMeshPlacement') && $('lineMeshPlacement').value) || 'full'));
+  const rate = parseFloat(src ? (src.meshRate ?? (src.options && src.options.meshRate)) : ($('lineMeshRate') && $('lineMeshRate').value)) || 0;
+  const g = Math.max(1, parseInt(src ? (src.glassShutters || (src.layout && src.layout.glassCount)) : ($('lineGlassShutters') && $('lineGlassShutters').value), 10) || 1);
+  let mw = W, mh = H;
+  if (placement === 'left' || placement === 'right') { mw = W / g; mh = H; }
+  else if (placement === 'custom') {
+    const cw = parseFloat(src ? (src.meshW ?? (src.options && src.options.meshW)) : ($('lineMeshW') && $('lineMeshW').value)) || 0;
+    const ch = parseFloat(src ? (src.meshH ?? (src.options && src.options.meshH)) : ($('lineMeshH') && $('lineMeshH').value)) || 0;
+    if (cw > 0 && ch > 0) { mw = cw; mh = ch; }
+  }
+  const areaSqft = mw * mh * 10.7639 / 1e6;
+  const amount = Math.round(areaSqft * rate * qty * 100) / 100;
+  const typeLabel = type === 'pleated' ? 'Pleated mesh' : 'Rolling mesh';
+  const plLabel = placement === 'left' ? 'left side' : placement === 'right' ? 'right side' : placement === 'custom' ? '' : 'whole window';
+  return { type, typeLabel, placement, widthMm: mw, heightMm: mh, areaSqft, rate, qty, amount,
+    label: [typeLabel, plLabel, `${Math.round(mw)}×${Math.round(mh)} mm`].filter(Boolean).join(' · ') };
+}
+
 function applyMeshTrackRules() {
   const meshChk = $('lineMesh') && $('lineMesh').checked;
   const meshN = $('lineMeshShutters') ? (parseInt($('lineMeshShutters').value, 10) || 0) : 0;
-  const mesh = !!meshChk || meshN > 0;
+  const addon = !!meshChk && isAddonMeshType(currentMeshType());
+  // Pleated / rolling mesh is an add-on — it never forces a mesh track.
+  const mesh = !addon && (!!meshChk || meshN > 0);
   const trackEl = $('lineTrack');
   const hint = $('meshHint');
+  if (typeof applyMeshAddonVisibility === 'function') applyMeshAddonVisibility();
   if (!trackEl) return;
   let tc = parseFloat(trackEl.value) || 2;
+  if (addon) {
+    if (hint) hint.textContent = `${currentMeshType() === 'pleated' ? 'Pleated' : 'Rolling'} mesh add-on (no mesh track)`;
+    return;
+  }
   if (mesh && tc < 2.5) {
     // Prefer 3-track when mesh forces a shift
     trackEl.value = '3';
@@ -4555,17 +4768,24 @@ function applySystemUiRules(opts) {
   show('wrapMeshShutters', hasTracks && !bifold && !casement && !grid && !shower && !ventilator && !surface);
   show('wrapFixShutters', !bifold && !grid && !casement && !shower && !ventilator && !surface);
   show('wrapTrack', hasTracks && !casement && !shower && !ventilator && !surface);
-  show('wrapMeshChk', hasTracks && !casement && !shower && !ventilator && !surface);
+  // Mesh: sliding keeps the wire-mesh sash; casement can still carry a
+  // pleated / rolling mesh add-on (priced separately), so keep the checkbox.
+  show('wrapMeshChk', (hasTracks || casement) && !shower && !ventilator && !surface && !grid && !bifold);
+  if (casement && $('lineMesh') && $('lineMesh').checked && $('lineMeshType') && !isAddonMeshType($('lineMeshType').value)) {
+    $('lineMeshType').value = 'pleated';
+  }
+  if (typeof applyMeshAddonVisibility === 'function') applyMeshAddonVisibility();
   show('wrapLineGlass', !surface);
   show('wrapLineHandle', !surface);
   show('casementPanelBox', casement);
   if (casement) ensureCasementPanels();
   if (grid) ensureGridUI();
+  renderSlidingHandleList();
   const gl = $('glassCountLbl'); if (gl) gl.textContent = casement ? 'Sashes / partitions' : 'Glass shutters';
   const hint = $('handleHint');
   if (hint) hint.textContent = casement
     ? 'Openable: drag the handle anywhere on a sash — hinges auto-move to the opposite stile.'
-    : 'Drag the handle in the preview to reposition. Sliding keeps an equal level on both sashes.';
+    : 'Drag the handle up / down in the preview to set the level (same on every sash). Sliding handles stay on the side stiles; with 4+ shutters pick the stile per shutter above.';
   // Fold preset → left/right ONLY when the preset dropdown (or system→bifold) requests it.
   // Never overwrite saved foldLeft/foldRight while building a cart draft / syncing a line.
   const preset = $('lineFoldPreset') && $('lineFoldPreset').value;
@@ -5005,7 +5225,12 @@ function applyProductWorld(opts) {
     const prevSys = String(sysEl.value || '').toLowerCase();
     if (sysEl.value !== sys || ['ventilator', 'shower', 'railing', 'louver', 'pergola', 'surface'].includes(prevSys)) {
       sysEl.value = sys;
+      // New system → drop every per-system handle/panel draft (casement roles
+      // must not leak into sliding and vice-versa).
       state.draftHandleOverrides = {};
+      state.draftSlidingHandles = {};
+      state.draftCasementPanels = [];
+      state.selectedCasementPanel = null;
       applySystemUiRules({ applyFoldPreset: sys === 'bifold' });
     } else {
       applySystemUiRules();
@@ -5057,7 +5282,31 @@ function currentSectionSizes() {
 function syncDraftFromLine(ln) {
   if (!ln) return;
   state.draftPartitions = Array.isArray(ln.partitions) ? ln.partitions.map(p => ({...p})) : [];
-  state.draftHandleOverrides = (ln.handleOverrides && typeof ln.handleOverrides === 'object') ? {...ln.handleOverrides} : {};
+  const lnSys = String(ln.system || (ln.options && ln.options.system) || systemForProduct(selectedProductMeta()) || 'sliding').toLowerCase();
+  const lnOv = (ln.handleOverrides && typeof ln.handleOverrides === 'object') ? ln.handleOverrides : {};
+  // Per-system handle state: casement keeps free x/y positions (roles come from
+  // casementPanels below); sliding keeps only stile sides for 4+ shutters.
+  state.draftHandleOverrides = {};
+  state.draftSlidingHandles = {};
+  state.draftCasementPanels = [];
+  state.selectedCasementPanel = null;
+  if (lnSys === 'casement') {
+    Object.keys(lnOv).forEach(k => {
+      const o = lnOv[k] || {};
+      const keep = {};
+      if (o.x != null) keep.x = o.x;
+      if (o.y != null) keep.y = o.y;
+      if (Object.keys(keep).length) state.draftHandleOverrides[k] = keep;
+    });
+  } else if (lnSys === 'sliding') {
+    const gN = parseInt(ln.glassShutters, 10) || 0;
+    if (gN >= SLIDING_HANDLE_CHOICE_MIN) {
+      // Only stile sides without casement roles are sliding choices.
+      const clean = {};
+      Object.keys(lnOv).forEach(k => { const o = lnOv[k] || {}; if (o.role == null && o.x == null) clean[k] = o; });
+      state.draftSlidingHandles = slidingHandlesFromOverrides(clean, gN);
+    }
+  }
   if ($('lineMesh')) $('lineMesh').checked = !!ln.mesh;
   if ($('lineTrack') && ln.trackCount != null) $('lineTrack').value = String(ln.trackCount);
   if ($('lineSystem')) {
@@ -5101,7 +5350,20 @@ function syncDraftFromLine(ln) {
   if ($('secLeaf')) $('secLeaf').value = ss.leafStile != null ? ss.leafStile : '';
   if ($('lineHandleName')) $('lineHandleName').value = ln.handleName || '';
   if ($('lineMeshName')) $('lineMeshName').value = ln.meshName || '';
+  // Mesh type / add-on (pleated / rolling) — restore from the line or its persisted options
+  {
+    const o = ln.options || {};
+    const pick = (k) => (ln[k] != null && ln[k] !== '') ? ln[k] : ((o[k] != null && o[k] !== '') ? o[k] : null);
+    const mt = String(pick('meshType') || 'sliding').toLowerCase();
+    if ($('lineMeshType')) $('lineMeshType').value = (mt === 'pleated' || mt === 'rolling') ? mt : 'sliding';
+    if ($('lineMeshPlacement')) $('lineMeshPlacement').value = ['full', 'left', 'right', 'custom'].includes(String(pick('meshPlacement') || '')) ? String(pick('meshPlacement')) : 'full';
+    if ($('lineMeshW')) $('lineMeshW').value = pick('meshW') != null ? pick('meshW') : '';
+    if ($('lineMeshH')) $('lineMeshH').value = pick('meshH') != null ? pick('meshH') : '';
+    if ($('lineMeshRate')) $('lineMeshRate').value = pick('meshRate') != null ? pick('meshRate') : '';
+    if ($('lineMesh') && !ln.mesh && o.mesh && (mt === 'pleated' || mt === 'rolling')) $('lineMesh').checked = true;
+  }
   applyMeshNameVisibility();
+  if (typeof applyMeshAddonVisibility === 'function') applyMeshAddonVisibility();
   applyPanelFillToForm(ln.panelFill || (ln.options && ln.options.panelFill) || null);
   if (ln.grid && typeof ln.grid === 'object') {
     state.draftGrid = { cols: (ln.grid.cols || [1, 1]).slice(), rows: (ln.grid.rows || [1]).slice(), cells: (ln.grid.cells || []).map(x => ({ ...x })) };
@@ -5116,13 +5378,13 @@ function syncDraftFromLine(ln) {
     const gp = ln.mullionGapMm != null ? ln.mullionGapMm : (ln.options && ln.options.mullionGapMm);
     $('lineMullionGap').value = (gp != null && gp !== '') ? gp : 15;
   }
-  if (Array.isArray(ln.casementPanels) && ln.casementPanels.length) {
+  if (lnSys === 'casement' && Array.isArray(ln.casementPanels) && ln.casementPanels.length) {
     state.draftCasementPanels = ln.casementPanels.map((p, i) => ({
       index: i,
       role: casementPanelRole(p && p.role),
       handleSide: (p && (p.handleSide || p.side) === 'left') ? 'left' : 'right',
     }));
-  } else if (ln.system === 'casement' && ln.handleOverrides && typeof ln.handleOverrides === 'object') {
+  } else if (lnSys === 'casement' && ln.handleOverrides && typeof ln.handleOverrides === 'object') {
     const ov = ln.handleOverrides;
     const n = Math.max(parseInt(ln.glassShutters, 10) || Object.keys(ov).length || 2, 1);
     state.draftCasementPanels = [];
@@ -5233,7 +5495,35 @@ function currentLineDraft() {
     sellingRate: rateRaw === '' ? null : +rateRaw,
     description: ($('lineDesc') && $('lineDesc').value.trim()) || null,
     partitions: (state.draftPartitions || []).slice(),
-    mesh: (sys === 'louver' || sys === 'pergola' || sys === 'surface') ? false : !!( $('lineMesh') && $('lineMesh').checked ),
+    mesh: (function(){
+      if (sys === 'louver' || sys === 'pergola' || sys === 'surface') return false;
+      const on = !!($('lineMesh') && $('lineMesh').checked);
+      // A wire mesh sash needs a sliding track — on casement only the
+      // pleated / rolling add-on is valid.
+      if (on && sys === 'casement' && !isAddonMeshType(currentMeshType())) return false;
+      return on;
+    })(),
+    meshType: currentMeshType(),
+    meshPlacement: (function(){
+      if (!isAddonMeshType(currentMeshType()) || !($('lineMesh') && $('lineMesh').checked)) return null;
+      const v = $('lineMeshPlacement') ? String($('lineMeshPlacement').value || 'full') : 'full';
+      return ['full', 'left', 'right', 'custom'].includes(v) ? v : 'full';
+    })(),
+    meshW: (function(){
+      if (!isAddonMeshType(currentMeshType())) return null;
+      const v = $('lineMeshW') ? parseFloat($('lineMeshW').value) : NaN;
+      return isFinite(v) && v > 0 ? v : null;
+    })(),
+    meshH: (function(){
+      if (!isAddonMeshType(currentMeshType())) return null;
+      const v = $('lineMeshH') ? parseFloat($('lineMeshH').value) : NaN;
+      return isFinite(v) && v > 0 ? v : null;
+    })(),
+    meshRate: (function(){
+      if (!isAddonMeshType(currentMeshType()) || !($('lineMesh') && $('lineMesh').checked)) return null;
+      const v = $('lineMeshRate') ? parseFloat($('lineMeshRate').value) : NaN;
+      return isFinite(v) && v >= 0 ? v : null;
+    })(),
     trackCount: (function(){
       const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
       if (sys === 'louver' || sys === 'pergola' || sys === 'surface') return null;
@@ -5258,7 +5548,7 @@ function currentLineDraft() {
       if (sys === 'louver' || sys === 'pergola' || sys === 'surface') return null;
       return $('lineGlassShutters') ? (parseInt($('lineGlassShutters').value) || 2) : 2;
     })(),
-    meshShutters: $('lineMeshShutters') ? (parseInt($('lineMeshShutters').value) || 0) : 0,
+    meshShutters: (isAddonMeshType(currentMeshType()) || sys === 'casement') ? 0 : ($('lineMeshShutters') ? (parseInt($('lineMeshShutters').value) || 0) : 0),
     fixShutters: ($('lineFixShutters') && $('lineFixShutters').value.trim()) || null,
     foldLeft: $('lineFoldLeft') ? (parseInt($('lineFoldLeft').value) || 0) : 0,
     foldRight: $('lineFoldRight') ? (parseInt($('lineFoldRight').value) || 0) : 0,
@@ -5287,16 +5577,29 @@ function currentLineDraft() {
       return Math.min(20, Math.max(10, isFinite(n) ? n : 15));
     })(),
     handleOverrides: (function(){
-      const base = (state.draftHandleOverrides && Object.keys(state.draftHandleOverrides).length) ? {...state.draftHandleOverrides} : null;
-      if (sys !== 'casement' || !(state.draftCasementPanels || []).length) return base;
-      const ov = base ? {...base} : {};
-      (state.draftCasementPanels || []).forEach((p, i) => {
-        ov[i] = Object.assign({}, ov[i] || {}, {
-          role: p.role || 'openable',
-          side: casementHandleSide(p),
+      // Casement and sliding keep SEPARATE handle state. Casement panel roles /
+      // free handle positions must never ride along into a sliding design (that
+      // put sliding handles on the interlock), and vice-versa.
+      if (sys === 'casement') {
+        const ov = {};
+        const pos = state.draftHandleOverrides || {};
+        Object.keys(pos).forEach(k => {
+          const o = pos[k] || {};
+          const keep = {};
+          if (o.x != null) keep.x = o.x;
+          if (o.y != null) keep.y = o.y;
+          if (Object.keys(keep).length) ov[k] = keep;
         });
-      });
-      return ov;
+        (state.draftCasementPanels || []).forEach((p, i) => {
+          ov[i] = Object.assign({}, ov[i] || {}, {
+            role: p.role || 'openable',
+            side: casementHandleSide(p),
+          });
+        });
+        return Object.keys(ov).length ? ov : null;
+      }
+      if (sys === 'sliding') return slidingHandleOverrides();
+      return null;
     })(),
     topShape: (function(){
       const on = !!($('lineCurvedTop') && $('lineCurvedTop').checked);
@@ -5810,13 +6113,14 @@ function initHandleDrag() {
     if (!sash) sash = _hdrag.sashes.reduce((b,s)=>{const c=(s.nx0+s.nx1)/2; return (b==null||Math.abs(mx-c)<Math.abs(mx-(b.nx0+b.nx1)/2))?s:b;}, null);
     if (!sash) return;
     let yFrac = Math.min(0.95, Math.max(0.05, (my - sash.y0) / Math.max(sash.y1 - sash.y0, 1)));
-    state.draftHandleOverrides = state.draftHandleOverrides || {};
     if (_hdrag.casement) {
+      state.draftHandleOverrides = state.draftHandleOverrides || {};
       let xFrac = Math.min(0.95, Math.max(0.05, (mx - sash.nx0) / Math.max(sash.nx1 - sash.nx0, 1)));
       state.draftHandleOverrides[sash.i] = { x:+xFrac.toFixed(3), y:+yFrac.toFixed(3) };
     } else {
-      const side = ((mx - sash.nx0) < (sash.nx1 - mx)) ? 'left' : 'right';
-      state.draftHandleOverrides[sash.i] = { side, y:+yFrac.toFixed(3) };
+      // Sliding: dragging only sets the shared handle LEVEL. The stile is fixed
+      // by rule (outer stiles; per-shutter choice for 4+ shutters lives in the
+      // "Handle position" picker) so a drag can never land on the interlock.
       if ($('lineHandleLevel')) { $('lineHandleLevel').value = Math.round(yFrac*100); updateHandleLevelLabel(); }
     }
     ev.preventDefault();
@@ -5952,7 +6256,7 @@ async function refreshPreview() {
       partitions: ln.partitions || [],
       mesh: !!ln.mesh,
       trackCount: productHasTracks(selectedProductMeta(), ln, ln.system) ? (ln.trackCount != null ? ln.trackCount : 2) : null,
-      casementPanels: ln.casementPanels || state.draftCasementPanels || null,
+      casementPanels: (ln.system === 'casement') ? (ln.casementPanels || state.draftCasementPanels || null) : null,
       sashOverlapMm: ln.sashOverlapMm != null ? ln.sashOverlapMm : (ln.system === 'casement' ? 15 : null),
       mullionGapMm: ln.mullionGapMm != null ? ln.mullionGapMm : (ln.system === 'casement' ? 15 : null),
       sectionSeries: ln.sectionSeries || null,
@@ -5972,6 +6276,12 @@ async function refreshPreview() {
       grid: (ln.system === 'grid') ? (ln.grid || currentGridSpec()) : null,
       handleName: ln.handleName || null,
       meshName: ln.meshName || null,
+      meshType: ln.meshType || (ln.options && ln.options.meshType) || 'sliding',
+      meshPlacement: ln.meshPlacement || (ln.options && ln.options.meshPlacement) || null,
+      meshW: ln.meshW != null ? ln.meshW : ((ln.options && ln.options.meshW) || null),
+      meshH: ln.meshH != null ? ln.meshH : ((ln.options && ln.options.meshH) || null),
+      meshRate: ln.meshRate != null ? ln.meshRate : ((ln.options && ln.options.meshRate) || null),
+      qty: ln.qty != null ? ln.qty : 1,
       powderCoatName: ln.powderCoatName || null,
       frameMaterial: ln.frameMaterial || (ln.options && ln.options.frameMaterial) || 'aluminium',
       reinforcement: ln.reinforcement != null ? ln.reinforcement : (ln.options && ln.options.reinforcement),
@@ -6030,9 +6340,17 @@ async function refreshPreview() {
       }
     } else if (prev.system === 'casement' || ln.system === 'casement') {
       extra.push(['System', 'Casement / Openable']);
+      const partBits = [];
+      // Top / bottom / left / right fix partitions carved out of the frame (e.g. "F1 Fix 940×600 (top)")
+      (layout.panels || []).filter(p => String(p.role || '').toLowerCase() === 'fix').forEach(p => {
+        partBits.push(`${p.id} Fix ${p.widthMm || '?'}×${p.heightMm || '?'}${p.side ? ' (' + p.side + ')' : ''}`);
+      });
       if (state.draftCasementPanels && state.draftCasementPanels.length) {
-        extra.push(['Partitions', state.draftCasementPanels.map((p,i) => `P${i+1} ${p.role}${p.role==='fix'?'':(p.role==='top_hung'?' · top hung':(' · H '+(p.handleSide==='left'?'L':'R')))}`).join('; ')]);
+        state.draftCasementPanels.forEach((p, i) => {
+          partBits.push(`P${i+1} ${p.role}${p.role==='fix'?'':(p.role==='top_hung'?' · top hung':(' · H '+(p.handleSide==='left'?'L':'R')))}`);
+        });
       }
+      if (partBits.length) extra.push(['Partitions', partBits.join('; ')]);
     } else if (prev.system === 'shower') {
       extra.push(['System', `Shower · ${(prev.shower && prev.shower.shape) || ''}`]);
     } else if (prev.system === 'louver' || ln.system === 'louver') {
@@ -6054,8 +6372,12 @@ async function refreshPreview() {
       const opLbl = (String(opLay).toLowerCase() === 'center' || String(opLay).toLowerCase() === 'centre' || (!opLay && gForOp === 4))
         ? 'center opening' : (gForOp ? 'side opening' : '');
       if (opLbl) extra.push(['Opening', opLbl]);
-      if (prev.mesh) extra.push(['Mesh', `Yes · ${prev.trackCount || ln.trackCount || '?'}-track`]);
+      if (prev.mesh && !prev.meshAddon) extra.push(['Mesh', `Yes · ${prev.trackCount || ln.trackCount || '?'}-track`]);
       else if (productHasTracks(selectedProductMeta(), ln, ln.system) && (prev.trackCount || ln.trackCount)) extra.push(['Track', `${prev.trackCount || ln.trackCount}-track`]);
+    }
+    if (prev.meshAddon) {
+      const ma = prev.meshAddon;
+      extra.push(['Mesh', `${ma.label || (ma.typeLabel + ' · ' + ma.widthMm + '×' + ma.heightMm + ' mm')}${ma.amount ? '' : ' · set a rate ₹/sqft to price'}`]);
     }
     if (prev.notes && prev.notes.length) extra.push(['Note', prev.notes.join('; ')]);
     // Never paint window series metadata when this line is actually a railing.
@@ -6909,37 +7231,49 @@ function rememberCartLines(lines) {
 function glassSnapshotFromOption(opt, ln) {
   const o = opt || {};
   const gid = String((o && o.id) || (ln && ln.glass) || '').trim();
-  const makeup = String(o.makeup || o.kind || '').toLowerCase();
-  const g1 = o.glass1Mm, g2 = o.glass2Mm, pvb = o.pvbMm, gap = o.airGapMm;
-  const laminated = makeup === 'laminated' || makeup === 'lami' || !!pvb;
-  const dgu = makeup === 'dgu' || makeup === 'igu' || makeup === 'double' || (!!gap && !pvb);
-  const construction = laminated ? 'laminated' : (dgu ? 'dgu' : 'single');
+  const makeup = String(o.makeup || o.kind || '').toLowerCase().replace(/[-\s]/g, '_');
+  const g1 = o.glass1Mm, g2 = o.glass2Mm, g3 = o.glass3Mm, pvb = o.pvbMm, gap = o.airGapMm;
+  const lamDgu = /lam/.test(makeup) && /dgu/.test(makeup) || (!!pvb && !!gap);
+  const laminated = !lamDgu && (makeup === 'laminated' || makeup === 'lami' || !!pvb);
+  const dgu = !lamDgu && (makeup === 'dgu' || makeup === 'igu' || makeup === 'double' || (!!gap && !pvb));
+  const construction = lamDgu ? 'lam_dgu' : (laminated ? 'laminated' : (dgu ? 'dgu' : 'single'));
+  const isIdLike = (s) => /^glass[\s_-]*[0-9a-f]{6,}$/i.test(String(s || '').trim()) || String(s || '').trim() === gid;
+  const savedName = (o.name || o.label) && !isIdLike(o.name || o.label) ? String(o.name || o.label) : '';
+  const thk = o.overallMm || o.thicknessMm || null;
   let label = '';
-  if (laminated && g1 && pvb && g2) label = `${g1}+${pvb}+${g2} mm Laminated`;
+  if (lamDgu && g1 && pvb && g2 && gap && g3) label = `${g1}+${pvb}+${g2} Lam + ${gap}A + ${g3} mm DGU`;
+  else if (laminated && g1 && pvb && g2) label = `${g1}+${pvb}+${g2} mm Laminated`;
   else if (dgu && g1 && gap && g2) label = `${g1}+${gap}A+${g2} mm DGU`;
-  else if (o.thicknessMm != null) {
-    label = `${o.thicknessMm} mm`;
+  else if (o.display_label && !isIdLike(o.display_label)) label = String(o.display_label);
+  else if (construction !== 'single' && savedName) label = savedName;
+  else if (thk != null && Number(thk) > 0) {
+    label = `${thk} mm`;
+    if (lamDgu) label += ' Laminated + DGU';
+    else if (laminated) label += ' Laminated';
+    else if (dgu) label += ' DGU';
     if (o.toughened) label += ' Toughened';
-  } else if (o.label) label = String(o.label);
-  else label = gid.replace(/_/g, ' ');
-  const layers = laminated ? { glass1Mm: g1, pvbMm: pvb, glass2Mm: g2 }
+  } else if (savedName) label = savedName;
+  else label = 'Custom glass (library)';
+  const layers = lamDgu ? { glass1Mm: g1, pvbMm: pvb, glass2Mm: g2, airGapMm: gap, glass3Mm: g3 }
+    : laminated ? { glass1Mm: g1, pvbMm: pvb, glass2Mm: g2 }
     : (dgu ? { glass1Mm: g1, airGapMm: gap, glass2Mm: g2 } : { glass1Mm: o.thicknessMm });
   return {
     glass_id: gid,
     glass_type: makeup || construction,
     glass_construction: construction,
     layers,
-    total_thickness_mm: o.overallMm || o.thicknessMm || null,
+    total_thickness_mm: thk,
     colour: o.colour || 'clear',
     finish: o.finish || '',
     toughened: !!o.toughened,
-    laminated,
-    dgu,
+    laminated: laminated || lamDgu,
+    dgu: dgu || lamDgu,
     air_gap_mm: gap || null,
     rate: o.rate != null ? o.rate : null,
     weight: o.weight != null ? o.weight : null,
     display_label: label,
-    glass1Mm: g1, glass2Mm: g2, pvbMm: pvb, airGapMm: gap,
+    name: savedName || null,
+    glass1Mm: g1, glass2Mm: g2, glass3Mm: g3, pvbMm: pvb, airGapMm: gap,
     source: 'selected',
   };
 }
@@ -10014,6 +10348,29 @@ if ($('btnShAddGlass')) $('btnShAddGlass').onclick = () => {
   toast('Fill custom glass below, then Save to library');
 };
 if ($('btnCancelGlass')) $('btnCancelGlass').onclick = () => { if ($('customGlassBox')) $('customGlassBox').style.display = 'none'; };
+// Custom glass layers (DGU / laminated / laminated+DGU) → auto thickness.
+function cgLayerValues() {
+  const num = (id) => { const el = $(id); const v = el ? parseFloat(el.value) : NaN; return Number.isFinite(v) && v > 0 ? v : null; };
+  return { g1: num('cgG1'), pvb: num('cgPvb'), g2: num('cgG2'), gap: num('cgGap'), g3: num('cgG3') };
+}
+function syncCustomGlassLayersUi() {
+  const mk = ($('cgMakeup') && $('cgMakeup').value) || 'single';
+  const row = $('cgLayersRow'); if (!row) return;
+  row.style.display = mk === 'single' ? 'none' : '';
+  if ($('cgPvbWrap')) $('cgPvbWrap').style.display = (mk === 'laminated' || mk === 'lam_dgu') ? '' : 'none';
+  if ($('cgGapWrap')) $('cgGapWrap').style.display = (mk === 'dgu' || mk === 'lam_dgu') ? '' : 'none';
+  if ($('cgG3Wrap')) $('cgG3Wrap').style.display = mk === 'lam_dgu' ? '' : 'none';
+  if (mk === 'single') return;
+  const L = cgLayerValues();
+  let total = null;
+  if (mk === 'laminated' && L.g1 && L.pvb && L.g2) total = L.g1 + L.pvb + L.g2;
+  else if (mk === 'dgu' && L.g1 && L.gap && L.g2) total = L.g1 + L.gap + L.g2;
+  else if (mk === 'lam_dgu' && L.g1 && L.pvb && L.g2 && L.gap && L.g3) total = L.g1 + L.pvb + L.g2 + L.gap + L.g3;
+  if (total != null && $('cgThk')) $('cgThk').value = Math.round(total * 100) / 100;
+}
+if ($('cgMakeup')) $('cgMakeup').addEventListener('change', syncCustomGlassLayersUi);
+['cgG1','cgPvb','cgG2','cgGap','cgG3'].forEach(id => { const el = $(id); if (el) el.addEventListener('input', syncCustomGlassLayersUi); });
+syncCustomGlassLayersUi();
 if ($('btnSaveGlass')) $('btnSaveGlass').onclick = async () => {
   const name = ($('cgName') && $('cgName').value.trim()) || '';
   const thk = ($('cgThk') && +$('cgThk').value) || 8;
@@ -10021,12 +10378,21 @@ if ($('btnSaveGlass')) $('btnSaveGlass').onclick = async () => {
   const makeup = ($('cgMakeup') && $('cgMakeup').value) || 'single';
   const toughened = !!( $('cgTuff') && $('cgTuff').checked );
   const rateRaw = $('cgRate') ? $('cgRate').value : '';
+  const L = makeup === 'single' ? {} : cgLayerValues();
+  const mkName = makeup === 'lam_dgu' ? 'Lam+DGU' : (makeup === 'dgu' ? 'DGU' : (makeup === 'laminated' ? 'Laminated' : ''));
   try {
-    const rec = await api('/api/glass/library', { method: 'POST', body: {
-      name: name || `${thk}mm ${colour}${toughened ? ' tuff' : ''}`,
+    const body = {
+      name: name || `${mkName ? mkName + ' ' : ''}${thk}mm ${colour}${toughened ? ' tuff' : ''}`.trim(),
       makeup, thicknessMm: thk, colour, toughened,
       rate: rateRaw === '' ? null : +rateRaw,
-    }});
+    };
+    if (makeup !== 'single') body.overallMm = thk;
+    if (L.g1) body.glass1Mm = L.g1;
+    if (L.g2) body.glass2Mm = L.g2;
+    if (L.g3 && makeup === 'lam_dgu') body.glass3Mm = L.g3;
+    if (L.pvb && (makeup === 'laminated' || makeup === 'lam_dgu')) body.pvbMm = L.pvb;
+    if (L.gap && (makeup === 'dgu' || makeup === 'lam_dgu')) body.airGapMm = L.gap;
+    const rec = await api('/api/glass/library', { method: 'POST', body });
     const g = rec.glass || rec;
     const gid = g.id || rec.id;
     await loadCartGlassOptions(gid);
@@ -10509,6 +10875,19 @@ if ($('lineMesh')) {
   });
 }
 applyMeshNameVisibility();
+// Mesh type (sliding sash / pleated / rolling) + add-on placement, size and rate
+['lineMeshType','lineMeshPlacement','lineMeshW','lineMeshH','lineMeshRate'].forEach(id => {
+  const el = $(id); if (!el) return;
+  const handler = () => {
+    applyMeshTrackRules();
+    if (typeof updateLiveCartTotal === 'function') { try { updateLiveCartTotal(); } catch (_e) {} }
+    refreshPreview();
+    scheduleLivePrice();
+  };
+  el.addEventListener('change', handler);
+  if (id === 'lineMeshW' || id === 'lineMeshH' || id === 'lineMeshRate') el.addEventListener('input', () => applyMeshAddonVisibility());
+});
+if (typeof applyMeshAddonVisibility === 'function') applyMeshAddonVisibility();
 applyFrameMaterialUi({ skipColourDefault: true });
 // Flexible window-config + Fold & Sliding controls
 ['lineSystem','lineFoldPreset','lineGlassShutters','lineMeshShutters','lineFixShutters','lineOpening',
@@ -10517,8 +10896,13 @@ applyFrameMaterialUi({ skipColourDefault: true });
   const handler = () => {
     if (id === 'lineFoldPreset') applySystemUiRules({ applyFoldPreset: true });
     else if (id === 'lineSystem') applySystemUiRules({ applyFoldPreset: ($('lineSystem') && $('lineSystem').value) === 'bifold' });
-    if (id === 'lineSystem' || id === 'lineGlassShutters') { state.draftHandleOverrides = {}; }
-    if (id === 'lineGlassShutters') ensureCasementPanels();
+    if (id === 'lineSystem' || id === 'lineGlassShutters') {
+      state.draftHandleOverrides = {};
+      state.draftSlidingHandles = {};
+      if (id === 'lineSystem') { state.draftCasementPanels = []; state.selectedCasementPanel = null; }
+    }
+    if (id === 'lineGlassShutters' && (($('lineSystem') && $('lineSystem').value) || 'sliding') === 'casement') ensureCasementPanels();
+    if (id === 'lineGlassShutters' || id === 'lineOpening') renderSlidingHandleList();
     if (id === 'lineMeshShutters') applyMeshTrackRules();
     if (id === 'lineHandleLevel') updateHandleLevelLabel();
     if (id === 'lineFoldLeft' || id === 'lineFoldRight') { if ($('lineFoldPreset')) $('lineFoldPreset').value = 'custom'; }
@@ -10548,7 +10932,9 @@ if ($('btnGridBuild')) $('btnGridBuild').onclick = () => rebuildGrid();
 if ($('btnResetHandles')) {
   $('btnResetHandles').onclick = () => {
     state.draftHandleOverrides = {};
+    state.draftSlidingHandles = {};
     if ($('lineHandleLevel')) { $('lineHandleLevel').value = 50; updateHandleLevelLabel(); }
+    renderSlidingHandleList();
     refreshPreview(); scheduleLivePrice();
   };
 }
@@ -14382,8 +14768,17 @@ function fillGlassThk(){
   let opts = [];
   if (mk==='single') opts = (o.single&&o.single.thicknessesMm)||[4,5,6,8,10,12];
   else if (mk==='dgu') opts = (o.dgu&&o.dgu.overallMm)||[18,20,22,24,28,30];
+  else if (mk==='lam_dgu') opts = (o.lam_dgu&&o.lam_dgu.overallMm)||[28.52,29.52,30.52,31.52,33.52];
   else opts = (o.laminated&&o.laminated.overallMm)||[11.52,13.52];
-  $('glThk').innerHTML = opts.map(t=>`<option value="${t}">${t} mm</option>`).join('');
+  const mkups = (mk==='lam_dgu' && o.lam_dgu && o.lam_dgu.makeups) || (mk==='dgu' && o.dgu && o.dgu.makeups) || (mk==='laminated' && o.laminated && o.laminated.makeups) || null;
+  const lbl = (t) => {
+    const m = mkups && (mkups[String(t)] || mkups[t]);
+    if (!m) return `${t} mm`;
+    if (mk==='lam_dgu') return `${t} mm — ${m.glass1Mm}+${m.pvbMm}+${m.glass2Mm} lam / ${m.airGapMm} air / ${m.glass3Mm}`;
+    if (mk==='dgu') return `${t} mm — ${m.glass1Mm}+${m.airGapMm}A+${m.glass2Mm}`;
+    return `${t} mm — ${m.glass1Mm}+${m.pvbMm}+${m.glass2Mm}`;
+  };
+  $('glThk').innerHTML = opts.map(t=>`<option value="${t}">${lbl(t)}</option>`).join('');
 }
 if ($('glMakeup')) $('glMakeup').onchange = fillGlassThk;
 

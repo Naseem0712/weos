@@ -93,6 +93,60 @@ def _glass_panels(model: DrawingModel) -> list[tuple[str, float, float, float, f
     return out
 
 
+def _partition_split_sizes(meta: Mapping[str, Any] | None) -> dict[str, float]:
+    """Nominal fix sizes per side from layout meta partitions (mm)."""
+    out = {"top": 0.0, "bottom": 0.0, "left": 0.0, "right": 0.0}
+    parts = (meta or {}).get("partitions")
+    if not isinstance(parts, list):
+        return out
+    for p in parts:
+        if not isinstance(p, Mapping):
+            continue
+        side = str(p.get("side") or "").lower()
+        if side not in out:
+            continue
+        try:
+            size = float(p.get("sizeMm") or (p.get("heightMm") if side in ("top", "bottom") else p.get("widthMm")) or 0)
+        except (TypeError, ValueError):
+            size = 0.0
+        if size > 0:
+            out[side] += size
+    return out
+
+
+def _vertical_split_chain(H: float, top_fix: float, bot_fix: float) -> list[tuple[float, float, str]]:
+    """``[(y0, y1, label)]`` bottom→top: FIX n / remaining door-shutter share / FIX n.
+
+    The pieces add up to the overall height so the print reads
+    "600 fix applied, 2874 left" next to the overall 3474.
+    """
+    rows: list[tuple[float, float, str]] = []
+    y = 0.0
+    if bot_fix > 0:
+        rows.append((y, min(y + bot_fix, H), f"FIX {bot_fix:g}"))
+        y += bot_fix
+    rest_top = H - (top_fix if top_fix > 0 else 0.0)
+    if rest_top > y:
+        rows.append((y, rest_top, f"{(rest_top - y):g}"))
+    if top_fix > 0:
+        rows.append((max(rest_top, 0.0), H, f"FIX {top_fix:g}"))
+    return rows
+
+
+def _horizontal_split_chain(W: float, left_fix: float, right_fix: float) -> list[tuple[float, float, str]]:
+    rows: list[tuple[float, float, str]] = []
+    x = 0.0
+    if left_fix > 0:
+        rows.append((x, min(x + left_fix, W), f"FIX {left_fix:g}"))
+        x += left_fix
+    rest = W - (right_fix if right_fix > 0 else 0.0)
+    if rest > x:
+        rows.append((x, rest, f"{(rest - x):g}"))
+    if right_fix > 0:
+        rows.append((max(rest, 0.0), W, f"FIX {right_fix:g}"))
+    return rows
+
+
 def _dim_line_h(
     parts: list[str],
     *,
@@ -547,14 +601,18 @@ def _draw_plan(
     if system in ("casement", "openable", "opening"):
         # Openable plan. A single leaf (or a top-hung vent) must not stroke a
         # line to the centre of the sash — that reads as a false mid rail.
-        single = len(glass) == 1
+        operable_glass = [s for s in glass if bool(s.get("operable", True))]
+        single = len(operable_glass) == 1
         for s in glass:
             x0, x1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
+            _hollow_plan_band(parts, tx=tx, ty=ty, x0=x0, x1=x1, y_bot=y_mid - band * 0.5, y_top=y_mid + band * 0.5, stroke="#173a63", stroke_width=sw)
+            # Fixed panels are glazing only — no hinge, no door swing in plan.
+            if not bool(s.get("operable", True)):
+                continue
             hinge = str(s.get("hingeSide") or "").lower()
             if not hinge:
                 hinge = "left" if float(s.get("openDir") or 1) >= 0 else "right"
             top_hung = hinge == "top" or str(s.get("pack") or "") == "top_hung"
-            _hollow_plan_band(parts, tx=tx, ty=ty, x0=x0, x1=x1, y_bot=y_mid - band * 0.5, y_top=y_mid + band * 0.5, stroke="#173a63", stroke_width=sw)
             if top_hung or single:
                 _plan_hinge_ticks(
                     parts, tx=tx, ty=ty, x0=x0, x1=x1, y_mid=y_mid, band=band,
@@ -566,18 +624,45 @@ def _draw_plan(
                     f'<line x1="{tx(hx):.2f}" y1="{ty(y_mid):.2f}" x2="{tx((x0 + x1) / 2):.2f}" '
                     f'y2="{ty(y_mid + band * 1.3):.2f}" stroke="#8b1e1a" stroke-width="{0.8 * stroke_scale:.2f}"/>'
                 )
+        plan_lbl = "OPENABLE · hinge side" if operable_glass else "FIXED PANELS"
         parts.append(
             f'<text x="{tx(W / 2):.2f}" y="{ty(y_mid - band * 1.4):.2f}" text-anchor="middle" '
-            f'font-family="Segoe UI, Arial, sans-serif" font-size="{14 * stroke_scale:.0f}" fill="#173a63">OPENABLE · hinge side</text>'
+            f'font-family="Segoe UI, Arial, sans-serif" font-size="{14 * stroke_scale:.0f}" fill="#173a63">{plan_lbl}</text>'
         )
         return
 
     # --- Sliding: External / Internal track indicator (reference Image B) ---
+    # One plan line per glass track (depth level): 2-track → 2 lines, 3-track
+    # telescopic → 3 lines, 4-track → 4 lines. Mesh rides its own front line.
     depths = sorted({int(s.get("depth") or 1) for s in glass})
     dmin = depths[0] if depths else 1
+    n_levels = max(len(depths), 1)
+    try:
+        n_levels = max(n_levels, int(track_count) - (1 if (mesh or meshes) else 0))
+    except (TypeError, ValueError):
+        pass
+    n_levels = max(min(n_levels, 6), 1)
     ext_y = y_mid + band * 0.55   # external (back) track — drawn higher
     int_y = y_mid - band * 0.55   # internal (front) track — drawn lower
+    if n_levels > 2:
+        ext_y = y_mid + band * 0.75
+        int_y = y_mid - band * 0.75
+
+    def _level_y(depth: int) -> float:
+        if n_levels <= 1:
+            return int_y
+        rank = depths.index(depth) if depth in depths else 0
+        return int_y + (ext_y - int_y) * (rank / float(n_levels - 1))
+
     left_x = min(float(s.get("x0") or 0) for s in glass)
+    if n_levels > 2:
+        # faint guide line for every track so empty tracks still read
+        for lv in range(n_levels):
+            yy = int_y + (ext_y - int_y) * (lv / float(n_levels - 1))
+            parts.append(
+                f'<line x1="{tx(left_x):.2f}" y1="{ty(yy):.2f}" x2="{tx(W - left_x):.2f}" y2="{ty(yy):.2f}" '
+                f'stroke="#c3d0dd" {_solid_sw(0.5 * stroke_scale)}/>'
+            )
 
     # External / Internal labels at the far left
     parts.append(
@@ -589,20 +674,25 @@ def _draw_plan(
         f'font-family="Segoe UI, Arial, sans-serif" font-size="{12 * stroke_scale:.0f}" fill="#0b3d7a">Internal</text>'
     )
 
-    # Mesh sash (frontmost/internal) — solid green (print must not stipple)
+    # Mesh sash (frontmost/internal) — dark wire line on its own mesh track
+    mesh_y = int_y - band * (0.5 if n_levels <= 2 else 0.4)
     for s in meshes:
         x0, x1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
         parts.append(
-            f'<line x1="{tx(x0):.2f}" y1="{ty(int_y - band * 0.5):.2f}" x2="{tx(x1):.2f}" y2="{ty(int_y - band * 0.5):.2f}" '
-            f'stroke="#2a6a4a" {_solid_sw(2.0 * stroke_scale)}/>'
+            f'<line x1="{tx(x0):.2f}" y1="{ty(mesh_y):.2f}" x2="{tx(x1):.2f}" y2="{ty(mesh_y):.2f}" '
+            f'stroke="#1a1a1a" {_solid_sw(2.0 * stroke_scale)}/>'
+        )
+        parts.append(
+            f'<text x="{tx((x0 + x1) / 2):.2f}" y="{ty(mesh_y) - 3 * stroke_scale:.2f}" text-anchor="middle" '
+            f'font-family="Segoe UI, Arial, sans-serif" font-size="{9 * stroke_scale:.0f}" fill="#1a1a1a">MESH</text>'
         )
 
-    # One offset track bar per glass sash: internal + external both solid
+    # One offset track bar per glass sash: one line per track level
     for pos, s in enumerate(glass):
         x0, x1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
         depth = int(s.get("depth") or 1)
         is_front = depth == dmin
-        yy = int_y if is_front else ext_y
+        yy = _level_y(depth) if n_levels > 2 else (int_y if is_front else ext_y)
         parts.append(
             f'<line x1="{tx(x0):.2f}" y1="{ty(yy):.2f}" x2="{tx(x1):.2f}" y2="{ty(yy):.2f}" '
             f'stroke="#0b3d7a" {_solid_sw(1.8 * stroke_scale)}/>'
@@ -802,8 +892,13 @@ def render_svg_string(
         xs.extend([seg.start.x, seg.end.x])
         ys.extend([seg.start.y, seg.end.y])
 
+    _fix_pad = 0.0
+    if annotations:
+        _fs = _partition_split_sizes(model.metadata or {})
+        if _fs["top"] > 0 or _fs["bottom"] > 0:
+            _fix_pad = 75.0 * k  # room for the FIX / remaining split chain
     min_x = min(xs) - margin - (dim_pad if annotations else 0.0)
-    max_x = max(xs) + margin + (40.0 * k if annotations else 0.0)
+    max_x = max(xs) + margin + (40.0 * k if annotations else 0.0) + _fix_pad
     min_y = min(ys) - margin - (dim_pad if annotations else 0.0) - plan_gap - plan_h
     max_y = max(ys) + margin + (dim_pad * 0.35 if annotations else 0.0)
     w = max_x - min_x
@@ -869,6 +964,7 @@ def render_svg_string(
     _op0 = str(_meta0.get("opening") or "").lower()
     if _sys0 == "sliding" and _op0:
         _title_bits.append("center opening" if _op0 in ("center", "centre") else "side opening")
+    _mesh_cell = 14.0 * k
     parts: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:.1f}" height="{h:.1f}" '
         f'viewBox="0 0 {w:.1f} {h:.1f}" data-model-minx="{min_x:.3f}" data-model-maxy="{max_y:.3f}" '
@@ -879,7 +975,18 @@ def render_svg_string(
         f"<title>{escape(' · '.join(_title_bits))}</title>",
         f'<rect width="100%" height="100%" fill="{bg}"/>',
         '<defs><marker id="slideArrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">'
-        '<path d="M0,0 L8,4 L0,8 Z" fill="#0b3d7a"/></marker></defs>',
+        '<path d="M0,0 L8,4 L0,8 Z" fill="#0b3d7a"/></marker>'
+        # Wire mesh: fine dark cross-hatch (black wire look, print-safe, semi-transparent
+        # so the glass sash behind the mesh track still reads).
+        f'<pattern id="meshWire" patternUnits="userSpaceOnUse" width="{_mesh_cell:.2f}" height="{_mesh_cell:.2f}">'
+        f'<path d="M0,0 L{_mesh_cell:.2f},{_mesh_cell:.2f} M{_mesh_cell:.2f},0 L0,{_mesh_cell:.2f}" '
+        f'stroke="#1a1a1a" stroke-width="{max(0.45, 0.55 * k):.2f}" stroke-opacity="0.75"/></pattern>'
+        # Pleated / rolling mesh add-on: fine dot grid (lighter than the wire
+        # sash). Filled dots, not a dashed stroke — RIP/svglib stipple-safe.
+        f'<pattern id="meshPleat" patternUnits="userSpaceOnUse" width="{_mesh_cell * 1.6:.2f}" height="{_mesh_cell * 1.6:.2f}">'
+        f'<circle cx="{_mesh_cell * 0.8:.2f}" cy="{_mesh_cell * 0.8:.2f}" r="{max(0.6, 0.7 * k):.2f}" fill="#2b2b2b" fill-opacity="0.7"/>'
+        f'<circle cx="0" cy="0" r="{max(0.6, 0.7 * k):.2f}" fill="#2b2b2b" fill-opacity="0.7"/></pattern>'
+        "</defs>",
     ]
 
     # Grid / partition designer — dedicated clean-2D rendering from metadata
@@ -926,7 +1033,7 @@ def render_svg_string(
             )
 
     for pl in model.polylines:
-        if pl.layer in ("GLASS", "HARDWARE") or len(pl.points) < 2:
+        if pl.layer in ("GLASS", "HARDWARE", "MESH") or len(pl.points) < 2:
             continue
         pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
         nm = str(pl.name or "").lower()
@@ -976,6 +1083,41 @@ def render_svg_string(
 
     glasses = _glass_panels(model)
     meta = model.metadata or {}
+
+    # Wire mesh sashes (MESH layer) — black cross-hatch over the mesh sash area.
+    mesh_nets: list[tuple[str, float, float, float, float]] = []
+    for pl in model.polylines:
+        if pl.layer != "MESH" or len(pl.points) < 2:
+            continue
+        bb = _polyline_bbox(pl)
+        if not bb:
+            continue
+        mesh_nets.append((pl.name or f"mesh_{len(mesh_nets)+1}", *bb))
+        pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
+        parts.append(
+            f'<polygon points="{pts}" fill="url(#meshWire)" stroke="#1a1a1a" {_solid_sw(sw_profile * 0.9)} data-mesh="wire"/>'
+        )
+
+    # Pleated / rolling mesh add-on — dotted grid over the chosen placement.
+    _addon = meta.get("mesh_addon") if isinstance(meta.get("mesh_addon"), Mapping) else None
+    if _addon:
+        try:
+            ax0, ay0, ax1, ay1 = (float(_addon["x0"]), float(_addon["y0"]), float(_addon["x1"]), float(_addon["y1"]))
+        except (KeyError, TypeError, ValueError):
+            ax0 = ay0 = ax1 = ay1 = 0.0
+        if ax1 > ax0 and ay1 > ay0:
+            parts.append(
+                f'<rect x="{tx(ax0):.2f}" y="{ty(ay1):.2f}" width="{tx(ax1) - tx(ax0):.2f}" height="{ty(ay0) - ty(ay1):.2f}" '
+                f'fill="url(#meshPleat)" stroke="#2b2b2b" stroke-dasharray="{6 * k:.1f} {4 * k:.1f}" '
+                f'{_solid_sw(max(0.9, sw_inner * 0.6))} data-mesh="{escape(str(_addon.get("type") or "addon"))}"/>'
+            )
+            if annotations:
+                _lab = f"{str(_addon.get('type') or 'MESH').upper()} MESH {float(_addon.get('widthMm') or 0):g}×{float(_addon.get('heightMm') or 0):g}"
+                parts.append(
+                    f'<text x="{tx((ax0 + ax1) / 2):.2f}" y="{ty(ay1) + 30 * k:.2f}" text-anchor="middle" '
+                    f'font-family="Segoe UI, Arial, sans-serif" font-size="{22 * k:.0f}" font-weight="700" fill="#1f1f1f">'
+                    f"{escape(_lab)}</text>"
+                )
 
     # Hardware — lever handles + bifold hinges (drawn above glass & frames)
     finish = str(meta.get("handle_finish") or "")
@@ -1082,6 +1224,22 @@ def render_svg_string(
                     f'font-weight="700" fill="#0b3d7a">{escape(panel_id)}</text>'
                 )
 
+        # Mesh sash labels (M1, M2 …) — wire mesh on the front track
+        for mi, (_mn, mx0, my0, mx1, my1) in enumerate(mesh_nets):
+            mcx = (mx0 + mx1) / 2.0
+            mcy = my0 + (my1 - my0) * 0.12
+            chip_w, chip_h = 110 * k, 36 * k
+            parts.append(
+                f'<rect x="{tx(mcx) - chip_w / 2:.2f}" y="{ty(mcy) - chip_h / 2:.2f}" '
+                f'width="{chip_w:.2f}" height="{chip_h:.2f}" rx="{3 * k:.1f}" fill="#fff" fill-opacity="0.95" '
+                f'stroke="#333" stroke-width="{max(0.55, min(0.40 * k, 0.90)):.2f}"/>'
+            )
+            parts.append(
+                f'<text x="{tx(mcx):.2f}" y="{ty(mcy) + label_font * 0.32:.2f}" text-anchor="middle" '
+                f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font * 0.85:.0f}" font-weight="700" fill="#111">'
+                f"M{mi + 1} MESH</text>"
+            )
+
         W = float(model.width)
         H = float(model.height)
         _dim_line_v(
@@ -1114,27 +1272,10 @@ def render_svg_string(
                 parts, tx=tx, ty=ty, x0=il, x1=slide_x1, y=-42.0 * k,
                 text=f"{(slide_x1 - il):g}", text_y=-64.0 * k, stroke=dim_stroke, font=dim_font * 0.9,
             )
-        # Fix partition dims
-        for part in (meta.get("partitions") or []) if isinstance(meta.get("partitions"), list) else []:
-            side = str(part.get("side") or "")
-            if side == "top":
-                ph = float(part.get("heightMm") or part.get("sizeMm") or 0)
-                if ph > 0:
-                    _dim_line_v(
-                        parts, tx=tx, ty=ty, y0=H - float(meta.get("shutter_inset") or 0) - ph,
-                        y1=H - float(meta.get("shutter_inset") or 0),
-                        x=W + 48.0 * k, text=f"FIX {ph:g}", text_x=W + 90.0 * k,
-                        stroke=dim_stroke, font=dim_font * 0.75,
-                    )
-            elif side == "bottom":
-                ph = float(part.get("heightMm") or part.get("sizeMm") or 0)
-                if ph > 0:
-                    _dim_line_v(
-                        parts, tx=tx, ty=ty, y0=float(meta.get("shutter_inset") or 0),
-                        y1=float(meta.get("shutter_inset") or 0) + ph,
-                        x=W + 48.0 * k, text=f"FIX {ph:g}", text_x=W + 90.0 * k,
-                        stroke=dim_stroke, font=dim_font * 0.75,
-                    )
+        # Fix partition dims — "how much fix, how much left": a split chain that
+        # adds up to the overall size (FIX n + remaining shutter / door share).
+        _fix_sizes = _partition_split_sizes(meta)
+        _has_v_fix = (_fix_sizes["top"] > 0 or _fix_sizes["bottom"] > 0)
         sliding_glasses = [g for g in glasses if "fix" not in (g[0] or "").lower()]
         if sliding_glasses:
             _n, _a, gy0, _b, gy1 = sliding_glasses[0]
@@ -1142,6 +1283,21 @@ def render_svg_string(
                 parts, tx=tx, ty=ty, y0=gy0, y1=gy1, x=W + 48.0 * k,
                 text=f"{(gy1 - gy0):g}", text_x=W + 78.0 * k, stroke=dim_stroke, font=dim_font * 0.85,
             )
+        if _has_v_fix:
+            _xv = W + (118.0 if sliding_glasses else 48.0) * k
+            _xt = _xv + 30.0 * k
+            for (ya, yb, txt) in _vertical_split_chain(H, _fix_sizes["top"], _fix_sizes["bottom"]):
+                _dim_line_v(
+                    parts, tx=tx, ty=ty, y0=ya, y1=yb, x=_xv, text=txt, text_x=_xt,
+                    stroke=dim_stroke, font=dim_font * 0.75,
+                )
+        if _fix_sizes["left"] > 0 or _fix_sizes["right"] > 0:
+            _yh = H + 40.0 * k
+            for (xa, xb, txt) in _horizontal_split_chain(W, _fix_sizes["left"], _fix_sizes["right"]):
+                _dim_line_h(
+                    parts, tx=tx, ty=ty, x0=xa, x1=xb, y=_yh, text=txt, text_y=_yh + 28.0 * k,
+                    stroke=dim_stroke, font=dim_font * 0.75,
+                )
 
         if include_plan and plan_h > 0:
             _draw_plan(
@@ -1392,6 +1548,12 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
             top_shape=lo.get("topShape") or line.get("topShape"),
             curve_rise_mm=lo.get("curveRiseMm") or line.get("curveRiseMm"),
         )
+        try:
+            from WEOS.factory.mesh_addon import attach_mesh_addon_to_drawing, mesh_addon_for_line
+
+            attach_mesh_addon_to_drawing(job.drawing, mesh_addon_for_line(line))
+        except Exception:
+            pass
         return render_svg_string(
             job.drawing,
             colour=str(colour).lower().replace(" ", "_"),
@@ -1424,7 +1586,7 @@ def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[
                 "id": f"F{i + 1}",
                 "role": "fix",
                 "side": side,
-                "label": "Fix",
+                "label": f"Fix ({side})" if side else "Fix",
                 "widthMm": mm_n(part.get("widthMm")),
                 "heightMm": mm_n(part.get("heightMm") or part.get("sizeMm")),
                 "glassWidthMm": mm_n(part.get("glassWidthMm")),

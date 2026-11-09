@@ -141,9 +141,27 @@ def _lookup_glass_spec(line: Mapping[str, Any]) -> dict[str, Any]:
 
     snap = get_glass_snapshot(line)
     if snap:
+        from WEOS.factory.quote_item_snapshot import looks_like_glass_id
+
         out = dict(snap)
-        if snap.get("display_label"):
-            out["display_label"] = snap["display_label"]
+        gid_s = str(snap.get("glass_id") or "").split("@")[0].strip()
+        if gid_s:
+            # Library record (saved name / layers) underneath the snapshot so a
+            # snapshot stamped with a raw id still prints the configured glass.
+            try:
+                from WEOS.factory.glass_catalogue import get_glass
+
+                lib = dict(get_glass(gid_s) or {})
+            except Exception:
+                lib = {}
+            if lib:
+                for k, v in lib.items():
+                    if out.get(k) in (None, "", 0) and v not in (None, ""):
+                        out[k] = v
+        if looks_like_glass_id(out.get("display_label"), gid_s):
+            out.pop("display_label", None)
+        if looks_like_glass_id(out.get("name"), gid_s):
+            out.pop("name", None)
         if snap.get("glass_id") and not out.get("id"):
             out["id"] = snap["glass_id"]
         if snap.get("glass_construction") and not out.get("makeup"):
@@ -200,15 +218,34 @@ def human_glass_label(line: Mapping[str, Any]) -> str:
         if label:
             return label
     spec = _lookup_glass_spec(line)
-    if spec.get("display_label"):
-        return str(spec["display_label"])
+    from WEOS.factory.quote_item_snapshot import looks_like_glass_id
+
+    spec_gid = str(spec.get("id") or spec.get("glass_id") or "")
+    disp = str(spec.get("display_label") or "").strip()
+    if disp and not looks_like_glass_id(disp, spec_gid):
+        # A bare "5 mm Toughened" library label must not hide a richer saved
+        # name / colour (e.g. "5mm Fluted Brown Toughened") — fall through to
+        # the composed label in that case; layered labels (5+1.52+5 …) win.
+        rich_name = str(spec.get("name") or spec.get("label") or "").strip()
+        generic = bool(re.fullmatch(r"\d+(?:\.\d+)?\s*mm(?:\s+toughened)?", disp, re.I))
+        if not (generic and rich_name and not looks_like_glass_id(rich_name, spec_gid)
+                and rich_name.lower() != disp.lower()):
+            return disp
+    snap_label_was_id = bool(snap) and looks_like_glass_id(snap.get("display_label"), snap.get("glass_id"))
+    makeup_kind = str(spec.get("makeup") or spec.get("kind") or "").lower()
+    if spec and (snap_label_was_id or spec.get("glass3Mm") or "lam" in makeup_kind and "dgu" in makeup_kind):
+        # Library-saved custom glass (raw id stamped) / laminated+DGU: canonical
+        # label from layers → saved name → thickness, never the id.
+        canon = glass_display_label({k: v for k, v in spec.items() if k != "display_label"})
+        if canon and not looks_like_glass_id(canon, spec_gid):
+            return canon
     thick = spec.get("thicknessMm") or spec.get("thickness_mm") or spec.get("overallMm")
     makeup = str(spec.get("makeup") or spec.get("kind") or "").lower()
     makeup_lbl = str(spec.get("makeupLabel") or "")
     gcolour = spec.get("colour") or spec.get("color") or ""
     gbrand = spec.get("brand") or ""
     gname = spec.get("name") or spec.get("label") or ""
-    if is_internal_glass_name(gname):
+    if is_internal_glass_name(gname) or looks_like_glass_id(gname, spec_gid):
         gname = ""
 
     lam = _laminated_config_label(thick, makeup or gname)
@@ -248,9 +285,11 @@ def human_glass_label(line: Mapping[str, Any]) -> str:
             if not (str(thick) and str(thick) in nl and (not gcolour or str(gcolour).lower() in nl.lower())):
                 bits.append(nl)
     if not bits and isinstance(line.get("glass"), str) and line.get("glass"):
-        raw = str(line["glass"]).split("@")[0].replace("_", " ").strip()
+        raw_id = str(line["glass"]).split("@")[0].strip()
+        raw = raw_id.replace("_", " ").strip()
         if raw and not is_internal_glass_name(raw):
-            bits.append(raw)
+            # A library uuid (glass_ab43e888) is meaningless on a quote.
+            bits.append("Custom glass (library)" if looks_like_glass_id(raw_id) else raw)
     return " · ".join(bits)
 
 
@@ -343,6 +382,101 @@ def _dim_wall(sec_label: Any, wall: Any) -> str:
     return text
 
 
+def _norm_panel_role(raw: Any) -> str:
+    t = str(raw or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if t in ("fix", "fixed"):
+        return "fix"
+    if t in ("top_hung", "tophung", "top"):
+        return "top_hung"
+    return "openable"
+
+
+def casement_panel_roles(line: Mapping[str, Any], glass_count: int) -> list[str]:
+    """Per-lite role list (``fix`` / ``openable`` / ``top_hung``) for a casement line.
+
+    Prefers the computed layout panels, then the saved ``casementPanels`` /
+    ``handleOverrides`` roles, then ``fixShutters`` (1-based) over a default of
+    all-openable.
+    """
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    layout = line.get("layout") if isinstance(line.get("layout"), Mapping) else {}
+    n = max(int(glass_count or 0), 0)
+
+    panels = [p for p in list((layout or {}).get("panels") or []) if isinstance(p, Mapping)]
+    lites = [p for p in panels if str(p.get("role") or "").lower() in ("fix", "openable", "sliding", "glass", "")]
+    # Layout fix partitions (top/bottom/left/right) are separate from casement lites.
+    lites = [p for p in lites if str(p.get("side") or "") not in ("top", "bottom", "left", "right") or p.get("operable") is not None]
+    if lites and (n <= 0 or len(lites) == n):
+        out: list[str] = []
+        for p in lites:
+            role = str(p.get("role") or "").lower()
+            if role == "fix" or p.get("operable") is False:
+                out.append("fix")
+            elif "top hung" in str(p.get("label") or "").lower() or str(p.get("pack") or "") == "top_hung":
+                out.append("top_hung")
+            else:
+                out.append("openable")
+        return out
+
+    def pick(key: str) -> Any:
+        if line.get(key) is not None:
+            return line.get(key)
+        if isinstance(opts, Mapping) and opts.get(key) is not None:
+            return opts.get(key)
+        return None
+
+    cp = pick("casementPanels")
+    if isinstance(cp, (list, tuple)) and cp:
+        roles = [_norm_panel_role(p.get("role") if isinstance(p, Mapping) else p) for p in cp]
+        if n > 0:
+            roles = (roles + ["openable"] * n)[:n]
+        return roles
+
+    ov = pick("handleOverrides")
+    if isinstance(ov, Mapping) and ov and n > 0:
+        cfgs: list[Mapping[str, Any]] = []
+        for i in range(n):
+            cfg = ov.get(i) if ov.get(i) is not None else ov.get(str(i))
+            cfgs.append(cfg if isinstance(cfg, Mapping) else {})
+        if any("role" in cfg for cfg in cfgs):
+            return [_norm_panel_role(cfg.get("role")) if cfg.get("role") is not None else "openable" for cfg in cfgs]
+
+    if n > 0:
+        fixed = set(sliding_fixed_indices(line, n))
+        return ["fix" if i in fixed else "openable" for i in range(n)]
+    return []
+
+
+def sliding_fixed_indices(line: Mapping[str, Any], glass_count: int) -> list[int]:
+    """0-based indices of shutters locked as FIX (from layout or ``fixShutters``)."""
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    layout = line.get("layout") if isinstance(line.get("layout"), Mapping) else {}
+    panels = [p for p in list((layout or {}).get("panels") or []) if isinstance(p, Mapping)]
+    sash = [p for p in panels if str(p.get("role") or "").lower() in ("fix", "sliding", "openable") and p.get("operable") is not None]
+    if sash and (glass_count <= 0 or len(sash) == glass_count):
+        return [i for i, p in enumerate(sash) if p.get("operable") is False]
+    raw = None
+    for key in ("fixShutters", "fixedShutters", "fixed_shutters"):
+        if line.get(key) not in (None, ""):
+            raw = line.get(key)
+            break
+        if isinstance(opts, Mapping) and opts.get(key) not in (None, ""):
+            raw = opts.get(key)
+            break
+    if raw is None and isinstance(layout, Mapping) and layout.get("fixedShutters"):
+        raw = layout.get("fixedShutters")
+        try:
+            return sorted({int(i) for i in raw if 0 <= int(i) < max(glass_count, 1)})
+        except (TypeError, ValueError):
+            return []
+    try:
+        from WEOS.factory.layout_options import normalize_fixed_shutters
+
+        return normalize_fixed_shutters(raw, max(glass_count, 1))
+    except Exception:
+        return []
+
+
 def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[tuple[str, str]]:
     """Customer window/door/casement/vent rows — one field each, no catalogue dump."""
     factory = str(audience or "customer").lower() == "factory"
@@ -354,7 +488,9 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
     section = _section_summary(line)
     family = glass_family_from_line(line)
     mat = _frame_material(line)
-    system = str((layout or {}).get("system") or opts.get("system") or line.get("productType") or "").lower()
+    system = str(
+        (layout or {}).get("system") or opts.get("system") or line.get("system") or line.get("productType") or ""
+    ).lower()
     is_bifold = system in ("bifold", "fold", "fold_sliding", "fold_and_sliding") or (
         str((layout or {}).get("kind") or "") == "fold_and_sliding"
     )
@@ -461,7 +597,14 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
         or opts.get("glassCount")
         or line.get("glassShutters")
     )
-    mesh_n = (layout or {}).get("meshCount") or opts.get("meshShutters") or opts.get("meshCount") or 0
+    mesh_n = (
+        (layout or {}).get("meshCount")
+        or opts.get("meshShutters")
+        or opts.get("meshCount")
+        or line.get("meshShutters")
+        or line.get("meshCount")
+        or 0
+    )
     try:
         glass_n_i = int(float(glass_n)) if glass_n not in (None, "") else 0
     except (TypeError, ValueError):
@@ -483,15 +626,33 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
             or ""
         )
         opening_mode = str(opening_raw).strip().lower()
-        if is_bifold or is_casement or is_vent:
+        if is_casement:
+            # Casement: openable leaves are DOORs, fixed lites are PANELs — never
+            # a generic "SHUTTER n Nos" that hides an all-fixed design.
+            roles = casement_panel_roles(line, glass_n_i)
+            n_door = sum(1 for r in roles if r == "openable")
+            n_top = sum(1 for r in roles if r == "top_hung")
+            n_fix = sum(1 for r in roles if r == "fix")
+            if n_door or n_top:
+                bits = [f"{n_door + n_top} Nos"]
+                if n_top:
+                    bits.append(f"{n_top} top hung")
+                add("DOOR", " · ".join(bits))
+            if n_fix:
+                add("PANEL", f"{n_fix} Nos · fixed")
+            if not (n_door or n_top or n_fix):
+                add("DOOR", f"{glass_n_i} Nos")
+        elif is_bifold or is_vent:
             add("SHUTTER", f"{glass_n_i} Nos")
         else:
             if opening_mode not in ("center", "centre", "telescopic", "side"):
                 opening_mode = "center" if glass_n_i == 4 else "side"
+            fixed_idx = sliding_fixed_indices(line, glass_n_i)
+            fix_txt = f" · {len(fixed_idx)} fix" if fixed_idx else ""
             if opening_mode in ("center", "centre"):
-                add("SHUTTER", f"{glass_n_i} Nos · center opening")
+                add("SHUTTER", f"{glass_n_i} Nos · center opening{fix_txt}")
             else:
-                add("SHUTTER", f"{glass_n_i} Nos · side opening")
+                add("SHUTTER", f"{glass_n_i} Nos · side opening{fix_txt}")
 
     wall = section.get("wallThicknessMm") or section.get("trackWallMm") or section.get("sashWallMm")
     track_lbl = _upvc_print(section.get("trackPrint") or section.get("track"), mat)
@@ -599,7 +760,15 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
         hbits.append(str(hw_type).strip())
     if handle_finish:
         hbits.append(f"colour {handle_finish}")
-    add("HANDLE", " · ".join(x for x in hbits if x) if not is_louver_fill else "")
+    # Casement with every lite FIXED → no handle / hinge / lock on the print.
+    casement_all_fixed = False
+    if is_casement and glass_n_i > 0 and not is_louver_fill:
+        _roles = casement_panel_roles(line, glass_n_i)
+        casement_all_fixed = bool(_roles) and all(r == "fix" for r in _roles)
+    if casement_all_fixed:
+        add("HANDLE", "none · fixed glazing (no hardware)")
+    else:
+        add("HANDLE", " · ".join(x for x in hbits if x) if not is_louver_fill else "")
 
     colour = opts.get("powderCoatName") or line.get("powderCoatName") or opts.get("colour") or line.get("colour")
     if mat == "upvc" and not colour:
@@ -614,9 +783,35 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
         mesh_n_i = int(float(mesh_n or 0))
     except (TypeError, ValueError):
         mesh_n_i = 0
-    mesh_on = bool((layout or {}).get("mesh") or (opts or {}).get("mesh") or mesh_n_i)
+    mesh_on = bool((layout or {}).get("mesh") or (opts or {}).get("mesh") or line.get("mesh") or mesh_n_i)
+    mesh_addon = None
+    try:
+        from WEOS.factory.mesh_addon import mesh_addon_for_line
+
+        mesh_addon = mesh_addon_for_line(line)
+    except Exception:
+        mesh_addon = None
+    if is_bifold or is_casement or is_vent:
+        mesh_on = False
+        mesh_n_i = 0
+    if mesh_addon:
+        # Pleated / rolling mesh: separate item — type · size · amount
+        mesh_on = True
+        mesh_n_i = 0
     mesh_bits = ["yes" if mesh_on else "no"]
-    if mesh_on:
+    if mesh_addon:
+        mesh_bits.append(str(mesh_addon.get("label") or mesh_addon.get("typeLabel") or ""))
+        if mesh_brand:
+            mesh_bits.append(str(mesh_brand))
+        if mesh_colour:
+            mesh_bits.append(f"colour {mesh_colour}")
+    elif mesh_on:
+        if mesh_n_i <= 0:
+            # Mesh ticked but no count persisted → count mesh panels in the layout, else 1.
+            mesh_n_i = sum(
+                1 for p in list((layout or {}).get("panels") or []) if str(p.get("role") or "").lower() == "mesh"
+            ) or 1
+        mesh_bits.append(f"{mesh_n_i} shutter" + ("s" if mesh_n_i != 1 else ""))
         if mesh_name:
             mesh_bits.append(str(mesh_name))
         if mesh_brand:
@@ -653,7 +848,11 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
     if system == "grid":
         add("TYPE", "Partition grid (per-cell fix/sliding/openable)")
     elif is_casement:
-        add("TYPE", "Casement / Openable")
+        roles = casement_panel_roles(line, glass_n_i)
+        if roles and all(r == "fix" for r in roles):
+            add("TYPE", "Fixed glazing (casement series)")
+        else:
+            add("TYPE", "Casement / Openable")
     elif is_bifold:
         fl = layout.get("foldLeft") if layout else opts.get("foldLeft")
         fr = layout.get("foldRight") if layout else opts.get("foldRight")

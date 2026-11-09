@@ -182,7 +182,32 @@ def line_sell_amount(
             "sellingAmount": money_n(billable * rate_n),
             "qty": q,
         }
-    return sell_amount(width_mm=w, height_mm=h, qty=q, selling_rate=rate_n, sale_unit=unit)
+    sell = sell_amount(width_mm=w, height_mm=h, qty=q, selling_rate=rate_n, sale_unit=unit)
+    return _add_mesh_addon_to_sell(sell, line, qty=q)
+
+
+def _add_mesh_addon_to_sell(sell: dict[str, Any], line: Mapping[str, Any] | None, *, qty: int | None = None) -> dict[str, Any]:
+    """Pleated / rolling mesh is priced separately (area × rate × qty) and added
+    on top of the window selling amount as its own ``meshAmount``."""
+    try:
+        from WEOS.factory.mesh_addon import mesh_addon_for_line
+    except Exception:
+        return sell
+    src = dict(line or {})
+    if qty is not None:
+        src["qty"] = qty
+    addon = mesh_addon_for_line(src)
+    amt = float((addon or {}).get("amount") or 0.0)
+    if amt <= 0:
+        return sell
+    from WEOS.factory.fmt import money_n
+
+    out = dict(sell)
+    out["windowAmount"] = out.get("sellingAmount")
+    out["meshAmount"] = money_n(amt)
+    out["meshLabel"] = (addon or {}).get("label")
+    out["sellingAmount"] = money_n(float(out.get("sellingAmount") or 0.0) + amt)
+    return out
 
 
 def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
@@ -304,6 +329,7 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
         ),
         "selling": sell,
         "margin": margin,
+        "meshAddon": calc.get("meshAddon"),
         "sectionSeries": section_series,
         "sectionSpecs": section_specs,
         "description": line.get("description")
@@ -358,6 +384,16 @@ def apply_selling_to_line_result(result: dict[str, Any], line: Mapping[str, Any]
             selling_rate=float(selling_rate),
             sale_unit=sale_unit,
         )
+        # Pleated / rolling mesh add-on rides on top of the window amount
+        _mesh_src = dict(line)
+        _mesh_src.setdefault("width", result.get("width"))
+        _mesh_src.setdefault("height", result.get("height"))
+        _mesh_src.setdefault("qty", result.get("qty") or 1)
+        if result.get("meshAddon"):
+            _mesh_src.setdefault("layout", result.get("layout"))
+        sell = _add_mesh_addon_to_sell(sell, _mesh_src, qty=int(result.get("qty") or 1))
+        if sell.get("meshAmount"):
+            out["meshAmount"] = sell["meshAmount"]
         out["sellingRate"] = sell["sellingRate"]
         out["selling"] = sell
         cost = float((result.get("price") or {}).get("total") or 0)

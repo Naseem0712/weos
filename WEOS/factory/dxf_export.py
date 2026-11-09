@@ -39,6 +39,10 @@ def export_dxf(
         doc.layers.add("PROFILES", color=7)
     if "GLASS" not in doc.layers:
         doc.layers.add("GLASS", color=4)
+    if "MESH" not in doc.layers:
+        doc.layers.add("MESH", color=8)
+    if "HARDWARE" not in doc.layers:
+        doc.layers.add("HARDWARE", color=1)
 
     # Update Standard dimstyle
     try:

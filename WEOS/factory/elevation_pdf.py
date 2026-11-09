@@ -59,6 +59,53 @@ def _draw_casement_hinge_pdf(c, px, py, scale: float, x0: float, y0: float, x1: 
     c.line(px(g["x1"]), py(g["y1"]), px(g["x2"]), py(g["y2"]))
 
 
+def _pdf_mesh_hatch(
+    c,
+    px,
+    py,
+    scale: float,
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    *,
+    W: float,
+    H: float,
+) -> None:
+    """Dark-grey 45° cross-hatch clipped to a mesh net rect (reads as wire mesh in print)."""
+    if x1 - x0 <= 1.0 or y1 - y0 <= 1.0:
+        return
+    ref = max(float(W), float(H), 1.0)
+    cell_mm = 14.0 * max(0.55, min(ref / 1000.0, 4.0))
+    step = max(cell_mm * scale, 2.4)  # never denser than ~2.4pt on paper
+    X0, Y0, X1, Y1 = px(x0), py(y0), px(x1), py(y1)
+    c.saveState()
+    try:
+        clip = c.beginPath()
+        clip.rect(X0, Y0, X1 - X0, Y1 - Y0)
+        c.clipPath(clip, stroke=0, fill=0)
+        # light wash so the net reads as a panel, then dark hatch over it
+        c.setFillColorRGB(0.94, 0.94, 0.94)
+        c.rect(X0, Y0, X1 - X0, Y1 - Y0, fill=1, stroke=0)
+        c.setStrokeColorRGB(0.16, 0.16, 0.16)
+        c.setLineWidth(0.32)
+        try:
+            c.setDash()
+        except Exception:
+            pass
+        span = (X1 - X0) + (Y1 - Y0)
+        d = -(Y1 - Y0)
+        while d <= (X1 - X0) + 0.001:
+            # "/" diagonals
+            c.line(X0 + d, Y0, X0 + d + (Y1 - Y0), Y1)
+            # "\" diagonals
+            c.line(X1 - d, Y0, X1 - d - (Y1 - Y0), Y1)
+            d += step
+        _ = span
+    finally:
+        c.restoreState()
+
+
 def _hollow_plan_band(c, x: float, y: float, w: float, h: float, *, lw: float = 0.55) -> None:
     """Thin hollow sash section for plan view."""
     if w < 1.5 or h < 1.0:
@@ -274,9 +321,59 @@ def draw_model_elevation(
         c.setLineWidth(0.55)
         c.drawPath(path, fill=1, stroke=1)
 
+    # Wire-mesh nets — dark cross-hatch clipped to the mesh sash opening so the
+    # mesh shutter prints as a mesh (not as a blank pane / "glass") on paper.
+    mesh_nets: list[tuple[float, float, float, float]] = []
+    for pl in model.polylines:
+        if pl.layer != "MESH" or len(pl.points) < 3:
+            continue
+        xs = [p.x for p in pl.points]
+        ys = [p.y for p in pl.points]
+        mx0, mx1, my0, my1 = min(xs), max(xs), min(ys), max(ys)
+        mesh_nets.append((mx0, my0, mx1, my1))
+        _pdf_mesh_hatch(c, px, py, scale, mx0, my0, mx1, my1, W=W, H=H)
+
+    # Pleated / rolling mesh add-on — dotted overlay + label (not a sash)
+    mesh_addon = meta.get("mesh_addon")
+    if isinstance(mesh_addon, Mapping):
+        try:
+            ax0, ay0 = float(mesh_addon.get("x0") or 0), float(mesh_addon.get("y0") or 0)
+            ax1, ay1 = float(mesh_addon.get("x1") or 0), float(mesh_addon.get("y1") or 0)
+        except (TypeError, ValueError):
+            ax0 = ay0 = ax1 = ay1 = 0.0
+        if ax1 > ax0 and ay1 > ay0:
+            c.saveState()
+            try:
+                c.setStrokeColorRGB(0.12, 0.12, 0.12)
+                c.setLineWidth(0.6)
+                try:
+                    c.setDash(1.2, 1.6)
+                except Exception:
+                    pass
+                c.rect(px(ax0), py(ay0), (ax1 - ax0) * scale, (ay1 - ay0) * scale, fill=0, stroke=1)
+                try:
+                    c.setDash()
+                except Exception:
+                    pass
+                step = max(min((ax1 - ax0), (ay1 - ay0)) * scale / 10.0, 3.0)
+                c.setFillColorRGB(0.18, 0.18, 0.18)
+                gy = py(ay0) + step / 2.0
+                while gy < py(ay1):
+                    gx = px(ax0) + step / 2.0
+                    while gx < px(ax1):
+                        c.circle(gx, gy, 0.35, fill=1, stroke=0)
+                        gx += step
+                    gy += step
+                c.setFont("Helvetica-Bold", 6)
+                lbl = f"{str(mesh_addon.get('typeLabel') or 'MESH').upper()}"
+                sz = f"{float(mesh_addon.get('widthMm') or (ax1 - ax0)):g}×{float(mesh_addon.get('heightMm') or (ay1 - ay0)):g}"
+                c.drawCentredString(px((ax0 + ax1) / 2.0), py(ay1) - 9, f"{lbl} {sz}")
+            finally:
+                c.restoreState()
+
     # Closed profile outlines (no fill)
     for pl in model.polylines:
-        if len(pl.points) < 2 or pl.layer in ("GLASS", "HARDWARE") or not pl.closed:
+        if len(pl.points) < 2 or pl.layer in ("GLASS", "HARDWARE", "MESH") or not pl.closed:
             continue
         path = c.beginPath()
         path.moveTo(px(pl.points[0].x), py(pl.points[0].y))
@@ -433,6 +530,21 @@ def draw_model_elevation(
             else:
                 c.drawString(px(lx), py(ay) - 8, panel_id)
 
+    # Mesh sash chips — "M1 MESH" low in the net so it never collides with
+    # the glass sash label behind it.
+    for mi, (mx0, my0, mx1, my1) in enumerate(mesh_nets):
+        cxm = (mx0 + mx1) / 2.0
+        ly = my0 + (my1 - my0) * 0.12
+        chip_w, chip_h = 30, 9
+        c.setFillColorRGB(1, 1, 1)
+        c.setStrokeColorRGB(0.1, 0.1, 0.1)
+        c.setLineWidth(0.5)
+        c.roundRect(px(cxm) - chip_w / 2, py(ly) - chip_h / 2, chip_w, chip_h, 1.5, fill=1, stroke=1)
+        c.setFillColorRGB(0.05, 0.05, 0.05)
+        c.setFont("Helvetica-Bold", 6)
+        c.drawCentredString(px(cxm), py(ly) - 2.2, f"M{mi + 1} MESH")
+    c.setFont("Helvetica-Bold", 7)
+
     # Dimension helpers in PDF points
     def dim_h(x0: float, x1: float, y_mm: float, text: str, text_dy: float = -9) -> None:
         c.setStrokeColorRGB(*dim)
@@ -481,6 +593,30 @@ def draw_model_elevation(
         _n, _a, gy0, _b, gy1 = sliding_glasses[0]
         dim_v(gy0, gy1, W + 14.0 / max(scale, 1e-6), f"{(gy1 - gy0):g}", text_dx=8)
 
+    # Fix / partition split chain — "FIX 600" + remaining door/sash height
+    # (and left/right fix widths) so the fabricator reads both sizes, not
+    # just the overall opening.
+    try:
+        from WEOS.factory.svg_export import (
+            _horizontal_split_chain,
+            _partition_split_sizes,
+            _vertical_split_chain,
+        )
+
+        _ps = _partition_split_sizes(meta)
+        _top_fix, _bot_fix = float(_ps.get("top") or 0.0), float(_ps.get("bottom") or 0.0)
+        _left_fix, _right_fix = float(_ps.get("left") or 0.0), float(_ps.get("right") or 0.0)
+    except Exception:
+        _top_fix = _bot_fix = _left_fix = _right_fix = 0.0
+    if _top_fix > 0 or _bot_fix > 0:
+        xv = W + (30.0 if sliding_glasses else 14.0) / max(scale, 1e-6)
+        for vy0, vy1, vlabel in _vertical_split_chain(H, _top_fix, _bot_fix):
+            dim_v(vy0, vy1, xv, vlabel, text_dx=8)
+    if _left_fix > 0 or _right_fix > 0:
+        yh = H + 10.0 / max(scale, 1e-6)
+        for hx0, hx1, hlabel in _horizontal_split_chain(W, _left_fix, _right_fix):
+            dim_h(hx0, hx1, yh, hlabel, text_dy=2.5)
+
     # Section sizes (bifold): top/bottom rail + jamb/leaf stile — printed on the PDF
     sec = meta.get("sectionSizes")
     if isinstance(sec, Mapping):
@@ -525,11 +661,14 @@ def draw_model_elevation(
             # A single leaf or a top-hung vent must not stroke into the sash
             # centre — that reads as a false mid rail. Hinge ticks sit on the
             # real hinge edge (head for top-hung, stile for side-hung).
-            single = len(glass_meta) == 1
+            single = sum(1 for s in glass_meta if bool(s.get("operable", True))) == 1
             for s in glass_meta:
                 sx0, sx1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
                 c.setStrokeColorRGB(0.09, 0.23, 0.39)
                 _hollow_plan_band(c, px(sx0), ymid - band / 2, (sx1 - sx0) * scale, band, lw=0.55)
+                # Fixed panels: glazing only — no hinge ticks / door swing in plan.
+                if not bool(s.get("operable", True)):
+                    continue
                 hinge = str(s.get("hingeSide") or "").lower()
                 if not hinge:
                     hinge = "left" if float(s.get("openDir") or 1) >= 0 else "right"
@@ -557,24 +696,52 @@ def draw_model_elevation(
                     c.line(px(hx), ymid, px((sx0 + sx1) / 2), ymid + band * 1.1)
         elif glass_meta:
             # Sliding: External / Internal offset track indicator (reference Image B)
+            # One plan line per glass track level: 2-track → 2, 3-track
+            # telescopic → 3, 4-track → 4. Mesh rides its own front line.
             depths = sorted({int(s.get("depth") or 1) for s in glass_meta}) or [1]
             dmin = depths[0]
-            ext_y = ymid + band * 0.55
-            int_y = ymid - band * 0.55
+            n_levels = max(len(depths), 1)
+            try:
+                n_levels = max(n_levels, int(track_count) - (1 if (mesh or mesh_meta) else 0))
+            except (TypeError, ValueError):
+                pass
+            n_levels = max(min(n_levels, 6), 1)
+            spread = 0.55 if n_levels <= 2 else 0.80
+            ext_y = ymid + band * spread
+            int_y = ymid - band * spread
+
+            def _level_y(depth: int) -> float:
+                if n_levels <= 1:
+                    return int_y
+                rank = depths.index(depth) if depth in depths else 0
+                return int_y + (ext_y - int_y) * (rank / float(n_levels - 1))
+
             c.setFont("Helvetica", 4.5)
             c.setFillColorRGB(0.05, 0.24, 0.48)
             left_x = min(float(s.get("x0") or 0) for s in glass_meta)
             c.drawRightString(px(left_x) - 2, ext_y - 1.5, "External")
             c.drawRightString(px(left_x) - 2, int_y - 1.5, "Internal")
+            if n_levels > 2:
+                # faint guide for every track so empty tracks still read
+                c.setStrokeColorRGB(0.62, 0.70, 0.78)
+                c.setLineWidth(0.3)
+                for lv in range(n_levels):
+                    gyy = int_y + (ext_y - int_y) * (lv / float(n_levels - 1))
+                    c.line(px(left_x), gyy, px(W - left_x), gyy)
+            mesh_y = int_y - band * (0.5 if n_levels <= 2 else 0.35)
             for s in mesh_meta:
                 mx0, mx1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
-                c.setStrokeColorRGB(0.15, 0.45, 0.30)
-                c.setLineWidth(1.0)
-                c.line(px(mx0), int_y - band * 0.5, px(mx1), int_y - band * 0.5)
+                c.setStrokeColorRGB(0.10, 0.10, 0.10)
+                c.setLineWidth(1.1)
+                c.line(px(mx0), mesh_y, px(mx1), mesh_y)
+                c.setFont("Helvetica", 3.8)
+                c.setFillColorRGB(0.10, 0.10, 0.10)
+                c.drawCentredString(px((mx0 + mx1) / 2.0), mesh_y - 4.2, "MESH")
             for pos, s in enumerate(glass_meta):
                 sx0, sx1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
-                is_front = int(s.get("depth") or 1) == dmin
-                yy = int_y if is_front else ext_y
+                depth = int(s.get("depth") or 1)
+                is_front = depth == dmin
+                yy = _level_y(depth) if n_levels > 2 else (int_y if is_front else ext_y)
                 c.setStrokeColorRGB(0.05, 0.24, 0.48)
                 c.setLineWidth(1.0)
                 c.line(px(sx0), yy, px(sx1), yy)
@@ -663,6 +830,12 @@ def draw_line_model_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
             sash_overlap_mm=lo.get("sashOverlapMm"),
             mullion_gap_mm=lo.get("mullionGapMm"),
         )
+        try:
+            from WEOS.factory.mesh_addon import attach_mesh_addon_to_drawing, mesh_addon_for_line
+
+            attach_mesh_addon_to_drawing(job.drawing, mesh_addon_for_line(line))
+        except Exception:
+            pass
         draw_model_elevation(
             c,
             job.drawing,

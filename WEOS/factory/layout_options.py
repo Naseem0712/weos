@@ -324,6 +324,17 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
     )
     mesh_count_hint = _coerce_int(pick("meshShutters", "meshCount", "mesh_count")) or 0
     mesh = bool(line.get("mesh") if line.get("mesh") is not None else (opts or {}).get("mesh")) or mesh_count_hint > 0
+    # Pleated / rolling mesh is an add-on priced separately — it never becomes a
+    # sliding mesh sash and never forces a 2.5 / 3-track frame.
+    try:
+        from WEOS.factory.mesh_addon import is_addon_mesh
+
+        addon_mesh = is_addon_mesh(line)
+    except Exception:
+        addon_mesh = False
+    if addon_mesh:
+        mesh = False
+        mesh_count_hint = 0
     track_raw = pick("trackCount")
     try:
         track_count = float(track_raw) if track_raw is not None and str(track_raw).strip() != "" else None
@@ -333,7 +344,7 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
     opening_explicit = bool(pick("openingExplicit", "opening_explicit")) or str(pick("openingSource") or "").lower() == "user"
     shutter_cfg = resolve_shutter_config(
         glass_count=pick("glassShutters", "glassCount", "glass_count"),
-        mesh_count=pick("meshShutters", "meshCount", "mesh_count"),
+        mesh_count=0 if addon_mesh else pick("meshShutters", "meshCount", "mesh_count"),
         mesh=mesh,
         track_count=track_count,
         fixed_shutters=pick("fixShutters", "fixedShutters", "fixed_shutters"),
@@ -422,6 +433,11 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
         "handleOverrides": handle_overrides,
         "handleName": pick("handleName", "handle_name"),
         "meshName": pick("meshName", "mesh_name"),
+        "meshType": pick("meshType", "mesh_type"),
+        "meshPlacement": pick("meshPlacement", "mesh_placement"),
+        "meshW": pick("meshW", "meshWidthMm"),
+        "meshH": pick("meshH", "meshHeightMm"),
+        "meshRate": pick("meshRate", "mesh_rate"),
         "powderCoatName": pick("powderCoatName", "powder_coat_name", "powderCoat", "coatingName"),
         "gridSpec": grid_spec,
         "sectionSeries": line.get("sectionSeries") or (opts or {}).get("sectionSeries"),

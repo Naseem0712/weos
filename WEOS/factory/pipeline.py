@@ -69,6 +69,52 @@ def _visual_geom(geom: Mapping[str, Any], sys_kind: str | None, width: float, he
     return g, v
 
 
+# Hardware parts that belong to an operable leaf (never to a fixed lite).
+_LEAF_HARDWARE_WORDS = (
+    "handle", "hinge", "friction", "stay", "lock", "keeper", "espag", "roller", "wheel",
+    "interlock", "striker", "multipoint", "multi-point", "restrictor", "cleat (shutter)",
+    "setting block",
+)
+
+
+def _is_leaf_hardware(part_name: str) -> bool:
+    low = str(part_name or "").lower()
+    return any(w in low for w in _LEAF_HARDWARE_WORDS)
+
+
+def casement_hardware_for_operable(
+    rules,
+    ctx: Mapping[str, float],
+    *,
+    geom: Mapping[str, Any],
+    width: float,
+    height: float,
+    extras: Mapping[str, Any],
+    operable_count: int,
+    all_hardware,
+):
+    """Scale casement hardware by OPERABLE leaves.
+
+    * ``operable_count == 0`` (all panels fixed) → no hardware at all.
+    * Otherwise leaf parts (handle / hinge / friction stay / lock / espag / roller /
+      shutter cleats / setting blocks) are re-evaluated with
+      ``shutterCount = operable_count``; frame consumables keep their value.
+    """
+    if int(operable_count) <= 0:
+        return []
+    total = int(float(geom.get("shutterCount") or 0) or 0)
+    if total <= 0 or int(operable_count) >= total:
+        return list(all_hardware)
+    geom_op = dict(geom)
+    geom_op["shutterCount"] = float(operable_count)
+    ctx_op = build_context(width, height, geom_op, extras=extras)
+    op_items = compute_hardware(rules, ctx_op)
+    out = []
+    for base, op in zip(all_hardware, op_items):
+        out.append(op if _is_leaf_hardware(base.description) else base)
+    return out
+
+
 def generate_job(
     width: float,
     height: float,
@@ -247,8 +293,13 @@ def generate_job(
 
     # Glass / hardware quantities follow the actual glass shutter / leaf count
     geom["shutterCount"] = float(layout.glass_count)
+    operable_count = sum(1 for sp in layout.shutters if sp.role == "glass" and sp.operable)
+    fixed_count = max(int(layout.glass_count) - operable_count, 0)
 
     extras_ctx = {
+        "operableCount": float(operable_count),
+        "fixedCount": float(fixed_count),
+        "meshCount": float(layout.mesh_count),
         "leftShutterWidth": layout.left_shutter_width,
         "rightShutterWidth": layout.right_shutter_width,
         "leftGlassWidth": layout.left_glass_width,
@@ -263,6 +314,20 @@ def generate_job(
 
     glass_items = compute_glass(layout, glass_rules, ctx)
     hardware = compute_hardware(product.get("hardware") or [], ctx)
+    if layout.system in ("casement", "openable", "opening"):
+        # Casement rule: a FIXED lite carries no hardware at all (no handle, hinge,
+        # friction stay, lock, espag, roller). Leaf hardware follows the number of
+        # operable leaves; an all-fixed design has zero hardware.
+        hardware = casement_hardware_for_operable(
+            product.get("hardware") or [],
+            ctx,
+            geom=geom,
+            width=width,
+            height=height,
+            extras=extras_ctx,
+            operable_count=operable_count,
+            all_hardware=hardware,
+        )
     brush = compute_brush(product.get("brush") or {}, ctx)
     track_rail = compute_track_rail(product.get("trackRail") or {}, ctx)
     cut_list = compute_cut_list(product.get("cutList") or [], ctx, waste_factor=1.0)

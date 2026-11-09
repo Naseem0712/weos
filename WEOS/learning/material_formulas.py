@@ -560,8 +560,38 @@ def compute_glass_makeup_weight(
     Reuses the preloaded baseline formulas so results stay consistent with the
     Formula Memory the admin can edit/version.
     """
-    kind = (makeup or "single").strip().lower()
+    kind = (makeup or "single").strip().lower().replace("-", "_").replace(" ", "_")
     layers = [float(x) for x in (layers_mm or []) if x]
+    if kind in ("lam_dgu", "laminated_dgu", "lamdgu", "lam+dgu", "dgu_laminated") or ("lam" in kind and "dgu" in kind):
+        # Laminated pane (g1 + PVB + g2) + air gap + single outer pane (g3).
+        g1 = layers[0] if len(layers) > 0 else 5.0
+        g2 = layers[1] if len(layers) > 1 else g1
+        g3 = layers[2] if len(layers) > 2 else g1
+        lam = compute_weight(
+            "glass_laminated",
+            params={
+                "widthMm": width_mm,
+                "heightMm": height_mm,
+                "glass1Mm": g1,
+                "glass2Mm": g2,
+                "pvbMm": pvb_mm,
+                "densityKgPerM3": density,
+                "qty": qty,
+            },
+            formula_key="glass_laminated",
+        )
+        outer = compute_weight(
+            "glass",
+            params={"widthMm": width_mm, "heightMm": height_mm, "thicknessMm": g3, "densityKgPerM3": density, "qty": qty},
+            formula_key="glass",
+        )
+        out = dict(lam) if isinstance(lam, dict) else {}
+        try:
+            out["weightKg"] = round(float((lam or {}).get("weightKg") or 0) + float((outer or {}).get("weightKg") or 0), 3)
+        except (TypeError, ValueError):
+            pass
+        out["makeup"] = "lam_dgu"
+        return out
     if kind in ("dgu", "double", "double_glazed", "insulated"):
         g1 = layers[0] if len(layers) > 0 else (thickness_mm or 5.0)
         g2 = layers[1] if len(layers) > 1 else g1
