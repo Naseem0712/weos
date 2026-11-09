@@ -1057,9 +1057,28 @@ def render_svg_string(
     except Exception:
         panel_fill = None
 
+    # Glass lites fully under a mesh sash are omitted here — mesh plate + hatch
+    # own that bay (avoids glass edge/mitre stubs showing through mesh corners).
+    _mesh_cover: list[tuple[float, float, float, float]] = []
+    for pl in model.polylines:
+        nm = (pl.name or "").lower()
+        if not (nm.startswith("mesh_") and nm.endswith("_outer")):
+            continue
+        bb = _polyline_bbox(pl)
+        if bb:
+            _mesh_cover.append(bb)
+
+    def _glass_under_mesh(gx0: float, gy0: float, gx1: float, gy1: float, *, eps: float = 1.0) -> bool:
+        for mx0, my0, mx1, my1 in _mesh_cover:
+            if gx0 >= mx0 - eps and gx1 <= mx1 + eps and gy0 >= my0 - eps and gy1 <= my1 + eps:
+                return True
+        return False
+
     glasses_early = _glass_panels(model)
     if panel_fill:
         for _name, gx0, gy0, gx1, gy1 in glasses_early:
+            if _glass_under_mesh(gx0, gy0, gx1, gy1):
+                continue
             parts.extend(
                 svg_fill_for_rect(
                     x0=gx0, y0=gy0, x1=gx1, y1=gy1,
@@ -1069,6 +1088,9 @@ def render_svg_string(
     else:
         for pl in model.polylines:
             if pl.layer != "GLASS" or len(pl.points) < 2:
+                continue
+            bb = _polyline_bbox(pl)
+            if bb and _glass_under_mesh(*bb):
                 continue
             pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
             parts.append(
@@ -1138,8 +1160,8 @@ def render_svg_string(
     glasses = _glass_panels(model)
     meta = model.metadata or {}
 
-    # Wire mesh nets (MESH layer) — hatch clipped to the inner opening only,
-    # never the sash profile / jamb. Frame outline is drawn on top afterwards.
+    # Wire mesh sashes — opaque plate + hatch + outer/inner/45° miters on top so
+    # rear glass corners cannot show through (XX / inverted cut / inner stubs).
     mesh_nets: list[tuple[str, float, float, float, float]] = []
     mesh_net_pls: list[Polyline] = []
     for pl in model.polylines:
@@ -1151,18 +1173,40 @@ def render_svg_string(
         mesh_nets.append((pl.name or f"mesh_{len(mesh_nets)+1}", *bb))
         mesh_net_pls.append(pl)
     if mesh_net_pls:
+        # Opaque sash plate (covers any glass outer/inner still under the mesh bay).
+        for pl in model.polylines:
+            nm = (pl.name or "").lower()
+            if not (nm.startswith("mesh_") and nm.endswith("_outer")) or len(pl.points) < 2:
+                continue
+            pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
+            parts.append(
+                f'<polygon points="{pts}" fill="{bg}" stroke="none" data-mesh-plate="1"/>'
+            )
         parts.append("<defs>")
         for i, pl in enumerate(mesh_net_pls):
             pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
             parts.append(f'<clipPath id="meshClip{i}"><polygon points="{pts}"/></clipPath>')
         parts.append("</defs>")
         for i, pl in enumerate(mesh_net_pls):
-            pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
+            # Slight inset so hatch wires do not collide with the 45° mitre tip
+            # (avoids an "inverted diagonal" look at the inner corner).
+            bb = _polyline_bbox(pl)
+            if bb:
+                hx0, hy0, hx1, hy1 = bb
+                inset = min(1.5, max(0.0, (hx1 - hx0) * 0.01), max(0.0, (hy1 - hy0) * 0.01))
+                hx0, hy0, hx1, hy1 = hx0 + inset, hy0 + inset, hx1 - inset, hy1 - inset
+                pts = (
+                    f"{tx(hx0):.2f},{ty(hy0):.2f} {tx(hx1):.2f},{ty(hy0):.2f} "
+                    f"{tx(hx1):.2f},{ty(hy1):.2f} {tx(hx0):.2f},{ty(hy1):.2f}"
+                )
+            else:
+                pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
             parts.append(
                 f'<g clip-path="url(#meshClip{i})">'
                 f'<polygon points="{pts}" fill="url(#meshWire)" stroke="none" data-mesh="wire"/>'
                 f"</g>"
             )
+        # Outer then inner profile (glass-identical), then 45° miters.
         for pl in model.polylines:
             if not _is_mesh_frame(pl.name or "") or len(pl.points) < 2:
                 continue

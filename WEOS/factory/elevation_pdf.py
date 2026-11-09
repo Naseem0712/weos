@@ -313,9 +313,36 @@ def draw_model_elevation(
         _draw_grid_pdf(c, px=px, py=py, scale=scale, meta=meta, W=W, H=H, finish=finish, stroke=stroke, dim=dim, glass_stroke=glass_stroke)
         return
 
+    def _is_mesh_profile(name: str) -> bool:
+        nm = (name or "").lower()
+        return nm.startswith("mesh_") and "net" not in nm
+
+    # Mesh outer bboxes — glass lites under a mesh bay are skipped (mesh plate owns them).
+    mesh_outers_bb: list[tuple[float, float, float, float]] = []
+    for pl in model.polylines:
+        nm = (pl.name or "").lower()
+        if not (nm.startswith("mesh_") and nm.endswith("_outer")) or len(pl.points) < 3:
+            continue
+        xs = [p.x for p in pl.points]
+        ys = [p.y for p in pl.points]
+        mesh_outers_bb.append((min(xs), min(ys), max(xs), max(ys)))
+
+    def _glass_under_mesh_pdf(xs: list[float], ys: list[float], *, eps: float = 1.0) -> bool:
+        if not xs or not ys:
+            return False
+        gx0, gx1, gy0, gy1 = min(xs), max(xs), min(ys), max(ys)
+        for mx0, my0, mx1, my1 in mesh_outers_bb:
+            if gx0 >= mx0 - eps and gx1 <= mx1 + eps and gy0 >= my0 - eps and gy1 <= my1 + eps:
+                return True
+        return False
+
     # Glass fills first — light tint only (never solid dark)
     for pl in model.polylines:
         if pl.layer != "GLASS" or len(pl.points) < 2:
+            continue
+        xs = [p.x for p in pl.points]
+        ys = [p.y for p in pl.points]
+        if _glass_under_mesh_pdf(xs, ys):
             continue
         path = c.beginPath()
         path.moveTo(px(pl.points[0].x), py(pl.points[0].y))
@@ -327,17 +354,14 @@ def draw_model_elevation(
         c.setLineWidth(0.55)
         c.drawPath(path, fill=1, stroke=1)
 
-    # Wire-mesh nets — dark cross-hatch clipped to the mesh sash opening so the
-    # mesh shutter prints as a mesh (not as a blank pane / "glass") on paper.
+    # Collect mesh nets (hatch drawn later, after glass profiles, with an opaque plate).
     mesh_nets: list[tuple[float, float, float, float]] = []
     for pl in model.polylines:
         if pl.layer != "MESH" or len(pl.points) < 3:
             continue
         xs = [p.x for p in pl.points]
         ys = [p.y for p in pl.points]
-        mx0, mx1, my0, my1 = min(xs), max(xs), min(ys), max(ys)
-        mesh_nets.append((mx0, my0, mx1, my1))
-        _pdf_mesh_hatch(c, px, py, scale, mx0, my0, mx1, my1, W=W, H=H)
+        mesh_nets.append((min(xs), min(ys), max(xs), max(ys)))
 
     # Pleated / rolling mesh add-on — dotted overlay + label (not a sash)
     mesh_addon = meta.get("mesh_addon")
@@ -377,9 +401,11 @@ def draw_model_elevation(
             finally:
                 c.restoreState()
 
-    # Closed profile outlines (no fill)
+    # Closed profile outlines (no fill) — defer mesh sash (redrawn clean on top).
     for pl in model.polylines:
         if len(pl.points) < 2 or pl.layer in ("GLASS", "HARDWARE", "MESH") or not pl.closed:
+            continue
+        if _is_mesh_profile(pl.name or ""):
             continue
         path = c.beginPath()
         path.moveTo(px(pl.points[0].x), py(pl.points[0].y))
@@ -393,6 +419,8 @@ def draw_model_elevation(
     for pl in model.polylines:
         if pl.closed or pl.layer == "GLASS" or len(pl.points) < 2:
             continue
+        if _is_mesh_profile(pl.name or ""):
+            continue
         c.setStrokeColorRGB(*stroke)
         c.setLineWidth(0.62)
         for a, b in zip(pl.points, pl.points[1:]):
@@ -400,6 +428,8 @@ def draw_model_elevation(
 
     for seg in model.segments:
         lname = (seg.name or "").lower()
+        if lname.startswith("mesh_"):
+            continue  # mesh miters redrawn on top of the opaque plate
         is_il = "interlock" in lname or "meeting" in lname
         if is_il:
             c.setStrokeColorRGB(0.05, 0.05, 0.06)
@@ -407,6 +437,53 @@ def draw_model_elevation(
         else:
             c.setStrokeColorRGB(*stroke if seg.layer == "PROFILES" else (0.20, 0.20, 0.22))
             c.setLineWidth(0.62)
+        c.line(px(seg.start.x), py(seg.start.y), px(seg.end.x), py(seg.end.y))
+
+    # Mesh sash on top: opaque plate masks rear glass corners, then hatch + clean
+    # outer/inner/45° miters (fabrication-identical to a glass sash corner).
+    for pl in model.polylines:
+        nm = (pl.name or "").lower()
+        if not (nm.startswith("mesh_") and nm.endswith("_outer")) or len(pl.points) < 3:
+            continue
+        path = c.beginPath()
+        path.moveTo(px(pl.points[0].x), py(pl.points[0].y))
+        for p in pl.points[1:]:
+            path.lineTo(px(p.x), py(p.y))
+        path.close()
+        c.setFillColorRGB(1, 1, 1)
+        c.setStrokeColorRGB(1, 1, 1)
+        c.setLineWidth(0.1)
+        c.drawPath(path, fill=1, stroke=0)
+    for mx0, my0, mx1, my1 in mesh_nets:
+        # Inset hatch slightly so wires do not collide with the 45° mitre tip.
+        inset = min(1.5, max(0.0, (mx1 - mx0) * 0.01), max(0.0, (my1 - my0) * 0.01))
+        _pdf_mesh_hatch(
+            c, px, py, scale,
+            mx0 + inset, my0 + inset, mx1 - inset, my1 - inset,
+            W=W, H=H,
+        )
+    for pl in model.polylines:
+        if not _is_mesh_profile(pl.name or "") or len(pl.points) < 2:
+            continue
+        if pl.closed:
+            path = c.beginPath()
+            path.moveTo(px(pl.points[0].x), py(pl.points[0].y))
+            for p in pl.points[1:]:
+                path.lineTo(px(p.x), py(p.y))
+            path.close()
+            c.setStrokeColorRGB(*stroke)
+            c.setLineWidth(0.72)
+            c.drawPath(path, fill=0, stroke=1)
+        else:
+            c.setStrokeColorRGB(*stroke)
+            c.setLineWidth(0.62)
+            for a, b in zip(pl.points, pl.points[1:]):
+                c.line(px(a.x), py(a.y), px(b.x), py(b.y))
+    for seg in model.segments:
+        if not (seg.name or "").lower().startswith("mesh_"):
+            continue
+        c.setStrokeColorRGB(*stroke)
+        c.setLineWidth(0.62)
         c.line(px(seg.start.x), py(seg.start.y), px(seg.end.x), py(seg.end.y))
 
     # Hardware — casement hinge capsules + lever handles (outline)

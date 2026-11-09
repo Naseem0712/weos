@@ -1651,16 +1651,18 @@ def _emit_fix_partitions(model: DrawingModel, L: SlidingLayout) -> None:
 
 
 def _emit_mesh_sashes(model: DrawingModel, L: SlidingLayout) -> None:
-    """Mesh sash frame (PROFILES ``mesh_N_outer``) + wire net (MESH ``mesh_N_net``).
+    """Mesh sash frame + wire net — fabrication-identical to a glass sash corner.
 
-    The MESH layer is rendered by the SVG / PDF exporters as a dark cross-hatch
-    (wire mesh), never as glass.
+    Emits ``mesh_N_outer`` + ``mesh_N_inner`` on PROFILES (same outer/inner + 45°
+    miters as glass) and ``mesh_N_net`` on MESH for the hatch fill only.
     """
     for sp in L.shutters:
         if sp.role != "mesh":
             continue
         o, g = sp.outer, sp.glass
         model.add_polyline(rect_polyline(o, closed=True, layer="PROFILES", name=f"mesh_{sp.index}_outer"))
+        # Inner profile stroke (matches glass lite edge) — separate from MESH hatch.
+        model.add_polyline(rect_polyline(g, closed=True, layer="PROFILES", name=f"mesh_{sp.index}_inner"))
         model.add_polyline(rect_polyline(g, closed=True, layer="MESH", name=f"mesh_{sp.index}_net"))
         for tag, p0, p1 in (
             ("bl", Point(o.x0, o.y0), Point(g.x0, g.y0)),
@@ -1684,14 +1686,35 @@ def _build_shutter_profiles(model: DrawingModel, L: SlidingLayout, glass_panels:
     # BACK sash meeting corners stay square (avoids double center line / cap stubs).
     by_pos = sorted(glass_panels, key=lambda p: p.nom_x0)
     pos_of = {id(p): k for k, p in enumerate(by_pos)}
-    # Mesh parks on the front track over a glass bay. Any glass 45° corner that
-    # lands under a mesh outer must be omitted — otherwise mesh + glass diagonals
-    # cross at the interlock and read as "XX" instead of one clean miter.
+    # Mesh covers a glass bay (own track). Any glass outer/inner/45° that lands
+    # under a mesh sash must be omitted — otherwise glass square corners + mesh
+    # diagonals read as "XX" / inverted cuts / leftover inner stubs.
     mesh_outers = [sp.outer for sp in L.shutters if sp.role == "mesh"]
 
     def corner_under_mesh(x: float, y: float, *, eps: float = 0.75) -> bool:
         for mo in mesh_outers:
             if (mo.x0 - eps) <= x <= (mo.x1 + eps) and (mo.y0 - eps) <= y <= (mo.y1 + eps):
+                return True
+        return False
+
+    def panel_under_mesh(sp: ShutterPanel, *, eps: float = 0.75) -> bool:
+        """True when this glass sash's nominal bay is covered by a mesh sash.
+
+        Match on nominal shares (not the lapped outer): a front-track glass can
+        extend past the mesh bay by the interlock lap, but the mesh still owns
+        that bay's visible corners.
+        """
+        for mo in mesh_outers:
+            if sp.nom_x0 >= mo.x0 - eps and sp.nom_x1 <= mo.x1 + eps:
+                return True
+            # Exact footprint containment (back sashes with no lap extension).
+            o = sp.outer
+            if (
+                o.x0 >= mo.x0 - eps
+                and o.x1 <= mo.x1 + eps
+                and o.y0 >= mo.y0 - eps
+                and o.y1 <= mo.y1 + eps
+            ):
                 return True
         return False
 
@@ -1711,6 +1734,15 @@ def _build_shutter_profiles(model: DrawingModel, L: SlidingLayout, glass_panels:
         orr = k < len(by_pos) - 1 and by_pos[k + 1].depth < sp.depth
         return ol, orr
 
+    def mesh_clip_x(x: float, *, side: str) -> float | None:
+        """If vertical stile at ``x`` lies under a mesh outer, return the mesh
+        edge the remaining sash should stop at (right edge for left stile, etc.).
+        """
+        for mo in mesh_outers:
+            if (mo.x0 - 0.75) <= x <= (mo.x1 + 0.75):
+                return mo.x1 if side == "left" else mo.x0
+        return None
+
     # Back (larger depth) first so front sashes overlap on top.
     for sp in sorted(glass_panels, key=lambda p: -p.depth):
         o, g = sp.outer, sp.glass
@@ -1718,18 +1750,36 @@ def _build_shutter_profiles(model: DrawingModel, L: SlidingLayout, glass_panels:
         prefix = "fix_shutter" if fixed else "shutter"
         left_m, right_m = meeting_sides(sp)
         ol, orr = overlapped_sides(sp)
-        # Outer sash outline. The FRONT sash (not overlapped) is a continuous closed
-        # rectangle. A BACK sash omits the overlapped meeting edge so the front sash's
-        # lap reads the interlock cleanly (no stray center line / cap stubs).
+        # Mesh bay: keep glass lite (labels / tint under hatch) but skip outer +
+        # mitres — mesh sash owns the visible frame (same clean 45° corners).
+        if panel_under_mesh(sp):
+            glass_name = f"fix_shutter_{sp.index}_glass" if fixed else f"shutter_{sp.index}_glass"
+            model.add_polyline(rect_polyline(g, closed=True, layer="GLASS", name=glass_name))
+            continue
         oname = f"{prefix}_{sp.index}_outer"
-        if ol and orr:
-            # Deep middle sash lapped on both sides → only its top & bottom rails show.
-            model.add_segment(Segment(Point(o.x0, o.y1), Point(o.x1, o.y1), layer="PROFILES", name=f"{oname}_top"))
-            model.add_segment(Segment(Point(o.x0, o.y0), Point(o.x1, o.y0), layer="PROFILES", name=f"{oname}_bot"))
-        elif orr:
-            model.add_polyline(u_polyline_open_right(o, layer="PROFILES", name=oname))
-        elif ol:
-            model.add_polyline(u_polyline_open_left(o, layer="PROFILES", name=oname))
+        # Neighbour lap stile under a mesh sash (e.g. middle glass lapping into a
+        # left mesh bay) must not paint through the mesh frame band.
+        clip_l = mesh_clip_x(o.x0, side="left")
+        clip_r = mesh_clip_x(o.x1, side="right")
+        hide_l = ol or clip_l is not None
+        hide_r = orr or clip_r is not None
+        x_left = float(clip_l) if clip_l is not None else o.x0
+        x_right = float(clip_r) if clip_r is not None else o.x1
+        if x_right <= x_left + 0.5:
+            # Entirely swallowed by mesh clip — nothing left to stroke.
+            continue
+        if hide_l and hide_r:
+            model.add_segment(Segment(Point(x_left, o.y1), Point(x_right, o.y1), layer="PROFILES", name=f"{oname}_top"))
+            model.add_segment(Segment(Point(x_left, o.y0), Point(x_right, o.y0), layer="PROFILES", name=f"{oname}_bot"))
+        elif hide_r and not hide_l:
+            # Open on right (back-lap and/or mesh): left stile + clipped rails.
+            model.add_segment(Segment(Point(x_right, o.y1), Point(o.x0, o.y1), layer="PROFILES", name=f"{oname}_top"))
+            model.add_segment(vertical_segment(o.x0, o.y0, o.y1, layer="PROFILES", name=f"{oname}_L"))
+            model.add_segment(Segment(Point(o.x0, o.y0), Point(x_right, o.y0), layer="PROFILES", name=f"{oname}_bot"))
+        elif hide_l and not hide_r:
+            model.add_segment(Segment(Point(x_left, o.y0), Point(o.x1, o.y0), layer="PROFILES", name=f"{oname}_bot"))
+            model.add_segment(vertical_segment(o.x1, o.y0, o.y1, layer="PROFILES", name=f"{oname}_R"))
+            model.add_segment(Segment(Point(o.x1, o.y1), Point(x_left, o.y1), layer="PROFILES", name=f"{oname}_top"))
         else:
             model.add_polyline(rect_polyline(o, closed=True, layer="PROFILES", name=oname))
         glass_name = f"fix_shutter_{sp.index}_glass" if fixed else f"shutter_{sp.index}_glass"
@@ -1737,18 +1787,21 @@ def _build_shutter_profiles(model: DrawingModel, L: SlidingLayout, glass_panels:
         # Corner miters: outer corners always. Meeting-stile corners only on the
         # FRONT (overlapping) sash — the visible interlock stile that the user sees.
         # BACK sash meeting corners stay square so we don't get double-line / cap stubs.
-        # Corners covered by a front mesh sash are skipped (mesh draws the clean 45°).
+        # Corners covered by a mesh sash are skipped (mesh draws the clean 45°).
         miters = (
-            ("bl", Point(o.x0, o.y0), Point(g.x0, g.y0), left_m, ol),
-            ("br", Point(o.x1, o.y0), Point(g.x1, g.y0), right_m, orr),
-            ("tr", Point(o.x1, o.y1), Point(g.x1, g.y1), right_m, orr),
-            ("tl", Point(o.x0, o.y1), Point(g.x0, g.y1), left_m, ol),
+            ("bl", Point(o.x0, o.y0), Point(g.x0, g.y0), left_m, hide_l),
+            ("br", Point(o.x1, o.y0), Point(g.x1, g.y0), right_m, hide_r),
+            ("tr", Point(o.x1, o.y1), Point(g.x1, g.y1), right_m, hide_r),
+            ("tl", Point(o.x0, o.y1), Point(g.x0, g.y1), left_m, hide_l),
         )
         for tag, p0, p1, is_meeting, is_back_lap in miters:
             if is_meeting and is_back_lap:
                 continue  # back sash at lap — keep square; front sash draws the miter
             if corner_under_mesh(p0.x, p0.y):
-                continue  # under front mesh — mesh miter is the visible cut
+                continue  # under mesh — mesh miter is the visible cut
+            # Mesh-clipped stile: skip that side's corner miters (mesh owns the cut).
+            if (tag in ("bl", "tl") and clip_l is not None) or (tag in ("br", "tr") and clip_r is not None):
+                continue
             model.add_segment(Segment(p0, p1, layer="PROFILES", name=f"{prefix}_{sp.index}_miter_{tag}"))
 
     # Draw a meeting line ONLY where two same-track sashes butt together (no stray
