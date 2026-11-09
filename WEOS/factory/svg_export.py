@@ -1032,8 +1032,16 @@ def render_svg_string(
                 f'{_solid_sw(sw_profile * 0.85)}/>'
             )
 
+    def _is_mesh_frame(name: str) -> bool:
+        nm = (name or "").lower()
+        return nm.startswith("mesh_") and "net" not in nm
+
     for pl in model.polylines:
         if pl.layer in ("GLASS", "HARDWARE", "MESH") or len(pl.points) < 2:
+            continue
+        # Mesh sash frame is stroked after the clipped hatch so the profile
+        # outline sits cleanly on top (same as glass: fill inside, frame above).
+        if _is_mesh_frame(pl.name or ""):
             continue
         pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
         nm = str(pl.name or "").lower()
@@ -1072,6 +1080,8 @@ def render_svg_string(
 
     for seg in model.segments:
         lname = (seg.name or "").lower()
+        if lname.startswith("mesh_"):
+            continue  # mesh miters redrawn on top of the hatch
         is_il = "interlock" in lname or "meeting" in lname
         stroke = "#052c54" if is_il else (frame_stroke if seg.layer == "PROFILES" else "#333")
         lw = sw_interlock if is_il else sw_seg
@@ -1084,8 +1094,10 @@ def render_svg_string(
     glasses = _glass_panels(model)
     meta = model.metadata or {}
 
-    # Wire mesh sashes (MESH layer) — black cross-hatch over the mesh sash area.
+    # Wire mesh nets (MESH layer) — hatch clipped to the inner opening only,
+    # never the sash profile / jamb. Frame outline is drawn on top afterwards.
     mesh_nets: list[tuple[str, float, float, float, float]] = []
+    mesh_net_pls: list[Polyline] = []
     for pl in model.polylines:
         if pl.layer != "MESH" or len(pl.points) < 2:
             continue
@@ -1093,10 +1105,40 @@ def render_svg_string(
         if not bb:
             continue
         mesh_nets.append((pl.name or f"mesh_{len(mesh_nets)+1}", *bb))
-        pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
-        parts.append(
-            f'<polygon points="{pts}" fill="url(#meshWire)" stroke="#1a1a1a" {_solid_sw(sw_profile * 0.9)} data-mesh="wire"/>'
-        )
+        mesh_net_pls.append(pl)
+    if mesh_net_pls:
+        parts.append("<defs>")
+        for i, pl in enumerate(mesh_net_pls):
+            pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
+            parts.append(f'<clipPath id="meshClip{i}"><polygon points="{pts}"/></clipPath>')
+        parts.append("</defs>")
+        for i, pl in enumerate(mesh_net_pls):
+            pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
+            parts.append(
+                f'<g clip-path="url(#meshClip{i})">'
+                f'<polygon points="{pts}" fill="url(#meshWire)" stroke="none" data-mesh="wire"/>'
+                f"</g>"
+            )
+        for pl in model.polylines:
+            if not _is_mesh_frame(pl.name or "") or len(pl.points) < 2:
+                continue
+            pts = " ".join(f"{tx(p.x):.2f},{ty(p.y):.2f}" for p in pl.points)
+            if pl.closed:
+                parts.append(
+                    f'<polygon points="{pts}" fill="none" stroke="{frame_stroke}" {_solid_sw(sw_inner)}/>'
+                )
+            else:
+                parts.append(
+                    f'<polyline points="{pts}" fill="none" stroke="{frame_stroke}" {_solid_sw(sw_inner * 0.9)}/>'
+                )
+        for seg in model.segments:
+            if not (seg.name or "").lower().startswith("mesh_"):
+                continue
+            parts.append(
+                f'<line x1="{tx(seg.start.x):.2f}" y1="{ty(seg.start.y):.2f}" '
+                f'x2="{tx(seg.end.x):.2f}" y2="{ty(seg.end.y):.2f}" '
+                f'stroke="{frame_stroke}" {_solid_sw(sw_seg)}/>'
+            )
 
     # Pleated / rolling mesh add-on — dotted grid over the chosen placement.
     _addon = meta.get("mesh_addon") if isinstance(meta.get("mesh_addon"), Mapping) else None
@@ -1250,9 +1292,12 @@ def render_svg_string(
             parts, tx=tx, ty=ty, x0=0.0, x1=W, y=-95.0 * k, text=f"{W:g}",
             text_y=-122.0 * k, stroke=dim_stroke, font=dim_font,
         )
-        # Per-shutter equal-division widths (nominal shares) along the top
+        # Per-shutter equal-division widths (nominal shares) along the bottom.
+        # Sliding / bifold only — casement inner-opening / glass widths (the
+        # daylight sash size) must not print next to the overall W.
+        _sys = str(meta.get("system") or "sliding").lower()
         glass_meta = [s for s in (meta.get("shutters") or []) if isinstance(s, Mapping) and s.get("role") == "glass"]
-        if glass_meta:
+        if glass_meta and _sys not in ("casement", "openable", "opening"):
             for s in glass_meta:
                 nx0 = float(s.get("nomX0") or s.get("x0") or 0.0)
                 nx1 = float(s.get("nomX1") or s.get("x1") or 0.0)
@@ -1260,31 +1305,13 @@ def render_svg_string(
                     parts, tx=tx, ty=ty, x0=nx0, x1=nx1, y=-42.0 * k,
                     text=f"{(nx1 - nx0):g}", text_y=-64.0 * k, stroke=dim_stroke, font=dim_font * 0.82,
                 )
-        else:
-            slide_x0 = float(meta.get("sliding_x0") or meta.get("shutter_inset") or 0.0)
-            slide_x1 = float(meta.get("sliding_x1") or (W - float(meta.get("shutter_inset") or 0.0)))
-            il = float(meta.get("interlock_left") or ((slide_x0 + slide_x1) / 2.0))
-            _dim_line_h(
-                parts, tx=tx, ty=ty, x0=slide_x0, x1=il, y=-42.0 * k,
-                text=f"{(il - slide_x0):g}", text_y=-64.0 * k, stroke=dim_stroke, font=dim_font * 0.9,
-            )
-            _dim_line_h(
-                parts, tx=tx, ty=ty, x0=il, x1=slide_x1, y=-42.0 * k,
-                text=f"{(slide_x1 - il):g}", text_y=-64.0 * k, stroke=dim_stroke, font=dim_font * 0.9,
-            )
         # Fix partition dims — "how much fix, how much left": a split chain that
         # adds up to the overall size (FIX n + remaining shutter / door share).
+        # Glass / daylight (sash-inner) width & height are intentionally omitted.
         _fix_sizes = _partition_split_sizes(meta)
         _has_v_fix = (_fix_sizes["top"] > 0 or _fix_sizes["bottom"] > 0)
-        sliding_glasses = [g for g in glasses if "fix" not in (g[0] or "").lower()]
-        if sliding_glasses:
-            _n, _a, gy0, _b, gy1 = sliding_glasses[0]
-            _dim_line_v(
-                parts, tx=tx, ty=ty, y0=gy0, y1=gy1, x=W + 48.0 * k,
-                text=f"{(gy1 - gy0):g}", text_x=W + 78.0 * k, stroke=dim_stroke, font=dim_font * 0.85,
-            )
         if _has_v_fix:
-            _xv = W + (118.0 if sliding_glasses else 48.0) * k
+            _xv = W + 48.0 * k
             _xt = _xv + 30.0 * k
             for (ya, yb, txt) in _vertical_split_chain(H, _fix_sizes["top"], _fix_sizes["bottom"]):
                 _dim_line_v(

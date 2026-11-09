@@ -439,7 +439,9 @@ def _build_shutters(
             mx0 = x0 + panel_w * slot
             mx1 = min(mx0 + panel_w, x1)
             mouter = Rect(mx0, y0, mx1, y1)
-            mglass = mouter.inset(fw * 0.6, fw * 0.6, fw * 0.6, fw * 0.6)
+            # Same sash-profile inset as glass lites so the wire net sits inside
+            # the inner opening (hatch must never paint the mesh frame / jamb).
+            mglass = mouter.inset(fw, fw, fw, fw)
             panels.append(
                 ShutterPanel(
                     index=G + j,

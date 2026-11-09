@@ -25,6 +25,12 @@ def _txt(v: Any) -> str:
     return str(v or "").strip()
 
 
+def _project_print_name(payload: Mapping[str, Any]) -> str:
+    from WEOS.factory.pdf_engine import project_print_name
+
+    return project_print_name(payload)
+
+
 def _num(v: Any) -> float | None:
     try:
         if v is None or v == "":
@@ -482,7 +488,7 @@ def export_quote_xlsx(
                 " · ".join(x for x in (_txt(profile.get("phone")), _txt(profile.get("email")), _txt(profile.get("contactPerson"))) if x),
             ),
             ("Customer GSTIN", _txt(profile.get("gstNo"))),
-            ("Project", _txt(payload.get("name"))),
+            ("Project", _txt(_project_print_name(payload))),
             ("Status", status.replace("_", " ").title() if status else ""),
         ]
         for label, val in meta:

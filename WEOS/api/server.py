@@ -915,6 +915,15 @@ def _pdf_response(
             "activeQuoteGroup",
         ):
             if overlay.get(_fld) is not None:
+                # Live cart may still carry the HTML placeholder "WEOS Project".
+                # Never let that clobber a real Project Setup name already on the quote.
+                if _fld == "name":
+                    from WEOS.factory.pdf_engine import is_placeholder_project_name
+
+                    incoming = str(overlay.get("name") or "").strip()
+                    existing = str(doc.get("name") or "").strip()
+                    if is_placeholder_project_name(incoming) and existing and not is_placeholder_project_name(existing):
+                        continue
                 doc[_fld] = overlay[_fld]
         # Customer export persists the same live design in lastPdfExport below;
         # avoid a duplicate write before PDF generation so the button responds faster.
@@ -968,11 +977,13 @@ def _pdf_response(
     cust_name = (doc.get("customer") or "").strip()
     cust_mobile = (doc.get("customerMobile") or "").strip()
     bill_to = cust_name or cust_mobile or "—"
+    from WEOS.factory.pdf_engine import project_print_name
+
     payload = {
         **result,
         "projectId": project_id,
         "customer": bill_to,
-        "name": doc.get("name"),
+        "name": project_print_name({"name": doc.get("name"), "projectName": (overlay or {}).get("projectName")}),
         "brand": brand or doc.get("brand") or ("marqt" if kind == "customer" else ""),
         "templateId": template_id,
         "createdAt": created_at,

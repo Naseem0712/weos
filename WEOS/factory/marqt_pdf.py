@@ -1095,7 +1095,9 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     updated_on = payload.get("updatedOn")
     customer = payload.get("customer") or "—"
     cust_profile = payload.get("customerProfile") or {}
-    project_name = payload.get("name") or ""
+    from WEOS.factory.pdf_engine import project_print_name
+
+    project_name = project_print_name(payload)
     group_order = payload.get("cartQuoteGroups") or []
     if not isinstance(group_order, (list, tuple)):
         group_order = []
@@ -1214,9 +1216,8 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     c.setFillColorRGB(0, 0, 0)
     y -= 4
     set_font(c, 10)
-    if project_name:
-        c.drawString(M, y, f"Project: {project_name}")
-        y -= 16
+    c.drawString(M, y, f"Project: {project_name}")
+    y -= 16
     c.drawString(M, y, f"Quote No: {qid}    Date: {qdate}")
     y -= 16
     if updated_on:

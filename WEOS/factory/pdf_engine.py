@@ -4,11 +4,39 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import quote
 
 _log = logging.getLogger("weos.pdf_engine")
+
+# Placeholder used when the user never typed a Project Setup name. Print paths
+# must not treat this as a real name if a saved project name exists.
+_PLACEHOLDER_PROJECT_NAME = re.compile(r"^weos\s+project$", re.I)
+
+
+def is_placeholder_project_name(value: Any) -> bool:
+    raw = str(value or "").strip()
+    return (not raw) or bool(_PLACEHOLDER_PROJECT_NAME.match(raw))
+
+
+def project_print_name(payload: Mapping[str, Any] | None, *, fallback: str = "WEOS Project") -> str:
+    """Saved Project Setup name for quote/PDF headers.
+
+    Prefers ``name`` / ``projectName`` on the quote payload. The hardcoded
+    ``WEOS Project`` string is only used when the user truly never set a name.
+    """
+    src = payload or {}
+    for key in ("name", "projectName", "project_name"):
+        raw = str(src.get(key) or "").strip()
+        if raw and not _PLACEHOLDER_PROJECT_NAME.match(raw):
+            return raw
+    for key in ("name", "projectName", "project_name"):
+        raw = str(src.get(key) or "").strip()
+        if raw:
+            return raw
+    return fallback
 
 
 def export_pdf_bytes(builder_name: str, payload: Mapping[str, Any]) -> bytes:
@@ -99,9 +127,9 @@ def _customer_reportlab(payload: Mapping[str, Any]) -> bytes:
     y -= 22
 
     set_font(c, 10)
-    c.drawString(40, y, f"Project: {payload.get('projectId', '')}   Quotation: {payload.get('quotationId', '')}")
+    c.drawString(40, y, f"Project: {project_print_name(payload)}   Quotation: {payload.get('quotationId', '')}")
     y -= 14
-    c.drawString(40, y, f"Customer: {payload.get('customer') or '—'}   Name: {payload.get('name') or '—'}")
+    c.drawString(40, y, f"Customer: {payload.get('customer') or '—'}   Name: {project_print_name(payload)}")
     y -= 22
 
     set_font(c, 11, bold=True)
@@ -171,7 +199,6 @@ def _factory_reportlab(payload: Mapping[str, Any]) -> bytes:
     W, H = A4
     y = H - 40
     qid = payload.get("quotationId") or payload.get("projectId") or "WEOS"
-    pid = payload.get("projectId", "")
 
     c.setFont("Helvetica-Bold", 16)
     c.drawString(40, y, "WEOS — Factory Production Package")
@@ -179,7 +206,7 @@ def _factory_reportlab(payload: Mapping[str, Any]) -> bytes:
     c.setFont("Helvetica", 10)
     c.drawString(40, y, f"Production ID / Quotation: {qid}")
     y -= 14
-    c.drawString(40, y, f"Project: {pid}")
+    c.drawString(40, y, f"Project: {project_print_name(payload)}")
     y -= 8
 
     # QR → absolute public URL that opens the quote from the database when scanned.
@@ -389,7 +416,7 @@ def _factory_reportlab(payload: Mapping[str, Any]) -> bytes:
 
 def _minimal_text_pdf(title: str, payload: Mapping[str, Any]) -> bytes:
     price = payload.get("price") or {}
-    text = f"{title}\\nProject: {payload.get('projectId')}\\nQuote: {payload.get('quotationId')}\\nTotal: {price.get('total', 0)}"
+    text = f"{title}\\nProject: {project_print_name(payload)}\\nQuote: {payload.get('quotationId')}\\nTotal: {price.get('total', 0)}"
     content = f"BT /F1 12 Tf 50 750 Td ({text}) Tj ET"
     objects = [
         "1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj\n",

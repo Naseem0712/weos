@@ -72,7 +72,11 @@ def _pdf_mesh_hatch(
     W: float,
     H: float,
 ) -> None:
-    """Dark-grey 45° cross-hatch clipped to a mesh net rect (reads as wire mesh in print)."""
+    """Dark-grey 45° cross-hatch clipped to the mesh sash *inner* (net) rect.
+
+    Callers must pass ``mesh_N_net`` (sash inner opening), never the outer
+    frame, so the hatch reads like glass: inside the inner line only.
+    """
     if x1 - x0 <= 1.0 or y1 - y0 <= 1.0:
         return
     ref = max(float(W), float(H), 1.0)
@@ -582,20 +586,17 @@ def draw_model_elevation(
     # Overall H left, overall W bottom
     dim_v(0.0, H, -18.0 / max(scale, 1e-6), f"{H:g}", text_dx=-9)
     dim_h(0.0, W, -28.0 / max(scale, 1e-6), f"{W:g}", text_dy=-9)
-    # Per-shutter equal-division widths (nominal shares)
-    if glass_meta:
+    # Per-shutter equal-division widths (nominal shares). Sliding / bifold only —
+    # casement inner-opening / glass (daylight) sizes must not print.
+    if glass_meta and system not in ("casement", "openable", "opening"):
         for s in glass_meta:
             nx0 = float(s.get("nomX0") or s.get("x0") or 0.0)
             nx1 = float(s.get("nomX1") or s.get("x1") or 0.0)
             dim_h(nx0, nx1, -12.0 / max(scale, 1e-6), f"{(nx1 - nx0):g}", text_dy=-8)
-    sliding_glasses = [g for g in glasses if "fix" not in (g[0] or "").lower()]
-    if sliding_glasses:
-        _n, _a, gy0, _b, gy1 = sliding_glasses[0]
-        dim_v(gy0, gy1, W + 14.0 / max(scale, 1e-6), f"{(gy1 - gy0):g}", text_dx=8)
 
     # Fix / partition split chain — "FIX 600" + remaining door/sash height
     # (and left/right fix widths) so the fabricator reads both sizes, not
-    # just the overall opening.
+    # just the overall opening. Glass / daylight sash-inner dims are omitted.
     try:
         from WEOS.factory.svg_export import (
             _horizontal_split_chain,
@@ -609,7 +610,7 @@ def draw_model_elevation(
     except Exception:
         _top_fix = _bot_fix = _left_fix = _right_fix = 0.0
     if _top_fix > 0 or _bot_fix > 0:
-        xv = W + (30.0 if sliding_glasses else 14.0) / max(scale, 1e-6)
+        xv = W + 14.0 / max(scale, 1e-6)
         for vy0, vy1, vlabel in _vertical_split_chain(H, _top_fix, _bot_fix):
             dim_v(vy0, vy1, xv, vlabel, text_dx=8)
     if _left_fix > 0 or _right_fix > 0:

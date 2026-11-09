@@ -138,7 +138,9 @@ def _render_reportlab(template: Mapping[str, Any], payload: Mapping[str, Any]) -
 
         elif btype == "customer_details":
             c.setFont("Helvetica", 9)
-            c.drawString(x, y - 12, f"Project: {payload.get('projectId', '')}")
+            from WEOS.factory.pdf_engine import project_print_name
+
+            c.drawString(x, y - 12, f"Project: {project_print_name(payload)}")
             c.drawString(x, y - 24, f"Quotation: {payload.get('quotationId', '')}")
             c.drawString(x, y - 36, f"Customer: {str(payload.get('customer') or '—').upper()}")
             yy = y - 48

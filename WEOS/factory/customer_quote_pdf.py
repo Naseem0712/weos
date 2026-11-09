@@ -179,7 +179,7 @@ def render_customer_quote_sheet(
 
     qid = _txt(payload.get("quotationId") or payload.get("quoteNumber") or payload.get("projectId") or "—")
     status = _txt(payload.get("status") or "")
-    card_h = 62
+    card_h = 74
     card(card_h)
     inner = y - 14
     c.setFont("Helvetica", 8)
@@ -190,7 +190,10 @@ def render_customer_quote_sheet(
     c.drawString(M + 10, inner - 14, qid[:50])
     c.setFont("Helvetica", 8)
     c.setFillColorRGB(*muted)
-    c.drawString(M + 10, inner - 28, f"Customer: {cust_name or '—'}")
+    from WEOS.factory.pdf_engine import project_print_name
+
+    c.drawString(M + 10, inner - 28, f"Project: {project_print_name(payload)}")
+    c.drawString(M + 10, inner - 40, f"Customer: {cust_name or '—'}")
     extra = " · ".join(
         x
         for x in (
@@ -201,7 +204,7 @@ def render_customer_quote_sheet(
         if x
     )
     if extra:
-        c.drawString(M + 10, inner - 40, extra[:95])
+        c.drawString(M + 10, inner - 52, extra[:95])
     if status:
         c.setFillColorRGB(*green)
         c.setFont("Helvetica-Bold", 9)

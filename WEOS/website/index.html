@@ -562,7 +562,7 @@ textarea{max-width:100%}
       <div class="panel">
         <p class="muted" style="margin:0 0 .85rem">Set customer and quote print details once. Window Cart stays product-only; at export you can pick which setup prints on the PDF.</p>
         <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
-          <div class="grow"><label class="l">Project name</label><input id="cartName" value="WEOS Project"/></div>
+          <div class="grow"><label class="l">Project name</label><input id="cartName" value="" placeholder="e.g. Aditya Villa"/></div>
           <div><label class="l">PDF Brand</label>
             <select id="pdfBrand" title="Only the logged-in company from Company Setup">
               <option value="">Login — your company</option>
@@ -2840,7 +2840,7 @@ function pdfDownloadFilename(kind) {
     || 'Customer'
   );
   const project = safePdfFilePart(
-    ($('cartName') && $('cartName').value)
+    (typeof projectNameForPayload === 'function' && projectNameForPayload())
     || ($('projName') && $('projName').value)
     || state.projectId
     || 'Project'
@@ -6425,9 +6425,17 @@ function updatePdfLinks(){
   if ($('linkFact')) $('linkFact').href = `${API_BASE}/api/projects/${id}/factory-pdf`+q;
 }
 
+function isPlaceholderProjectName(raw) {
+  return !String(raw || '').trim() || /^weos project$/i.test(String(raw).trim());
+}
+function projectNameForPayload() {
+  const raw = ($('cartName') && $('cartName').value.trim()) || '';
+  if (isPlaceholderProjectName(raw)) return undefined;
+  return raw;
+}
 function projectDisplayName() {
   const raw = ($('cartName') && $('cartName').value.trim()) || '';
-  if (raw && !/^weos project$/i.test(raw)) return raw;
+  if (raw && !isPlaceholderProjectName(raw)) return raw;
   const cust = ($('projCustName') && $('projCustName').value.trim()) || '';
   if (cust) return cust;
   const qn = ($('projQuoteNo') && $('projQuoteNo').value.trim()) || '';
@@ -6630,7 +6638,7 @@ function restoreBillToForm(snap) {
   if ($('projTerms')) $('projTerms').value = snap.terms || '';
   if ($('printDescription')) $('printDescription').value = snap.printDescription != null ? snap.printDescription : (snap.description || '');
   if ($('printTerms')) $('printTerms').value = snap.printTerms != null ? snap.printTerms : (snap.terms || '');
-  if ($('cartName') && snap.name != null) $('cartName').value = snap.name;
+  if ($('cartName') && snap.name != null) $('cartName').value = isPlaceholderProjectName(snap.name) ? '' : snap.name;
   syncProjectCustomer();
   refreshSetupSummary();
 }
@@ -6655,13 +6663,13 @@ async function applySetupFromProject(setupId, opts){
     syncPrintCopyTwins('proj');
   }
   if ($('cartName') && (doc.name || '').trim() && sameProject && !opts.billToOnly) {
-    $('cartName').value = doc.name;
+    $('cartName').value = isPlaceholderProjectName(doc.name) ? '' : doc.name;
   }
   syncProjectCustomer();
   refreshSetupSummary();
   if (!opts.billToOnly && state.projectId && (sameProject || opts.persist)) {
     await api('/api/projects/'+state.projectId, {method:'PUT', body:{
-      name: ($('cartName') && $('cartName').value) || undefined,
+      name: projectNameForPayload(),
       customer: ($('cartCustomer') && $('cartCustomer').value) || '',
       lines: serializeCartLines(state.lines),
       ...projectBillTo()
@@ -7505,7 +7513,7 @@ function persistCartSession() {
     const pack = {
       projectId: state.projectId || null,
       lines: (state.lines || []).map((ln) => slimCartLine(ln, { keepPreviewSvg: true })).filter((ln) => ln && typeof ln === 'object'),
-      name: ($('cartName') && $('cartName').value) || '',
+      name: projectNameForPayload() || '',
       customer: ($('cartCustomer') && $('cartCustomer').value) || '',
       bill: typeof projectBillTo === 'function' ? projectBillTo() : {},
       packageQuotes: state.packageQuotes || [],
@@ -7533,7 +7541,7 @@ function restoreCartSession() {
     const hasLines = Array.isArray(d.lines) && d.lines.length;
     if (d.projectId) state.projectId = d.projectId;
     if (hasLines) state.lines = hydrateCartLines(d.lines);
-    if ($('cartName') && d.name) $('cartName').value = d.name;
+    if ($('cartName') && d.name && !isPlaceholderProjectName(d.name)) $('cartName').value = d.name;
     if ($('cartCustomer') && d.customer) $('cartCustomer').value = d.customer;
     const bill = d.bill || {};
     if ($('projCustName') && (d.customer || bill.customer)) $('projCustName').value = d.customer || bill.customer || $('projCustName').value;
@@ -7606,7 +7614,7 @@ async function ensureProject() {
     }
   }
   const doc = await api('/api/projects', {method:'POST', body:{
-    name: $('cartName').value || 'WEOS Project',
+    name: projectNameForPayload() || 'WEOS Project',
     customer: $('cartCustomer').value || '',
     lines: serializeCartLines(state.lines),
     status: 'draft',
@@ -7655,7 +7663,7 @@ async function saveProject(silent) {
         persistCartSession();
         await ensureProject();
         const body = {
-          name: $('cartName').value, customer: $('cartCustomer').value,
+          name: projectNameForPayload(), customer: $('cartCustomer').value,
           lines: serializeCartLines(state.lines),
           packageQuotes: packageQuotesPayload(),
           masterJobId: state.masterJobId || undefined,
@@ -7719,8 +7727,8 @@ async function openProject(id) {
   if (same) adoptServerLines(doc.lines || [], { allowShrink: false });
   else state.lines = hydrateCartLines(doc.lines || []);
   persistCartSession();
-  if (doc.name && !/^weos project$/i.test(String(doc.name).trim())) $('cartName').value = doc.name;
-  else if (!projectDisplayName()) $('cartName').value = doc.name || '';
+  if (doc.name && !isPlaceholderProjectName(doc.name)) $('cartName').value = doc.name;
+  else if (!projectDisplayName()) $('cartName').value = isPlaceholderProjectName(doc.name) ? '' : (doc.name || '');
   if ($('cartCustomer')) $('cartCustomer').value = doc.customer || '';
   if ($('projCustName')) $('projCustName').value = doc.customer || '';
   if ($('projMobile')) $('projMobile').value = doc.customerMobile || '';
@@ -10989,7 +10997,10 @@ if ($('setupProjectPick') && !$('setupProjectPick')._bound) {
 ['projCustAddress','projCustGst','projQuoteNo','projDescription','projTerms','cartName'].forEach(id => {
   const el = $(id); if (!el) return;
   el.addEventListener('input', () => {
-    if (id === 'cartName' || id === 'projQuoteNo') syncProjectHeader();
+    if (id === 'cartName' || id === 'projQuoteNo') {
+      syncProjectHeader();
+      if (id === 'cartName' && typeof scheduleSave === 'function') scheduleSave();
+    }
     if (id === 'projDescription' || id === 'projTerms') {
       state._quoteCopySource = 'proj';
       syncPrintCopyTwins('proj');
@@ -11065,7 +11076,7 @@ function resetSetupFormForNew() {
   state.bulkSizeRows = [emptyBulkSizeRow()];
   state._quoteCopySource = 'proj';
   if (typeof hideMemoryBanner === 'function') hideMemoryBanner(false);
-  if ($('cartName')) $('cartName').value = 'WEOS Project';
+  if ($('cartName')) $('cartName').value = '';
   if ($('cartCustomer')) $('cartCustomer').value = '';
   if ($('projCustName')) $('projCustName').value = '';
   if ($('projMobile')) $('projMobile').value = '';
@@ -11174,7 +11185,7 @@ function setupImportFormData(commit){
   fd.append('customerMobile', (($('projMobile') && $('projMobile').value) || '').trim());
   fd.append('customerAddress', (($('projCustAddress') && $('projCustAddress').value) || '').trim());
   fd.append('customerGst', (($('projCustGst') && $('projCustGst').value) || '').trim());
-  fd.append('projectName', (($('cartName') && $('cartName').value) || '').trim());
+  fd.append('projectName', (typeof projectNameForPayload === 'function' && projectNameForPayload()) || '');
   fd.append('quotationId', (($('projQuoteNo') && $('projQuoteNo').value) || '').trim());
   const pick = $('setupProjectPick') && $('setupProjectPick').value;
   const pid = (pick && pick !== 'new') ? pick : (state.projectId || '');
@@ -11678,7 +11689,7 @@ function _liveExportBody(brand, opts) {
   return {
     lines: serializeCartLinesForPdf(state.lines),
     customer: ($('cartCustomer') && $('cartCustomer').value) || ($('projCustName') && $('projCustName').value) || '',
-    name: ($('cartName') && $('cartName').value) || undefined,
+    name: projectNameForPayload(),
     ...projectBillTo(),
     brand,
     // Never persist a temporary print-only bill-to from another setup onto this quote.
