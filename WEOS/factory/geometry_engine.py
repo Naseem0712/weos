@@ -1684,6 +1684,16 @@ def _build_shutter_profiles(model: DrawingModel, L: SlidingLayout, glass_panels:
     # BACK sash meeting corners stay square (avoids double center line / cap stubs).
     by_pos = sorted(glass_panels, key=lambda p: p.nom_x0)
     pos_of = {id(p): k for k, p in enumerate(by_pos)}
+    # Mesh parks on the front track over a glass bay. Any glass 45° corner that
+    # lands under a mesh outer must be omitted — otherwise mesh + glass diagonals
+    # cross at the interlock and read as "XX" instead of one clean miter.
+    mesh_outers = [sp.outer for sp in L.shutters if sp.role == "mesh"]
+
+    def corner_under_mesh(x: float, y: float, *, eps: float = 0.75) -> bool:
+        for mo in mesh_outers:
+            if (mo.x0 - eps) <= x <= (mo.x1 + eps) and (mo.y0 - eps) <= y <= (mo.y1 + eps):
+                return True
+        return False
 
     def meeting_sides(sp: ShutterPanel) -> tuple[bool, bool]:
         k = pos_of[id(sp)]
@@ -1727,6 +1737,7 @@ def _build_shutter_profiles(model: DrawingModel, L: SlidingLayout, glass_panels:
         # Corner miters: outer corners always. Meeting-stile corners only on the
         # FRONT (overlapping) sash — the visible interlock stile that the user sees.
         # BACK sash meeting corners stay square so we don't get double-line / cap stubs.
+        # Corners covered by a front mesh sash are skipped (mesh draws the clean 45°).
         miters = (
             ("bl", Point(o.x0, o.y0), Point(g.x0, g.y0), left_m, ol),
             ("br", Point(o.x1, o.y0), Point(g.x1, g.y0), right_m, orr),
@@ -1736,6 +1747,8 @@ def _build_shutter_profiles(model: DrawingModel, L: SlidingLayout, glass_panels:
         for tag, p0, p1, is_meeting, is_back_lap in miters:
             if is_meeting and is_back_lap:
                 continue  # back sash at lap — keep square; front sash draws the miter
+            if corner_under_mesh(p0.x, p0.y):
+                continue  # under front mesh — mesh miter is the visible cut
             model.add_segment(Segment(p0, p1, layer="PROFILES", name=f"{prefix}_{sp.index}_miter_{tag}"))
 
     # Draw a meeting line ONLY where two same-track sashes butt together (no stray

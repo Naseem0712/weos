@@ -123,13 +123,13 @@ def _vertical_split_chain(H: float, top_fix: float, bot_fix: float) -> list[tupl
     rows: list[tuple[float, float, str]] = []
     y = 0.0
     if bot_fix > 0:
-        rows.append((y, min(y + bot_fix, H), f"FIX {bot_fix:g}"))
+        rows.append((y, min(y + bot_fix, H), f"FIX {mm_n(bot_fix)}"))
         y += bot_fix
     rest_top = H - (top_fix if top_fix > 0 else 0.0)
     if rest_top > y:
-        rows.append((y, rest_top, f"{(rest_top - y):g}"))
+        rows.append((y, rest_top, f"{mm_n(rest_top - y)}"))
     if top_fix > 0:
-        rows.append((max(rest_top, 0.0), H, f"FIX {top_fix:g}"))
+        rows.append((max(rest_top, 0.0), H, f"FIX {mm_n(top_fix)}"))
     return rows
 
 
@@ -137,14 +137,57 @@ def _horizontal_split_chain(W: float, left_fix: float, right_fix: float) -> list
     rows: list[tuple[float, float, str]] = []
     x = 0.0
     if left_fix > 0:
-        rows.append((x, min(x + left_fix, W), f"FIX {left_fix:g}"))
+        rows.append((x, min(x + left_fix, W), f"FIX {mm_n(left_fix)}"))
         x += left_fix
     rest = W - (right_fix if right_fix > 0 else 0.0)
     if rest > x:
-        rows.append((x, rest, f"{(rest - x):g}"))
+        rows.append((x, rest, f"{mm_n(rest - x)}"))
     if right_fix > 0:
-        rows.append((max(rest, 0.0), W, f"FIX {right_fix:g}"))
+        rows.append((max(rest, 0.0), W, f"FIX {mm_n(right_fix)}"))
     return rows
+
+
+def _panel_width_dim_spans(
+    meta: Mapping[str, Any] | None,
+    W: float,
+) -> list[tuple[float, float]]:
+    """Per-panel width dim spans along the elevation bottom (outer bay shares).
+
+    Sliding / bifold: nominal shutter shares (already tile 0..W).
+    Casement / openable: continuous bay chain across overall W using mullion
+    mid-points so FIX and openable panels each get a divided size label.
+    Glass / daylight (sash-inner) widths are never returned.
+    """
+    system = str((meta or {}).get("system") or "sliding").lower()
+    glass = [
+        s
+        for s in ((meta or {}).get("shutters") or [])
+        if isinstance(s, Mapping) and s.get("role") == "glass"
+    ]
+    if len(glass) < 1:
+        return []
+    glass = sorted(
+        glass,
+        key=lambda s: float(s.get("nomX0") or s.get("x0") or 0.0),
+    )
+    if system in ("casement", "openable", "opening"):
+        if len(glass) == 1:
+            return [(0.0, float(W))]
+        bounds: list[float] = [0.0]
+        for i in range(len(glass) - 1):
+            a = float(glass[i].get("x1") or glass[i].get("nomX1") or 0.0)
+            b = float(glass[i + 1].get("x0") or glass[i + 1].get("nomX0") or 0.0)
+            bounds.append((a + b) / 2.0)
+        bounds.append(float(W))
+        return [(bounds[i], bounds[i + 1]) for i in range(len(bounds) - 1) if bounds[i + 1] > bounds[i] + 0.5]
+    # Sliding / bifold — nominal equal-division shares
+    spans: list[tuple[float, float]] = []
+    for s in glass:
+        nx0 = float(s.get("nomX0") or s.get("x0") or 0.0)
+        nx1 = float(s.get("nomX1") or s.get("x1") or 0.0)
+        if nx1 > nx0 + 0.5:
+            spans.append((nx0, nx1))
+    return spans
 
 
 def _dim_line_h(
@@ -537,21 +580,21 @@ def _draw_grid_svg(
             # Cell size (w × h) under the label
             parts.append(
                 f'<text x="{tx(cx):.2f}" y="{ty(cy)+chip_h*1.15:.2f}" text-anchor="middle" '
-                f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font*0.55:.0f}" fill="#444">{cell.get("wmm")}×{cell.get("hmm")}</text>'
+                f'font-family="Segoe UI, Arial, sans-serif" font-size="{label_font*0.55:.0f}" fill="#444">{mm_n(cell.get("wmm"))}×{mm_n(cell.get("hmm"))}</text>'
             )
 
     if annotations:
         colX = grid.get("colX") or [0, W]
         rowTop = grid.get("rowTop") or [H, 0]
-        # Overall dims
-        _dim_line_v(parts, tx=tx, ty=ty, y0=0.0, y1=H, x=-55.0 * k, text=f"{H:g}", text_x=-82.0 * k, stroke=dim_stroke, font=dim_font)
-        _dim_line_h(parts, tx=tx, ty=ty, x0=0.0, x1=W, y=-95.0 * k, text=f"{W:g}", text_y=-122.0 * k, stroke=dim_stroke, font=dim_font)
+        # Overall dims (whole mm labels only)
+        _dim_line_v(parts, tx=tx, ty=ty, y0=0.0, y1=H, x=-55.0 * k, text=str(mm_n(H)), text_x=-82.0 * k, stroke=dim_stroke, font=dim_font)
+        _dim_line_h(parts, tx=tx, ty=ty, x0=0.0, x1=W, y=-95.0 * k, text=str(mm_n(W)), text_y=-122.0 * k, stroke=dim_stroke, font=dim_font)
         # Column widths (top)
         for i in range(len(colX) - 1):
-            _dim_line_h(parts, tx=tx, ty=ty, x0=float(colX[i]), x1=float(colX[i + 1]), y=-42.0 * k, text=f"{float(colX[i+1])-float(colX[i]):g}", text_y=-64.0 * k, stroke=dim_stroke, font=dim_font * 0.8)
+            _dim_line_h(parts, tx=tx, ty=ty, x0=float(colX[i]), x1=float(colX[i + 1]), y=-42.0 * k, text=str(mm_n(float(colX[i + 1]) - float(colX[i]))), text_y=-64.0 * k, stroke=dim_stroke, font=dim_font * 0.8)
         # Row heights (right)
         for i in range(len(rowTop) - 1):
-            _dim_line_v(parts, tx=tx, ty=ty, y0=float(rowTop[i + 1]), y1=float(rowTop[i]), x=W + 48.0 * k, text=f"{float(rowTop[i])-float(rowTop[i+1]):g}", text_x=W + 74.0 * k, stroke=dim_stroke, font=dim_font * 0.8)
+            _dim_line_v(parts, tx=tx, ty=ty, y0=float(rowTop[i + 1]), y1=float(rowTop[i]), x=W + 48.0 * k, text=str(mm_n(float(rowTop[i]) - float(rowTop[i + 1]))), text_x=W + 74.0 * k, stroke=dim_stroke, font=dim_font * 0.8)
 
 
 def _draw_plan(
@@ -954,7 +997,7 @@ def render_svg_string(
     _sh_data = "|".join(_sh_rows)
     _meta0 = model.metadata or {}
     _sys0 = str(_meta0.get("system") or "sliding").lower()
-    _title_bits = [f"{model.width:g}×{model.height:g}"]
+    _title_bits = [f"{mm_n(model.width)}×{mm_n(model.height)}"]
     try:
         _tc0 = _meta0.get("track_count")
         if _sys0 == "sliding" and _tc0 not in (None, ""):
@@ -964,7 +1007,8 @@ def render_svg_string(
     _op0 = str(_meta0.get("opening") or "").lower()
     if _sys0 == "sliding" and _op0:
         _title_bits.append("center opening" if _op0 in ("center", "centre") else "side opening")
-    _mesh_cell = 14.0 * k
+    # Wider checks + slimmer stroke so wire mesh reads light, not a dark block.
+    _mesh_cell = 24.0 * k
     parts: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{w:.1f}" height="{h:.1f}" '
         f'viewBox="0 0 {w:.1f} {h:.1f}" data-model-minx="{min_x:.3f}" data-model-maxy="{max_y:.3f}" '
@@ -976,11 +1020,11 @@ def render_svg_string(
         f'<rect width="100%" height="100%" fill="{bg}"/>',
         '<defs><marker id="slideArrow" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">'
         '<path d="M0,0 L8,4 L0,8 Z" fill="#0b3d7a"/></marker>'
-        # Wire mesh: fine dark cross-hatch (black wire look, print-safe, semi-transparent
-        # so the glass sash behind the mesh track still reads).
+        # Wire mesh: open dark-grey cross-hatch (print-safe). Wider spacing + thin
+        # stroke keeps the pane readable instead of a filled charcoal block.
         f'<pattern id="meshWire" patternUnits="userSpaceOnUse" width="{_mesh_cell:.2f}" height="{_mesh_cell:.2f}">'
         f'<path d="M0,0 L{_mesh_cell:.2f},{_mesh_cell:.2f} M{_mesh_cell:.2f},0 L0,{_mesh_cell:.2f}" '
-        f'stroke="#1a1a1a" stroke-width="{max(0.45, 0.55 * k):.2f}" stroke-opacity="0.75"/></pattern>'
+        f'stroke="#2a2a2a" stroke-width="{max(0.28, 0.32 * k):.2f}" stroke-opacity="0.55"/></pattern>'
         # Pleated / rolling mesh add-on: fine dot grid (lighter than the wire
         # sash). Filled dots, not a dashed stroke — RIP/svglib stipple-safe.
         f'<pattern id="meshPleat" patternUnits="userSpaceOnUse" width="{_mesh_cell * 1.6:.2f}" height="{_mesh_cell * 1.6:.2f}">'
@@ -1154,7 +1198,7 @@ def render_svg_string(
                 f'{_solid_sw(max(0.9, sw_inner * 0.6))} data-mesh="{escape(str(_addon.get("type") or "addon"))}"/>'
             )
             if annotations:
-                _lab = f"{str(_addon.get('type') or 'MESH').upper()} MESH {float(_addon.get('widthMm') or 0):g}×{float(_addon.get('heightMm') or 0):g}"
+                _lab = f"{str(_addon.get('type') or 'MESH').upper()} MESH {mm_n(_addon.get('widthMm') or 0)}×{mm_n(_addon.get('heightMm') or 0)}"
                 parts.append(
                     f'<text x="{tx((ax0 + ax1) / 2):.2f}" y="{ty(ay1) + 30 * k:.2f}" text-anchor="middle" '
                     f'font-family="Segoe UI, Arial, sans-serif" font-size="{22 * k:.0f}" font-weight="700" fill="#1f1f1f">'
@@ -1285,26 +1329,21 @@ def render_svg_string(
         W = float(model.width)
         H = float(model.height)
         _dim_line_v(
-            parts, tx=tx, ty=ty, y0=0.0, y1=H, x=-55.0 * k, text=f"{H:g}",
+            parts, tx=tx, ty=ty, y0=0.0, y1=H, x=-55.0 * k, text=str(mm_n(H)),
             text_x=-82.0 * k, stroke=dim_stroke, font=dim_font,
         )
         _dim_line_h(
-            parts, tx=tx, ty=ty, x0=0.0, x1=W, y=-95.0 * k, text=f"{W:g}",
+            parts, tx=tx, ty=ty, x0=0.0, x1=W, y=-95.0 * k, text=str(mm_n(W)),
             text_y=-122.0 * k, stroke=dim_stroke, font=dim_font,
         )
-        # Per-shutter equal-division widths (nominal shares) along the bottom.
-        # Sliding / bifold only — casement inner-opening / glass widths (the
-        # daylight sash size) must not print next to the overall W.
-        _sys = str(meta.get("system") or "sliding").lower()
-        glass_meta = [s for s in (meta.get("shutters") or []) if isinstance(s, Mapping) and s.get("role") == "glass"]
-        if glass_meta and _sys not in ("casement", "openable", "opening"):
-            for s in glass_meta:
-                nx0 = float(s.get("nomX0") or s.get("x0") or 0.0)
-                nx1 = float(s.get("nomX1") or s.get("x1") or 0.0)
-                _dim_line_h(
-                    parts, tx=tx, ty=ty, x0=nx0, x1=nx1, y=-42.0 * k,
-                    text=f"{(nx1 - nx0):g}", text_y=-64.0 * k, stroke=dim_stroke, font=dim_font * 0.82,
-                )
+        # Per-panel / per-shutter divided widths along the bottom (whole mm).
+        # Sliding: nominal shutter shares. Casement: bay chain for FIX + openable.
+        # Glass / daylight (sash-inner) sizes stay omitted.
+        for nx0, nx1 in _panel_width_dim_spans(meta, W):
+            _dim_line_h(
+                parts, tx=tx, ty=ty, x0=nx0, x1=nx1, y=-42.0 * k,
+                text=str(mm_n(nx1 - nx0)), text_y=-64.0 * k, stroke=dim_stroke, font=dim_font * 0.82,
+            )
         # Fix partition dims — "how much fix, how much left": a split chain that
         # adds up to the overall size (FIX n + remaining shutter / door share).
         # Glass / daylight (sash-inner) width & height are intentionally omitted.

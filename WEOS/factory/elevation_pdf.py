@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from WEOS.factory.fmt import mm_n
 from WEOS.factory.geometry import HINGE_FILL_RGB, hinge_capsule_geom
 from WEOS.factory.svg_export import _parse_grid
 from WEOS.factory.types import DrawingModel, Polyline
@@ -76,23 +77,24 @@ def _pdf_mesh_hatch(
 
     Callers must pass ``mesh_N_net`` (sash inner opening), never the outer
     frame, so the hatch reads like glass: inside the inner line only.
+    Wider check spacing + slim stroke keep the mesh light (not a dark block).
     """
     if x1 - x0 <= 1.0 or y1 - y0 <= 1.0:
         return
     ref = max(float(W), float(H), 1.0)
-    cell_mm = 14.0 * max(0.55, min(ref / 1000.0, 4.0))
-    step = max(cell_mm * scale, 2.4)  # never denser than ~2.4pt on paper
+    cell_mm = 24.0 * max(0.55, min(ref / 1000.0, 4.0))
+    step = max(cell_mm * scale, 3.6)  # open checks — never denser than ~3.6pt on paper
     X0, Y0, X1, Y1 = px(x0), py(y0), px(x1), py(y1)
     c.saveState()
     try:
         clip = c.beginPath()
         clip.rect(X0, Y0, X1 - X0, Y1 - Y0)
         c.clipPath(clip, stroke=0, fill=0)
-        # light wash so the net reads as a panel, then dark hatch over it
-        c.setFillColorRGB(0.94, 0.94, 0.94)
+        # very light wash so the net still reads as a panel, then slim hatch
+        c.setFillColorRGB(0.97, 0.97, 0.97)
         c.rect(X0, Y0, X1 - X0, Y1 - Y0, fill=1, stroke=0)
-        c.setStrokeColorRGB(0.16, 0.16, 0.16)
-        c.setLineWidth(0.32)
+        c.setStrokeColorRGB(0.22, 0.22, 0.22)
+        c.setLineWidth(0.18)
         try:
             c.setDash()
         except Exception:
@@ -214,7 +216,7 @@ def _draw_grid_pdf(c, *, px, py, scale, meta, W, H, finish, stroke, dim, glass_s
         c.drawCentredString(px(cx), py(cy) + 8, role_text.get(role, role.upper()))
         c.setFillColorRGB(0.28, 0.28, 0.28)
         c.setFont("Helvetica", 5.5)
-        c.drawCentredString(px(cx), py(cy) - 13, f"{cell.get('wmm')}\u00d7{cell.get('hmm')}")
+        c.drawCentredString(px(cx), py(cy) - 13, f"{mm_n(cell.get('wmm'))}\u00d7{mm_n(cell.get('hmm'))}")
 
     # Dimensions
     colX = grid.get("colX") or [0, W]
@@ -244,12 +246,12 @@ def _draw_grid_pdf(c, *, px, py, scale, meta, W, H, finish, stroke, dim, glass_s
         c.drawCentredString(0, 0, txt)
         c.restoreState()
 
-    dv(0.0, H, -14.0 / max(scale, 1e-6), f"{H:g}")
-    dh(0.0, W, -20.0 / max(scale, 1e-6), f"{W:g}")
+    dv(0.0, H, -14.0 / max(scale, 1e-6), str(mm_n(H)))
+    dh(0.0, W, -20.0 / max(scale, 1e-6), str(mm_n(W)))
     for i in range(len(colX) - 1):
-        dh(float(colX[i]), float(colX[i + 1]), -9.0 / max(scale, 1e-6), f"{float(colX[i+1])-float(colX[i]):g}", fs=5.5)
+        dh(float(colX[i]), float(colX[i + 1]), -9.0 / max(scale, 1e-6), str(mm_n(float(colX[i + 1]) - float(colX[i]))), fs=5.5)
     for i in range(len(rowTop) - 1):
-        dv(float(rowTop[i + 1]), float(rowTop[i]), W + 12.0 / max(scale, 1e-6), f"{float(rowTop[i])-float(rowTop[i+1]):g}", fs=5.5)
+        dv(float(rowTop[i + 1]), float(rowTop[i]), W + 12.0 / max(scale, 1e-6), str(mm_n(float(rowTop[i]) - float(rowTop[i + 1]))), fs=5.5)
 
 
 def draw_model_elevation(
@@ -370,7 +372,7 @@ def draw_model_elevation(
                     gy += step
                 c.setFont("Helvetica-Bold", 6)
                 lbl = f"{str(mesh_addon.get('typeLabel') or 'MESH').upper()}"
-                sz = f"{float(mesh_addon.get('widthMm') or (ax1 - ax0)):g}×{float(mesh_addon.get('heightMm') or (ay1 - ay0)):g}"
+                sz = f"{mm_n(mesh_addon.get('widthMm') or (ax1 - ax0))}×{mm_n(mesh_addon.get('heightMm') or (ay1 - ay0))}"
                 c.drawCentredString(px((ax0 + ax1) / 2.0), py(ay1) - 9, f"{lbl} {sz}")
             finally:
                 c.restoreState()
@@ -583,16 +585,19 @@ def draw_model_elevation(
     track_count = float(meta.get("track_count") or 2)
     system = str(meta.get("system") or "sliding")
 
-    # Overall H left, overall W bottom
-    dim_v(0.0, H, -18.0 / max(scale, 1e-6), f"{H:g}", text_dx=-9)
-    dim_h(0.0, W, -28.0 / max(scale, 1e-6), f"{W:g}", text_dy=-9)
-    # Per-shutter equal-division widths (nominal shares). Sliding / bifold only —
-    # casement inner-opening / glass (daylight) sizes must not print.
-    if glass_meta and system not in ("casement", "openable", "opening"):
-        for s in glass_meta:
-            nx0 = float(s.get("nomX0") or s.get("x0") or 0.0)
-            nx1 = float(s.get("nomX1") or s.get("x1") or 0.0)
-            dim_h(nx0, nx1, -12.0 / max(scale, 1e-6), f"{(nx1 - nx0):g}", text_dy=-8)
+    # Overall H left, overall W bottom (whole mm labels only — geometry stays exact)
+    dim_v(0.0, H, -18.0 / max(scale, 1e-6), str(mm_n(H)), text_dx=-9)
+    dim_h(0.0, W, -28.0 / max(scale, 1e-6), str(mm_n(W)), text_dy=-9)
+    # Per-panel / per-shutter divided widths (sliding shares + casement FIX/openable
+    # bay chain). Glass / daylight sash-inner sizes stay omitted.
+    try:
+        from WEOS.factory.svg_export import _panel_width_dim_spans
+
+        _panel_spans = _panel_width_dim_spans(meta, W)
+    except Exception:
+        _panel_spans = []
+    for nx0, nx1 in _panel_spans:
+        dim_h(nx0, nx1, -12.0 / max(scale, 1e-6), str(mm_n(nx1 - nx0)), text_dy=-8)
 
     # Fix / partition split chain — "FIX 600" + remaining door/sash height
     # (and left/right fix widths) so the fabricator reads both sizes, not
