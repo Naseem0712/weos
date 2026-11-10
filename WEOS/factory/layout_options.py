@@ -35,6 +35,178 @@ def partition_sizes(partitions: Sequence[Mapping[str, Any]] | None) -> dict[str,
     return sizes
 
 
+def _casement_role(raw: Any) -> str:
+    t = str(raw or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if t in ("fix", "fixed"):
+        return "fix"
+    if t in ("top_hung", "tophung", "top"):
+        return "top_hung"
+    if t in ("door", "doors", "side_hung_door", "casement_door"):
+        return "door"
+    if t in ("sliding", "slider", "slide"):
+        return "sliding"
+    return "openable"
+
+
+def _casement_side(raw: Any, role: str) -> str:
+    if role in ("fix", "sliding"):
+        return "none"
+    if role == "top_hung":
+        return "bottom"
+    t = str(raw or "").strip().lower()
+    return "left" if t == "left" else "right"
+
+
+def _panel_dict(raw: Any, *, index: int = 0) -> dict[str, Any]:
+    if isinstance(raw, Mapping):
+        role = _casement_role(raw.get("role"))
+        side = _casement_side(raw.get("handleSide") or raw.get("side"), role)
+        w_raw = raw.get("widthMm", raw.get("width_mm"))
+        try:
+            w = float(w_raw) if w_raw is not None and str(w_raw).strip() != "" else None
+        except (TypeError, ValueError):
+            w = None
+        return {
+            "index": index,
+            "role": role,
+            "handleSide": side,
+            "side": side,
+            "widthMm": w if w and w > 0 else None,
+        }
+    role = _casement_role(raw)
+    side = _casement_side(None, role)
+    return {"index": index, "role": role, "handleSide": side, "side": side, "widthMm": None}
+
+
+def normalize_casement_bands(
+    casement_layout: Any = None,
+    casement_panels: Any = None,
+    handle_overrides: Any = None,
+    *,
+    glass_count: int = 1,
+) -> list[dict[str, Any]]:
+    """Return top→bottom bands: ``[{heightMm, panels:[{role,side,widthMm}]}]``.
+
+    Accepts nested ``casementLayout.bands``, flat ``casementPanels`` (optional
+    ``bandIndex`` / ``heightMm``), or ``handleOverrides`` keyed by cell index.
+    """
+    bands_raw: list[Any] = []
+    if isinstance(casement_layout, Mapping):
+        raw = casement_layout.get("bands") or casement_layout.get("rows") or casement_layout.get("sections")
+        if isinstance(raw, (list, tuple)):
+            bands_raw = list(raw)
+
+    if bands_raw:
+        out: list[dict[str, Any]] = []
+        for bi, band in enumerate(bands_raw[:4]):
+            if not isinstance(band, Mapping):
+                continue
+            h_raw = band.get("heightMm", band.get("height_mm", band.get("height")))
+            try:
+                h = float(h_raw) if h_raw is not None and str(h_raw).strip() != "" else None
+            except (TypeError, ValueError):
+                h = None
+            panels_in = band.get("panels") or band.get("children") or band.get("cells") or []
+            if not isinstance(panels_in, (list, tuple)) or not panels_in:
+                panels_in = [{"role": "openable"}]
+            panels = [_panel_dict(p, index=i) for i, p in enumerate(list(panels_in)[:4])]
+            out.append({
+                "index": bi,
+                "heightMm": h if h and h > 0 else None,
+                "panels": panels,
+            })
+        if out:
+            return out
+
+    # Flat panels / overrides — group by bandIndex when present.
+    flat: list[Mapping[str, Any]] = []
+    if isinstance(casement_panels, (list, tuple)) and casement_panels:
+        for i, p in enumerate(casement_panels):
+            if isinstance(p, Mapping):
+                flat.append(dict(p))
+            else:
+                flat.append({"role": p})
+            flat[-1].setdefault("index", i)
+    elif isinstance(handle_overrides, Mapping) and handle_overrides:
+        n = max(int(glass_count or 0), 1)
+        keys = []
+        for k in handle_overrides.keys():
+            try:
+                keys.append(int(k))
+            except (TypeError, ValueError):
+                continue
+        if keys:
+            n = max(n, max(keys) + 1)
+        for i in range(n):
+            cfg = handle_overrides.get(i)
+            if cfg is None:
+                cfg = handle_overrides.get(str(i))
+            flat.append(cfg if isinstance(cfg, Mapping) else {"role": "openable"})
+            flat[-1] = dict(flat[-1])
+            flat[-1]["index"] = i
+
+    if not flat:
+        n = max(int(glass_count or 1), 1)
+        flat = [{"index": i, "role": "openable"} for i in range(n)]
+
+    by_band: dict[int, list[Mapping[str, Any]]] = {}
+    band_heights: dict[int, float | None] = {}
+    for i, p in enumerate(flat):
+        try:
+            bi = int(p.get("bandIndex") if p.get("bandIndex") is not None else p.get("band") or 0)
+        except (TypeError, ValueError):
+            bi = 0
+        bi = max(0, min(3, bi))
+        by_band.setdefault(bi, []).append(p)
+        h_raw = p.get("heightMm", p.get("height_mm"))
+        try:
+            h = float(h_raw) if h_raw is not None and str(h_raw).strip() != "" else None
+        except (TypeError, ValueError):
+            h = None
+        if h and h > 0:
+            band_heights[bi] = h
+
+    if not by_band:
+        by_band[0] = flat
+
+    out_bands: list[dict[str, Any]] = []
+    for bi in sorted(by_band.keys())[:4]:
+        panels = [_panel_dict(p, index=i) for i, p in enumerate(by_band[bi][:4])]
+        if not panels:
+            panels = [_panel_dict({"role": "openable"}, index=0)]
+        out_bands.append({
+            "index": len(out_bands),
+            "heightMm": band_heights.get(bi),
+            "panels": panels,
+        })
+    return out_bands or [{"index": 0, "heightMm": None, "panels": [_panel_dict({"role": "openable"}, index=0)]}]
+
+
+def flatten_casement_panels(bands: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
+    """Flatten nested bands → casementPanels with bandIndex + heightMm."""
+    out: list[dict[str, Any]] = []
+    gi = 0
+    for bi, band in enumerate(bands or []):
+        if not isinstance(band, Mapping):
+            continue
+        h = band.get("heightMm")
+        panels = band.get("panels") or []
+        if not isinstance(panels, (list, tuple)):
+            continue
+        for p in panels:
+            cell = _panel_dict(p, index=gi)
+            cell["bandIndex"] = bi
+            if h is not None:
+                cell["heightMm"] = h
+            out.append(cell)
+            gi += 1
+    return out
+
+
+def casement_cell_count(bands: Sequence[Mapping[str, Any]] | None) -> int:
+    return sum(len(b.get("panels") or []) for b in (bands or []) if isinstance(b, Mapping))
+
+
 def parse_track_count(name: str | None) -> float | None:
     """Infer track count from catalogue section name (2 / 2.5 / 3 / 4)."""
     if not name:
@@ -407,6 +579,25 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
     if not isinstance(handle_overrides, Mapping):
         handle_overrides = None
 
+    casement_layout = pick("casementLayout", "casement_layout")
+    if not isinstance(casement_layout, Mapping):
+        casement_layout = None
+    casement_panels = pick("casementPanels", "panelRoles")
+    glass_count_out = shutter_cfg["glassCount"]
+    if is_casement:
+        try:
+            bands = normalize_casement_bands(
+                casement_layout,
+                casement_panels,
+                handle_overrides,
+                glass_count=int(glass_count_out or 1),
+            )
+            cells = casement_cell_count(bands)
+            if cells > 0:
+                glass_count_out = cells
+        except Exception:
+            pass
+
     # Prefer explicit fold counts; also accept layout.fold_left snake_case via pick keys
     fold_left = _coerce_int(pick("foldLeft", "fold_left"))
     fold_right = _coerce_int(pick("foldRight", "fold_right"))
@@ -415,7 +606,7 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
         "partitions": normalize_partitions(partitions),
         "mesh": shutter_cfg["mesh"] and not is_bifold and not is_casement and not is_shower,
         "trackCount": None if (is_bifold or is_casement or is_shower) else track_count,
-        "glassCount": shutter_cfg["glassCount"],
+        "glassCount": glass_count_out,
         "meshCount": 0 if (is_bifold or is_casement or is_shower) else shutter_cfg["meshCount"],
         "opening": shutter_cfg["opening"],
         "openingSide": shutter_cfg.get("openingSide") or "right",
@@ -444,7 +635,8 @@ def line_layout_options(line: Mapping[str, Any] | None) -> dict[str, Any]:
         "grid": line.get("grid") or (opts or {}).get("grid") or (opts or {}).get("grille"),
         "panelFill": _panel_fill_from_pick(line, opts),
         "features": (opts or {}).get("features") if isinstance((opts or {}).get("features"), (list, dict)) else line.get("features"),
-        "casementPanels": pick("casementPanels", "panelRoles"),
+        "casementPanels": casement_panels,
+        "casementLayout": casement_layout,
         "productType": pick("productType") or line.get("productType"),
         "sashOverlapMm": pick("sashOverlapMm", "sash_overlap_mm", "sashOverlap"),
         "mullionGapMm": pick("mullionGapMm", "mullion_gap_mm", "mullionGap"),

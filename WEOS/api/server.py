@@ -150,6 +150,7 @@ class CartLine(BaseModel):
     powderCoatName: str | None = None
     productType: str | None = None
     casementPanels: list[dict[str, Any]] | None = None
+    casementLayout: dict[str, Any] | None = None
     sashOverlapMm: float | None = None
     mullionGapMm: float | None = None
     shower: dict[str, Any] | None = None
@@ -179,6 +180,7 @@ class LivePriceRequest(BaseModel):
     system: str | None = None
     handleOverrides: dict[str, Any] | None = None
     casementPanels: list[dict[str, Any]] | None = None
+    casementLayout: dict[str, Any] | None = None
     sashOverlapMm: float | None = None
     mullionGapMm: float | None = None
     shower: dict[str, Any] | None = None
@@ -346,6 +348,7 @@ class PreviewRequest(BaseModel):
     panelFill: dict[str, Any] | None = None
     features: list[dict[str, Any]] | None = None
     casementPanels: list[dict[str, Any]] | None = None
+    casementLayout: dict[str, Any] | None = None
     sashOverlapMm: float | None = None
     mullionGapMm: float | None = None
     topShape: str | None = None

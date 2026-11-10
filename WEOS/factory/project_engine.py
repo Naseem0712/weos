@@ -143,6 +143,9 @@ def _persist_window_options(
     cp = lo.get("casementPanels") or line.get("casementPanels") or (_opts_in or {}).get("casementPanels")
     if isinstance(cp, (list, tuple)) and cp:
         options["casementPanels"] = list(cp)
+    cl = lo.get("casementLayout") or line.get("casementLayout") or (_opts_in or {}).get("casementLayout")
+    if isinstance(cl, Mapping) and cl:
+        options["casementLayout"] = dict(cl)
     if lo.get("productType") or line.get("productType"):
         options["productType"] = lo.get("productType") or line.get("productType")
     # Pleated / rolling mesh add-on (type · placement · size · rate · amount)
@@ -1178,6 +1181,8 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
                 sash_overlap_mm=lo.get("sashOverlapMm"),
                 mullion_gap_mm=lo.get("mullionGapMm"),
                 frame_material=lo.get("frameMaterial") or line.get("frameMaterial"),
+                casement_layout=lo.get("casementLayout") if isinstance(lo.get("casementLayout"), Mapping) else None,
+                casement_panels=lo.get("casementPanels") if isinstance(lo.get("casementPanels"), (list, tuple)) else None,
             )
             if lo.get("panelFill"):
                 from WEOS.factory.panel_fills import attach_fill_to_drawing
@@ -1286,6 +1291,8 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
         sash_overlap_mm=lo.get("sashOverlapMm"),
         mullion_gap_mm=lo.get("mullionGapMm"),
         frame_material=lo.get("frameMaterial") or line.get("frameMaterial"),
+        casement_layout=lo.get("casementLayout") if isinstance(lo.get("casementLayout"), Mapping) else None,
+        casement_panels=lo.get("casementPanels") if isinstance(lo.get("casementPanels"), (list, tuple)) else None,
     )
     if lo.get("panelFill"):
         from WEOS.factory.panel_fills import attach_fill_to_drawing

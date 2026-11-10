@@ -797,18 +797,27 @@ textarea{max-width:100%}
           </div>
           <div id="casementPanelBox" style="display:none;margin-top:.45rem;padding:.5rem .6rem;border:1px dashed var(--line);border-radius:10px;background:rgba(0,0,0,.02)">
             <strong style="font-size:.82rem">Partitions / panels</strong>
-            <p class="muted" style="font-size:.72rem;margin:.15rem 0 .35rem">Top/bottom fix partitions stay full width. Vertical split divides the remaining band only (mullion does not cut through a top fix). Roles: Fix · Casement · Top hung · Door · Sliding.</p>
+            <p class="muted" style="font-size:.72rem;margin:.15rem 0 .35rem">Height split stacks horizontal bands (transom between). Vertical split applies only to the selected band — mullion does not cut through other bands. Roles: Fix · Casement · Top hung · Door · Sliding.</p>
             <div class="row" style="gap:.5rem;margin:.25rem 0 .45rem;flex-wrap:wrap;align-items:flex-end">
+              <div><label class="l">Height split</label>
+                <select id="casementHSplit" style="width:110px" title="Stack horizontal bands / rows">
+                  <option value="1">None</option>
+                  <option value="2">2 rows</option>
+                  <option value="3">3 rows</option>
+                  <option value="4">4 rows</option>
+                </select>
+              </div>
               <div><label class="l">Vertical split</label>
-                <select id="casementVSplit" style="width:110px" title="Side-by-side panels in the casement band">
+                <select id="casementVSplit" style="width:110px" title="Side-by-side panels in the selected band">
                   <option value="1">None</option>
                   <option value="2">2 panels</option>
                   <option value="3">3 panels</option>
                   <option value="4">4 panels</option>
                 </select>
               </div>
-              <span class="muted" id="casementVSplitHint" style="font-size:.7rem;flex:1;min-width:12rem">Equal widths first — edit mm below. Sum must match band width.</span>
+              <span class="muted" id="casementVSplitHint" style="font-size:.7rem;flex:1;min-width:12rem">Equal sizes first — edit mm below. Heights sum to opening; widths sum to band.</span>
             </div>
+            <div id="casementBandList" style="margin:.2rem 0 .35rem"></div>
             <div id="casementPanelList"></div>
             <div id="casementSlidingNote" class="muted" style="display:none;font-size:.72rem;margin-top:.35rem;color:#9a3412">Sliding inside a casement band is drawn as a fixed lite here — use a Sliding product/series for track + profile, or keep this panel as Fix.</div>
             <div class="row" style="gap:.5rem;margin-top:.4rem;flex-wrap:wrap;align-items:flex-end">
@@ -816,7 +825,7 @@ textarea{max-width:100%}
                 <input id="lineSashOverlap" type="number" min="10" max="20" value="15" style="width:64px" title="Door overlap onto mullion and outer frame (10–20)"/>
               </div>
               <div><label class="l">Mullion gap mm</label>
-                <input id="lineMullionGap" type="number" min="10" max="20" value="15" style="width:64px" title="Gap / mullion between two openable doors (10–20)"/>
+                <input id="lineMullionGap" type="number" min="10" max="20" value="15" style="width:64px" title="Gap / mullion between panels or bands (10–20)"/>
               </div>
             </div>
           </div>
@@ -2740,6 +2749,8 @@ const state = {
   shOp: 'sliding',
   shFrameKind: 'profile',
   draftCasementPanels: [],
+  draftCasementLayout: null,
+  selectedCasementBand: 0,
   selectedCasementPanel: null,
   _lineById: {},
   packageQuotes: [],
@@ -3673,6 +3684,7 @@ function captureSeriesDesignFromForm(opts) {
     reinforcementMaterial: draft.reinforcementMaterial,
     panelFill: draft.panelFill ? { ...draft.panelFill } : null,
     casementPanels: Array.isArray(draft.casementPanels) ? draft.casementPanels.map(x => ({ ...x })) : null,
+    casementLayout: draft.casementLayout ? JSON.parse(JSON.stringify(draft.casementLayout)) : null,
     sashOverlapMm: draft.sashOverlapMm,
     mullionGapMm: draft.mullionGapMm,
     topShape: draft.topShape || 'flat',
@@ -3714,6 +3726,7 @@ function applySeriesDesignToForm(entry, opts) {
     handleOverrides: entry.handleOverrides || {},
     panelFill: entry.panelFill || null,
     casementPanels: entry.casementPanels || null,
+    casementLayout: entry.casementLayout || null,
   }));
   if ($('lineSavedDesignName')) $('lineSavedDesignName').value = entry.name || '';
   return true;
@@ -4767,36 +4780,130 @@ function casementBandWidthMm() {
   return Math.max(200, W - left - right);
 }
 
-function equalCasementWidths(n, parentW) {
+function casementBandHeightMm() {
+  const H = parseFloat(($('lineH') && $('lineH').value) || '0') || 0;
+  const parts = state.draftPartitions || [];
+  let top = 0, bot = 0;
+  parts.forEach(p => {
+    const side = String(p.side || '').toLowerCase();
+    const sz = parseFloat(p.sizeMm) || 0;
+    if (side === 'top') top += sz;
+    if (side === 'bottom') bot += sz;
+  });
+  return Math.max(200, H - top - bot);
+}
+
+function equalCasementSizes(n, parent) {
   const count = Math.max(1, Math.min(4, parseInt(n, 10) || 1));
-  const parent = Math.max(200, parseFloat(parentW) || casementBandWidthMm());
-  const base = Math.floor(parent / count);
-  const widths = [];
+  const total = Math.max(200, parseFloat(parent) || 0);
+  const base = Math.floor(total / count);
+  const sizes = [];
   let used = 0;
   for (let i = 0; i < count; i++) {
-    if (i === count - 1) widths.push(Math.max(80, Math.round(parent - used)));
-    else { widths.push(base); used += base; }
+    if (i === count - 1) sizes.push(Math.max(80, Math.round(total - used)));
+    else { sizes.push(base); used += base; }
   }
-  return widths;
+  return sizes;
+}
+function equalCasementWidths(n, parentW) {
+  return equalCasementSizes(n, parentW != null ? parentW : casementBandWidthMm());
+}
+function equalCasementHeights(n, parentH) {
+  return equalCasementSizes(n, parentH != null ? parentH : casementBandHeightMm());
+}
+
+function defaultCasementPanel(i, n, widthMm, old) {
+  return {
+    index: i,
+    role: casementPanelRole(old && old.role) || (i === 0 && n === 2 ? 'door' : 'openable'),
+    handleSide: (old && old.handleSide) === 'left' ? 'left' : (i === 0 ? 'right' : 'left'),
+    widthMm: widthMm,
+  };
+}
+
+function flattenCasementLayout(layout) {
+  const bands = (layout && Array.isArray(layout.bands)) ? layout.bands : [];
+  const out = [];
+  let gi = 0;
+  bands.forEach((band, bi) => {
+    const panels = (band && Array.isArray(band.panels)) ? band.panels : [];
+    panels.forEach((p) => {
+      out.push({
+        index: gi++,
+        bandIndex: bi,
+        role: casementPanelRole(p && p.role),
+        handleSide: (p && p.handleSide) === 'left' ? 'left' : 'right',
+        widthMm: (p && +p.widthMm > 0) ? +p.widthMm : null,
+        heightMm: (band && +band.heightMm > 0) ? +band.heightMm : null,
+      });
+    });
+  });
+  return out;
+}
+
+function ensureCasementLayoutSkeleton() {
+  let layout = state.draftCasementLayout;
+  if (!layout || !Array.isArray(layout.bands) || !layout.bands.length) {
+    const panels = Array.isArray(state.draftCasementPanels) && state.draftCasementPanels.length
+      ? state.draftCasementPanels.map((p, i) => defaultCasementPanel(i, state.draftCasementPanels.length, p.widthMm, p))
+      : [defaultCasementPanel(0, 1, casementBandWidthMm(), { role: 'openable' })];
+    layout = { bands: [{ heightMm: casementBandHeightMm(), panels }] };
+  }
+  state.draftCasementLayout = layout;
+  if (state.selectedCasementBand == null || state.selectedCasementBand < 0) state.selectedCasementBand = 0;
+  state.selectedCasementBand = Math.min(state.selectedCasementBand, layout.bands.length - 1);
+  return layout;
+}
+
+function applyCasementHeightSplit(count, { keepRoles = true } = {}) {
+  const n = Math.max(1, Math.min(4, parseInt(count, 10) || 1));
+  if ($('casementHSplit')) $('casementHSplit').value = String(n);
+  const prev = ensureCasementLayoutSkeleton();
+  const prevBands = (prev.bands || []).slice();
+  const heights = equalCasementHeights(n);
+  const bands = [];
+  for (let i = 0; i < n; i++) {
+    const old = keepRoles && prevBands[i] ? prevBands[i] : null;
+    let panels;
+    if (old && Array.isArray(old.panels) && old.panels.length) {
+      panels = old.panels.map((p, pi) => defaultCasementPanel(pi, old.panels.length, p.widthMm, p));
+    } else if (i === 0 && prevBands[0] && Array.isArray(prevBands[0].panels)) {
+      // First new band keeps previous single-band panels when splitting from 1.
+      panels = prevBands[0].panels.map((p, pi) => defaultCasementPanel(pi, prevBands[0].panels.length, p.widthMm, p));
+    } else {
+      // Extra bands default to full-width fix (top lite pattern).
+      panels = [defaultCasementPanel(0, 1, casementBandWidthMm(), { role: i === 0 ? 'fix' : 'openable', handleSide: 'right' })];
+      if (i === 0 && n >= 2) panels[0].role = 'fix';
+    }
+    bands.push({ heightMm: heights[i], panels });
+  }
+  // Prefer top=fix / bottom=operable when freshly splitting 1→2 with a single prior panel.
+  if (n === 2 && prevBands.length <= 1 && (!prevBands[0] || (prevBands[0].panels || []).length <= 1)) {
+    bands[0] = { heightMm: heights[0], panels: [defaultCasementPanel(0, 1, casementBandWidthMm(), { role: 'fix' })] };
+    bands[1] = { heightMm: heights[1], panels: [defaultCasementPanel(0, 1, casementBandWidthMm(), { role: 'openable', handleSide: 'right' })] };
+  }
+  state.draftCasementLayout = { bands };
+  state.selectedCasementBand = Math.min(state.selectedCasementBand || 0, n - 1);
+  state.selectedCasementPanel = 0;
+  ensureCasementPanels();
 }
 
 function applyCasementVerticalSplit(count, { keepRoles = true } = {}) {
   const n = Math.max(1, Math.min(4, parseInt(count, 10) || 1));
-  if ($('lineGlassShutters')) $('lineGlassShutters').value = String(n);
   if ($('casementVSplit')) $('casementVSplit').value = String(n);
-  const prev = Array.isArray(state.draftCasementPanels) ? state.draftCasementPanels.slice() : [];
+  const layout = ensureCasementLayoutSkeleton();
+  const bi = Math.min(Math.max(state.selectedCasementBand || 0, 0), layout.bands.length - 1);
+  state.selectedCasementBand = bi;
+  const band = layout.bands[bi] || { heightMm: casementBandHeightMm(), panels: [] };
+  const prev = Array.isArray(band.panels) ? band.panels.slice() : [];
   const widths = equalCasementWidths(n, casementBandWidthMm());
   const panels = [];
   for (let i = 0; i < n; i++) {
     const old = keepRoles && prev[i] ? prev[i] : null;
-    panels.push({
-      index: i,
-      role: casementPanelRole(old && old.role) || (i === 0 && n === 2 ? 'door' : 'openable'),
-      handleSide: (old && old.handleSide) === 'left' ? 'left' : (i === 0 ? 'right' : 'left'),
-      widthMm: widths[i],
-    });
+    panels.push(defaultCasementPanel(i, n, widths[i], old));
   }
-  state.draftCasementPanels = panels;
+  layout.bands[bi] = { heightMm: band.heightMm != null ? band.heightMm : casementBandHeightMm(), panels };
+  state.draftCasementLayout = layout;
   state.selectedCasementPanel = n ? Math.min(state.selectedCasementPanel == null ? 0 : state.selectedCasementPanel, n - 1) : null;
   ensureCasementPanels();
 }
@@ -4881,89 +4988,158 @@ function renderSlidingHandleList() {
   });
 }
 
+function fillMissingSizes(values, parent) {
+  const widths = values.map(v => (v != null && +v > 0 ? +v : null));
+  const knownSum = widths.reduce((s, w) => s + (w || 0), 0);
+  const missIdx = [];
+  widths.forEach((w, i) => { if (w == null) missIdx.push(i); });
+  if (!missIdx.length) return widths.map(w => +w);
+  const remain = Math.max(80 * missIdx.length, parent - knownSum);
+  const base = Math.floor(remain / missIdx.length);
+  let used = 0;
+  missIdx.forEach((i, k) => {
+    const w = (k === missIdx.length - 1) ? Math.max(80, remain - used) : base;
+    widths[i] = w;
+    used += w;
+  });
+  return widths.map(w => +w);
+}
+
 function ensureCasementPanels() {
-  const n = Math.max(parseInt(($('lineGlassShutters') && $('lineGlassShutters').value) || '2', 10) || 2, 1);
-  if ($('casementVSplit') && String($('casementVSplit').value) !== String(n)) {
-    $('casementVSplit').value = String(Math.min(4, n));
-  }
-  let panels = Array.isArray(state.draftCasementPanels) ? state.draftCasementPanels.slice() : [];
+  const layout = ensureCasementLayoutSkeleton();
   const parentW = casementBandWidthMm();
-  while (panels.length < n) {
-    const i = panels.length;
-    const side = i === 0 ? 'right' : 'left';
-    panels.push({ index: i, role: 'openable', handleSide: side, widthMm: null });
-  }
-  panels = panels.slice(0, n);
-  const noneSet = panels.every(p => !(p && +p.widthMm > 0));
-  let widths;
-  if (noneSet) {
-    widths = equalCasementWidths(n, parentW);
-  } else {
-    widths = panels.map(p => (p && +p.widthMm > 0 ? +p.widthMm : null));
-    const knownSum = widths.reduce((s, w) => s + (w || 0), 0);
-    const missIdx = [];
-    widths.forEach((w, i) => { if (w == null) missIdx.push(i); });
-    if (missIdx.length) {
-      const remain = Math.max(80 * missIdx.length, parentW - knownSum);
-      const base = Math.floor(remain / missIdx.length);
-      let used = 0;
-      missIdx.forEach((i, k) => {
-        const w = (k === missIdx.length - 1) ? Math.max(80, remain - used) : base;
-        widths[i] = w;
-        used += w;
-      });
-    }
-  }
-  panels = panels.map((p, i) => ({
-    index: i,
-    role: casementPanelRole(p && p.role),
-    handleSide: (p && p.handleSide) === 'left' ? 'left' : 'right',
-    widthMm: widths[i],
-  }));
-  state.draftCasementPanels = panels;
-  const fixIdx = panels.filter(p => p.role === 'fix' || p.role === 'sliding').map(p => p.index + 1);
+  const parentH = casementBandHeightMm();
+  const nBands = Math.max(1, Math.min(4, layout.bands.length));
+  layout.bands = layout.bands.slice(0, nBands);
+  const noneH = layout.bands.every(b => !(b && +b.heightMm > 0));
+  const heights = noneH
+    ? equalCasementHeights(nBands, parentH)
+    : fillMissingSizes(layout.bands.map(b => b && b.heightMm), parentH);
+  layout.bands = layout.bands.map((band, bi) => {
+    let panels = Array.isArray(band.panels) && band.panels.length
+      ? band.panels.slice(0, 4)
+      : [defaultCasementPanel(0, 1, parentW, { role: 'openable' })];
+    const noneW = panels.every(p => !(p && +p.widthMm > 0));
+    const widths = noneW
+      ? equalCasementWidths(panels.length, parentW)
+      : fillMissingSizes(panels.map(p => p && p.widthMm), parentW);
+    panels = panels.map((p, i) => ({
+      index: i,
+      role: casementPanelRole(p && p.role),
+      handleSide: (p && p.handleSide) === 'left' ? 'left' : 'right',
+      widthMm: widths[i],
+    }));
+    return { heightMm: heights[bi], panels };
+  });
+  state.draftCasementLayout = layout;
+  if ($('casementHSplit')) $('casementHSplit').value = String(nBands);
+  const bi = Math.min(Math.max(state.selectedCasementBand || 0, 0), nBands - 1);
+  state.selectedCasementBand = bi;
+  const selPanels = layout.bands[bi].panels;
+  if ($('casementVSplit')) $('casementVSplit').value = String(Math.min(4, Math.max(1, selPanels.length)));
+  state.draftCasementPanels = flattenCasementLayout(layout);
+  if ($('lineGlassShutters')) $('lineGlassShutters').value = String(Math.max(1, state.draftCasementPanels.length));
+  const fixIdx = state.draftCasementPanels.filter(p => p.role === 'fix' || p.role === 'sliding').map(p => p.index + 1);
   if ($('lineFixShutters')) $('lineFixShutters').value = fixIdx.join(',');
   state.draftHandleOverrides = state.draftHandleOverrides || {};
-  panels.forEach((p, i) => {
+  state.draftCasementPanels.forEach((p, i) => {
     state.draftHandleOverrides[i] = Object.assign({}, state.draftHandleOverrides[i] || {}, {
       role: p.role,
       side: casementHandleSide(p),
       widthMm: p.widthMm,
+      heightMm: p.heightMm,
+      bandIndex: p.bandIndex,
     });
   });
   Object.keys(state.draftHandleOverrides).forEach(k => {
-    if (+k >= n) delete state.draftHandleOverrides[k];
+    if (+k >= state.draftCasementPanels.length) delete state.draftHandleOverrides[k];
   });
+  renderCasementBandList();
   renderCasementPanelList();
+}
+
+function renderCasementBandList() {
+  const host = $('casementBandList');
+  if (!host) return;
+  const layout = ensureCasementLayoutSkeleton();
+  const bands = layout.bands || [];
+  const parentH = casementBandHeightMm();
+  const sumH = bands.reduce((s, b) => s + (+b.heightMm || 0), 0);
+  const heightOk = !bands.length || Math.abs(sumH - parentH) <= 1;
+  if (bands.length <= 1) {
+    host.innerHTML = '';
+    return;
+  }
+  host.innerHTML = `<div class="muted" style="font-size:.7rem;margin-bottom:.2rem;color:${heightOk ? '' : '#9a3412'}">${
+    heightOk
+      ? `Heights sum ${Math.round(sumH)} mm (= opening band ${Math.round(parentH)} mm). Click a row, then set vertical split.`
+      : `Heights sum ${Math.round(sumH)} mm — must equal ${Math.round(parentH)} mm.`
+  }</div>` + bands.map((b, i) => {
+    const active = state.selectedCasementBand === i ? 'outline:2px solid var(--accent,#b33);' : '';
+    const nP = (b.panels || []).length;
+    return `<div class="row" data-cb="${i}" style="gap:.4rem;align-items:center;margin:.15rem 0;flex-wrap:wrap;${active}">
+      <button type="button" class="btn ghost sm" data-cb-pick="${i}">Row ${i + 1}${i === 0 ? ' (top)' : (i === bands.length - 1 ? ' (bottom)' : '')}</button>
+      <label class="muted" style="font-size:.7rem">H mm
+        <input type="number" data-cb-h="${i}" min="80" step="1" value="${b.heightMm != null ? b.heightMm : ''}" style="width:72px;margin-left:.2rem"/>
+      </label>
+      <span class="muted" style="font-size:.68rem">${nP} panel${nP === 1 ? '' : 's'}</span>
+    </div>`;
+  }).join('');
+  host.querySelectorAll('[data-cb-pick]').forEach(btn => {
+    btn.onclick = () => {
+      state.selectedCasementBand = +btn.dataset.cbPick;
+      state.selectedCasementPanel = 0;
+      ensureCasementPanels();
+    };
+  });
+  host.querySelectorAll('[data-cb-h]').forEach(inp => {
+    const apply = () => {
+      const i = +inp.dataset.cbH;
+      const v = parseFloat(inp.value);
+      if (!isFinite(v) || v < 80) return;
+      state.draftCasementLayout.bands[i].heightMm = v;
+      ensureCasementPanels();
+      refreshPreview();
+      scheduleLivePrice();
+    };
+    inp.onchange = apply;
+    inp.onblur = apply;
+  });
 }
 
 function renderCasementPanelList() {
   const host = $('casementPanelList');
   if (!host) return;
-  const panels = state.draftCasementPanels || [];
+  const layout = ensureCasementLayoutSkeleton();
+  const bi = Math.min(Math.max(state.selectedCasementBand || 0, 0), layout.bands.length - 1);
+  const panels = (layout.bands[bi] && layout.bands[bi].panels) || [];
   const sel = state.selectedCasementPanel;
   const parentW = casementBandWidthMm();
   const sumW = panels.reduce((s, p) => s + (+p.widthMm || 0), 0);
   const widthOk = !panels.length || Math.abs(sumW - parentW) <= 1;
+  const multiBand = (layout.bands || []).length > 1;
   if ($('casementVSplitHint')) {
+    const bandLabel = multiBand ? `row ${bi + 1}` : 'this band';
     $('casementVSplitHint').textContent = panels.length <= 1
-      ? 'No vertical split — full-width panel in this band.'
+      ? `No vertical split — full-width panel in ${bandLabel}.`
       : (widthOk
-        ? `Widths sum ${Math.round(sumW)} mm (= band ${Math.round(parentW)} mm).`
+        ? `Widths sum ${Math.round(sumW)} mm (= band ${Math.round(parentW)} mm) · ${bandLabel}.`
         : `Widths sum ${Math.round(sumW)} mm — must equal band ${Math.round(parentW)} mm.`);
     $('casementVSplitHint').style.color = widthOk ? '' : '#9a3412';
   }
-  const slidingOn = panels.some(p => p.role === 'sliding');
+  const allPanels = flattenCasementLayout(layout);
+  const slidingOn = allPanels.some(p => p.role === 'sliding');
   if ($('casementSlidingNote')) $('casementSlidingNote').style.display = slidingOn ? '' : 'none';
   if (!panels.length) {
-    host.innerHTML = '<span class="muted" style="font-size:.75rem">Set vertical split, then click a panel</span>';
+    host.innerHTML = '<span class="muted" style="font-size:.75rem">Set height / vertical split, then click a panel</span>';
     return;
   }
+  const rowPrefix = multiBand ? `R${bi + 1}` : 'P';
   host.innerHTML = panels.map((p, i) => {
     const active = sel === i ? ' style="outline:2px solid var(--accent,#b33)"' : '';
     const needHandle = p.role === 'openable' || p.role === 'door';
     return `<div class="row" data-cp="${i}"${active} style="gap:.4rem;align-items:center;margin:.2rem 0;flex-wrap:wrap">
-      <button type="button" class="btn ghost sm" data-cp-pick="${i}">P${i + 1}</button>
+      <button type="button" class="btn ghost sm" data-cp-pick="${i}">${rowPrefix}${i + 1}</button>
       <select data-cp-role="${i}" style="width:150px">
         <option value="fix"${p.role === 'fix' ? ' selected' : ''}>Fixed</option>
         <option value="openable"${p.role === 'openable' ? ' selected' : ''}>Casement (side hung)</option>
@@ -4989,7 +5165,7 @@ function renderCasementPanelList() {
   host.querySelectorAll('[data-cp-role]').forEach(selEl => {
     selEl.onchange = () => {
       const i = +selEl.dataset.cpRole;
-      state.draftCasementPanels[i].role = selEl.value;
+      state.draftCasementLayout.bands[bi].panels[i].role = selEl.value;
       ensureCasementPanels();
       refreshPreview();
       scheduleLivePrice();
@@ -4998,7 +5174,7 @@ function renderCasementPanelList() {
   host.querySelectorAll('[data-cp-side]').forEach(selEl => {
     selEl.onchange = () => {
       const i = +selEl.dataset.cpSide;
-      state.draftCasementPanels[i].handleSide = selEl.value;
+      state.draftCasementLayout.bands[bi].panels[i].handleSide = selEl.value;
       ensureCasementPanels();
       refreshPreview();
       scheduleLivePrice();
@@ -5009,8 +5185,7 @@ function renderCasementPanelList() {
       const i = +inp.dataset.cpW;
       const v = parseFloat(inp.value);
       if (!isFinite(v) || v < 80) return;
-      state.draftCasementPanels[i].widthMm = v;
-      // Do not auto-rescale siblings on manual edit — validate sum in hint.
+      state.draftCasementLayout.bands[bi].panels[i].widthMm = v;
       ensureCasementPanels();
       refreshPreview();
       scheduleLivePrice();
@@ -5022,7 +5197,10 @@ function renderCasementPanelList() {
 
 function selectCasementPanel(i) {
   ensureCasementPanels();
-  if (i < 0 || i >= (state.draftCasementPanels || []).length) return;
+  const layout = state.draftCasementLayout;
+  const bi = state.selectedCasementBand || 0;
+  const panels = (layout && layout.bands && layout.bands[bi] && layout.bands[bi].panels) || [];
+  if (i < 0 || i >= panels.length) return;
   state.selectedCasementPanel = i;
   renderCasementPanelList();
 }
@@ -5694,6 +5872,8 @@ function applyProductWorld(opts) {
       state.draftHandleOverrides = {};
       state.draftSlidingHandles = {};
       state.draftCasementPanels = [];
+      state.draftCasementLayout = null;
+      state.selectedCasementBand = 0;
       state.selectedCasementPanel = null;
       applySystemUiRules({ applyFoldPreset: sys === 'bifold' });
     } else {
@@ -5753,6 +5933,8 @@ function syncDraftFromLine(ln) {
   state.draftHandleOverrides = {};
   state.draftSlidingHandles = {};
   state.draftCasementPanels = [];
+  state.draftCasementLayout = null;
+  state.selectedCasementBand = 0;
   state.selectedCasementPanel = null;
   if (lnSys === 'casement') {
     Object.keys(lnOv).forEach(k => {
@@ -5842,35 +6024,71 @@ function syncDraftFromLine(ln) {
     const gp = ln.mullionGapMm != null ? ln.mullionGapMm : (ln.options && ln.options.mullionGapMm);
     $('lineMullionGap').value = (gp != null && gp !== '') ? gp : 15;
   }
-  if (lnSys === 'casement' && Array.isArray(ln.casementPanels) && ln.casementPanels.length) {
-    state.draftCasementPanels = ln.casementPanels.map((p, i) => {
-      const ov = (ln.handleOverrides && (ln.handleOverrides[i] || ln.handleOverrides[String(i)])) || {};
-      const w = (p && (p.widthMm != null ? p.widthMm : p.width_mm)) != null
-        ? +(p.widthMm != null ? p.widthMm : p.width_mm)
-        : (ov.widthMm != null ? +ov.widthMm : null);
-      return {
-        index: i,
-        role: casementPanelRole(p && p.role),
-        handleSide: (p && (p.handleSide || p.side) === 'left') ? 'left' : 'right',
-        widthMm: (w != null && isFinite(w) && w > 0) ? w : null,
+  if (lnSys === 'casement') {
+    const cl = ln.casementLayout || (ln.options && ln.options.casementLayout);
+    if (cl && Array.isArray(cl.bands) && cl.bands.length) {
+      state.draftCasementLayout = {
+        bands: cl.bands.slice(0, 4).map((b, bi) => ({
+          heightMm: (b && +b.heightMm > 0) ? +b.heightMm : null,
+          panels: ((b && b.panels) || [{ role: 'openable' }]).slice(0, 4).map((p, i) => ({
+            index: i,
+            role: casementPanelRole(p && p.role),
+            handleSide: (p && (p.handleSide || p.side) === 'left') ? 'left' : 'right',
+            widthMm: (p && +p.widthMm > 0) ? +p.widthMm : null,
+          })),
+        })),
       };
-    });
-    if ($('casementVSplit')) $('casementVSplit').value = String(Math.min(4, Math.max(1, state.draftCasementPanels.length)));
-  } else if (lnSys === 'casement' && ln.handleOverrides && typeof ln.handleOverrides === 'object') {
-    const ov = ln.handleOverrides;
-    const n = Math.max(parseInt(ln.glassShutters, 10) || Object.keys(ov).length || 2, 1);
-    state.draftCasementPanels = [];
-    for (let i = 0; i < n; i++) {
-      const o = ov[i] || ov[String(i)] || {};
-      const w = o.widthMm != null ? +o.widthMm : (o.width_mm != null ? +o.width_mm : null);
-      state.draftCasementPanels.push({
-        index: i,
-        role: casementPanelRole(o.role),
-        handleSide: (o.side === 'left' || o.handleSide === 'left') ? 'left' : 'right',
-        widthMm: (w != null && isFinite(w) && w > 0) ? w : null,
+      state.draftCasementPanels = flattenCasementLayout(state.draftCasementLayout);
+      if ($('casementHSplit')) $('casementHSplit').value = String(Math.min(4, Math.max(1, state.draftCasementLayout.bands.length)));
+      if ($('casementVSplit')) {
+        const bp = state.draftCasementLayout.bands[0] || { panels: [] };
+        $('casementVSplit').value = String(Math.min(4, Math.max(1, (bp.panels || []).length)));
+      }
+    } else if (Array.isArray(ln.casementPanels) && ln.casementPanels.length) {
+      // Legacy flat panels — group by bandIndex when present.
+      const byBand = {};
+      ln.casementPanels.forEach((p, i) => {
+        const ov = (ln.handleOverrides && (ln.handleOverrides[i] || ln.handleOverrides[String(i)])) || {};
+        const bi = Math.max(0, Math.min(3, parseInt((p && p.bandIndex != null ? p.bandIndex : ov.bandIndex) || 0, 10) || 0));
+        const w = (p && (p.widthMm != null ? p.widthMm : p.width_mm)) != null
+          ? +(p.widthMm != null ? p.widthMm : p.width_mm)
+          : (ov.widthMm != null ? +ov.widthMm : null);
+        const h = (p && +p.heightMm > 0) ? +p.heightMm : ((ov.heightMm != null && +ov.heightMm > 0) ? +ov.heightMm : null);
+        byBand[bi] = byBand[bi] || { heightMm: h, panels: [] };
+        if (h && !byBand[bi].heightMm) byBand[bi].heightMm = h;
+        byBand[bi].panels.push({
+          index: byBand[bi].panels.length,
+          role: casementPanelRole(p && p.role),
+          handleSide: (p && (p.handleSide || p.side) === 'left') ? 'left' : 'right',
+          widthMm: (w != null && isFinite(w) && w > 0) ? w : null,
+        });
       });
+      const bandKeys = Object.keys(byBand).map(Number).sort((a, b) => a - b);
+      state.draftCasementLayout = {
+        bands: bandKeys.map(k => byBand[k]),
+      };
+      state.draftCasementPanels = flattenCasementLayout(state.draftCasementLayout);
+      if ($('casementHSplit')) $('casementHSplit').value = String(Math.min(4, Math.max(1, bandKeys.length)));
+      if ($('casementVSplit')) $('casementVSplit').value = String(Math.min(4, Math.max(1, (byBand[bandKeys[0]].panels || []).length)));
+    } else if (ln.handleOverrides && typeof ln.handleOverrides === 'object') {
+      const ov = ln.handleOverrides;
+      const n = Math.max(parseInt(ln.glassShutters, 10) || Object.keys(ov).length || 2, 1);
+      const panels = [];
+      for (let i = 0; i < n; i++) {
+        const o = ov[i] || ov[String(i)] || {};
+        const w = o.widthMm != null ? +o.widthMm : (o.width_mm != null ? +o.width_mm : null);
+        panels.push({
+          index: i,
+          role: casementPanelRole(o.role),
+          handleSide: (o.side === 'left' || o.handleSide === 'left') ? 'left' : 'right',
+          widthMm: (w != null && isFinite(w) && w > 0) ? w : null,
+        });
+      }
+      state.draftCasementLayout = { bands: [{ heightMm: null, panels }] };
+      state.draftCasementPanels = flattenCasementLayout(state.draftCasementLayout);
+      if ($('casementHSplit')) $('casementHSplit').value = '1';
+      if ($('casementVSplit')) $('casementVSplit').value = String(Math.min(4, Math.max(1, n)));
     }
-    if ($('casementVSplit')) $('casementVSplit').value = String(Math.min(4, Math.max(1, n)));
   }
   if (ln.options && ln.options.ventilator && typeof ln.options.ventilator === 'object') {
     populateVentTools(ln.options.ventilator);
@@ -6040,7 +6258,28 @@ function currentLineDraft() {
     hardwareBrand: ($('lineHwBrand') && $('lineHwBrand').value.trim()) || null,
     panelFill: (sys === 'pergola' || sys === 'surface') ? null : currentPanelFill(),
     features: (sys === 'pergola' || sys === 'surface' || !currentPanelFill()) ? null : [{ type: 'panel_fill', ...currentPanelFill() }],
-    casementPanels: (sys === 'casement') ? (state.draftCasementPanels || []).slice() : null,
+    casementLayout: (function(){
+      if (sys !== 'casement') return null;
+      ensureCasementPanels();
+      const layout = state.draftCasementLayout;
+      if (!layout || !Array.isArray(layout.bands) || !layout.bands.length) return null;
+      return {
+        bands: layout.bands.map(b => ({
+          heightMm: (b && +b.heightMm > 0) ? +b.heightMm : undefined,
+          panels: ((b && b.panels) || []).map((p, i) => ({
+            index: i,
+            role: p.role || 'openable',
+            handleSide: casementHandleSide(p),
+            widthMm: (p.widthMm != null && +p.widthMm > 0) ? +p.widthMm : undefined,
+          })),
+        })),
+      };
+    })(),
+    casementPanels: (function(){
+      if (sys !== 'casement') return null;
+      ensureCasementPanels();
+      return flattenCasementLayout(state.draftCasementLayout || { bands: [] });
+    })(),
     sashOverlapMm: (function(){
       if (sys !== 'casement') return null;
       const n = $('lineSashOverlap') ? parseFloat($('lineSashOverlap').value) : 15;
@@ -6065,11 +6304,13 @@ function currentLineDraft() {
           if (o.y != null) keep.y = o.y;
           if (Object.keys(keep).length) ov[k] = keep;
         });
-        (state.draftCasementPanels || []).forEach((p, i) => {
+        flattenCasementLayout(state.draftCasementLayout || { bands: [] }).forEach((p, i) => {
           ov[i] = Object.assign({}, ov[i] || {}, {
             role: p.role || 'openable',
             side: casementHandleSide(p),
             widthMm: (p.widthMm != null && +p.widthMm > 0) ? +p.widthMm : undefined,
+            heightMm: (p.heightMm != null && +p.heightMm > 0) ? +p.heightMm : undefined,
+            bandIndex: p.bandIndex != null ? p.bandIndex : 0,
           });
         });
         return Object.keys(ov).length ? ov : null;
@@ -6755,6 +6996,7 @@ async function refreshPreview() {
       mesh: !!ln.mesh,
       trackCount: productHasTracks(selectedProductMeta(), ln, ln.system) ? (ln.trackCount != null ? ln.trackCount : 2) : null,
       casementPanels: (ln.system === 'casement') ? (ln.casementPanels || state.draftCasementPanels || null) : null,
+      casementLayout: (ln.system === 'casement') ? (ln.casementLayout || state.draftCasementLayout || null) : null,
       sashOverlapMm: ln.sashOverlapMm != null ? ln.sashOverlapMm : (ln.system === 'casement' ? 15 : null),
       mullionGapMm: ln.mullionGapMm != null ? ln.mullionGapMm : (ln.system === 'casement' ? 15 : null),
       sectionSeries: ln.sectionSeries || null,
@@ -6848,8 +7090,11 @@ async function refreshPreview() {
           const role = casementPanelRole(p.role);
           const roleLbl = role === 'fix' ? 'fix' : (role === 'top_hung' ? 'top hung' : (role === 'door' ? 'door' : (role === 'sliding' ? 'sliding' : 'casement')));
           const wBit = (p.widthMm != null && +p.widthMm > 0) ? (` ${Math.round(+p.widthMm)}mm`) : '';
+          const htBit = (p.heightMm != null && +p.heightMm > 0) ? (`×${Math.round(+p.heightMm)}`) : '';
           const hBit = (role === 'openable' || role === 'door') ? (` · H ${(p.handleSide==='left'?'L':'R')}`) : '';
-          partBits.push(`P${i+1} ${roleLbl}${wBit}${hBit}`);
+          const rowBit = (p.bandIndex != null && (state.draftCasementLayout && state.draftCasementLayout.bands || []).length > 1)
+            ? `R${(+p.bandIndex) + 1}.` : 'P';
+          partBits.push(`${rowBit}${i+1} ${roleLbl}${wBit}${htBit}${hBit}`);
         });
       }
       if (partBits.length) extra.push(['Partitions', partBits.join('; ')]);
@@ -11520,6 +11765,13 @@ applyMeshNameVisibility();
 if (typeof applyMeshAddonVisibility === 'function') applyMeshAddonVisibility();
 applyFrameMaterialUi({ skipColourDefault: true });
 // Flexible window-config + Fold & Sliding controls
+if ($('casementHSplit')) {
+  $('casementHSplit').addEventListener('change', () => {
+    applyCasementHeightSplit(($('casementHSplit') && $('casementHSplit').value) || 1, { keepRoles: true });
+    refreshPreview();
+    scheduleLivePrice();
+  });
+}
 if ($('casementVSplit')) {
   $('casementVSplit').addEventListener('change', () => {
     applyCasementVerticalSplit(($('casementVSplit') && $('casementVSplit').value) || 1, { keepRoles: true });
@@ -11536,7 +11788,12 @@ if ($('casementVSplit')) {
     if (id === 'lineSystem' || id === 'lineGlassShutters') {
       state.draftHandleOverrides = {};
       state.draftSlidingHandles = {};
-      if (id === 'lineSystem') { state.draftCasementPanels = []; state.selectedCasementPanel = null; }
+      if (id === 'lineSystem') {
+        state.draftCasementPanels = [];
+        state.draftCasementLayout = null;
+        state.selectedCasementBand = 0;
+        state.selectedCasementPanel = null;
+      }
     }
     if (id === 'lineGlassShutters' && (($('lineSystem') && $('lineSystem').value) || 'sliding') === 'casement') {
       applyCasementVerticalSplit(($('lineGlassShutters') && $('lineGlassShutters').value) || 2, { keepRoles: true });

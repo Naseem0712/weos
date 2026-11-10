@@ -434,6 +434,21 @@ def casement_panel_roles(line: Mapping[str, Any], glass_count: int) -> list[str]
             return opts.get(key)
         return None
 
+    cl = pick("casementLayout")
+    if isinstance(cl, Mapping):
+        try:
+            from WEOS.factory.layout_options import flatten_casement_panels, normalize_casement_bands
+
+            bands = normalize_casement_bands(cl, None, None, glass_count=n or 1)
+            flat = flatten_casement_panels(bands)
+            if flat:
+                roles = [_norm_panel_role(p.get("role")) for p in flat]
+                if n > 0:
+                    roles = (roles + ["openable"] * n)[:n]
+                return roles
+        except Exception:
+            pass
+
     cp = pick("casementPanels")
     if isinstance(cp, (list, tuple)) and cp:
         roles = [_norm_panel_role(p.get("role") if isinstance(p, Mapping) else p) for p in cp]

@@ -668,13 +668,19 @@ def draw_model_elevation(
     # Per-panel / per-shutter divided widths (sliding shares + casement FIX/openable
     # bay chain). Glass / daylight sash-inner sizes stay omitted.
     try:
-        from WEOS.factory.svg_export import _panel_width_dim_spans
+        from WEOS.factory.svg_export import _panel_height_dim_spans, _panel_width_dim_spans
 
         _panel_spans = _panel_width_dim_spans(meta, W)
+        _height_spans = _panel_height_dim_spans(meta, H)
     except Exception:
         _panel_spans = []
+        _height_spans = []
     for nx0, nx1 in _panel_spans:
         dim_h(nx0, nx1, -12.0 / max(scale, 1e-6), str(mm_n(nx1 - nx0)), text_dy=-8)
+    if _height_spans:
+        xv_h = W + 14.0 / max(scale, 1e-6)
+        for vy0, vy1 in _height_spans:
+            dim_v(vy0, vy1, xv_h, str(mm_n(vy1 - vy0)), text_dx=8)
 
     # Fix / partition split chain — "FIX 600" + remaining door/sash height
     # (and left/right fix widths) so the fabricator reads both sizes, not
@@ -692,7 +698,7 @@ def draw_model_elevation(
     except Exception:
         _top_fix = _bot_fix = _left_fix = _right_fix = 0.0
     if _top_fix > 0 or _bot_fix > 0:
-        xv = W + 14.0 / max(scale, 1e-6)
+        xv = W + (28.0 if _height_spans else 14.0) / max(scale, 1e-6)
         for vy0, vy1, vlabel in _vertical_split_chain(H, _top_fix, _bot_fix):
             dim_v(vy0, vy1, xv, vlabel, text_dx=8)
     if _left_fix > 0 or _right_fix > 0:
@@ -912,6 +918,8 @@ def draw_line_model_elevation(c, line: Mapping[str, Any], x: float, y: float, bo
             grid=lo.get("gridSpec"),
             sash_overlap_mm=lo.get("sashOverlapMm"),
             mullion_gap_mm=lo.get("mullionGapMm"),
+            casement_layout=lo.get("casementLayout") if isinstance(lo.get("casementLayout"), Mapping) else None,
+            casement_panels=lo.get("casementPanels") if isinstance(lo.get("casementPanels"), (list, tuple)) else None,
         )
         try:
             from WEOS.factory.mesh_addon import attach_mesh_addon_to_drawing, mesh_addon_for_line

@@ -32,7 +32,12 @@ from WEOS.factory.geometry import (
     u_polyline_open_right,
     vertical_segment,
 )
-from WEOS.factory.layout_options import normalize_partitions, partition_sizes
+from WEOS.factory.layout_options import (
+    casement_cell_count,
+    normalize_casement_bands,
+    normalize_partitions,
+    partition_sizes,
+)
 from WEOS.factory.types import DrawingModel, Point, Rect, Segment
 
 # Fold & Sliding size envelope (feet → mm)
@@ -144,12 +149,19 @@ class ShutterPanel:
     handle: Rect | None = None
     nom_x0: float = 0.0
     nom_x1: float = 0.0
+    nom_y0: float = 0.0
+    nom_y1: float = 0.0
     pack: str = ""
     hinge_side: str | None = None
+    band_index: int = 0
 
     @property
     def nominal_width(self) -> float:
         return self.nom_x1 - self.nom_x0
+
+    @property
+    def nominal_height(self) -> float:
+        return self.nom_y1 - self.nom_y0
 
 
 SLIDING_HANDLE_CHOICE_MIN_SHUTTERS = 4
@@ -467,6 +479,25 @@ def _build_shutters(
     return panels, handles, hinges
 
 
+def _resolve_band_sizes(raw: Sequence[float | None], usable: float, min_size: float) -> list[float]:
+    """Absolute mm sizes summing to ``usable`` (equal fill for missing entries)."""
+    n = max(len(raw), 1)
+    vals: list[float | None] = list(raw) if raw else [None]
+    while len(vals) < n:
+        vals.append(None)
+    vals = vals[:n]
+    known = [float(v) for v in vals if v is not None and v > 0]
+    miss = [i for i, v in enumerate(vals) if v is None or v <= 0]
+    if miss:
+        remain = max(usable - sum(known), min_size * len(miss))
+        fill = remain / len(miss)
+        for i in miss:
+            vals[i] = fill
+    widths = [float(v or min_size) for v in vals]
+    total = sum(widths) or 1.0
+    return [usable * (w / total) for w in widths]
+
+
 def _build_casement_leaves(
     inner: Rect,
     *,
@@ -480,12 +511,14 @@ def _build_casement_leaves(
     handle_level: float,
     handle_length: float | None,
     fixed_set: set[int],
+    index_offset: int = 0,
+    band_index: int = 0,
 ) -> tuple[list[ShutterPanel], list[Rect], list[Rect], list[Rect]]:
     """Casement partitions: mullions + sashes that overlap frame/mullion by sash_overlap.
 
-    Vertical mullions live only inside ``inner`` (the daylight band after any
-    top/bottom/left/right fix partitions), so a top full-width fix is never cut
-    by a lower-band vertical split.
+    Vertical mullions live only inside ``inner`` (one horizontal band after any
+    top/bottom/left/right fix partitions, or one height-split row), so a top
+    full-width fix / upper band is never cut by a lower-band vertical split.
     """
     fw = float(frame_width)
     G = max(int(glass_count), 1)
@@ -505,7 +538,7 @@ def _build_casement_leaves(
     roles: list[str] = []
     for i in range(G):
         ov_cfg = overrides.get(i) or {}
-        roles.append(_casement_cell_role(ov_cfg.get("role"), is_fixed=i in fixed_set))
+        roles.append(_casement_cell_role(ov_cfg.get("role"), is_fixed=(index_offset + i) in fixed_set or i in fixed_set))
 
     # Equal widths by default; optional per-cell widthMm from overrides (vertical split).
     raw_widths: list[float | None] = []
@@ -517,17 +550,7 @@ def _build_casement_leaves(
         except (TypeError, ValueError):
             w_val = None
         raw_widths.append(w_val if w_val and w_val > 0 else None)
-    if any(w is not None for w in raw_widths):
-        known = [w for w in raw_widths if w is not None]
-        remain_n = sum(1 for w in raw_widths if w is None)
-        known_sum = sum(known)
-        remain = max(usable - known_sum, fw * 2.2 * max(remain_n, 1))
-        fill = remain / max(remain_n, 1)
-        widths = [float(w) if w is not None else fill for w in raw_widths]
-        total_w = sum(widths) or 1.0
-        widths = [usable * (w / total_w) for w in widths]
-    else:
-        widths = [usable / G] * G
+    widths = _resolve_band_sizes(raw_widths, usable, fw * 2.2)
 
     mullions: list[Rect] = []
     cell_bounds: list[tuple[float, float]] = []
@@ -643,7 +666,7 @@ def _build_casement_leaves(
 
         panels.append(
             ShutterPanel(
-                index=i,
+                index=index_offset + i,
                 role="glass",
                 operable=not is_fixed,
                 outer=outer,
@@ -655,12 +678,109 @@ def _build_casement_leaves(
                 handle=handle_rect,
                 nom_x0=cx0,
                 nom_x1=cx1,
+                nom_y0=y0,
+                nom_y1=y1,
                 hinge_side=hinge_side,
                 pack=pack,
+                band_index=band_index,
             )
         )
 
     return panels, handles, hinges, mullions
+
+
+def _build_casement_banded(
+    inner: Rect,
+    *,
+    frame_width: float,
+    outer_w: float,
+    outer_h: float,
+    bands: Sequence[Mapping[str, Any]],
+    sash_overlap: float,
+    mullion_gap: float,
+    handle_level: float,
+    handle_length: float | None,
+    fixed_set: set[int],
+) -> tuple[list[ShutterPanel], list[Rect], list[Rect], list[Rect]]:
+    """Stack horizontal casement bands (top→bottom) with horizontal mullions / transoms.
+
+    Vertical splits apply only inside each band — a mullion never cuts through an
+    upper full-width fix into a lower door|fix pair.
+    """
+    fw = float(frame_width)
+    band_list = [b for b in bands if isinstance(b, Mapping)][:4] or [{"panels": [{"role": "openable"}]}]
+    n_bands = len(band_list)
+    mull_h = float(mullion_gap) if n_bands >= 2 else 0.0
+    x0, y0, x1, y1 = inner.x0, inner.y0, inner.x1, inner.y1
+    inner_h = max(y1 - y0, fw * 2.2 * n_bands + mull_h * max(n_bands - 1, 0))
+    usable_h = max(inner_h - mull_h * (n_bands - 1), fw * 2.2 * n_bands)
+
+    raw_heights: list[float | None] = []
+    for b in band_list:
+        h_raw = b.get("heightMm", b.get("height_mm"))
+        try:
+            h_val = float(h_raw) if h_raw is not None and str(h_raw).strip() != "" else None
+        except (TypeError, ValueError):
+            h_val = None
+        raw_heights.append(h_val if h_val and h_val > 0 else None)
+    heights = _resolve_band_sizes(raw_heights, usable_h, fw * 2.2)
+
+    all_panels: list[ShutterPanel] = []
+    all_handles: list[Rect] = []
+    all_hinges: list[Rect] = []
+    all_mullions: list[Rect] = []
+    cursor_y1 = y1
+    global_i = 0
+
+    for bi, (band, bh) in enumerate(zip(band_list, heights)):
+        by1 = cursor_y1
+        by0 = by1 - bh
+        panels_in = band.get("panels") or []
+        if not isinstance(panels_in, (list, tuple)) or not panels_in:
+            panels_in = [{"role": "openable"}]
+        panels_in = list(panels_in)[:4]
+        G = max(len(panels_in), 1)
+        band_overrides: dict[int, dict[str, Any]] = {}
+        for i, p in enumerate(panels_in):
+            if not isinstance(p, Mapping):
+                p = {"role": p}
+            side = p.get("side") if "side" in p else p.get("handleSide")
+            band_overrides[i] = {
+                "role": p.get("role"),
+                "side": side,
+                "widthMm": p.get("widthMm", p.get("width_mm")),
+                "x": p.get("x"),
+                "y": p.get("y"),
+            }
+        band_rect = Rect(x0, by0, x1, by1)
+        leaves, handles, hinges, vmulls = _build_casement_leaves(
+            band_rect,
+            frame_width=fw,
+            outer_w=outer_w,
+            outer_h=outer_h,
+            glass_count=G,
+            sash_overlap=sash_overlap,
+            mullion_gap=mullion_gap,
+            handle_overrides=band_overrides,
+            handle_level=handle_level,
+            handle_length=handle_length,
+            fixed_set=fixed_set,
+            index_offset=global_i,
+            band_index=bi,
+        )
+        all_panels.extend(leaves)
+        all_handles.extend(handles)
+        all_hinges.extend(hinges)
+        all_mullions.extend(vmulls)
+        global_i += G
+        if bi < n_bands - 1:
+            # Horizontal mullion / transom under this band (toward sill).
+            all_mullions.append(Rect(x0, by0 - mull_h, x1, by0))
+            cursor_y1 = by0 - mull_h
+        else:
+            cursor_y1 = by0
+
+    return all_panels, all_handles, all_hinges, all_mullions
 
 
 def _build_bifold_leaves(
@@ -886,7 +1006,11 @@ class SlidingLayout:
                     "y1": round(sp.outer.y1, 2),
                     "nomX0": round(sp.nom_x0, 2),
                     "nomX1": round(sp.nom_x1, 2),
+                    "nomY0": round(sp.nom_y0, 2),
+                    "nomY1": round(sp.nom_y1, 2),
                     "widthMm": round(sp.nominal_width, 1),
+                    "heightMm": round(sp.nominal_height, 1) if sp.nominal_height > 0 else round(sp.outer.height, 1),
+                    "bandIndex": int(sp.band_index),
                     "glassWidthMm": round(sp.glass.width, 1),
                     "glassHeightMm": round(sp.glass.height, 1),
                     "handle": (
@@ -956,6 +1080,8 @@ def compute_two_track_layout(
     grid: Mapping[str, Any] | None = None,
     sash_overlap_mm: float | None = None,
     mullion_gap_mm: float | None = None,
+    casement_layout: Mapping[str, Any] | None = None,
+    casement_panels: Sequence[Mapping[str, Any]] | None = None,
 ) -> SlidingLayout:
     """Core sliding formulas from profile geometry + optional fix partitions / mesh.
 
@@ -1041,16 +1167,25 @@ def compute_two_track_layout(
     if is_casement:
         # Casement daylight = inner opening minus any fix partitions (top / bottom /
         # left / right carve a fixed lite + a mullion, exactly like sliding).
-        # Mullions then split the remaining daylight into the door leaves.
-        shutters, handles, hinges, casement_mullions = _build_casement_leaves(
+        # Height-split bands stack with horizontal mullions; vertical splits stay
+        # inside each band so a top full-width fix is never cut by a lower door.
+        bands = normalize_casement_bands(
+            casement_layout,
+            casement_panels,
+            handle_overrides,
+            glass_count=g_count,
+        )
+        cell_n = casement_cell_count(bands)
+        if cell_n > 0:
+            g_count = cell_n
+        shutters, handles, hinges, casement_mullions = _build_casement_banded(
             sliding_area,
             frame_width=fw,
             outer_w=W,
             outer_h=H,
-            glass_count=g_count,
+            bands=bands,
             sash_overlap=sash_ov,
             mullion_gap=mull_gap,
-            handle_overrides=handle_overrides,
             handle_level=h_level,
             handle_length=handle_length,
             fixed_set=fixed_set,
@@ -1587,16 +1722,26 @@ def _build_casement_profiles(model: DrawingModel, L: SlidingLayout) -> None:
         for j, (a, b) in enumerate(subtract_intervals(m.y0, m.y1, hide_r)):
             model.add_segment(vertical_segment(m.x1, a, b, layer="PROFILES", name=f"mullion_{mi+1}_R_{j}"))
 
-    by_pos = sorted(glass_panels, key=lambda p: p.nom_x0)
-    pos_of = {id(p): k for k, p in enumerate(by_pos)}
+    # Neighbours are only within the same height band (vertical mullion peers).
+    by_band: dict[int, list[ShutterPanel]] = {}
+    for sp in glass_panels:
+        by_band.setdefault(int(sp.band_index), []).append(sp)
+    for bi in by_band:
+        by_band[bi] = sorted(by_band[bi], key=lambda p: p.nom_x0)
+    pos_of: dict[int, tuple[int, int]] = {}
+    for bi, row in by_band.items():
+        for k, sp in enumerate(row):
+            pos_of[id(sp)] = (bi, k)
 
     def neighbour_front_left(sp: ShutterPanel) -> bool:
-        k = pos_of[id(sp)]
-        return k > 0 and by_pos[k - 1].operable and by_pos[k - 1].depth < sp.depth
+        bi, k = pos_of[id(sp)]
+        row = by_band.get(bi) or []
+        return k > 0 and row[k - 1].operable and row[k - 1].depth < sp.depth
 
     def neighbour_front_right(sp: ShutterPanel) -> bool:
-        k = pos_of[id(sp)]
-        return k < len(by_pos) - 1 and by_pos[k + 1].operable and by_pos[k + 1].depth < sp.depth
+        bi, k = pos_of[id(sp)]
+        row = by_band.get(bi) or []
+        return k < len(row) - 1 and row[k + 1].operable and row[k + 1].depth < sp.depth
 
     # Back leaves first so front sash + 45° miters cover the overlap.
     for sp in sorted(glass_panels, key=lambda p: -p.depth):
@@ -1609,11 +1754,12 @@ def _build_casement_profiles(model: DrawingModel, L: SlidingLayout) -> None:
         if fixed:
             # Fix lite: glass + rebate. Omit edges coincident with outer-frame inner.
             model.add_polyline(rect_polyline(g, closed=True, layer="GLASS", name=f"{prefix}_{sp.index}_glass"))
-            k = pos_of[id(sp)]
+            bi, k = pos_of[id(sp)]
+            row = by_band.get(bi) or []
             # Mullion-adjacent stiles only (90°). Hide if a front openable covers that edge.
             if k > 0 and not neighbour_front_left(sp):
                 model.add_segment(vertical_segment(o.x0, o.y0 + ov * 0.25, o.y1 - ov * 0.25, layer="PROFILES", name=f"{oname}_meet_l"))
-            if k < len(by_pos) - 1 and not neighbour_front_right(sp):
+            if k < len(row) - 1 and not neighbour_front_right(sp):
                 model.add_segment(vertical_segment(o.x1, o.y0 + ov * 0.25, o.y1 - ov * 0.25, layer="PROFILES", name=f"{oname}_meet_r"))
             continue
         if ol and orr:

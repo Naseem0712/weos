@@ -6,7 +6,7 @@ DXF export is NOT part of the default calculate path.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from WEOS.factory.bom_engine import compute_bom
 from WEOS.factory.brush_engine import compute_brush
@@ -145,6 +145,8 @@ def generate_job(
     sash_overlap_mm: float | None = None,
     mullion_gap_mm: float | None = None,
     frame_material: str | None = None,
+    casement_layout: Mapping[str, Any] | None = None,
+    casement_panels: Sequence[Mapping[str, Any]] | None = None,
 ) -> JobResult:
     from WEOS.factory.layout_options import resolve_mesh_track, resolve_shutter_config
 
@@ -228,6 +230,8 @@ def generate_job(
         grid=grid,
         sash_overlap_mm=sash_overlap_mm,
         mullion_gap_mm=mullion_gap_mm,
+        casement_layout=casement_layout,
+        casement_panels=casement_panels,
     )
     params = geometry_as_engine_dict(product)
     params["track_count"] = float(mesh_res["trackCount"])
@@ -256,6 +260,8 @@ def generate_job(
             grid=grid,
             sash_overlap_mm=sash_overlap_mm,
             mullion_gap_mm=mullion_gap_mm,
+            casement_layout=casement_layout,
+            casement_panels=casement_panels,
         )
     except Exception:
         visual_layout = layout

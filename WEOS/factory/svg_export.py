@@ -147,6 +147,32 @@ def _horizontal_split_chain(W: float, left_fix: float, right_fix: float) -> list
     return rows
 
 
+def _casement_band_groups(meta: Mapping[str, Any] | None) -> list[list[Mapping[str, Any]]]:
+    """Glass shutters grouped by height band (top→bottom), each left→right."""
+    glass = [
+        s
+        for s in ((meta or {}).get("shutters") or [])
+        if isinstance(s, Mapping) and s.get("role") == "glass"
+    ]
+    if not glass:
+        return []
+    by_band: dict[int, list[Mapping[str, Any]]] = {}
+    for s in glass:
+        try:
+            bi = int(s.get("bandIndex") if s.get("bandIndex") is not None else 0)
+        except (TypeError, ValueError):
+            bi = 0
+        by_band.setdefault(bi, []).append(s)
+    out: list[list[Mapping[str, Any]]] = []
+    for bi in sorted(by_band.keys()):
+        row = sorted(
+            by_band[bi],
+            key=lambda s: float(s.get("nomX0") or s.get("x0") or 0.0),
+        )
+        out.append(row)
+    return out
+
+
 def _panel_width_dim_spans(
     meta: Mapping[str, Any] | None,
     W: float,
@@ -154,11 +180,25 @@ def _panel_width_dim_spans(
     """Per-panel width dim spans along the elevation bottom (outer bay shares).
 
     Sliding / bifold: nominal shutter shares (already tile 0..W).
-    Casement / openable: continuous bay chain across overall W using mullion
-    mid-points so FIX and openable panels each get a divided size label.
-    Glass / daylight (sash-inner) widths are never returned.
+    Casement / openable: bay chain for the band with the most vertical splits
+    (fallback: bottom band). Glass / daylight (sash-inner) widths are never returned.
     """
     system = str((meta or {}).get("system") or "sliding").lower()
+    if system in ("casement", "openable", "opening"):
+        bands = _casement_band_groups(meta)
+        if not bands:
+            return []
+        # Prefer the band with the most columns (width split); else bottom-most.
+        row = max(bands, key=lambda r: (len(r), float(r[0].get("nomY0") or r[0].get("y0") or 0.0)))
+        if len(row) == 1:
+            return [(0.0, float(W))]
+        bounds: list[float] = [0.0]
+        for i in range(len(row) - 1):
+            a = float(row[i].get("x1") or row[i].get("nomX1") or 0.0)
+            b = float(row[i + 1].get("x0") or row[i + 1].get("nomX0") or 0.0)
+            bounds.append((a + b) / 2.0)
+        bounds.append(float(W))
+        return [(bounds[i], bounds[i + 1]) for i in range(len(bounds) - 1) if bounds[i + 1] > bounds[i] + 0.5]
     glass = [
         s
         for s in ((meta or {}).get("shutters") or [])
@@ -170,16 +210,6 @@ def _panel_width_dim_spans(
         glass,
         key=lambda s: float(s.get("nomX0") or s.get("x0") or 0.0),
     )
-    if system in ("casement", "openable", "opening"):
-        if len(glass) == 1:
-            return [(0.0, float(W))]
-        bounds: list[float] = [0.0]
-        for i in range(len(glass) - 1):
-            a = float(glass[i].get("x1") or glass[i].get("nomX1") or 0.0)
-            b = float(glass[i + 1].get("x0") or glass[i + 1].get("nomX0") or 0.0)
-            bounds.append((a + b) / 2.0)
-        bounds.append(float(W))
-        return [(bounds[i], bounds[i + 1]) for i in range(len(bounds) - 1) if bounds[i + 1] > bounds[i] + 0.5]
     # Sliding / bifold — nominal equal-division shares
     spans: list[tuple[float, float]] = []
     for s in glass:
@@ -188,6 +218,31 @@ def _panel_width_dim_spans(
         if nx1 > nx0 + 0.5:
             spans.append((nx0, nx1))
     return spans
+
+
+def _panel_height_dim_spans(
+    meta: Mapping[str, Any] | None,
+    H: float,
+) -> list[tuple[float, float]]:
+    """Casement height-band dim spans (bottom→top) when 2+ horizontal bands exist."""
+    system = str((meta or {}).get("system") or "sliding").lower()
+    if system not in ("casement", "openable", "opening"):
+        return []
+    bands = _casement_band_groups(meta)
+    if len(bands) < 2:
+        return []
+    # Build continuous chain across overall H using transom mid-points.
+    rows = sorted(
+        bands,
+        key=lambda r: float(r[0].get("nomY0") or r[0].get("y0") or 0.0),
+    )
+    bounds: list[float] = [0.0]
+    for i in range(len(rows) - 1):
+        a = float(rows[i][0].get("y1") or rows[i][0].get("nomY1") or 0.0)
+        b = float(rows[i + 1][0].get("y0") or rows[i + 1][0].get("nomY0") or 0.0)
+        bounds.append((a + b) / 2.0)
+    bounds.append(float(H))
+    return [(bounds[i], bounds[i + 1]) for i in range(len(bounds) - 1) if bounds[i + 1] > bounds[i] + 0.5]
 
 
 def _dim_line_h(
@@ -1388,13 +1443,32 @@ def render_svg_string(
                 parts, tx=tx, ty=ty, x0=nx0, x1=nx1, y=-42.0 * k,
                 text=str(mm_n(nx1 - nx0)), text_y=-64.0 * k, stroke=dim_stroke, font=dim_font * 0.82,
             )
+        # Casement height-split band dims (right) when 2+ horizontal bands exist.
+        _h_spans = _panel_height_dim_spans(meta, H)
+        if _h_spans:
+            _xv_h = W + 48.0 * k
+            _xt_h = _xv_h + 30.0 * k
+            for (ya, yb) in _h_spans:
+                _dim_line_v(
+                    parts, tx=tx, ty=ty, y0=ya, y1=yb, x=_xv_h, text=str(mm_n(yb - ya)),
+                    text_x=_xt_h, stroke=dim_stroke, font=dim_font * 0.82,
+                )
         # Fix partition dims — "how much fix, how much left": a split chain that
         # adds up to the overall size (FIX n + remaining shutter / door share).
         # Glass / daylight (sash-inner) width & height are intentionally omitted.
         _fix_sizes = _partition_split_sizes(meta)
         _has_v_fix = (_fix_sizes["top"] > 0 or _fix_sizes["bottom"] > 0)
-        if _has_v_fix:
+        if _has_v_fix and not _h_spans:
             _xv = W + 48.0 * k
+            _xt = _xv + 30.0 * k
+            for (ya, yb, txt) in _vertical_split_chain(H, _fix_sizes["top"], _fix_sizes["bottom"]):
+                _dim_line_v(
+                    parts, tx=tx, ty=ty, y0=ya, y1=yb, x=_xv, text=txt, text_x=_xt,
+                    stroke=dim_stroke, font=dim_font * 0.75,
+                )
+        elif _has_v_fix and _h_spans:
+            # Keep fix-partition chain further out so it does not collide with band dims.
+            _xv = W + 110.0 * k
             _xt = _xv + 30.0 * k
             for (ya, yb, txt) in _vertical_split_chain(H, _fix_sizes["top"], _fix_sizes["bottom"]):
                 _dim_line_v(
@@ -1646,6 +1720,8 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
             sash_overlap_mm=lo.get("sashOverlapMm"),
             mullion_gap_mm=lo.get("mullionGapMm"),
             frame_material=lo.get("frameMaterial") or line.get("frameMaterial"),
+            casement_layout=lo.get("casementLayout") if isinstance(lo.get("casementLayout"), Mapping) else None,
+            casement_panels=lo.get("casementPanels") if isinstance(lo.get("casementPanels"), (list, tuple)) else None,
         )
         if lo.get("panelFill"):
             from WEOS.factory.panel_fills import attach_fill_to_drawing
