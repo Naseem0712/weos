@@ -62,6 +62,12 @@ def _casement_cell_role(raw: Any, *, is_fixed: bool = False) -> str:
         return "fix"
     if t in _TOP_HUNG_ROLES:
         return "top_hung"
+    if t in ("door", "doors", "side_hung_door", "casement_door"):
+        return "door"
+    if t in ("sliding", "slider", "slide"):
+        # Sliding-in-casement: treat as fixed lite for geometry this pass;
+        # UI surfaces a compatibility note for a dedicated sliding product/track.
+        return "sliding"
     return "openable"
 
 
@@ -475,7 +481,12 @@ def _build_casement_leaves(
     handle_length: float | None,
     fixed_set: set[int],
 ) -> tuple[list[ShutterPanel], list[Rect], list[Rect], list[Rect]]:
-    """Casement partitions: mullions + sashes that overlap frame/mullion by sash_overlap."""
+    """Casement partitions: mullions + sashes that overlap frame/mullion by sash_overlap.
+
+    Vertical mullions live only inside ``inner`` (the daylight band after any
+    top/bottom/left/right fix partitions), so a top full-width fix is never cut
+    by a lower-band vertical split.
+    """
     fw = float(frame_width)
     G = max(int(glass_count), 1)
     ov = float(sash_overlap)
@@ -483,7 +494,6 @@ def _build_casement_leaves(
     x0, y0, x1, y1 = inner.x0, inner.y0, inner.x1, inner.y1
     inner_w = max(x1 - x0, fw * 2 * G + mull_w * max(G - 1, 0))
     usable = max(inner_w - mull_w * (G - 1), fw * 2.2 * G)
-    cell_w = usable / G
 
     overrides: dict[int, Mapping[str, Any]] = {}
     for k, v in dict(handle_overrides or {}).items():
@@ -497,11 +507,33 @@ def _build_casement_leaves(
         ov_cfg = overrides.get(i) or {}
         roles.append(_casement_cell_role(ov_cfg.get("role"), is_fixed=i in fixed_set))
 
+    # Equal widths by default; optional per-cell widthMm from overrides (vertical split).
+    raw_widths: list[float | None] = []
+    for i in range(G):
+        ov_cfg = overrides.get(i) or {}
+        w_raw = ov_cfg.get("widthMm", ov_cfg.get("width_mm"))
+        try:
+            w_val = float(w_raw) if w_raw is not None and str(w_raw).strip() != "" else None
+        except (TypeError, ValueError):
+            w_val = None
+        raw_widths.append(w_val if w_val and w_val > 0 else None)
+    if any(w is not None for w in raw_widths):
+        known = [w for w in raw_widths if w is not None]
+        remain_n = sum(1 for w in raw_widths if w is None)
+        known_sum = sum(known)
+        remain = max(usable - known_sum, fw * 2.2 * max(remain_n, 1))
+        fill = remain / max(remain_n, 1)
+        widths = [float(w) if w is not None else fill for w in raw_widths]
+        total_w = sum(widths) or 1.0
+        widths = [usable * (w / total_w) for w in widths]
+    else:
+        widths = [usable / G] * G
+
     mullions: list[Rect] = []
     cell_bounds: list[tuple[float, float]] = []
     cursor = x0
     for i in range(G):
-        cx0, cx1 = cursor, cursor + cell_w
+        cx0, cx1 = cursor, cursor + widths[i]
         cell_bounds.append((cx0, cx1))
         cursor = cx1
         if i < G - 1:
@@ -513,7 +545,7 @@ def _build_casement_leaves(
     hlen = min(hlen, max(band_h * 0.9, 40.0))
     hw = max(fw * 0.5, 12.0)
     hlevel = min(max(float(handle_level), 0.04), 0.96)
-    n_open = sum(1 for r in roles if r == "openable")
+    n_open = sum(1 for r in roles if r in ("openable", "door"))
     center_l = max(n_open - 1, 0) // 2
 
     panels: list[ShutterPanel] = []
@@ -523,7 +555,7 @@ def _build_casement_leaves(
 
     for i, (cx0, cx1) in enumerate(cell_bounds):
         cell_role = roles[i]
-        is_fixed = cell_role == "fix"
+        is_fixed = cell_role in ("fix", "sliding")
         ov_cfg = overrides.get(i) or {}
         if is_fixed:
             outer = Rect(cx0, y0, cx1, y1)
@@ -551,6 +583,7 @@ def _build_casement_leaves(
             hinges.extend(_top_hinge_knuckle_rects(hy, outer.x0, outer.width, fw, 2))
             open_dir = 0
         else:
+            # openable or door — side-hung operable leaf
             xa = max(cx0 - ov, 0.4)
             xb = min(cx1 + ov, outer_w - 0.4)
             ya = max(y0 - ov, 0.4)
@@ -600,6 +633,14 @@ def _build_casement_leaves(
             open_dir = 1 if handle_side != "left" else -1
             open_seen += 1
 
+        pack = ""
+        if cell_role == "top_hung":
+            pack = "top_hung"
+        elif cell_role == "door":
+            pack = "door"
+        elif cell_role == "sliding":
+            pack = "sliding"
+
         panels.append(
             ShutterPanel(
                 index=i,
@@ -615,7 +656,7 @@ def _build_casement_leaves(
                 nom_x0=cx0,
                 nom_x1=cx1,
                 hinge_side=hinge_side,
-                pack="top_hung" if cell_role == "top_hung" else "",
+                pack=pack,
             )
         )
 

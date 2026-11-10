@@ -1729,11 +1729,17 @@ def layout_summary_for_job(*, width: float, height: float, layout_meta: Mapping[
                     n = sum(1 for p in panels if str(p.get("id") or "").startswith("L")) + 1
                     role, label, pid = "leaf", "Fold (L)", f"L{n}"
             elif system == "casement":
-                hs_top = str(s.get("hingeSide") or "").lower() == "top" or hs == "bottom" or str(s.get("pack") or "") == "top_hung"
-                if fixed:
+                pack = str(s.get("pack") or "").strip().lower()
+                hs_top = str(s.get("hingeSide") or "").lower() == "top" or hs == "bottom" or pack == "top_hung"
+                if pack == "sliding" or (fixed and pack == "sliding"):
+                    role, label, pid = "fix", "Sliding (fixed lite)", f"S{s_idx}"
+                elif fixed:
                     role, label, pid = "fix", "Fix", f"S{s_idx}"
                 elif hs_top:
                     role, label, pid = "openable", "Top hung · handle bottom", f"S{s_idx}"
+                elif pack == "door":
+                    side_lbl = "L" if hs == "left" else ("R" if hs == "right" else "—")
+                    role, label, pid = "openable", f"Door · handle {side_lbl}", f"S{s_idx}"
                 else:
                     side_lbl = "L" if hs == "left" else ("R" if hs == "right" else "—")
                     role, label, pid = "openable", f"Openable · handle {side_lbl}", f"S{s_idx}"

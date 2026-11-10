@@ -31,7 +31,7 @@ a{color:inherit}
 .brand img{display:block;width:var(--logo-w);height:auto;aspect-ratio:310/135;max-width:100%;object-fit:contain;padding:0;
   filter:drop-shadow(0 1px 2px rgba(0,0,0,.28))}
 @media(max-width:900px){.side{width:min(var(--side),92vw)}.brand img{width:min(var(--logo-w),100%)}}
-.weos-agent-fab{position:fixed;right:16px;bottom:16px;z-index:9999;width:58px;height:58px;border-radius:14px;
+.weos-agent-fab{display:none!important;position:fixed;right:16px;bottom:16px;z-index:9999;width:58px;height:58px;border-radius:14px;
   background:#0f172a;border:1px solid #334155;box-shadow:0 8px 24px rgba(0,0,0,.22);display:none;
   align-items:center;justify-content:center;cursor:pointer;padding:7px}
 .weos-agent-fab img{width:100%;height:100%;object-fit:contain;border-radius:8px;display:block}
@@ -671,7 +671,9 @@ textarea{max-width:100%}
           <div class="setup-summary" id="setupSummaryBar">
             <span class="muted">Active setup</span>
             <strong id="setupSummaryText">No setup yet</strong>
-            <select id="cartVersionPick" style="max-width:100%;min-width:12rem" title="Load a quote version or Excel sheet"></select>
+            <select id="cartVersionPick" style="max-width:100%;min-width:14rem;flex:1 1 12rem" title="Select a saved quote / project to load"></select>
+            <button class="btn ghost sm" id="btnLoadQuote" type="button" title="Load the selected saved quote">Load</button>
+            <button class="btn sm" id="btnSaveQuote" type="button" title="Save this cart + setup as a named quote on the server">Save Quote</button>
             <button class="btn ghost sm" id="btnEditSetup" type="button">Edit Project Setup</button>
             <button class="btn ghost sm" id="btnCartOutsideQuote" type="button">Add outside quote</button>
           </div>
@@ -781,8 +783,20 @@ textarea{max-width:100%}
           </div>
           <div id="casementPanelBox" style="display:none;margin-top:.45rem;padding:.5rem .6rem;border:1px dashed var(--line);border-radius:10px;background:rgba(0,0,0,.02)">
             <strong style="font-size:.82rem">Partitions / panels</strong>
-            <p class="muted" style="font-size:.72rem;margin:.15rem 0 .35rem">Click a panel on the drawing (or edit below): Fix · Openable (side hung) · Top hung · handle L/R</p>
+            <p class="muted" style="font-size:.72rem;margin:.15rem 0 .35rem">Top/bottom fix partitions stay full width. Vertical split divides the remaining band only (mullion does not cut through a top fix). Roles: Fix · Casement · Top hung · Door · Sliding.</p>
+            <div class="row" style="gap:.5rem;margin:.25rem 0 .45rem;flex-wrap:wrap;align-items:flex-end">
+              <div><label class="l">Vertical split</label>
+                <select id="casementVSplit" style="width:110px" title="Side-by-side panels in the casement band">
+                  <option value="1">None</option>
+                  <option value="2">2 panels</option>
+                  <option value="3">3 panels</option>
+                  <option value="4">4 panels</option>
+                </select>
+              </div>
+              <span class="muted" id="casementVSplitHint" style="font-size:.7rem;flex:1;min-width:12rem">Equal widths first — edit mm below. Sum must match band width.</span>
+            </div>
             <div id="casementPanelList"></div>
+            <div id="casementSlidingNote" class="muted" style="display:none;font-size:.72rem;margin-top:.35rem;color:#9a3412">Sliding inside a casement band is drawn as a fixed lite here — use a Sliding product/series for track + profile, or keep this panel as Fix.</div>
             <div class="row" style="gap:.5rem;margin-top:.4rem;flex-wrap:wrap;align-items:flex-end">
               <div><label class="l">Sash overlap mm</label>
                 <input id="lineSashOverlap" type="number" min="10" max="20" value="15" style="width:64px" title="Door overlap onto mullion and outer frame (10–20)"/>
@@ -1592,7 +1606,7 @@ textarea{max-width:100%}
           </div>
           <div class="row" style="margin-top:.75rem">
             <button class="btn" id="btnCalc" title="Price the cart, save the quote, then download PDFs below">Calculate price</button>
-            <button class="btn ghost sm" id="btnAutosave" title="Save this project">Save</button>
+            <button class="btn ghost sm" id="btnAutosave" title="Save this cart as a named quote on the server">Save Quote</button>
             <button class="btn ghost sm" id="btnUndo" title="Undo last change">Undo</button>
             <button class="btn ghost sm" id="btnRedo" title="Redo">Redo</button>
             <label class="btn ghost sm" style="margin:0" title="Import lines from CSV/Excel">Import<input id="importFile" type="file" accept=".csv,.xlsx" hidden/></label>
@@ -2723,6 +2737,10 @@ const state = {
   quoteVersionChoices: [],
   loadedQuoteVersion: 'current',
   excelFocus: '',
+  // Starter/default cart windows must NEVER auto-seed on load / quote fetch /
+  // print apply. Only an explicit New Quote action may set allowStarterSeed.
+  quoteHydrating: false,
+  allowStarterSeed: false,
 };
 const $ = (id) => document.getElementById(id);
 const toast = (m) => {
@@ -3240,7 +3258,7 @@ function setView(v) {
   if (v==='master') initMasterLedger();
   if (v==='projects') loadProjects();
   if (v==='library') initAdmin();
-  if (v==='cart') { renderCart(); refreshPreview(); refreshSetupSummary(); refreshExportSetupSelect(); }
+  if (v==='cart') { renderCart(); refreshPreview(); refreshSetupSummary(); refreshExportSetupSelect(); refreshCartProjectPick(); }
   if (typeof syncProjectHeader === 'function') syncProjectHeader();
   if (v==='customers') initCustomers();
   if (v==='company') initCompany();
@@ -4393,14 +4411,64 @@ function casementPanelRole(r) {
   const t = String(r || '').toLowerCase().replace(/[-\s]/g, '_');
   if (t === 'fix' || t === 'fixed') return 'fix';
   if (t === 'top_hung' || t === 'tophung' || t === 'top') return 'top_hung';
+  if (t === 'door' || t === 'doors' || t === 'side_hung_door') return 'door';
+  if (t === 'sliding' || t === 'slider' || t === 'slide') return 'sliding';
+  if (t === 'openable' || t === 'casement' || t === 'side_hung') return 'openable';
   return 'openable';
 }
 
 function casementHandleSide(p) {
   const role = casementPanelRole(p && p.role);
-  if (role === 'fix') return 'none';
+  if (role === 'fix' || role === 'sliding') return 'none';
   if (role === 'top_hung') return 'bottom';
   return (p && p.handleSide) === 'left' ? 'left' : 'right';
+}
+
+function casementBandWidthMm() {
+  const W = parseFloat(($('lineW') && $('lineW').value) || '0') || 0;
+  const parts = state.draftPartitions || [];
+  let left = 0, right = 0;
+  parts.forEach(p => {
+    const side = String(p.side || '').toLowerCase();
+    const sz = parseFloat(p.sizeMm) || 0;
+    if (side === 'left') left += sz;
+    if (side === 'right') right += sz;
+  });
+  return Math.max(200, W - left - right);
+}
+
+function equalCasementWidths(n, parentW) {
+  const count = Math.max(1, Math.min(4, parseInt(n, 10) || 1));
+  const parent = Math.max(200, parseFloat(parentW) || casementBandWidthMm());
+  const base = Math.floor(parent / count);
+  const widths = [];
+  let used = 0;
+  for (let i = 0; i < count; i++) {
+    if (i === count - 1) widths.push(Math.max(80, Math.round(parent - used)));
+    else { widths.push(base); used += base; }
+  }
+  return widths;
+}
+
+function applyCasementVerticalSplit(count, { keepRoles = true } = {}) {
+  const n = Math.max(1, Math.min(4, parseInt(count, 10) || 1));
+  if ($('lineGlassShutters')) $('lineGlassShutters').value = String(n);
+  if ($('casementVSplit')) $('casementVSplit').value = String(n);
+  const prev = Array.isArray(state.draftCasementPanels) ? state.draftCasementPanels.slice() : [];
+  const widths = equalCasementWidths(n, casementBandWidthMm());
+  const panels = [];
+  for (let i = 0; i < n; i++) {
+    const old = keepRoles && prev[i] ? prev[i] : null;
+    panels.push({
+      index: i,
+      role: casementPanelRole(old && old.role) || (i === 0 && n === 2 ? 'door' : 'openable'),
+      handleSide: (old && old.handleSide) === 'left' ? 'left' : (i === 0 ? 'right' : 'left'),
+      widthMm: widths[i],
+    });
+  }
+  state.draftCasementPanels = panels;
+  state.selectedCasementPanel = n ? Math.min(state.selectedCasementPanel == null ? 0 : state.selectedCasementPanel, n - 1) : null;
+  ensureCasementPanels();
 }
 
 // ── Sliding handle position (4+ shutters only) ───────────────────────────────
@@ -4485,26 +4553,56 @@ function renderSlidingHandleList() {
 
 function ensureCasementPanels() {
   const n = Math.max(parseInt(($('lineGlassShutters') && $('lineGlassShutters').value) || '2', 10) || 2, 1);
+  if ($('casementVSplit') && String($('casementVSplit').value) !== String(n)) {
+    $('casementVSplit').value = String(Math.min(4, n));
+  }
   let panels = Array.isArray(state.draftCasementPanels) ? state.draftCasementPanels.slice() : [];
+  const parentW = casementBandWidthMm();
   while (panels.length < n) {
     const i = panels.length;
     const side = i === 0 ? 'right' : 'left';
-    panels.push({ index: i, role: 'openable', handleSide: side });
+    panels.push({ index: i, role: 'openable', handleSide: side, widthMm: null });
   }
-  panels = panels.slice(0, n).map((p, i) => ({
+  panels = panels.slice(0, n);
+  const noneSet = panels.every(p => !(p && +p.widthMm > 0));
+  let widths;
+  if (noneSet) {
+    widths = equalCasementWidths(n, parentW);
+  } else {
+    widths = panels.map(p => (p && +p.widthMm > 0 ? +p.widthMm : null));
+    const knownSum = widths.reduce((s, w) => s + (w || 0), 0);
+    const missIdx = [];
+    widths.forEach((w, i) => { if (w == null) missIdx.push(i); });
+    if (missIdx.length) {
+      const remain = Math.max(80 * missIdx.length, parentW - knownSum);
+      const base = Math.floor(remain / missIdx.length);
+      let used = 0;
+      missIdx.forEach((i, k) => {
+        const w = (k === missIdx.length - 1) ? Math.max(80, remain - used) : base;
+        widths[i] = w;
+        used += w;
+      });
+    }
+  }
+  panels = panels.map((p, i) => ({
     index: i,
     role: casementPanelRole(p && p.role),
     handleSide: (p && p.handleSide) === 'left' ? 'left' : 'right',
+    widthMm: widths[i],
   }));
   state.draftCasementPanels = panels;
-  const fixIdx = panels.filter(p => p.role === 'fix').map(p => p.index + 1);
+  const fixIdx = panels.filter(p => p.role === 'fix' || p.role === 'sliding').map(p => p.index + 1);
   if ($('lineFixShutters')) $('lineFixShutters').value = fixIdx.join(',');
   state.draftHandleOverrides = state.draftHandleOverrides || {};
   panels.forEach((p, i) => {
     state.draftHandleOverrides[i] = Object.assign({}, state.draftHandleOverrides[i] || {}, {
       role: p.role,
       side: casementHandleSide(p),
+      widthMm: p.widthMm,
     });
+  });
+  Object.keys(state.draftHandleOverrides).forEach(k => {
+    if (+k >= n) delete state.draftHandleOverrides[k];
   });
   renderCasementPanelList();
 }
@@ -4514,24 +4612,45 @@ function renderCasementPanelList() {
   if (!host) return;
   const panels = state.draftCasementPanels || [];
   const sel = state.selectedCasementPanel;
+  const parentW = casementBandWidthMm();
+  const sumW = panels.reduce((s, p) => s + (+p.widthMm || 0), 0);
+  const widthOk = !panels.length || Math.abs(sumW - parentW) <= 1;
+  if ($('casementVSplitHint')) {
+    $('casementVSplitHint').textContent = panels.length <= 1
+      ? 'No vertical split — full-width panel in this band.'
+      : (widthOk
+        ? `Widths sum ${Math.round(sumW)} mm (= band ${Math.round(parentW)} mm).`
+        : `Widths sum ${Math.round(sumW)} mm — must equal band ${Math.round(parentW)} mm.`);
+    $('casementVSplitHint').style.color = widthOk ? '' : '#9a3412';
+  }
+  const slidingOn = panels.some(p => p.role === 'sliding');
+  if ($('casementSlidingNote')) $('casementSlidingNote').style.display = slidingOn ? '' : 'none';
   if (!panels.length) {
-    host.innerHTML = '<span class="muted" style="font-size:.75rem">Set sash count, then click a panel</span>';
+    host.innerHTML = '<span class="muted" style="font-size:.75rem">Set vertical split, then click a panel</span>';
     return;
   }
   host.innerHTML = panels.map((p, i) => {
     const active = sel === i ? ' style="outline:2px solid var(--accent,#b33)"' : '';
+    const needHandle = p.role === 'openable' || p.role === 'door';
     return `<div class="row" data-cp="${i}"${active} style="gap:.4rem;align-items:center;margin:.2rem 0;flex-wrap:wrap">
       <button type="button" class="btn ghost sm" data-cp-pick="${i}">P${i + 1}</button>
       <select data-cp-role="${i}" style="width:150px">
-        <option value="fix"${p.role === 'fix' ? ' selected' : ''}>Fix</option>
-        <option value="openable"${p.role === 'openable' ? ' selected' : ''}>Openable (side hung)</option>
+        <option value="fix"${p.role === 'fix' ? ' selected' : ''}>Fixed</option>
+        <option value="openable"${p.role === 'openable' ? ' selected' : ''}>Casement (side hung)</option>
         <option value="top_hung"${p.role === 'top_hung' ? ' selected' : ''}>Top hung</option>
+        <option value="door"${p.role === 'door' ? ' selected' : ''}>Door</option>
+        <option value="sliding"${p.role === 'sliding' ? ' selected' : ''}>Sliding</option>
       </select>
-      <select data-cp-side="${i}" style="width:90px"${p.role === 'openable' ? '' : ' disabled'}>
+      <label class="muted" style="font-size:.7rem">W mm
+        <input type="number" data-cp-w="${i}" min="80" step="1" value="${p.widthMm != null ? p.widthMm : ''}" style="width:72px;margin-left:.2rem"/>
+      </label>
+      <select data-cp-side="${i}" style="width:90px"${needHandle ? '' : ' disabled'}>
         <option value="left"${p.handleSide === 'left' ? ' selected' : ''}>Handle L</option>
         <option value="right"${p.handleSide !== 'left' ? ' selected' : ''}>Handle R</option>
       </select>
       ${p.role === 'top_hung' ? '<span class="muted" style="font-size:.68rem">Hinges top · handle bottom</span>' : ''}
+      ${p.role === 'door' ? '<span class="muted" style="font-size:.68rem">Door leaf · hardware on this panel</span>' : ''}
+      ${p.role === 'sliding' ? '<span class="muted" style="font-size:.68rem">Use Sliding series for track</span>' : ''}
     </div>`;
   }).join('');
   host.querySelectorAll('[data-cp-pick]').forEach(btn => {
@@ -4554,6 +4673,20 @@ function renderCasementPanelList() {
       refreshPreview();
       scheduleLivePrice();
     };
+  });
+  host.querySelectorAll('[data-cp-w]').forEach(inp => {
+    const apply = () => {
+      const i = +inp.dataset.cpW;
+      const v = parseFloat(inp.value);
+      if (!isFinite(v) || v < 80) return;
+      state.draftCasementPanels[i].widthMm = v;
+      // Do not auto-rescale siblings on manual edit — validate sum in hint.
+      ensureCasementPanels();
+      refreshPreview();
+      scheduleLivePrice();
+    };
+    inp.onchange = apply;
+    inp.onblur = apply;
   });
 }
 
@@ -5379,23 +5512,34 @@ function syncDraftFromLine(ln) {
     $('lineMullionGap').value = (gp != null && gp !== '') ? gp : 15;
   }
   if (lnSys === 'casement' && Array.isArray(ln.casementPanels) && ln.casementPanels.length) {
-    state.draftCasementPanels = ln.casementPanels.map((p, i) => ({
-      index: i,
-      role: casementPanelRole(p && p.role),
-      handleSide: (p && (p.handleSide || p.side) === 'left') ? 'left' : 'right',
-    }));
+    state.draftCasementPanels = ln.casementPanels.map((p, i) => {
+      const ov = (ln.handleOverrides && (ln.handleOverrides[i] || ln.handleOverrides[String(i)])) || {};
+      const w = (p && (p.widthMm != null ? p.widthMm : p.width_mm)) != null
+        ? +(p.widthMm != null ? p.widthMm : p.width_mm)
+        : (ov.widthMm != null ? +ov.widthMm : null);
+      return {
+        index: i,
+        role: casementPanelRole(p && p.role),
+        handleSide: (p && (p.handleSide || p.side) === 'left') ? 'left' : 'right',
+        widthMm: (w != null && isFinite(w) && w > 0) ? w : null,
+      };
+    });
+    if ($('casementVSplit')) $('casementVSplit').value = String(Math.min(4, Math.max(1, state.draftCasementPanels.length)));
   } else if (lnSys === 'casement' && ln.handleOverrides && typeof ln.handleOverrides === 'object') {
     const ov = ln.handleOverrides;
     const n = Math.max(parseInt(ln.glassShutters, 10) || Object.keys(ov).length || 2, 1);
     state.draftCasementPanels = [];
     for (let i = 0; i < n; i++) {
       const o = ov[i] || ov[String(i)] || {};
+      const w = o.widthMm != null ? +o.widthMm : (o.width_mm != null ? +o.width_mm : null);
       state.draftCasementPanels.push({
         index: i,
         role: casementPanelRole(o.role),
         handleSide: (o.side === 'left' || o.handleSide === 'left') ? 'left' : 'right',
+        widthMm: (w != null && isFinite(w) && w > 0) ? w : null,
       });
     }
+    if ($('casementVSplit')) $('casementVSplit').value = String(Math.min(4, Math.max(1, n)));
   }
   if (ln.options && ln.options.ventilator && typeof ln.options.ventilator === 'object') {
     populateVentTools(ln.options.ventilator);
@@ -5594,6 +5738,7 @@ function currentLineDraft() {
           ov[i] = Object.assign({}, ov[i] || {}, {
             role: p.role || 'openable',
             side: casementHandleSide(p),
+            widthMm: (p.widthMm != null && +p.widthMm > 0) ? +p.widthMm : undefined,
           });
         });
         return Object.keys(ov).length ? ov : null;
@@ -6347,7 +6492,11 @@ async function refreshPreview() {
       });
       if (state.draftCasementPanels && state.draftCasementPanels.length) {
         state.draftCasementPanels.forEach((p, i) => {
-          partBits.push(`P${i+1} ${p.role}${p.role==='fix'?'':(p.role==='top_hung'?' · top hung':(' · H '+(p.handleSide==='left'?'L':'R')))}`);
+          const role = casementPanelRole(p.role);
+          const roleLbl = role === 'fix' ? 'fix' : (role === 'top_hung' ? 'top hung' : (role === 'door' ? 'door' : (role === 'sliding' ? 'sliding' : 'casement')));
+          const wBit = (p.widthMm != null && +p.widthMm > 0) ? (` ${Math.round(+p.widthMm)}mm`) : '';
+          const hBit = (role === 'openable' || role === 'door') ? (` · H ${(p.handleSide==='left'?'L':'R')}`) : '';
+          partBits.push(`P${i+1} ${roleLbl}${wBit}${hBit}`);
         });
       }
       if (partBits.length) extra.push(['Partitions', partBits.join('; ')]);
@@ -6530,39 +6679,124 @@ function buildQuoteVersionChoices(doc) {
   return choices;
 }
 function renderVersionPickers() {
+  // Project Setup page: versions/Excel for the open project only.
+  // Window Cart Active-setup select is a company project/quote loader (refreshCartProjectPick).
   const choices = state.quoteVersionChoices || [];
-  ['setupVersionPick', 'cartVersionPick'].forEach(id => {
-    const sel = $(id);
-    if (!sel) return;
-    const cur = state.loadedQuoteVersion || 'current';
-    if (!choices.length) {
-      sel.innerHTML = '<option value="current">Current quote</option>';
+  const sel = $('setupVersionPick');
+  if (!sel) return;
+  const cur = state.loadedQuoteVersion || 'current';
+  if (!choices.length) {
+    sel.innerHTML = '<option value="current">Current quote</option>';
+    return;
+  }
+  sel.innerHTML = choices.map(c => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join('');
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+}
+async function refreshCartProjectPick() {
+  const sel = $('cartVersionPick');
+  if (!sel) return;
+  const prev = sel.value;
+  try {
+    const data = await api('/api/projects?' + withGstQuery({ sort: 'updatedAt', order: 'desc' }).toString());
+    const projects = data.projects || [];
+    if (!projects.length) {
+      sel.innerHTML = '<option value="">No saved quotes yet — click Save Quote</option>';
       return;
     }
-    sel.innerHTML = choices.map(c => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join('');
-    if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
-  });
+    const opts = [];
+    projects.forEach(p => {
+      const qn = p.quotationId || p.projectId;
+      const who = p.customer || p.customerMobile || '';
+      const nm = p.name || '';
+      const mark = (p.projectId === state.projectId && (state.loadedQuoteVersion || 'current') === 'current') ? ' (open)' : '';
+      const label = [qn, nm, who].filter(Boolean).join(' · ') + mark;
+      opts.push(`<option value="${esc(p.projectId)}">${esc(label)}</option>`);
+      const choices = p.quoteChoices || {};
+      (choices.versions || []).forEach(v => {
+        opts.push(`<option value="${esc(p.projectId)}::v:${esc(v.version)}">${esc(qn)} · saved v${esc(v.version)} · ${esc(v.lineCount || 0)} line(s)</option>`);
+      });
+      (choices.excel || []).forEach(v => {
+        opts.push(`<option value="${esc(p.projectId)}::excel:${esc(v.id)}">${esc(qn)} · Excel ${esc(v.quotationId || v.sheetName || 'sheet')} · ${esc(v.lineCount || 0)} line(s)</option>`);
+      });
+    });
+    sel.innerHTML = opts.join('');
+    const want = (() => {
+      if (state.projectId && state.loadedQuoteVersion && state.loadedQuoteVersion !== 'current') {
+        return String(state.projectId) + '::' + String(state.loadedQuoteVersion);
+      }
+      if (state.projectId) return String(state.projectId);
+      return prev || '';
+    })();
+    if (want && [...sel.options].some(o => o.value === want)) sel.value = want;
+    else if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+    else if (state.projectId && [...sel.options].some(o => o.value === String(state.projectId))) sel.value = String(state.projectId);
+  } catch (e) {
+    sel.innerHTML = `<option value="">${esc(e.message || 'Could not load quotes')}</option>`;
+  }
+}
+async function applyCartProjectPick(raw) {
+  let v = raw != null ? String(raw) : (($('cartVersionPick') && $('cartVersionPick').value) || '');
+  if (!v) { toast('No saved quote selected'); return; }
+  let choiceId = '';
+  if (v.indexOf('::') > 0) {
+    const cut = v.indexOf('::');
+    choiceId = v.slice(cut + 2);
+    v = v.slice(0, cut);
+  }
+  if (!v) return;
+  // Same open project + same version: just re-apply choice (no ghost seed).
+  if (String(v) === String(state.projectId || '') && !choiceId) {
+    toast('Already editing this quote');
+    return;
+  }
+  await openProject(v);
+  if (choiceId) applyLoadedQuoteChoice(choiceId);
+  await refreshCartProjectPick();
+  setView('cart');
+}
+function beginQuoteHydrate() {
+  state.quoteHydrating = true;
+  state.allowStarterSeed = false;
+}
+function endQuoteHydrate() {
+  state.quoteHydrating = false;
+}
+/** Starter windows are opt-in only (explicit New Quote). Empty-list flicker during
+ *  quote fetch / print must never seed a default cart line. */
+function maybeSeedStarterWindow() {
+  if (state.quoteHydrating || !state.allowStarterSeed) return false;
+  if ((state.lines || []).length) return false;
+  // New Quote keeps an empty cart — user adds products explicitly.
+  state.allowStarterSeed = false;
+  return false;
 }
 function applyLoadedQuoteChoice(choiceId) {
   const choices = state.quoteVersionChoices || [];
   const hit = choices.find(c => c.id === choiceId) || choices[0];
   if (!hit) return;
-  state.loadedQuoteVersion = hit.id;
-  if (String(hit.id).indexOf('excel:') === 0) {
-    state.excelFocus = hit.excelId || '';
-  } else {
-    state.excelFocus = '';
-    state.lines = hydrateCartLines(hit.lines || []);
-    state.editingLineId = null;
-    state.selectedLine = state.lines.length ? 0 : null;
-    if (state._saveTimer) { clearTimeout(state._saveTimer); state._saveTimer = null; }
-  }
-  persistCartSession();
-  renderVersionPickers();
-  if (typeof renderCart === 'function' && $('cartBody')) renderCart();
-  syncProjectHeader();
-  if (String(hit.id).indexOf('excel:') !== 0 && !(state.lines || []).length && !importedCartRows().length) {
-    toast('This quote is empty — add a product and it stays on this quote');
+  // Cancel pending autosave so a mid-flight empty cart cannot race a seed/save.
+  if (state._saveTimer) { clearTimeout(state._saveTimer); state._saveTimer = null; }
+  beginQuoteHydrate();
+  try {
+    state.loadedQuoteVersion = hit.id;
+    if (String(hit.id).indexOf('excel:') === 0) {
+      state.excelFocus = hit.excelId || '';
+    } else {
+      state.excelFocus = '';
+      state.lines = hydrateCartLines(hit.lines || []);
+      state.editingLineId = null;
+      state.selectedLine = state.lines.length ? 0 : null;
+      maybeSeedStarterWindow();
+    }
+    persistCartSession();
+    renderVersionPickers();
+    if (typeof renderCart === 'function' && $('cartBody')) renderCart();
+    syncProjectHeader();
+    if (String(hit.id).indexOf('excel:') !== 0 && !(state.lines || []).length && !importedCartRows().length) {
+      toast('This quote is empty — add a product and it stays on this quote');
+    }
+  } finally {
+    endQuoteHydrate();
   }
 }
 
@@ -7563,7 +7797,10 @@ function restoreCartSession() {
 function adoptServerLines(incoming, { allowShrink = false } = {}) {
   const next = hydrateCartLines(incoming);
   const local = hydrateCartLines(state.lines);
-  if (!allowShrink && local.length > next.length) {
+  // While a quote is loading/hydrating, never keep local extras over the fetched
+  // cart — empty-list flicker + a starter seed used to leave +1 window behind.
+  const shrinkOk = allowShrink || !!state.quoteHydrating;
+  if (!shrinkOk && local.length > next.length) {
     const byId = new Map(next.filter((l) => l && l.lineId).map((l) => [l.lineId, l]));
     state.lines = local.map((ln, i) => {
       const hit = (ln.lineId && byId.get(ln.lineId)) || next[i];
@@ -7593,7 +7830,8 @@ function adoptServerLines(incoming, { allowShrink = false } = {}) {
     rememberCartLines(state.lines);
     return state.lines;
   }
-  state.lines = next.length ? next : local;
+  // Prefer server cart when hydrating even if local still has a ghost starter.
+  state.lines = (next.length || shrinkOk) ? next : local;
   rememberCartLines(state.lines);
   return state.lines;
 }
@@ -7698,6 +7936,8 @@ async function saveProject(silent) {
         refreshSetupSummary();
         adoptPackageQuotes(doc);
         adoptQuoteDiscount(doc);
+        if (typeof refreshCartProjectPick === 'function') refreshCartProjectPick().catch(() => {});
+        if (typeof refreshExportSetupSelect === 'function') refreshExportSetupSelect().catch(() => {});
       } while (state._saveAgain);
       return doc;
     } finally {
@@ -7708,62 +7948,68 @@ async function saveProject(silent) {
 }
 
 function scheduleSave() {
+  // Local draft only — never invent silent server quote versions on every keystroke.
+  // Explicit Save Quote / Calculate / PDF·Excel export still call saveProject().
   persistCartSession();
-  clearTimeout(state._saveTimer);
-  state._saveTimer = setTimeout(() => {
-    const n = (state.lines || []).length;
-    if (!state.projectId && !n) return;
-    saveProject(true).catch(() => {});
-  }, 700);
+  if (state._saveTimer) { clearTimeout(state._saveTimer); state._saveTimer = null; }
 }
 
 async function openProject(id) {
   const same = state.projectId && id && String(state.projectId) === String(id);
   const localLen = (state.lines || []).length;
   // Switching quotes: cancel pending save so products do not write into the wrong project.
-  if (!same && state._saveTimer) { clearTimeout(state._saveTimer); state._saveTimer = null; }
-  const doc = await api('/api/projects/'+id);
-  state.projectId = doc.projectId;
-  if (same) adoptServerLines(doc.lines || [], { allowShrink: false });
-  else state.lines = hydrateCartLines(doc.lines || []);
-  persistCartSession();
-  if (doc.name && !isPlaceholderProjectName(doc.name)) $('cartName').value = doc.name;
-  else if (!projectDisplayName()) $('cartName').value = isPlaceholderProjectName(doc.name) ? '' : (doc.name || '');
-  if ($('cartCustomer')) $('cartCustomer').value = doc.customer || '';
-  if ($('projCustName')) $('projCustName').value = doc.customer || '';
-  if ($('projMobile')) $('projMobile').value = doc.customerMobile || '';
-  if ($('projCustAddress')) $('projCustAddress').value = doc.customerAddress || '';
-  if ($('projCustGst')) $('projCustGst').value = doc.customerGst || '';
-  if ($('projQuoteNo')) $('projQuoteNo').value = doc.quotationId || '';
-  if ($('projDescription')) $('projDescription').value = doc.description || '';
-  if ($('projTerms')) $('projTerms').value = doc.terms || '';
-  if (typeof syncPrintCopyTwins === 'function') syncPrintCopyTwins('proj');
-  state._quoteCopySource = 'proj';
-  adoptPackageQuotes(doc);
-  adoptQuoteDiscount(doc);
-  adoptCartQuoteGroups(doc);
-  state.removedLines = Array.isArray(doc.removedLines) ? doc.removedLines : [];
-  lookupSetupClient().catch(() => {});
-  state.memoryAskedFor = null;
-  if (doc.lastCalculation?.price) {
-    state.lastResult = doc.lastCalculation;
-    $('cartTotal').textContent = money(doc.lastCalculation.price.total);
-    $('optBox').textContent = JSON.stringify(doc.lastCalculation.optimization || {}, null, 2);
+  if (state._saveTimer) { clearTimeout(state._saveTimer); state._saveTimer = null; }
+  beginQuoteHydrate();
+  try {
+    const doc = await api('/api/projects/'+id);
+    state.projectId = doc.projectId;
+    // Always take the fetched cart while hydrating — never keep a ghost starter
+    // that appeared while lines were briefly empty during the fetch.
+    if (same) adoptServerLines(doc.lines || [], { allowShrink: true });
+    else state.lines = hydrateCartLines(doc.lines || []);
+    maybeSeedStarterWindow();
+    persistCartSession();
+    if (doc.name && !isPlaceholderProjectName(doc.name)) $('cartName').value = doc.name;
+    else if (!projectDisplayName()) $('cartName').value = isPlaceholderProjectName(doc.name) ? '' : (doc.name || '');
+    if ($('cartCustomer')) $('cartCustomer').value = doc.customer || '';
+    if ($('projCustName')) $('projCustName').value = doc.customer || '';
+    if ($('projMobile')) $('projMobile').value = doc.customerMobile || '';
+    if ($('projCustAddress')) $('projCustAddress').value = doc.customerAddress || '';
+    if ($('projCustGst')) $('projCustGst').value = doc.customerGst || '';
+    if ($('projQuoteNo')) $('projQuoteNo').value = doc.quotationId || '';
+    if ($('projDescription')) $('projDescription').value = doc.description || '';
+    if ($('projTerms')) $('projTerms').value = doc.terms || '';
+    if (typeof syncPrintCopyTwins === 'function') syncPrintCopyTwins('proj');
+    state._quoteCopySource = 'proj';
+    adoptPackageQuotes(doc);
+    adoptQuoteDiscount(doc);
+    adoptCartQuoteGroups(doc);
+    state.removedLines = Array.isArray(doc.removedLines) ? doc.removedLines : [];
+    lookupSetupClient().catch(() => {});
+    state.memoryAskedFor = null;
+    if (doc.lastCalculation?.price) {
+      state.lastResult = doc.lastCalculation;
+      $('cartTotal').textContent = money(doc.lastCalculation.price.total);
+      $('optBox').textContent = JSON.stringify(doc.lastCalculation.optimization || {}, null, 2);
+    }
+    state.quoteVersionChoices = buildQuoteVersionChoices(doc);
+    state.loadedQuoteVersion = 'current';
+    state.excelFocus = '';
+    state.editingLineId = null;
+    invalidatePdfCache();
+    renderVersionPickers();
+    renderCart(); refreshPreview(); updatePdfLinks();
+    syncProjectHeader();
+    refreshDesignPhotoUi();
+    syncAddButton();
+    if (typeof refreshCartProjectPick === 'function') refreshCartProjectPick().catch(() => {});
+    const nLines = (state.lines || []).length;
+    const nExcel = importedCartRows().length;
+    toast('Loaded ' + id + (nLines ? (' · ' + nLines + ' line(s)') : (nExcel ? (' · ' + nExcel + ' Excel line(s)') : ' · empty quote')));
+    maybeAskCustomerMemory();
+  } finally {
+    endQuoteHydrate();
   }
-  state.quoteVersionChoices = buildQuoteVersionChoices(doc);
-  state.loadedQuoteVersion = 'current';
-  state.excelFocus = '';
-  state.editingLineId = null;
-  invalidatePdfCache();
-  renderVersionPickers();
-  renderCart(); refreshPreview(); updatePdfLinks();
-  syncProjectHeader();
-  refreshDesignPhotoUi();
-  syncAddButton();
-  const nLines = (state.lines || []).length;
-  const nExcel = importedCartRows().length;
-  toast('Loaded ' + id + (nLines ? (' · ' + nLines + ' line(s)') : (nExcel ? (' · ' + nExcel + ' Excel line(s)') : ' · empty quote')));
-  maybeAskCustomerMemory();
 }
 
 async function calculate() {
@@ -8172,7 +8418,18 @@ $('btnSaveRate').onclick = async () => {
   refreshAgent();
 };
 $('btnCalc').onclick = calculate;
-$('btnAutosave').onclick = () => saveProject(false);
+async function saveQuoteManual() {
+  try {
+    syncProjectCustomer();
+    await saveProject(false);
+    await refreshCartProjectPick();
+  } catch (e) {
+    toast((e && e.message) || String(e));
+  }
+}
+if ($('btnAutosave')) $('btnAutosave').onclick = () => saveQuoteManual();
+if ($('btnSaveQuote')) $('btnSaveQuote').onclick = () => saveQuoteManual();
+if ($('btnLoadQuote')) $('btnLoadQuote').onclick = () => applyCartProjectPick().catch(e => toast((e && e.message) || String(e)));
 
 /* ── Railing designer (compact tools on shared Live Preview canvas) ── */
 function productLooksLikeRailing(p) {
@@ -10898,6 +11155,13 @@ applyMeshNameVisibility();
 if (typeof applyMeshAddonVisibility === 'function') applyMeshAddonVisibility();
 applyFrameMaterialUi({ skipColourDefault: true });
 // Flexible window-config + Fold & Sliding controls
+if ($('casementVSplit')) {
+  $('casementVSplit').addEventListener('change', () => {
+    applyCasementVerticalSplit(($('casementVSplit') && $('casementVSplit').value) || 1, { keepRoles: true });
+    refreshPreview();
+    scheduleLivePrice();
+  });
+}
 ['lineSystem','lineFoldPreset','lineGlassShutters','lineMeshShutters','lineFixShutters','lineOpening',
  'lineHandleFinish','lineHandleLevel','lineFoldLeft','lineFoldRight','secTop','secBottom','secJamb','secLeaf','lineSashOverlap','lineMullionGap'].forEach(id => {
   const el = $(id); if (!el) return;
@@ -10909,7 +11173,9 @@ applyFrameMaterialUi({ skipColourDefault: true });
       state.draftSlidingHandles = {};
       if (id === 'lineSystem') { state.draftCasementPanels = []; state.selectedCasementPanel = null; }
     }
-    if (id === 'lineGlassShutters' && (($('lineSystem') && $('lineSystem').value) || 'sliding') === 'casement') ensureCasementPanels();
+    if (id === 'lineGlassShutters' && (($('lineSystem') && $('lineSystem').value) || 'sliding') === 'casement') {
+      applyCasementVerticalSplit(($('lineGlassShutters') && $('lineGlassShutters').value) || 2, { keepRoles: true });
+    }
     if (id === 'lineGlassShutters' || id === 'lineOpening') renderSlidingHandleList();
     if (id === 'lineMeshShutters') applyMeshTrackRules();
     if (id === 'lineHandleLevel') updateHandleLevelLabel();
@@ -10993,7 +11259,7 @@ if ($('setupProjectPick') && !$('setupProjectPick')._bound) {
   $('setupProjectPick')._bound = true;
   $('setupProjectPick').addEventListener('change', () => applySetupProjectPick());
 }
-// New bill-to + quote-text fields persist via autosave (they print on the quote).
+// Bill-to + quote-text: keep a local draft. Server persist is Save Quote / Calculate / export.
 ['projCustAddress','projCustGst','projQuoteNo','projDescription','projTerms','cartName'].forEach(id => {
   const el = $(id); if (!el) return;
   el.addEventListener('input', () => {
@@ -11059,8 +11325,13 @@ function resetSetupFormForNew() {
   // and a new quote cannot inherit the previous project's products mid-save.
   if (state._saveTimer) { clearTimeout(state._saveTimer); state._saveTimer = null; }
   state._saveAgain = false;
+  // Explicit New Quote / New Project — the only place starter seeding is allowed
+  // (currently we keep the cart empty; user adds products with Add to cart).
+  state.allowStarterSeed = true;
+  state.quoteHydrating = false;
   state.projectId = null;
   state.lines = [];
+  maybeSeedStarterWindow();
   state.lastResult = null;
   state.customerMemory = null;
   state.memoryAskedFor = null;
@@ -11163,12 +11434,16 @@ if ($('btnSetupToCart')) $('btnSetupToCart').onclick = async () => {
     renderCart();
   } catch(e) { toast(e.message); }
 };
-['setupVersionPick', 'cartVersionPick'].forEach(id => {
-  const el = $(id);
-  if (!el || el._verBound) return;
-  el._verBound = true;
-  el.addEventListener('change', () => applyLoadedQuoteChoice(el.value));
-});
+if ($('setupVersionPick') && !$('setupVersionPick')._verBound) {
+  $('setupVersionPick')._verBound = true;
+  $('setupVersionPick').addEventListener('change', () => applyLoadedQuoteChoice($('setupVersionPick').value));
+}
+if ($('cartVersionPick') && !$('cartVersionPick')._projBound) {
+  $('cartVersionPick')._projBound = true;
+  $('cartVersionPick').addEventListener('change', () => {
+    applyCartProjectPick($('cartVersionPick').value).catch(e => toast((e && e.message) || String(e)));
+  });
+}
 if ($('btnSetupLoadList')) $('btnSetupLoadList').onclick = loadSetupList;
 if ($('btnEditSetup')) $('btnEditSetup').onclick = () => setView('setup');
 if ($('btnSetupMaster')) $('btnSetupMaster').onclick = () => setView('master');
@@ -11701,7 +11976,12 @@ function _liveExportBody(brand, opts) {
 async function openProjectPdf(kind, opts) {
   opts = opts || {};
   const label = opts.label || (kind === 'factory' ? 'Factory PDF' : 'Quote PDF');
-  if (state.selectedLine != null && state.lines[state.selectedLine] && !isRailingMode() && !isShowerMode() && !isVentMode()) {
+  // Only push the form draft into the cart when the user is actively editing that
+  // line. After selecting a quote, selectedLine is set to 0 without syncing the
+  // form — merging the orphan designer draft used to rewrite / inflate the cart.
+  if (state.editingLineId && state.selectedLine != null && state.lines[state.selectedLine]
+      && String(state.lines[state.selectedLine].lineId || '') === String(state.editingLineId)
+      && !isRailingMode() && !isShowerMode() && !isVentMode()) {
     try {
       const draft = currentLineDraft();
       state.lines[state.selectedLine] = { ...state.lines[state.selectedLine], ...draft };
@@ -11804,7 +12084,9 @@ if ($('linkCustXlsx')) $('linkCustXlsx').addEventListener('click', async (e) => 
   state._exportBusy = true;
   setButtonBusy($('linkCustXlsx'), true, 'Exporting...');
   try {
-    if (state.selectedLine != null && state.lines[state.selectedLine] && !isRailingMode() && !isShowerMode() && !isVentMode()) {
+    if (state.editingLineId && state.selectedLine != null && state.lines[state.selectedLine]
+        && String(state.lines[state.selectedLine].lineId || '') === String(state.editingLineId)
+        && !isRailingMode() && !isShowerMode() && !isVentMode()) {
       try {
         const draft = currentLineDraft();
         state.lines[state.selectedLine] = { ...state.lines[state.selectedLine], ...draft };
@@ -13710,6 +13992,8 @@ async function refreshCompanyHub(gst) {
     const qs = g ? ('?gst='+encodeURIComponent(g)) : '';
     const ws = await api('/api/company/workspace'+qs);
     await applyWorkspacePayload(ws);
+    if (typeof refreshCartProjectPick === 'function') refreshCartProjectPick().catch(() => {});
+    if (typeof refreshExportSetupSelect === 'function') refreshExportSetupSelect().catch(() => {});
   } catch(e) {
     if ($('coHubPanel')) $('coHubPanel').classList.add('hidden');
     if ($('coGstStatus')) $('coGstStatus').textContent = '';
@@ -15060,77 +15344,11 @@ async function weosFinalize(){
 }
 
 function weosMountAgentDock(){
-  if ($('weosAgentDock') || $('weosAgentFab')) return;
-  const AGENT_MIN_KEY = 'weos_agent_minimized';
-  const logoSrc = '/static/weos-logo.png?v=5';
-  const isMinimized = () => {
-    const v = localStorage.getItem(AGENT_MIN_KEY);
-    // First visit: stay minimized so the dock does not cover the quote UI.
-    if (v === null) return true;
-    return v === '1';
-  };
-  const setMinimized = (min) => {
-    try { localStorage.setItem(AGENT_MIN_KEY, min ? '1' : '0'); } catch(_){}
-    applyUi();
-  };
-  const applyUi = () => {
-    const min = isMinimized();
-    const dock = $('weosAgentDock');
-    const fab = $('weosAgentFab');
-    if (dock) dock.style.display = min ? 'none' : 'block';
-    if (fab) fab.style.display = min ? 'flex' : 'none';
-  };
-
-  const fab = document.createElement('button');
-  fab.id = 'weosAgentFab';
-  fab.type = 'button';
-  fab.className = 'weos-agent-fab';
-  fab.title = 'Open WEOS Agent';
-  fab.setAttribute('aria-label', 'Open WEOS Agent');
-  fab.innerHTML = `<img src="${logoSrc}" alt="WEOS" onerror="this.onerror=null;this.src='/api/company/logo?v=5'"/>`;
-  fab.onclick = () => setMinimized(false);
-  document.body.appendChild(fab);
-
-  const dock = document.createElement('div');
-  dock.id = 'weosAgentDock';
-  dock.style.cssText = 'position:fixed;right:16px;bottom:16px;width:340px;max-height:78vh;overflow:auto;background:#f8fafc;border:1px solid #cbd5e1;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);z-index:9999;font-family:inherit;display:none';
-  dock.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#0f172a;color:#fff;border-radius:12px 12px 0 0;gap:8px">
-      <div style="display:flex;align-items:center;gap:8px;min-width:0">
-        <img src="${logoSrc}" alt="" width="28" height="28" style="border-radius:6px;object-fit:contain;background:#111;flex-shrink:0" onerror="this.onerror=null;this.src='/api/company/logo?v=5'"/>
-        <strong style="font-size:14px">WEOS Agent</strong>
-      </div>
-      <button id="weosToggle" title="Minimize" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:18px;line-height:1;padding:2px 6px">–</button>
-    </div>
-    <div id="weosBody" style="padding:12px">
-      <div id="weosLoginRow">
-        <div style="font-size:12px;color:#475569;margin-bottom:6px">Login (no OTP) — use any one: mobile, quote number, or name.</div>
-        <input id="weosMobile" placeholder="Mobile number" style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px;box-sizing:border-box">
-        <input id="weosQuote" placeholder="Quote number (e.g. WQ-2026-00001)" style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px;box-sizing:border-box">
-        <input id="weosName" placeholder="Name (optional)" style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:6px;box-sizing:border-box">
-        <button id="weosLoginBtn" style="width:100%;padding:7px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer">Login</button>
-      </div>
-      <div id="weosAuthed" style="display:none">
-        <div id="weosWho" style="font-size:12px;color:#0f172a;font-weight:600;margin-bottom:6px"></div>
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <button id="weosSaveBtn" style="flex:1;padding:6px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">Save to cloud</button>
-          <button id="weosRunBtn" style="flex:1;padding:6px;background:#0f172a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">Run agent</button>
-          <button id="weosFinBtn" style="padding:6px 8px;background:#7c3aed;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">Finalize</button>
-        </div>
-        <div id="weosCurrentQuote" style="font-size:11px;color:#64748b;margin-bottom:6px"></div>
-        <div style="font-size:12px;font-weight:600;color:#334155;margin:6px 0 3px">Live suggestions</div>
-        <div id="weosAgentList"></div>
-        <div style="font-size:12px;font-weight:600;color:#334155;margin:10px 0 3px">Your cloud quotes</div>
-        <div id="weosQuotes"></div>
-      </div>
-    </div>`;
-  document.body.appendChild(dock);
-  $('weosLoginBtn').onclick = weosLogin;
-  $('weosSaveBtn').onclick = weosSaveQuote;
-  $('weosRunBtn').onclick = weosRunAgent;
-  $('weosFinBtn').onclick = weosFinalize;
-  $('weosToggle').onclick = () => setMinimized(true);
-  applyUi();
+  // Front-screen WEOS AI Agent (FAB + dock) intentionally disabled.
+  try {
+    const fab = $('weosAgentFab'); if (fab && fab.parentNode) fab.parentNode.removeChild(fab);
+    const dock = $('weosAgentDock'); if (dock && dock.parentNode) dock.parentNode.removeChild(dock);
+  } catch (_) {}
 }
 
 // ── Engine (backend) connection status ──────────────────────────────────────
@@ -15202,26 +15420,28 @@ async function pingEngine(){
   try { await loadProducts(); } catch (e) { console.warn('Product catalog unavailable', e); }
   try { state.adminMeta = await api('/api/admin/meta', { timeoutMs: 8000 }); } catch(_){}
   const hasSavedLines = Array.isArray(state.lines) && state.lines.some(ln => ln && typeof ln === 'object' && (ln.lineId || ln.product || ln.itemSnapshot || ln.item_snapshot));
-  // Dummy 4-window catalogue is ONLY for a truly empty new session.
-  // Never replace a restored cart / saved project with dummy windows.
-  if (!restoredCart && !state.projectId && !hasSavedLines && !state.workspaceRestored) {
-    state.lines = [
-      {product:'29mm_sliding', width:2050, height:1970, qty:4, glass:'8mm_toughened', colour:'black_texture', handle:'premium', saleUnit:'sqft', sellingRate:1100},
-      {product:'29mm_sliding', width:1500, height:1500, qty:6, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft', sellingRate:950},
-      {product:'casement_stub', width:900, height:1500, qty:2, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft'},
-      {product:'fixed_stub', width:1200, height:600, qty:8, glass:'5mm_clear', colour:'white', handle:'standard', saleUnit:'sqft'},
-    ].map(ensureLineId);
-  } else if (state.projectId && !hasSavedLines) {
+  // Never auto-seed starter/default windows on editor load or empty-list flicker.
+  // Starter seed is gated behind explicit New Quote (allowStarterSeed) only.
+  if (state.projectId && !hasSavedLines) {
+    beginQuoteHydrate();
     api('/api/projects/'+state.projectId).then((doc) => {
-      if (!doc || state.projectId !== doc.projectId) return;
-      adoptServerLines(doc.lines || [], { allowShrink: false });
-      renderCart();
-      updatePdfLinks();
-    }).catch(() => {});
+      try {
+        if (!doc || state.projectId !== doc.projectId) return;
+        adoptServerLines(doc.lines || [], { allowShrink: true });
+        maybeSeedStarterWindow();
+        renderCart();
+        updatePdfLinks();
+      } finally {
+        endQuoteHydrate();
+      }
+    }).catch(() => { endQuoteHydrate(); });
+  } else {
+    maybeSeedStarterWindow();
   }
   persistCartSession();
   scheduleLivePrice();
-  try { weosMountAgentDock(); } catch(e){ console.warn('WEOS Agent dock failed to mount', e); }
+  // WEOS AI Agent FAB/dock removed from the front screen by request.
+  if (typeof refreshCartProjectPick === 'function') refreshCartProjectPick().catch(() => {});
 })();
 </script>
 </body>

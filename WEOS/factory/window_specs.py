@@ -388,6 +388,10 @@ def _norm_panel_role(raw: Any) -> str:
         return "fix"
     if t in ("top_hung", "tophung", "top"):
         return "top_hung"
+    if t in ("door", "doors", "side_hung_door", "casement_door"):
+        return "door"
+    if t in ("sliding", "slider", "slide"):
+        return "sliding"
     return "openable"
 
 
@@ -410,10 +414,15 @@ def casement_panel_roles(line: Mapping[str, Any], glass_count: int) -> list[str]
         out: list[str] = []
         for p in lites:
             role = str(p.get("role") or "").lower()
-            if role == "fix" or p.get("operable") is False:
+            pack = str(p.get("pack") or "").lower()
+            if pack == "sliding" or role == "sliding":
+                out.append("sliding")
+            elif role == "fix" or p.get("operable") is False:
                 out.append("fix")
-            elif "top hung" in str(p.get("label") or "").lower() or str(p.get("pack") or "") == "top_hung":
+            elif "top hung" in str(p.get("label") or "").lower() or pack == "top_hung":
                 out.append("top_hung")
+            elif pack == "door" or role == "door":
+                out.append("door")
             else:
                 out.append("openable")
         return out
@@ -630,16 +639,22 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
             # Casement: openable leaves are DOORs, fixed lites are PANELs — never
             # a generic "SHUTTER n Nos" that hides an all-fixed design.
             roles = casement_panel_roles(line, glass_n_i)
-            n_door = sum(1 for r in roles if r == "openable")
+            n_door = sum(1 for r in roles if r in ("openable", "door"))
             n_top = sum(1 for r in roles if r == "top_hung")
-            n_fix = sum(1 for r in roles if r == "fix")
+            n_fix = sum(1 for r in roles if r in ("fix", "sliding"))
             if n_door or n_top:
                 bits = [f"{n_door + n_top} Nos"]
                 if n_top:
                     bits.append(f"{n_top} top hung")
+                if sum(1 for r in roles if r == "door"):
+                    bits.append(f"{sum(1 for r in roles if r == 'door')} door")
                 add("DOOR", " · ".join(bits))
             if n_fix:
-                add("PANEL", f"{n_fix} Nos · fixed")
+                n_slide = sum(1 for r in roles if r == "sliding")
+                panel_bits = [f"{n_fix} Nos · fixed"]
+                if n_slide:
+                    panel_bits.append(f"{n_slide} sliding-as-fix")
+                add("PANEL", " · ".join(panel_bits))
             if not (n_door or n_top or n_fix):
                 add("DOOR", f"{glass_n_i} Nos")
         elif is_bifold or is_vent:
@@ -764,7 +779,7 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
     casement_all_fixed = False
     if is_casement and glass_n_i > 0 and not is_louver_fill:
         _roles = casement_panel_roles(line, glass_n_i)
-        casement_all_fixed = bool(_roles) and all(r == "fix" for r in _roles)
+        casement_all_fixed = bool(_roles) and all(r in ("fix", "sliding") for r in _roles)
     if casement_all_fixed:
         add("HANDLE", "none · fixed glazing (no hardware)")
     else:
