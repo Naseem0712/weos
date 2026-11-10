@@ -183,7 +183,8 @@ def line_sell_amount(
             "qty": q,
         }
     sell = sell_amount(width_mm=w, height_mm=h, qty=q, selling_rate=rate_n, sale_unit=unit)
-    return _add_mesh_addon_to_sell(sell, line, qty=q)
+    sell = _add_mesh_addon_to_sell(sell, line, qty=q)
+    return _add_line_addons_to_sell(sell, line)
 
 
 def _add_mesh_addon_to_sell(sell: dict[str, Any], line: Mapping[str, Any] | None, *, qty: int | None = None) -> dict[str, Any]:
@@ -203,9 +204,39 @@ def _add_mesh_addon_to_sell(sell: dict[str, Any], line: Mapping[str, Any] | None
     from WEOS.factory.fmt import money_n
 
     out = dict(sell)
-    out["windowAmount"] = out.get("sellingAmount")
+    out.setdefault("windowAmount", out.get("sellingAmount"))
     out["meshAmount"] = money_n(amt)
     out["meshLabel"] = (addon or {}).get("label")
+    out["sellingAmount"] = money_n(float(out.get("sellingAmount") or 0.0) + amt)
+    return out
+
+
+def _add_line_addons_to_sell(sell: dict[str, Any], line: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Per-window commercial extras (hardware, auto door, …) on top of product+mesh."""
+    try:
+        from WEOS.factory.line_addons import is_line_cancelled, line_addons_for_display, line_addons_total
+    except Exception:
+        return sell
+    if is_line_cancelled(line):
+        out = dict(sell)
+        out["cancelled"] = True
+        out["windowAmount"] = out.get("windowAmount", out.get("sellingAmount"))
+        out["addonsAmount"] = 0.0
+        out["lineAddons"] = []
+        out["sellingAmount"] = 0.0
+        return out
+    from WEOS.factory.fmt import money_n
+
+    rows = line_addons_for_display(line)
+    amt = float(line_addons_total(line) or 0.0)
+    out = dict(sell)
+    out.setdefault("windowAmount", out.get("sellingAmount"))
+    if amt <= 0 and not rows:
+        out["addonsAmount"] = 0.0
+        out["lineAddons"] = []
+        return out
+    out["addonsAmount"] = money_n(amt)
+    out["lineAddons"] = rows
     out["sellingAmount"] = money_n(float(out.get("sellingAmount") or 0.0) + amt)
     return out
 
@@ -392,8 +423,15 @@ def apply_selling_to_line_result(result: dict[str, Any], line: Mapping[str, Any]
         if result.get("meshAddon"):
             _mesh_src.setdefault("layout", result.get("layout"))
         sell = _add_mesh_addon_to_sell(sell, _mesh_src, qty=int(result.get("qty") or 1))
+        sell = _add_line_addons_to_sell(sell, line)
         if sell.get("meshAmount"):
             out["meshAmount"] = sell["meshAmount"]
+        if sell.get("addonsAmount"):
+            out["addonsAmount"] = sell["addonsAmount"]
+        if sell.get("lineAddons"):
+            out["lineAddons"] = sell["lineAddons"]
+        if sell.get("cancelled"):
+            out["cancelled"] = True
         out["sellingRate"] = sell["sellingRate"]
         out["selling"] = sell
         cost = float((result.get("price") or {}).get("total") or 0)
@@ -410,7 +448,23 @@ def apply_selling_to_line_result(result: dict[str, Any], line: Mapping[str, Any]
             ),
         }
     else:
+        # Still attach commercial add-ons / cancel even without a selling rate.
+        from WEOS.factory.fmt import money_n
+
+        base_total = float((result.get("price") or {}).get("total") or 0)
+        sell = _add_line_addons_to_sell(
+            {"sellingAmount": money_n(base_total), "windowAmount": money_n(base_total)},
+            line,
+        )
         out["sellingRate"] = None
-        out["selling"] = None
-        out["commercialTotal"] = (result.get("price") or {}).get("total")
+        out["selling"] = sell if (sell.get("addonsAmount") or sell.get("cancelled")) else None
+        if sell.get("lineAddons"):
+            out["lineAddons"] = sell["lineAddons"]
+        if sell.get("addonsAmount"):
+            out["addonsAmount"] = sell["addonsAmount"]
+        if sell.get("cancelled"):
+            out["cancelled"] = True
+            out["commercialTotal"] = 0.0
+        else:
+            out["commercialTotal"] = sell.get("sellingAmount", base_total)
     return out

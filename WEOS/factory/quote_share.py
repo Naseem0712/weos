@@ -904,6 +904,7 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     if show_design:
         col_count = 5 + (1 if show_rate else 0) + (1 if show_amount else 0)
         for p in record.get("products") or []:
+            cancelled = bool(p.get("cancelled") or p.get("canceled"))
             amt = inr(p.get("amount")) if p.get("amount") is not None else "—"
             rate = esc(p.get("rate") or "—")
             loc = p.get("location") or p.get("locationName") or p.get("positionName") or "—"
@@ -916,17 +917,38 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
                 if x
             )
             type_cell = esc(p.get("type"))
+            if cancelled:
+                type_cell = (
+                    '<span class="cancelled-mark">CANCELLED</span> '
+                    f'<span class="cancelled-text">{type_cell}</span>'
+                )
             if extra:
                 type_cell += f'<div class="muted" style="font-size:.72rem">{esc(extra)}</div>'
+            addon_labels = [str(x) for x in (p.get("addonLabels") or []) if x]
+            if not addon_labels and isinstance(p.get("addons"), list):
+                for ad in p.get("addons") or []:
+                    if isinstance(ad, Mapping):
+                        try:
+                            from WEOS.factory.line_addons import addon_label
+
+                            addon_labels.append(addon_label(ad))
+                        except Exception:
+                            addon_labels.append(str(ad.get("name") or "Add-on"))
+                    elif ad:
+                        addon_labels.append(str(ad))
+            for lab in addon_labels:
+                type_cell += f'<div class="addon-under">+ {esc(lab)}</div>'
+            tr_cls = ' class="cancelled-row"' if cancelled else ""
             row = (
-                f"<tr><td>{esc(p.get('serial'))}</td><td>{esc(loc)}</td>"
+                f"<tr{tr_cls}><td>{esc(p.get('serial'))}</td><td>{esc(loc)}</td>"
                 f"<td>{type_cell}</td><td>{esc(p.get('size'))}</td>"
                 f"<td>{esc(p.get('qty'))}</td>"
             )
             if show_rate:
                 row += f"<td>{rate}</td>"
             if show_amount:
-                row += f"<td>{amt}</td>"
+                amt_html = f'<span class="cancelled-text">{amt}</span>' if cancelled else amt
+                row += f"<td>{amt_html}</td>"
             prod_rows += row + "</tr>"
         if not prod_rows:
             prod_rows = f'<tr><td colspan="{col_count}" class="muted">No products on this quote</td></tr>'
@@ -1241,8 +1263,14 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
   </div>"""
 
     co_name = esc(co.get("name") or "WEOS")
-    terms = esc(record.get("terms") or "")
-    description = esc(record.get("description") or "")
+    try:
+        from WEOS.factory.pdf_rich_text import markdown_emphasis_to_html
+
+        description = markdown_emphasis_to_html(record.get("description") or "")
+        terms = markdown_emphasis_to_html(record.get("terms") or "")
+    except Exception:
+        description = esc(record.get("description") or "")
+        terms = esc(record.get("terms") or "")
     terms_html = ""
     if description or terms:
         terms_html = f"""
@@ -1279,6 +1307,11 @@ h1{{font-size:1.45rem;margin:.2rem 0 .3rem;letter-spacing:-.01em}}
 h2{{font-size:.92rem;margin:0 0 .55rem;letter-spacing:.02em;text-transform:uppercase;color:var(--green)}}
 .muted{{color:var(--muted);font-size:.82rem}}
 .body{{margin:.35rem 0;font-size:.9rem}}
+.body strong,.body b{{font-weight:700;color:var(--ink)}}
+.addon-under{{font-size:.75rem;color:var(--muted);margin-top:.2rem}}
+.cancelled-mark{{color:#b42318;font-weight:700;font-size:.72rem;margin-right:.25rem}}
+.cancelled-text{{color:#b42318;text-decoration:line-through}}
+.cancelled-row td{{background:#fdecec}}
 .badge{{display:inline-block;background:{badge_bg};color:#fff;border-radius:999px;padding:.2rem .7rem;font-size:.75rem;font-weight:600}}
 .badge.late{{background:var(--copper);margin-left:.35rem}}
 .meta-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.65rem .9rem;margin-top:.65rem}}

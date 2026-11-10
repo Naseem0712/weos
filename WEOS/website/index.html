@@ -287,6 +287,20 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
 }
 @keyframes spin{to{transform:rotate(360deg)}}
 .total{font-family:var(--serif);font-size:clamp(1.6rem,3vw,2.2rem)}
+.cart-commercial-totals{margin-top:.45rem;padding:.5rem .55rem;border:1px solid var(--line);border-radius:10px;background:#faf8f4;font-size:.78rem;min-width:min(100%,280px)}
+.cart-commercial-totals .ct-title{font-weight:700;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:.35rem}
+.cart-commercial-totals .ct-row{display:flex;justify-content:space-between;gap:.75rem;padding:.12rem 0;border-bottom:1px dashed rgba(0,0,0,.06)}
+.cart-commercial-totals .ct-row:last-child{border-bottom:0}
+.cart-commercial-totals .ct-strong{font-weight:700;font-size:.9rem;margin-top:.2rem}
+.cart-row-cancelled td{background:#fdecec!important}
+.cart-row-cancelled .cart-cancelled-mark{color:#b42318;font-weight:700;font-size:.7rem;margin-right:.3rem}
+.cart-row-cancelled .cart-strike{color:#b42318;text-decoration:line-through}
+.line-addons-panel{border:1px dashed var(--line);border-radius:10px;padding:.5rem .55rem;background:rgba(0,0,0,.015)}
+.line-addon-row{display:grid;grid-template-columns:1.4fr 1.2fr 56px 72px 72px 28px;gap:.3rem;align-items:end;margin-bottom:.35rem}
+@media (max-width:720px){.line-addon-row{grid-template-columns:1fr 1fr}}
+.quote-copy-preview strong,.quote-copy-preview b{font-weight:700;color:inherit}
+.quote-copy-preview .qcp-body{margin-bottom:.35rem}
+.quote-copy-preview .qcp-terms{font-size:.8rem}
 .actions-inline{display:flex;gap:.3rem;flex-wrap:wrap}
 .specs{display:grid;grid-template-columns:1fr 1fr;gap:.45rem .75rem;font-size:.88rem}
 @media(max-width:600px){.specs{grid-template-columns:1fr}th:nth-child(n+5),td:nth-child(n+5){display:none}}
@@ -1629,6 +1643,7 @@ textarea{max-width:100%}
             <div>
               <div class="muted" id="cartMeta">0 lines</div>
               <div class="total" id="cartTotal">₹ —</div>
+              <div id="cartCommercialTotals" class="cart-commercial-totals"></div>
             </div>
             <div style="display:flex;flex-direction:column;gap:.4rem;align-items:flex-end;min-width:min(100%,280px)">
               <div style="width:100%"><label class="l">Quote print setup (customer details on PDF)</label>
@@ -1636,7 +1651,8 @@ textarea{max-width:100%}
               </div>
               <button class="btn ghost sm" id="btnPrintCopyToggle" type="button" title="See what description and terms will print, then edit if needed">View / edit description &amp; terms</button>
               <div id="printCopyPanel" class="hidden" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;padding:.55rem .65rem;background:#fff">
-                <p class="muted" style="margin:0 0 .45rem;font-size:.75rem">This is what the Quote PDF will print. Read it, edit if needed, then generate the PDF.</p>
+                <p class="muted" style="margin:0 0 .45rem;font-size:.75rem">This is what the Quote PDF will print. Read it, edit if needed, then generate the PDF. <code>**bold**</code> becomes real bold below.</p>
+                <div id="quoteCopyPreview" class="quote-copy-preview" style="margin:0 0 .55rem;padding:.45rem .55rem;border:1px dashed var(--line);border-radius:8px;background:#faf8f4;font-size:.84rem;min-height:2.2rem"></div>
                 <label class="l">Description</label>
                 <textarea id="printDescription" class="quote-copy-textarea" rows="4" placeholder="Optional note that prints on the customer quotation"></textarea>
                 <div class="chip-row" id="printDescChips"></div>
@@ -1678,6 +1694,14 @@ textarea{max-width:100%}
             <span class="muted" id="lineDesignPhotoName" style="font-size:.75rem"></span>
           </div>
           <div class="specs" id="lineSpecs" style="margin-top:.8rem"></div>
+          <div id="lineAddonsPanel" class="line-addons-panel" style="margin-top:.65rem;display:none">
+            <div class="row" style="align-items:center;justify-content:space-between;gap:.4rem;flex-wrap:wrap">
+              <strong style="font-size:.82rem">Add-ons for this window / door</strong>
+              <button class="btn ghost sm" type="button" id="btnAddLineAddon">+ add-on</button>
+            </div>
+            <div class="muted" style="font-size:.7rem;margin:.2rem 0 .35rem">Name, optional note, qty × rate → amount. Shows under this line in preview + quote PDF.</div>
+            <div id="lineAddonsList"></div>
+          </div>
         </div>
       </div>
     </section>
@@ -3837,13 +3861,55 @@ function isShowerCartLine(ln) {
 function isVentCartLine(ln) {
   return productWorldOf(null, ln) === 'ventilator';
 }
-function lineLiveAmount(ln) {
+function isLineCancelled(ln) {
+  if (!ln || typeof ln !== 'object') return false;
+  const opts = (ln.options && typeof ln.options === 'object') ? ln.options : {};
+  const raw = ln.cancelled != null ? ln.cancelled : (ln.canceled != null ? ln.canceled : opts.cancelled);
+  if (raw === true || raw === 1) return true;
+  if (typeof raw === 'string' && /^(1|true|yes|cancelled|canceled)$/i.test(raw.trim())) return true;
+  return false;
+}
+function normalizeLineAddons(ln) {
+  if (!ln || typeof ln !== 'object') return [];
+  const opts = (ln.options && typeof ln.options === 'object') ? ln.options : {};
+  const raw = ln.addons || ln.lineAddons || ln.extraServices
+    || opts.addons || opts.lineAddons || opts.extraServices || [];
+  if (!Array.isArray(raw)) return [];
+  return raw.map((a, i) => {
+    if (!a || typeof a !== 'object') return null;
+    const name = String(a.name || a.label || a.title || '').trim() || 'Add-on';
+    const note = String(a.note || a.spec || a.specification || a.description || '').trim();
+    const qty = Math.max(0, Number(a.qty != null ? a.qty : (a.quantity != null ? a.quantity : 1)) || 0);
+    const rate = Math.max(0, Number(a.rate != null ? a.rate : (a.unitAmount != null ? a.unitAmount : 0)) || 0);
+    const amount = Math.round(qty * rate * 100) / 100;
+    return {
+      id: String(a.id || a.addonId || ('ad' + i + '_' + Date.now().toString(36))).slice(0, 16),
+      name, note, spec: note || null, qty, rate, amount,
+    };
+  }).filter(Boolean);
+}
+function lineAddonsTotal(ln) {
+  return normalizeLineAddons(ln).reduce((s, a) => s + (Number(a.amount) || 0), 0);
+}
+function persistLineAddons(ln) {
+  if (!ln || typeof ln !== 'object') return ln;
+  const rows = normalizeLineAddons(ln);
+  ln.addons = rows;
+  ln.options = Object.assign({}, ln.options || {}, { addons: rows });
+  if (isLineCancelled(ln)) {
+    ln.cancelled = true;
+    ln.options.cancelled = true;
+  } else {
+    ln.cancelled = false;
+    if (ln.options) ln.options.cancelled = false;
+  }
+  return ln;
+}
+function lineProductAmount(ln) {
   if (!ln) return null;
+  if (isLineCancelled(ln)) return 0;
   const qty = Math.max(1, Number(ln.qty || ln.quantity || 1) || 1);
-  const stored = Number(
-    (ln.selling && ln.selling.sellingAmount) || ln.commercialTotal || ln.sellingAmount || (ln.price && ln.price.total) || ln.costTotal || 0
-  );
-  if (stored > 0) return stored;
+  if (ln.selling && Number(ln.selling.windowAmount) > 0) return Number(ln.selling.windowAmount);
   const rq = ln.options && ln.options.railingQuote;
   if (rq && Number(rq.sellingTotal) > 0) {
     const qQty = Math.max(1, Number(rq.qty || 1) || 1);
@@ -3854,7 +3920,12 @@ function lineLiveAmount(ln) {
   const vq = ln.options && ln.options.ventilatorQuote;
   if (vq && Number(vq.sellingTotal) > 0) return Number(vq.sellingTotal);
   const rate = Number(ln.sellingRate);
-  if (!Number.isFinite(rate) || rate <= 0) return null;
+  if (!Number.isFinite(rate) || rate <= 0) {
+    const stored = Number(ln.commercialTotal || ln.sellingAmount || (ln.selling && ln.selling.sellingAmount) || 0);
+    const add = lineAddonsTotal(ln);
+    if (stored > 0) return Math.max(0, Math.round((stored - add) * 100) / 100);
+    return null;
+  }
   const w = Number(ln.width || 0), h = Number(ln.height || 0);
   const unit = String(ln.saleUnit || 'sqft').toLowerCase();
   let billable = qty;
@@ -3864,41 +3935,300 @@ function lineLiveAmount(ln) {
   else if (unit === 'rmt') billable = (isRailCartLine(ln) ? (w / 1000) : (2 * (w + h) / 1000)) * qty;
   else if (unit === 'opening' || unit === 'pc' || unit === 'nos' || unit === 'each') billable = qty;
   let amt = billable * rate;
-  // Pleated / rolling mesh add-on is a separate amount on top of the window
-  // (mirrors live_pricing._add_mesh_addon_to_sell).
   const ma = (typeof meshAddonDraftAmount === 'function') ? meshAddonDraftAmount(ln) : null;
   if (ma && ma.amount > 0) amt += ma.amount;
   return Number.isFinite(amt) && amt > 0 ? Math.round(amt * 100) / 100 : null;
 }
+function lineLiveAmount(ln) {
+  if (!ln) return null;
+  if (isLineCancelled(ln)) return 0;
+  const prod = lineProductAmount(ln);
+  const add = lineAddonsTotal(ln);
+  if (prod == null && !(add > 0)) return null;
+  return Math.round(((Number(prod) || 0) + add) * 100) / 100;
+}
 function stampLineAmount(ln) {
   if (!ln || typeof ln !== 'object') return ln;
-  const amt = lineLiveAmount(ln);
-  if (!(amt > 0)) return ln;
+  persistLineAddons(ln);
+  if (isLineCancelled(ln)) {
+    ln.commercialTotal = 0;
+    ln.sellingAmount = 0;
+    ln.selling = Object.assign({}, ln.selling || {}, {
+      sellingAmount: 0,
+      windowAmount: 0,
+      addonsAmount: 0,
+      cancelled: true,
+      sellingRate: ln.sellingRate != null ? ln.sellingRate : (ln.selling && ln.selling.sellingRate),
+      saleUnit: ln.saleUnit || (ln.selling && ln.selling.saleUnit) || 'sqft',
+      qty: ln.qty || 1,
+    });
+    return ln;
+  }
+  const prod = lineProductAmount(ln);
+  const add = lineAddonsTotal(ln);
+  const amt = Math.round(((Number(prod) || 0) + add) * 100) / 100;
+  if (!(amt > 0) && !(prod > 0)) return ln;
   ln.commercialTotal = amt;
   ln.sellingAmount = amt;
+  ln.addonsAmount = add;
   ln.selling = Object.assign({}, ln.selling || {}, {
     sellingAmount: amt,
+    windowAmount: Number(prod) || 0,
+    addonsAmount: add,
+    lineAddons: normalizeLineAddons(ln),
+    cancelled: false,
     sellingRate: ln.sellingRate != null ? ln.sellingRate : (ln.selling && ln.selling.sellingRate),
     saleUnit: ln.saleUnit || (ln.selling && ln.selling.saleUnit) || 'sqft',
     qty: ln.qty || 1,
   });
   return ln;
 }
+function commercialSystemBucket(ln) {
+  const opts = (ln && ln.options && typeof ln.options === 'object') ? ln.options : {};
+  const sys = String(ln.system || opts.system || '').toLowerCase();
+  const pt = String(ln.productType || opts.productType || ln.product || '').toLowerCase();
+  const blob = [ln.displayName, ln.product, ln.category, sys, pt].join(' ').toLowerCase();
+  if (sys === 'casement' || sys === 'openable' || pt.includes('casement') || blob.includes('casement') || blob.includes('openable'))
+    return 'casement';
+  if (['sliding','telescopic','synchron','bifold','fold','style'].includes(sys)
+    || /slid|tele|fold|synchron/.test(pt) || /slid|tele|fold/.test(blob))
+    return 'sliding';
+  return 'other';}
+function lineAreaSqft(ln) {
+  const w = Number(ln.width || 0), h = Number(ln.height || 0);
+  const qty = Math.max(1, Number(ln.qty || 1) || 1);
+  if (w > 0 && h > 0) return Math.round(w * h / 1e6 * 10.7639 * qty * 10000) / 10000;
+  return 0;
+}
+function quoteCommercialBreakdown(lines) {
+  const sliding = { key:'sliding', label:'Sliding windows', qty:0, areaSqft:0, amount:0, avgRate:null };
+  const casement = { key:'casement', label:'Casements', qty:0, areaSqft:0, amount:0, avgRate:null };
+  const other = { key:'other', label:'Other', qty:0, areaSqft:0, amount:0, avgRate:null };
+  let addServices = 0;
+  (lines || []).forEach((ln) => {
+    if (!ln || isLineCancelled(ln)) return;
+    stampLineAmount(ln);
+    const bucket = commercialSystemBucket(ln) === 'casement' ? casement
+      : (commercialSystemBucket(ln) === 'sliding' ? sliding : other);
+    bucket.qty += Math.max(0, Number(ln.qty || 1) || 0);
+    bucket.areaSqft += lineAreaSqft(ln);
+    bucket.amount += Number(lineProductAmount(ln) || 0);
+    addServices += lineAddonsTotal(ln);
+  });
+  [sliding, casement, other].forEach((b) => {
+    b.areaSqft = Math.round(b.areaSqft * 10000) / 10000;
+    b.amount = Math.round(b.amount * 100) / 100;
+    b.avgRate = b.areaSqft > 0 ? Math.round((b.amount / b.areaSqft) * 100) / 100 : null;
+  });
+  const productsTotal = Math.round((sliding.amount + casement.amount + other.amount) * 100) / 100;
+  addServices = Math.round(addServices * 100) / 100;
+  const beforeGst = Math.round((productsTotal + addServices) * 100) / 100;
+  const disc = state.quoteDiscount || { mode:'off', percent:0, amount:0 };
+  let discountAmount = 0, discountPercent = 0;
+  let afterDiscount = beforeGst;
+  let gstPercent = 18;
+  if (disc.mode === 'gst_off') {
+    discountAmount = Math.round(beforeGst * gstPercent / 100 * 100) / 100;
+    afterDiscount = beforeGst;
+    gstPercent = 0;
+  } else if (disc.mode === 'percent' && Number(disc.percent) > 0) {
+    discountPercent = Number(disc.percent);
+    discountAmount = Math.round(beforeGst * discountPercent / 100 * 100) / 100;
+    afterDiscount = Math.max(0, Math.round((beforeGst - discountAmount) * 100) / 100);
+  } else if (disc.mode === 'amount' && Number(disc.amount) > 0) {
+    discountAmount = Math.min(Number(disc.amount), beforeGst);
+    discountPercent = beforeGst > 0 ? Math.round(discountAmount / beforeGst * 10000) / 100 : 0;
+    afterDiscount = Math.max(0, Math.round((beforeGst - discountAmount) * 100) / 100);
+  }
+  // Match ledger apply_discount percent-on-grand equivalence for percent mode:
+  // taxable after % = beforeGst * (1 - pct/100); GST on that.
+  const gstAmount = gstPercent > 0 ? Math.round(afterDiscount * gstPercent / 100 * 100) / 100 : 0;
+  const grandTotal = Math.round((afterDiscount + gstAmount) * 100) / 100;
+  return {
+    sliding, casement, other,
+    totalAreaSqft: Math.round((sliding.areaSqft + casement.areaSqft + other.areaSqft) * 10000) / 10000,
+    addServices, productsTotal, beforeGst,
+    discountMode: disc.mode || 'off', discountPercent, discountAmount,
+    afterDiscount, gstPercent, gstAmount, grandTotal,
+  };
+}
+function renderCommercialTotalsPanel() {
+  const host = $('cartCommercialTotals');
+  if (!host) return;
+  const filt = String(state.quoteGroupFilter || 'All');
+  const lines = (state.lines || []).filter((ln) => filt === 'All' || lineQuoteGroup(ln) === filt);
+  const b = quoteCommercialBreakdown(lines);
+  const row = (lab, val, opts) => {
+    const strong = opts && opts.strong;
+    return `<div class="ct-row${strong ? ' ct-strong' : ''}"><span>${lab}</span><span>${val}</span></div>`;
+  };
+  const bucket = (lab, bk) => {
+    if (!(bk.qty || bk.amount || bk.areaSqft)) return '';
+    const avg = bk.avgRate != null ? ` · avg ${money(bk.avgRate)}/sft` : '';
+    return row(lab, `${bk.qty} Nos · ${bk.areaSqft} sft · ${money(bk.amount)}${avg}`);
+  };
+  let html = '<div class="ct-title">Quote totals</div>';
+  html += bucket('Sliding windows', b.sliding);
+  html += bucket('Casements', b.casement);
+  html += bucket('Other', b.other);
+  html += row('Total area', `${b.totalAreaSqft} Sq.Ft.`);
+  html += row('Add services', money(b.addServices));
+  html += row('Total before GST', money(b.beforeGst));
+  if (b.discountMode && b.discountMode !== 'off') {
+    const pct = b.discountPercent ? ` (${b.discountPercent}% of quote)` : '';
+    html += row('Discount', money(b.discountAmount) + pct);
+    html += row('Total after discount', money(b.afterDiscount));
+  }
+  html += row(`GST ${b.gstPercent}%`, money(b.gstAmount));
+  html += row('Grand total', money(b.grandTotal), { strong: true });
+  host.innerHTML = html;
+}
 function updateLiveCartTotal() {
   let sum = 0, any = false;
   const filt = String(state.quoteGroupFilter || 'All');
   (state.lines || []).forEach((ln) => {
     if (filt !== 'All' && lineQuoteGroup(ln) !== filt) return;
+    if (isLineCancelled(ln)) { stampLineAmount(ln); return; }
     stampLineAmount(ln);
     const a = lineLiveAmount(ln);
     if (a != null && a > 0) { sum += a; any = true; }
   });
   if (!$('cartTotal')) return;
-  if (any) $('cartTotal').textContent = money(sum);
+  const br = quoteCommercialBreakdown(
+    (state.lines || []).filter((ln) => filt === 'All' || lineQuoteGroup(ln) === filt)
+  );
+  if (br && br.grandTotal != null) $('cartTotal').textContent = money(br.grandTotal);
+  else if (any) $('cartTotal').textContent = money(sum);
   else if (filt === 'All' && state.lastResult && state.lastResult.price && state.lastResult.price.total != null)
     $('cartTotal').textContent = money(state.lastResult.price.total);
   else $('cartTotal').textContent = money(0);
+  renderCommercialTotalsPanel();
 }
+function markdownEmphasisToHtml(text) {
+  const raw = String(text || '');
+  if (!raw) return '';
+  const esc = (s) => String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return raw.split('\n').map((para) => {
+    let out = '', i = 0;
+    while (i < para.length) {
+      let hit = null;
+      for (const m of ['**', '__']) {
+        if (para.startsWith(m, i)) {
+          const end = para.indexOf(m, i + m.length);
+          if (end !== -1) { hit = { m, end }; break; }
+        }
+      }
+      if (hit) {
+        out += '<strong>' + esc(para.slice(i + hit.m.length, hit.end)) + '</strong>';
+        i = hit.end + hit.m.length;
+      } else {
+        let nxt = para.length;
+        for (const m of ['**', '__']) {
+          const p = para.indexOf(m, i);
+          if (p !== -1) nxt = Math.min(nxt, p);
+        }
+        out += esc(para.slice(i, nxt));
+        i = nxt > i ? nxt : i + 1;
+      }
+    }
+    return out;
+  }).join('<br/>');
+}
+function refreshQuoteCopyPreview() {
+  const d = ($('printDescription') && $('printDescription').value)
+    || ($('projDescription') && $('projDescription').value) || '';
+  const t = ($('printTerms') && $('printTerms').value)
+    || ($('projTerms') && $('projTerms').value) || '';
+  const box = $('quoteCopyPreview');
+  if (!box) return;
+  const dh = markdownEmphasisToHtml(d);
+  const th = markdownEmphasisToHtml(t);
+  if (!dh && !th) { box.innerHTML = '<span class="muted">No description / terms yet</span>'; return; }
+  box.innerHTML = (dh ? `<div class="qcp-body">${dh}</div>` : '')
+    + (th ? `<div class="qcp-terms muted">${th}</div>` : '');
+}
+
+function renderLineAddonsPanel() {
+  const panel = $('lineAddonsPanel');
+  const list = $('lineAddonsList');
+  if (!panel || !list) return;
+  const i = state.selectedLine;
+  const ln = (state.lines || [])[i];
+  if (i == null || i < 0 || !ln) {
+    panel.style.display = 'none';
+    list.innerHTML = '';
+    return;
+  }
+  panel.style.display = '';
+  persistLineAddons(ln);
+  const rows = normalizeLineAddons(ln);
+  if (!rows.length) {
+    list.innerHTML = '<div class="muted" style="font-size:.75rem">No add-ons yet — click + add-on (e.g. Automatic system).</div>';
+  } else {
+    list.innerHTML = rows.map((a, ai) => `
+      <div class="line-addon-row" data-ai="${ai}">
+        <div><label class="l">Name</label><input data-af="name" value="${esc(a.name || '')}"/></div>
+        <div><label class="l">Spec / note</label><input data-af="note" value="${esc(a.note || '')}"/></div>
+        <div><label class="l">Qty</label><input data-af="qty" type="number" min="0" step="1" value="${a.qty != null ? a.qty : 1}"/></div>
+        <div><label class="l">Rate</label><input data-af="rate" type="number" min="0" step="0.01" value="${a.rate != null ? a.rate : ''}"/></div>
+        <div><label class="l">Amount</label><div style="font-weight:600;padding:.35rem 0">${money(a.amount)}</div></div>
+        <div><button class="btn ghost sm" type="button" data-adel="${ai}" title="Remove">×</button></div>
+      </div>`).join('');
+  }
+  // Also mirror under lineSpecs
+  const specs = $('lineSpecs');
+  if (specs && rows.length) {
+    const block = rows.map(a => {
+      const note = a.note ? (' — ' + a.note) : '';
+      return `<div><span class="muted">Add-on</span><div>+ ${esc(a.name)}${esc(note)} · ${a.qty}×${money(a.rate)} = ${money(a.amount)}</div></div>`;
+    }).join('');
+    if (!specs.dataset.addonsMounted) {
+      specs.insertAdjacentHTML('beforeend', '<div id="lineSpecsAddons">' + block + '</div>');
+      specs.dataset.addonsMounted = '1';
+    } else {
+      const host = $('lineSpecsAddons');
+      if (host) host.innerHTML = block;
+      else specs.insertAdjacentHTML('beforeend', '<div id="lineSpecsAddons">' + block + '</div>');
+    }
+  } else if ($('lineSpecsAddons')) {
+    $('lineSpecsAddons').innerHTML = '';
+  }
+  list.querySelectorAll('input[data-af]').forEach(inp => {
+    inp.onchange = inp.oninput = () => {
+      const row = inp.closest('[data-ai]');
+      const ai = row ? +row.dataset.ai : -1;
+      const cur = normalizeLineAddons(ln);
+      if (!cur[ai]) return;
+      const f = inp.dataset.af;
+      if (f === 'qty' || f === 'rate') cur[ai][f] = Number(inp.value || 0);
+      else cur[ai][f] = inp.value;
+      cur[ai].amount = Math.round((Number(cur[ai].qty) || 0) * (Number(cur[ai].rate) || 0) * 100) / 100;
+      ln.addons = cur;
+      persistLineAddons(ln);
+      stampLineAmount(ln);
+      invalidatePdfCache();
+      renderCart();
+      updateLiveCartTotal();
+      renderLineAddonsPanel();
+    };
+  });
+  list.querySelectorAll('[data-adel]').forEach(btn => {
+    btn.onclick = () => {
+      const cur = normalizeLineAddons(ln);
+      cur.splice(+btn.dataset.adel, 1);
+      ln.addons = cur;
+      persistLineAddons(ln);
+      stampLineAmount(ln);
+      invalidatePdfCache();
+      renderCart();
+      updateLiveCartTotal();
+      renderLineAddonsPanel();
+    };
+  });
+}
+
+
 function mm(n){
   if (n == null || n === '') return '—';
   const v = Number(n);
@@ -5137,6 +5467,7 @@ function quoteQtyBreakdown(lines) {
   const counts = {};
   (lines || []).forEach(ln => {
     if (!ln) return;
+    if (typeof isLineCancelled === 'function' && isLineCancelled(ln)) return;
     const qty = Math.max(parseInt(ln.qty, 10) || 1, 0);
     if (!qty) return;
     const typ = String(ln.productType || (ln.options && ln.options.productType) || '').toLowerCase();
@@ -6063,9 +6394,9 @@ function renderCart() {
     visible.forEach(({ ln, i }) => {
       const g = lineQuoteGroup(ln);
       if (showHeaders && g !== lastGroup) {
-        const gQty = (state.lines || []).filter(x => lineQuoteGroup(x) === g).reduce((s, x) => s + (+x.qty || 0), 0);
+        const gQty = (state.lines || []).filter(x => lineQuoteGroup(x) === g && !isLineCancelled(x)).reduce((s, x) => s + (+x.qty || 0), 0);
         let gAmt = 0, gAny = false;
-        (state.lines || []).filter(x => lineQuoteGroup(x) === g).forEach(x => {
+        (state.lines || []).filter(x => lineQuoteGroup(x) === g && !isLineCancelled(x)).forEach(x => {
           const a = lineLiveAmount(x);
           if (a != null && a > 0) { gAmt += a; gAny = true; }
         });
@@ -6076,18 +6407,26 @@ function renderCart() {
       rowNo += 1;
       const serialCode = designSerialLabel(i, ln).split(' · ')[0];
       const shArea = ln.options && ln.options.showerQuote && ln.options.showerQuote.areaSqft;
-      const rowBg = i===state.selectedLine ? '#f3faf6' : '';
+      const cancelled = isLineCancelled(ln);
+      const addons = normalizeLineAddons(ln);
+      const rowBg = cancelled ? '' : (i===state.selectedLine ? '#f3faf6' : '');
+      const amtTxt = money(lineLiveAmount(ln));
+      const addonBits = addons.map(a => {
+        const note = a.note ? (' — ' + esc(a.note)) : '';
+        return '<div class="muted" style="font-size:.7rem">+ ' + esc(a.name) + note + ' · ' + a.qty + '×' + money(a.rate) + ' = ' + money(a.amount) + '</div>';
+      }).join('');
       html += `
-    <tr style="${rowBg?'background:'+rowBg:''}">
+    <tr class="${cancelled?'cart-row-cancelled':''}" style="${rowBg?'background:'+rowBg:''}">
       <td>${esc(serialCode)}</td>
-      <td>${cartLineProductLabel(ln)}${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${esc(ln.locationName||ln.positionName)}</div>`:''}${shArea?`<div class="muted" style="font-size:.72rem">${esc(shArea)} sft</div>`:''}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}${showHeaders?'':`<div class="muted" style="font-size:.68rem">${esc(g)}</div>`}</td>
+      <td>${cancelled?'<span class="cart-cancelled-mark">CANCELLED</span>':''}<span class="${cancelled?'cart-strike':''}">${cartLineProductLabel(ln)}</span>${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${esc(ln.locationName||ln.positionName)}</div>`:''}${shArea?`<div class="muted" style="font-size:.72rem">${esc(shArea)} sft</div>`:''}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}${showHeaders?'':`<div class="muted" style="font-size:.68rem">${esc(g)}</div>`}${addonBits}</td>
       <td><input data-f="width" data-i="${i}" type="number" value="${ln.width != null ? ln.width : ''}" style="width:70px"/>×<input data-f="height" data-i="${i}" type="number" value="${ln.height != null ? ln.height : ''}" style="width:70px"/></td>
       <td><input data-f="qty" data-i="${i}" type="number" min="1" value="${ln.qty != null ? ln.qty : ''}" style="width:56px"/></td>
       <td style="font-size:.8rem">${ln.glass||''}<br>${ln.colour||''}</td>
-      <td style="white-space:nowrap;font-weight:600">${money(lineLiveAmount(ln))}</td>
+      <td style="white-space:nowrap;font-weight:600" class="${cancelled?'cart-strike':''}">${amtTxt}</td>
       <td class="actions-inline">
         <button class="btn ghost sm" data-sel="${i}">Edit</button>
         <button class="btn ghost sm" data-dup="${i}">Dup</button>
+        <button class="btn ghost sm" data-cancel="${i}">${cancelled?'Uncancel':'Cancel'}</button>
         <button class="btn ghost sm" data-del="${i}">Del</button>
       </td>
     </tr>`;
@@ -6189,6 +6528,20 @@ function renderCart() {
     renderCart(); scheduleSave();
   });
   $('cartBody').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { state.lines.splice(+b.dataset.del,1); invalidatePdfCache(); renderCart(); scheduleSave(); });
+  $('cartBody').querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => {
+    const i = +b.dataset.cancel;
+    const ln = state.lines[i];
+    if (!ln) return;
+    const next = !isLineCancelled(ln);
+    ln.cancelled = next;
+    ln.options = Object.assign({}, ln.options || {}, { cancelled: next });
+    stampLineAmount(ln);
+    invalidatePdfCache();
+    renderCart();
+    scheduleSave();
+    refreshPreview();
+    updateLiveCartTotal();
+  });
   const filtEntries = visible;
   const items = filtEntries.reduce((s,e)=>s+(+e.ln.qty||0),0);
   const groups = quoteQtyBreakdown(filtEntries.map(e => e.ln));
@@ -6542,7 +6895,13 @@ async function refreshPreview() {
       return true;
     }).slice(0, 5);
     const rows = [...specEntries, ...extra];
-    $('lineSpecs').innerHTML = rows.map(([k,v])=>`<div><span class="muted">${k}</span><div>${v??'—'}</div></div>`).join('');
+    const addonRows = normalizeLineAddons(ln).map(a => {
+      const note = a.note ? (' — ' + a.note) : '';
+      return ['Add-on', `+ ${a.name}${note} · ${a.qty}×${money(a.rate)} = ${money(a.amount)}`];
+    });
+    if (isLineCancelled(ln)) rows.unshift(['Status', 'CANCELLED']);
+    $('lineSpecs').innerHTML = [...rows, ...addonRows].map(([k,v])=>`<div><span class="muted">${k}</span><div>${v??'—'}</div></div>`).join('');
+    if (typeof renderLineAddonsPanel === 'function') renderLineAddonsPanel();
   } catch(e) {
     $('livePreview').innerHTML = `<span class="muted">${e.message}</span>`;
   }
@@ -7689,8 +8048,16 @@ function hydrateCartLines(lines) {
 function slimCartLine(ln, { keepPreviewSvg = false } = {}) {
   const obj = hydrateCartLine(ln);
   if (!obj || typeof obj !== 'object') return null;
+  persistLineAddons(obj);
+  stampLineAmount(obj);
   const copy = { ...obj };
   if (!copy.product && copy.productId) copy.product = copy.productId;
+  copy.addons = normalizeLineAddons(obj);
+  copy.cancelled = !!isLineCancelled(obj);
+  copy.options = Object.assign({}, copy.options || {}, {
+    addons: copy.addons,
+    cancelled: copy.cancelled,
+  });
   if (copy.preview && typeof copy.preview === 'object') {
     const p = { ...copy.preview };
     if (!keepPreviewSvg) {
@@ -10994,6 +11361,23 @@ function attachRichPaste(el) {
 }
 
 ['projDescription', 'projTerms', 'printDescription', 'printTerms', 'coTerms'].forEach(id => attachRichPaste($(id)));
+['projDescription', 'projTerms', 'printDescription', 'printTerms'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('input', () => { if (typeof refreshQuoteCopyPreview === 'function') refreshQuoteCopyPreview(); });
+});
+if ($('btnAddLineAddon')) {
+  $('btnAddLineAddon').onclick = () => {
+    const i = state.selectedLine;
+    const ln = (state.lines || [])[i];
+    if (!ln) { toast('Select a cart line first'); return; }
+    const rows = normalizeLineAddons(ln);
+    rows.push({ id: 'ad' + Date.now().toString(36), name: '', note: '', qty: 1, rate: 0, amount: 0 });
+    ln.addons = rows;
+    persistLineAddons(ln);
+    renderLineAddonsPanel();
+    invalidatePdfCache();
+  };
+}
 
 function stampSelectedDraftAmount() {
   const ln = state.lines[state.selectedLine];
@@ -11291,6 +11675,7 @@ if ($('btnPrintCopyToggle')) {
     if (open) {
       syncPrintCopyTwins('proj');
       if (typeof refreshQuoteCopySuggestions === 'function') refreshQuoteCopySuggestions();
+      if (typeof refreshQuoteCopyPreview === 'function') refreshQuoteCopyPreview();
     }
   };
 }

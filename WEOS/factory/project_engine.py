@@ -155,6 +155,16 @@ def _persist_window_options(
             options["mesh"] = True
     except Exception:
         pass
+    # Per-window commercial extras + soft-cancel flag
+    try:
+        from WEOS.factory.line_addons import persist_cancelled, persist_line_addons
+
+        persist_line_addons(options, line)
+        persist_cancelled(options, line)
+        if line.get("cancelled") is True or line.get("canceled") is True:
+            options["cancelled"] = True
+    except Exception:
+        pass
     return options
 
 
@@ -1440,7 +1450,9 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
 
 
 def combine_lines(line_results: list[dict[str, Any]]) -> dict[str, Any]:
-    total_items = sum(int(r.get("qty", 0)) for r in line_results)
+    from WEOS.factory.line_addons import is_line_cancelled
+
+    total_items = 0
     currency = "INR"
     grand = 0.0
     commercial_grand = 0.0
@@ -1454,6 +1466,10 @@ def combine_lines(line_results: list[dict[str, Any]]) -> dict[str, Any]:
     track_roll: list[dict[str, Any]] = []
 
     for r in line_results:
+        cancelled = bool(r.get("cancelled")) or is_line_cancelled(r)
+        if cancelled:
+            continue
+        total_items += int(r.get("qty", 0) or 0)
         currency = (r.get("price") or {}).get("currency", currency)
         total = float((r.get("price") or {}).get("total", 0))
         grand += total
@@ -1562,6 +1578,17 @@ def calculate_project(
                 co = ""
         quotation_id = new_quotation_id(co or None)
     price_total = combined.get("commercialGrandTotal", combined["grandTotal"])
+    commercial = None
+    try:
+        from WEOS.factory.quote_commercial import quote_commercial_breakdown
+
+        commercial = quote_commercial_breakdown(
+            public_lines,
+            discount=project.get("quoteDiscount") if isinstance(project, Mapping) else None,
+        )
+        combined["commercialBreakdown"] = commercial
+    except Exception:
+        commercial = None
     return {
         "projectId": project.get("projectId"),
         "name": project.get("name"),
@@ -1569,6 +1596,7 @@ def calculate_project(
         "quotationId": quotation_id,
         "lines": public_lines,
         "combined": combined,
+        "commercialBreakdown": commercial,
         "optimization": optimization,
         "price": {
             "currency": combined["currency"],

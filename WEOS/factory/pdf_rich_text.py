@@ -29,6 +29,40 @@ def has_rich_markers(text: str) -> bool:
     return bool(_HTML_BOLD.search(raw))
 
 
+def parse_emphasis_spans(text: str) -> list[tuple[str, bool]]:
+    """Public: split markdown/HTML emphasis into ``(fragment, bold)`` spans."""
+    return _parse_spans(text)
+
+
+def markdown_emphasis_to_html(text: str, *, multiline: bool = True) -> str:
+    """Escape HTML, then turn ``**bold**`` / ``__bold__`` into ``<strong>``.
+
+    Safe for scanner / public HTML: raw ``<`` never becomes markup, and the
+    ``**`` markers themselves are removed so they are not visible.
+    """
+    from html import escape
+
+    raw = str(text or "")
+    if not raw:
+        return ""
+    parts: list[str] = []
+    paras = raw.split("\n") if multiline else [raw]
+    for i, para in enumerate(paras):
+        if multiline and i:
+            parts.append("<br/>")
+        if not para:
+            continue
+        for frag, bold in _parse_spans(para):
+            if not frag:
+                continue
+            esc = escape(frag, quote=False)
+            if bold:
+                parts.append(f"<strong>{esc}</strong>")
+            else:
+                parts.append(esc)
+    return "".join(parts)
+
+
 def html_paste_to_markdown(html: str) -> str:
     """Convert clipboard HTML (Word / ChatGPT rich copy) to markdown-like plain text."""
     raw = str(html or "").strip()

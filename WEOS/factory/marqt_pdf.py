@@ -1405,9 +1405,18 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         w = float(line.get("width") or 0)
         h = float(line.get("height") or 0)
         qty = int(line.get("qty") or 1)
+        try:
+            from WEOS.factory.line_addons import is_line_cancelled, line_addons_for_display
+
+            line_cancelled = is_line_cancelled(line)
+            line_addon_rows = line_addons_for_display(line)
+        except Exception:
+            line_cancelled = bool(line.get("cancelled") or line.get("canceled"))
+            line_addon_rows = []
         area = _area_sqft(w, h) * qty
-        total_area += _area_sqft(w, h) * qty
-        total_qty += qty
+        if not line_cancelled:
+            total_area += _area_sqft(w, h) * qty
+            total_qty += qty
 
         selling = line.get("selling") or {}
         rate = selling.get("sellingRate")
@@ -1440,7 +1449,10 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
                 rate = float(amount) / max(_area_sqft(w, h) * qty, 0.001)
             except (TypeError, ValueError):
                 rate = 0
-        grand += float(amount or 0)
+        if not line_cancelled:
+            grand += float(amount or 0)
+        else:
+            amount = float(amount or 0)
 
         from WEOS.factory.line_kind import design_serial_label, line_location_name
 
@@ -1467,6 +1479,11 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         else:
             set_font(c, 9, bold=True)
             c.drawString(M + 2, y + 4, code)
+        if line_cancelled:
+            c.setFillColorRGB(0.72, 0.12, 0.12)
+            set_font(c, 8, bold=True)
+            c.drawString(M + 2, y - 10, "CANCELLED")
+            c.setFillColorRGB(*accent)
         try:
             draw_line_elevation(
                 c, line, M, y - draw_h, draw_w, draw_h, project_id=str(payload.get("projectId") or "")
@@ -1508,17 +1525,61 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
 
         # Qty / Rate / Amount — currency symbol via Unicode font
         set_font(c, 8)
+        if line_cancelled:
+            c.setFillColorRGB(0.72, 0.12, 0.12)
         c.drawRightString(col_qty, y, str(qty))
         rate_str = f"{float(rate):,.2f}" if rate is not None else "—"
         c.drawRightString(col_rate, y, rate_str)
         set_font(c, 8, bold=True)
-        c.drawRightString(col_amt, y, f"{float(amount):,.2f}")
+        amt_str = f"{float(amount):,.2f}"
+        c.drawRightString(col_amt, y, amt_str)
+        if line_cancelled:
+            try:
+                aw = c.stringWidth(amt_str, c._fontname, 8)
+            except Exception:
+                aw = len(amt_str) * 4.5
+            c.setStrokeColorRGB(0.72, 0.12, 0.12)
+            c.setLineWidth(0.7)
+            c.line(col_amt - aw, y + 2, col_amt, y + 2)
+            c.setFillColorRGB(0, 0, 0)
+
+        # Per-window add-ons listed under this design (not orphaned at the bottom)
+        addon_y = min(sy - 2, y - 12)
+        if line_addon_rows:
+            from WEOS.factory.line_addons import addon_label
+
+            for ad in line_addon_rows:
+                if addon_y < bottom_limit + 20:
+                    set_font(c, 7)
+                    c.setFillColorRGB(0.5, 0.5, 0.5)
+                    c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
+                    c.showPage()
+                    page_no += 1
+                    addon_y = header(page_no)
+                c.setFillColorRGB(0.25, 0.25, 0.25)
+                set_font(c, 7)
+                lab = addon_label(ad)
+                _draw_fit(c, f"+ {lab}", col_spec, addon_y, spec_max_w, 7.0, bold=False, minimum=6.0)
+                try:
+                    aq = ad.get("qty")
+                    ar = float(ad.get("rate") or 0)
+                    aa = float(ad.get("amount") or 0)
+                except (TypeError, ValueError):
+                    aq, ar, aa = ad.get("qty"), 0.0, 0.0
+                c.drawRightString(col_qty, addon_y, str(aq if aq is not None else ""))
+                c.drawRightString(col_rate, addon_y, f"{ar:,.2f}" if ar else "")
+                if line_cancelled:
+                    c.setFillColorRGB(0.72, 0.12, 0.12)
+                set_font(c, 7, bold=True)
+                c.drawRightString(col_amt, addon_y, f"{aa:,.2f}" if aa else "")
+                c.setFillColorRGB(0, 0, 0)
+                addon_y -= 11
 
         # row separator
         if specs_paged[0]:
-            row_bottom = sy - 2
+            row_bottom = addon_y - 2 if line_addon_rows else sy - 2
         else:
-            row_bottom = min(sy - 2, y - draw_h - 10)
+            row_bottom = min(addon_y - 2 if line_addon_rows else sy - 2, y - draw_h - 10)
         c.setStrokeColorRGB(0.85, 0.85, 0.85)
         c.setLineWidth(0.5)
         c.line(M, row_bottom, W - M, row_bottom)
@@ -1535,19 +1596,39 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
 
     gst_pct = 18.0
     price = payload.get("price") or {}
+    commercial = None
+    try:
+        from WEOS.factory.quote_commercial import format_commercial_totals_rows, quote_commercial_breakdown
+
+        commercial = payload.get("commercialBreakdown")
+        if not isinstance(commercial, dict):
+            commercial = (payload.get("combined") or {}).get("commercialBreakdown")
+        if not isinstance(commercial, dict):
+            commercial = quote_commercial_breakdown(
+                lines,
+                discount=payload.get("quoteDiscount"),
+            )
+    except Exception:
+        commercial = None
+
     # Prefer commercial grand; fall back
-    basic = float(grand or price.get("total") or (payload.get("combined") or {}).get("grandTotal") or 0)
-    # If amounts already include GST from cost engine, show as project total with GST split estimate
-    # For selling amounts we treat as basic + GST unless payload says otherwise
-    if payload.get("sellingIncludesGst"):
-        project = basic
-        gst_amt = round(project * gst_pct / (100 + gst_pct), 2)
-        basic_ex = round(project - gst_amt, 2)
+    if isinstance(commercial, dict) and commercial.get("grandTotal") is not None:
+        basic_ex = float(commercial.get("afterDiscount") or commercial.get("beforeGst") or 0)
+        gst_amt = float(commercial.get("gstAmount") or 0)
+        project = float(commercial.get("grandTotal") or 0)
+        gst_pct = float(commercial.get("gstPercent") or 18)
+        if commercial.get("totalAreaSqft") is not None:
+            total_area = float(commercial.get("totalAreaSqft") or total_area)
     else:
-        # Assume selling amounts are ex-GST (dealer style) → add GST
-        basic_ex = round(basic, 2)
-        gst_amt = round(basic_ex * gst_pct / 100.0, 2)
-        project = round(basic_ex + gst_amt, 2)
+        basic = float(grand or price.get("total") or (payload.get("combined") or {}).get("grandTotal") or 0)
+        if payload.get("sellingIncludesGst"):
+            project = basic
+            gst_amt = round(project * gst_pct / (100 + gst_pct), 2)
+            basic_ex = round(project - gst_amt, 2)
+        else:
+            basic_ex = round(basic, 2)
+            gst_amt = round(basic_ex * gst_pct / 100.0, 2)
+            project = round(basic_ex + gst_amt, 2)
 
     y -= 8
     c.setFillColorRGB(*primary)
@@ -1556,21 +1637,45 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     y -= 14
     c.setFillColorRGB(0, 0, 0)
     set_font(c, 8)
-    try:
-        from WEOS.factory.line_kind import format_qty_totals_lines, quote_qty_breakdown
+    if isinstance(commercial, dict):
+        try:
+            from WEOS.factory.quote_commercial import format_commercial_totals_rows
 
-        qty_lines = format_qty_totals_lines(quote_qty_breakdown(lines), fallback_qty=total_qty)
-    except Exception:
-        qty_lines = [f"Items: {total_qty} Nos"]
-    c.drawString(M, y, f"Total Area: {round(total_area, 3)} Sq.Ft.")
-    y -= 12
-    for ql in qty_lines:
-        c.drawString(M, y, ql)
+            for lab, val in format_commercial_totals_rows(commercial):
+                if y < bottom_limit + 24:
+                    set_font(c, 7)
+                    c.setFillColorRGB(0.5, 0.5, 0.5)
+                    c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
+                    c.showPage()
+                    page_no += 1
+                    y = header(page_no)
+                    c.setFillColorRGB(0, 0, 0)
+                    set_font(c, 8)
+                if lab == "Grand total":
+                    continue
+                c.drawString(M, y, f"{lab}:")
+                c.drawRightString(W - M, y, val)
+                y -= 12
+        except Exception:
+            commercial = None
+    if not isinstance(commercial, dict):
+        try:
+            from WEOS.factory.line_kind import format_qty_totals_lines, quote_qty_breakdown
+
+            qty_lines = format_qty_totals_lines(quote_qty_breakdown(lines), fallback_qty=total_qty)
+        except Exception:
+            qty_lines = [f"Items: {total_qty} Nos"]
+        c.drawString(M, y, f"Total Area: {round(total_area, 3)} Sq.Ft.")
         y -= 12
-    c.drawString(M, y, f"Basic / Project Value: {money_text(basic_ex)}")
-    y -= 12
-    c.drawString(M, y, f"GST @ {gst_pct:g}%: {money_text(gst_amt)}")
-    y -= 16
+        for ql in qty_lines:
+            c.drawString(M, y, ql)
+            y -= 12
+        c.drawString(M, y, f"Basic / Project Value: {money_text(basic_ex)}")
+        y -= 12
+        c.drawString(M, y, f"GST @ {gst_pct:g}%: {money_text(gst_amt)}")
+        y -= 16
+    else:
+        y -= 4
     set_font(c, 12, bold=True)
     c.setFillColorRGB(*accent)
     c.drawString(M, y, "Grand Total")

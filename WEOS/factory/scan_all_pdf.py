@@ -313,6 +313,55 @@ def render_scan_all_pdf(record: Mapping[str, Any]) -> bytes:
         c.drawString(M, y, "Available after approval")
         y -= 14
 
+    description = _txt(rec.get("description"))
+    terms = _txt(rec.get("terms"))
+    if description or terms:
+        y -= 4
+        heading("Notes & terms")
+        from WEOS.factory.pdf_fonts import set_font
+        from WEOS.factory.pdf_rich_text import flow_rich_paragraphs
+
+        text_w = W - 2 * M
+        bottom = 40.0
+
+        def _notes_new_page() -> float:
+            nonlocal y
+            c.showPage()
+            y = H - M
+            return y
+
+        if description:
+            c.setFillColorRGB(*ink)
+            y = flow_rich_paragraphs(
+                c,
+                description,
+                x=M,
+                y=y,
+                max_width=text_w,
+                font_size=9,
+                line_h=12,
+                bottom=bottom,
+                set_font=set_font,
+                on_new_page=_notes_new_page,
+                para_gap=3.0,
+            )
+            y -= 4
+        if terms:
+            c.setFillColorRGB(*muted)
+            y = flow_rich_paragraphs(
+                c,
+                terms,
+                x=M,
+                y=y,
+                max_width=text_w,
+                font_size=8,
+                line_h=11,
+                bottom=bottom,
+                set_font=set_font,
+                on_new_page=_notes_new_page,
+                para_gap=3.0,
+            )
+
     c.setFillColorRGB(*muted)
     c.setFont("Helvetica", 7)
     c.drawString(M, 22, "Powered by WEOS · live quote pack")

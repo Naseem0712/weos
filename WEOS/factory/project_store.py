@@ -682,6 +682,13 @@ def cart_quote_money(doc: Mapping[str, Any] | None) -> dict[str, float]:
     for ln in money_lines:
         if not isinstance(ln, Mapping):
             continue
+        try:
+            from WEOS.factory.line_addons import is_line_cancelled
+
+            if is_line_cancelled(ln):
+                continue
+        except Exception:
+            pass
         amt = customer_line_amount(ln)
         if amt is not None and amt > 0:
             line_sum += float(amt)

@@ -181,12 +181,26 @@ def _railing_amount(line: Mapping[str, Any]) -> float | None:
     return None
 
 
-def customer_line_amount(line: Mapping[str, Any] | None) -> float | None:
-    """Selling / grand line total (₹). Recompute from rate×size×qty when stored is 0."""
-    if not isinstance(line, Mapping):
-        return None
+def _line_addons_amount(line: Mapping[str, Any]) -> float:
+    try:
+        from WEOS.factory.line_addons import line_addons_total
+
+        return float(line_addons_total(line, include_cancelled=True) or 0.0)
+    except Exception:
+        return 0.0
+
+
+def _product_amount_raw(line: Mapping[str, Any]) -> float | None:
+    """Product/mesh selling only — never includes commercial line add-ons."""
     selling = line.get("selling") if isinstance(line.get("selling"), Mapping) else {}
     price = line.get("price") if isinstance(line.get("price"), Mapping) else {}
+    win = _money(selling.get("windowAmount"))
+    if win is not None and win > 0:
+        return round(win, 2)
+
+    stamped_add = _money(selling.get("addonsAmount") or line.get("addonsAmount"))
+    addons_now = _line_addons_amount(line)
+
     candidates = [
         selling.get("sellingAmount"),
         line.get("commercialTotal"),
@@ -200,6 +214,14 @@ def customer_line_amount(line: Mapping[str, Any] | None) -> float | None:
     for raw in candidates:
         n = _money(raw)
         if n is not None and n > 0:
+            # Full stamped total already includes addons → peel them off.
+            if stamped_add is not None and stamped_add > 0:
+                return round(max(n - stamped_add, 0.0), 2)
+            if addons_now > 0 and n >= addons_now:
+                # Older clients may have stored product+addons without addonsAmount.
+                # Prefer peeling when commercialTotal == product+addons after recompute is hard;
+                # keep stored as product when no stamp — quote_commercial peels via include_addons.
+                return round(n, 2)
             return round(n, 2)
 
     special = _railing_amount(line)
@@ -241,6 +263,8 @@ def customer_line_amount(line: Mapping[str, Any] | None) -> float | None:
             width_mm=width,
             height_mm=height,
         )
+        # Prefer windowAmount (excludes mesh? No — mesh is in sellingAmount via _add_mesh).
+        # line_sell_amount returns product+mesh in sellingAmount; windowAmount is pre-mesh.
         amt = _money((sell or {}).get("sellingAmount"))
         if amt is not None and amt > 0:
             return round(amt, 2)
@@ -249,6 +273,41 @@ def customer_line_amount(line: Mapping[str, Any] | None) -> float | None:
     if sale_unit.lower() in ("opening", "pc", "nos", "each") or (not width and not height):
         return round(rate_n * qty, 2)
     return None
+
+
+def customer_line_product_amount(line: Mapping[str, Any] | None) -> float | None:
+    """Product selling only (excludes per-line add-ons)."""
+    if not isinstance(line, Mapping):
+        return None
+    return _product_amount_raw(line)
+
+
+def customer_line_amount(
+    line: Mapping[str, Any] | None,
+    *,
+    include_addons: bool = True,
+) -> float | None:
+    """Selling / grand line total (₹). Includes commercial line add-ons by default."""
+    if not isinstance(line, Mapping):
+        return None
+    selling = line.get("selling") if isinstance(line.get("selling"), Mapping) else {}
+    addons_amt = _line_addons_amount(line)
+    # Trusted full stamp
+    if include_addons:
+        stamped_add = _money(selling.get("addonsAmount") or line.get("addonsAmount"))
+        full = _money(selling.get("sellingAmount") or line.get("commercialTotal") or line.get("sellingAmount"))
+        win = _money(selling.get("windowAmount"))
+        if win is not None and win > 0:
+            return round(win + addons_amt, 2)
+        if full is not None and full > 0 and stamped_add is not None:
+            return round(full, 2)
+
+    base = _product_amount_raw(line)
+    if base is None:
+        return round(addons_amt, 2) if include_addons and addons_amt > 0 else None
+    if not include_addons:
+        return round(base, 2)
+    return round(float(base) + addons_amt, 2)
 
 
 def line_size_label(line: Mapping[str, Any] | None) -> str:
@@ -278,6 +337,13 @@ def public_product_row(index: int, line: Mapping[str, Any] | None) -> dict[str, 
         qty_n: Any = int(round(float(qty or 1)))
     except (TypeError, ValueError):
         qty_n = qty or 1
+    from WEOS.factory.line_addons import (
+        addon_label,
+        is_line_cancelled,
+        line_addons_for_display,
+    )
+
+    cancelled = is_line_cancelled(line)
     amt = customer_line_amount(line)
     selling = line.get("selling") if isinstance(line.get("selling"), Mapping) else {}
     rate = line.get("sellingRate")
@@ -288,6 +354,7 @@ def public_product_row(index: int, line: Mapping[str, Any] | None) -> dict[str, 
     rate_n = _money(rate)
     if rate_n is not None and rate_n > 0:
         rate_label = f"{rate_n:,.2f}" + (f" / {sale_unit}" if sale_unit else "")
+    addons = line_addons_for_display(line)
     return {
         "serial": serial or design_serial_label(index, None),
         "location": loc or "—",
@@ -300,6 +367,9 @@ def public_product_row(index: int, line: Mapping[str, Any] | None) -> dict[str, 
         "colour": line_colour(line) or "—",
         "rate": rate_label,
         "amount": amt,
+        "cancelled": cancelled,
+        "addons": addons,
+        "addonLabels": [addon_label(a) for a in addons],
         "changeFlag": str(line.get("changeFlag") or "").strip().lower() or None,
     }
 

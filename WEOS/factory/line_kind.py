@@ -523,6 +523,13 @@ def quote_qty_breakdown(lines: Any) -> list[tuple[str, int]]:
         if not isinstance(line, Mapping):
             continue
         try:
+            from WEOS.factory.line_addons import is_line_cancelled
+
+            if is_line_cancelled(line):
+                continue
+        except Exception:
+            pass
+        try:
             qty = int(round(float(line.get("qty") or line.get("quantity") or 1)))
         except (TypeError, ValueError):
             qty = 1
