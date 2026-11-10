@@ -61,6 +61,8 @@ def main() -> int:
         _line("casement", "W01", 10000),
         _line("fold", "F01", 451792),
     ]
+    first = load_project("PRJ-VER-1")
+    created_stamp = first.get("createdAt")
     saved = save_project(doc, action="update")
     loaded = load_project("PRJ-VER-1")
     flags = {ln.get("locationName"): ln.get("changeFlag") for ln in loaded.get("lines") or []}
@@ -71,13 +73,30 @@ def main() -> int:
     removed_locs = [ln.get("locationName") for ln in loaded.get("removedLines") or []]
     if "W02" not in removed_locs:
         fails.append(f"removed flag missing: {removed_locs}")
-    if int(saved.get("version") or 0) < 2:
-        fails.append("version did not advance on correction")
+    if int(saved.get("version") or 0) != 1:
+        fails.append(f"version should stay V1, got {saved.get('version')}")
+    if int(loaded.get("version") or 0) != 1:
+        fails.append(f"loaded version should stay V1, got {loaded.get('version')}")
+    if created_stamp and loaded.get("createdAt") != created_stamp:
+        fails.append("createdAt changed on save")
+    from WEOS.factory.quote_line_versions import quote_choice_summaries, quote_edit_dates
 
-    approved = save_project  # keep lint quiet
+    choices = quote_choice_summaries(loaded)
+    if choices.get("versions"):
+        fails.append(f"choice list still exposes saved versions: {choices.get('versions')}")
+
+    # Second save must still be one V1 document (no version flood).
+    again = dict(loaded)
+    again["lines"] = list(loaded.get("lines") or []) + [_line("sliding", "W03", 5000)]
+    second = save_project(again, action="update")
+    if int(second.get("version") or 0) != 1:
+        fails.append(f"second save left version {second.get('version')}")
+    if created_stamp and second.get("createdAt") != created_stamp:
+        fails.append("createdAt changed on second save")
+
     from WEOS.factory.project_store import set_project_status
 
-    approved = set_project_status("PRJ-VER-1", "approved", note="Approved version", approved_version=int(loaded.get("version") or 2))
+    approved = set_project_status("PRJ-VER-1", "approved", note="Approved version", approved_version=1)
     if str(approved.get("status")) != "approved":
         fails.append("approve did not stick")
     if not approved.get("approvedVersion"):
@@ -90,6 +109,8 @@ def main() -> int:
     recovered = load_project("PRJ-VER-1")
     if not recovered.get("lines"):
         fails.append("empty project did not recover version lines")
+    if int(recovered.get("version") or 0) != 1:
+        fails.append("recovered project left multi-version")
     led = build_master_ledger(project_id="PRJ-VER-1")
     ledger = led.get("ledger") or {}
     if not ledger.get("quoteCount"):
@@ -122,13 +143,37 @@ def main() -> int:
         fails.append(f"scanner missing recovered products: {locs}")
     if not (pub or {}).get("approved"):
         fails.append("scanner did not show approved")
+    if int((pub or {}).get("version") or 0) != 1:
+        fails.append(f"public scan version not V1: {(pub or {}).get('version')}")
+    if int((pub or {}).get("versionCount") or 0) != 1:
+        fails.append(f"public scan versionCount not 1: {(pub or {}).get('versionCount')}")
+
+    # 48h late-edit mark lives on the same V1 dates object.
+    late = quote_edit_dates(
+        {
+            "createdAt": "2026-01-01T00:00:00+00:00",
+            "updatedAt": "2026-01-04T00:00:00+00:00",
+        },
+        hours=48,
+    )
+    if not late.get("editedAfter48h") or "Updated" not in str(late.get("dateLine") or ""):
+        fails.append(f"48h edit mark missing: {late}")
+    early = quote_edit_dates(
+        {
+            "createdAt": "2026-01-01T00:00:00+00:00",
+            "updatedAt": "2026-01-01T12:00:00+00:00",
+        },
+        hours=48,
+    )
+    if early.get("editedAfter48h") or early.get("updatedOn"):
+        fails.append(f"early edit should not mark Updated: {early}")
 
     if fails:
         print("FAIL")
         for row in fails:
             print(" -", row)
         return 1
-    print("OK quote versions recover, approve, ledger, flags")
+    print("OK quote versions single V1, recover, approve, ledger, flags, 48h dates")
     return 0
 
 

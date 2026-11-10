@@ -235,13 +235,15 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
     _assert_customer_owner_stable(prev_doc, doc)
     _stamp_quote_identity(doc)
     now = datetime.now(timezone.utc).isoformat()
-    if "createdAt" not in doc:
+    # Generate date sticks on first create; every later save only moves updatedAt.
+    if isinstance(prev_doc, dict) and prev_doc.get("createdAt"):
+        doc["createdAt"] = prev_doc["createdAt"]
+    elif not str(doc.get("createdAt") or "").strip():
         doc["createdAt"] = now
     doc["updatedAt"] = now
-    ver = int(doc.get("version", 0))
-    if bump_version:
-        ver += 1
-    doc["version"] = ver
+    # Single V1 document: overwrite in place — never append saved v2/v3… snapshots.
+    doc["version"] = 1
+    ver = 1
     if bump_version and isinstance(prev_doc, dict):
         try:
             from WEOS.factory.quote_line_versions import remember_previous_version
@@ -249,6 +251,13 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
             remember_previous_version(doc, prev_doc)
         except Exception:
             _log.exception("quote version snapshot skipped for %s", pid)
+    else:
+        try:
+            from WEOS.factory.quote_line_versions import collapse_quote_version_history
+
+            collapse_quote_version_history(doc, keep_previous=True)
+        except Exception:
+            doc["quoteVersions"] = []
 
     # undo stack (last 20 snapshots of lines+meta for client undo)
     undo = list(doc.get("_undoStack") or [])
@@ -256,7 +265,7 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
         prev = json.loads(project_path(pid).read_text(encoding="utf-8"))
         undo.append(
             {
-                "version": prev.get("version"),
+                "version": 1,
                 "lines": prev.get("lines"),
                 "name": prev.get("name"),
                 "customer": prev.get("customer"),
@@ -270,9 +279,13 @@ def save_project(doc: dict[str, Any], *, bump_version: bool = True, action: str 
         log.append({"at": now, "action": str(action or "save"), "version": ver})
         doc["revisionLog"] = log[-80:]
 
-    if path.is_file() and bump_version:
-        snap = PROJECTS_DIR / "versions" / f"{pid}_v{ver - 1}.json"
-        shutil.copy2(path, snap)
+    # Prune any legacy versions/{pid}_vN.json ghosts — server keeps one live V1 only.
+    try:
+        from WEOS.factory.quote_line_versions import prune_project_version_files
+
+        prune_project_version_files(pid)
+    except Exception:
+        _log.debug("version file prune skipped for %s", pid, exc_info=True)
 
     # strip runtime
     out = {k: v for k, v in doc.items() if k != "_path"}
@@ -601,6 +614,24 @@ def load_project(project_id: str) -> dict[str, Any]:
                 save_project(doc, bump_version=False, action="recover_lines")
             except Exception:
                 _log.exception("recover lines save failed for %s", project_id)
+        else:
+            # Soft cleanup of bloated saved-vN history when the project is opened.
+            try:
+                from WEOS.factory.quote_line_versions import (
+                    collapse_quote_version_history,
+                    prune_project_version_files,
+                )
+
+                before = len(doc.get("quoteVersions") or [])
+                collapse_quote_version_history(doc, keep_previous=True)
+                pruned = prune_project_version_files(str(project_id))
+                if before > 1 or pruned:
+                    try:
+                        save_project(doc, bump_version=False, action="collapse_versions")
+                    except Exception:
+                        _log.debug("collapse versions persist skipped for %s", project_id, exc_info=True)
+            except Exception:
+                _log.debug("collapse versions skipped for %s", project_id, exc_info=True)
         stamp_change_flags(doc)
     except Exception:
         _log.exception("commercial line hydrate skipped for %s", project_id)

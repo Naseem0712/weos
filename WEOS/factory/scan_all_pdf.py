@@ -110,7 +110,23 @@ def render_scan_all_pdf(record: Mapping[str, Any]) -> bytes:
         f"Customer: {_txt(cust.get('name') or '—')}"
         + (f" · {_txt(cust.get('phone'))}" if cust.get("phone") else ""),
     )
-    y -= 18
+    y -= 12
+    date_line = _txt(rec.get("dateLine") or "")
+    if not date_line:
+        gen = _fmt_dt(rec.get("generatedAt") or rec.get("createdAt"))
+        date_line = f"Generated: {gen}"
+        if rec.get("editedAfter48h"):
+            date_line += f" · Updated: {_fmt_dt(rec.get('updatedAt'))}"
+    c.drawString(M, y, date_line[:110])
+    y -= 12
+    if rec.get("editedAfter48h"):
+        c.setFillColorRGB(0.71, 0.33, 0.14)
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(M, y, "Updated · edited after 48h")
+        y -= 12
+        c.setFillColorRGB(*muted)
+        c.setFont("Helvetica", 8)
+    y -= 6
 
     heading("Summary")
     kpis = [

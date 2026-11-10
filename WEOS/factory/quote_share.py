@@ -661,15 +661,16 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
     balance = round(taxable - total_adv, 2)
     balance_gst = round(grand - total_adv, 2)
 
-    versions: list[dict[str, Any]] = []
+    # Single V1 — do not advertise saved-vN history on the public scan page.
+    versions: list[dict[str, Any]] = [{"version": 1, "updatedAt": doc.get("updatedAt"), "grandTotal": commercial}]
+    version_count = 1
+    edit_dates: dict[str, Any] = {}
     try:
-        from WEOS.factory.customer_store import _project_versions
+        from WEOS.factory.quote_line_versions import quote_edit_dates
 
-        if pid:
-            versions = list(_project_versions(pid) or [])
+        edit_dates = quote_edit_dates(doc, hours=48)
     except Exception:
-        versions = []
-    version_count = max(int(doc.get("version") or 1), len(versions) + 1)
+        edit_dates = {}
 
     status = str(doc.get("status") or "draft").strip().lower() or "draft"
     approval = doc.get("approval") if isinstance(doc.get("approval"), Mapping) else {}
@@ -696,16 +697,11 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
         "scanAltPath": f"/scan/{token}",
         "projectId": pid or None,
         "quoteNumber": qid or pid or token,
-        "version": int(doc.get("version") or 1),
+        "version": 1,
         "versionCount": version_count,
-        "versions": [
-            {
-                "version": v.get("version"),
-                "updatedAt": v.get("updatedAt") or v.get("savedAt"),
-                "grandTotal": v.get("grandTotal"),
-            }
-            for v in versions[-12:]
-        ],
+        "versions": versions,
+        "editedAfter48h": bool(edit_dates.get("editedAfter48h")),
+        "dateLine": edit_dates.get("dateLine"),
         "status": status,
         "approvalStatus": status,
         "approved": approved,
@@ -772,6 +768,8 @@ def build_public_quote_record(ref: str) -> dict[str, Any] | None:
         "pack": pack,
         "accessGrants": _public_access_grants(doc),
         "canGrantAccess": _customer_scanner_approved(doc),
+        "description": doc.get("description") or "",
+        "terms": doc.get("terms") or "",
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt") or _now_iso(),
         "customerPdfUrl": f"/api/projects/{pid}/customer-pdf" if pid else None,
@@ -1001,14 +999,17 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     if access_restricted and not show_design:
         pack_html = ""
 
-    ver_bits = []
-    for v in record.get("versions") or []:
-        ver_bits.append(f"v{esc(v.get('version'))}")
-    if not ver_bits:
-        ver_bits.append(f"v{esc(record.get('version') or 1)}")
-    versions_txt = ", ".join(ver_bits)
-    if int(record.get("versionCount") or 1) > 1:
-        versions_txt += f" · {esc(record.get('versionCount'))} versions"
+    date_line = record.get("dateLine") or ""
+    if not date_line:
+        gen = fmt_dt(record.get("generatedAt") or record.get("createdAt"))
+        date_line = f"Generated: {gen}"
+        if record.get("editedAfter48h") and record.get("updatedAt"):
+            date_line += f" · Updated: {fmt_dt(record.get('updatedAt'))}"
+    late_badge = (
+        '<span class="badge late">Updated · edited after 48h</span>'
+        if record.get("editedAfter48h")
+        else ""
+    )
 
     pdf_url = record.get("customerPdfUrl") or ""
     led_url = record.get("ledgerPdfUrl") or ""
@@ -1215,27 +1216,48 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     advances_html = ""
     if show_advances:
         advances_html = f"""
-  <div class="card">
+  <div class="card section">
     <h2>Advances</h2>
+    <div style="overflow:auto">
     <table>
       <thead><tr><th>#</th><th>Amount</th><th>Mode</th><th>Date</th><th>Running total</th></tr></thead>
       <tbody>{adv_rows}</tbody>
     </table>
+    </div>
   </div>"""
 
     products_html = ""
     if show_design:
         products_html = f"""
-  <div class="card">
-    <h2>Products</h2>
+  <div class="card section">
+    <h2>Line items</h2>
+    <div style="overflow:auto">
     <table>
       <thead><tr>{product_header}</tr></thead>
       <tbody>{prod_rows}</tbody>
     </table>
-    {f'<div style="margin-top:.55rem">{type_tot_html}</div>' if type_tot_html else ''}
+    </div>
+    {f'<div style="margin-top:.65rem"><div class="muted" style="margin-bottom:.25rem">By type</div>{type_tot_html}</div>' if type_tot_html else ''}
   </div>"""
 
     co_name = esc(co.get("name") or "WEOS")
+    terms = esc(record.get("terms") or "")
+    description = esc(record.get("description") or "")
+    terms_html = ""
+    if description or terms:
+        terms_html = f"""
+  <div class="card section">
+    <h2>Notes &amp; terms</h2>
+    {f'<p class="body">{description}</p>' if description else ''}
+    {f'<p class="body muted">{terms}</p>' if terms else ''}
+  </div>"""
+    cust_bits = [
+        esc(cust.get("name") or "—"),
+        esc(cust.get("phone")) if cust.get("phone") else "",
+        f"GSTIN {esc(cust.get('gstNo'))}" if cust.get("gstNo") else "",
+    ]
+    cust_line = " · ".join(x for x in cust_bits if x)
+    addr = esc(cust.get("address") or "")
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1244,32 +1266,40 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
 <meta name="robots" content="noindex"/>
 <title>Quote {esc(record.get('quoteNumber'))} · {co_name}</title>
 <style>
-:root{{--ink:#141410;--muted:#5c584f;--bg:#e8e3d8;--card:#fffdf9;--line:rgba(20,20,16,.12);--green:#0a5a48}}
+:root{{--ink:#141410;--muted:#5c584f;--bg:#e8e3d8;--card:#fffdf9;--line:rgba(20,20,16,.12);--green:#0a5a48;--copper:#b45324}}
 *{{box-sizing:border-box}}
-body{{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);
+body{{margin:0;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;color:var(--ink);line-height:1.45;
   background:radial-gradient(ellipse 80% 50% at 0% -10%,#c9e5db,transparent 55%),
              radial-gradient(ellipse 60% 40% at 100% 0%,#efd6c2,transparent 50%),var(--bg)}}
-.wrap{{max-width:820px;margin:0 auto;padding:1.1rem 1rem 2.5rem}}
-.card{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1rem 1.1rem;margin-bottom:.85rem;
+.wrap{{max-width:860px;margin:0 auto;padding:1.25rem 1rem 2.75rem}}
+.card{{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.05rem 1.15rem;margin-bottom:.9rem;
   box-shadow:0 10px 40px rgba(20,20,16,.06)}}
-h1{{font-size:1.35rem;margin:.15rem 0 .25rem}}
-h2{{font-size:.95rem;margin:0 0 .55rem}}
+.section h2{{border-bottom:1px solid var(--line);padding-bottom:.4rem;margin-bottom:.7rem}}
+h1{{font-size:1.45rem;margin:.2rem 0 .3rem;letter-spacing:-.01em}}
+h2{{font-size:.92rem;margin:0 0 .55rem;letter-spacing:.02em;text-transform:uppercase;color:var(--green)}}
 .muted{{color:var(--muted);font-size:.82rem}}
-.badge{{display:inline-block;background:{badge_bg};color:#fff;border-radius:999px;padding:.18rem .65rem;font-size:.75rem;font-weight:600}}
+.body{{margin:.35rem 0;font-size:.9rem}}
+.badge{{display:inline-block;background:{badge_bg};color:#fff;border-radius:999px;padding:.2rem .7rem;font-size:.75rem;font-weight:600}}
+.badge.late{{background:var(--copper);margin-left:.35rem}}
+.meta-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.65rem .9rem;margin-top:.65rem}}
+.meta-grid .l{{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}}
+.meta-grid .v{{font-size:.95rem;font-weight:600;margin-top:.12rem}}
 .kpis{{display:flex;flex-wrap:wrap;gap:.6rem}}
 .kpi{{flex:1;min-width:140px;background:#f7f4ee;border-radius:10px;padding:.55rem .7rem}}
 .kpi .l{{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}}
 .kpi .v{{font-size:1.05rem;font-weight:650;margin-top:.15rem}}
-table{{width:100%;border-collapse:collapse;font-size:.85rem}}
-th,td{{text-align:left;padding:.4rem .35rem;border-bottom:1px solid var(--line);vertical-align:top}}
-th{{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}}
+table{{width:100%;border-collapse:collapse;font-size:.86rem}}
+th,td{{text-align:left;padding:.55rem .4rem;border-bottom:1px solid var(--line);vertical-align:top}}
+th{{font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:#f7f4ee}}
+tbody tr:nth-child(even){{background:rgba(10,90,72,.03)}}
 .btn{{display:inline-block;background:var(--green);color:#f4faf7;text-decoration:none;border-radius:10px;
-  padding:.45rem .75rem;font-weight:600;font-size:.85rem;margin:.15rem .25rem 0 0}}
+  padding:.5rem .8rem;font-weight:600;font-size:.85rem;margin:.15rem .25rem 0 0;border:0;cursor:pointer}}
 .btn.ghost{{background:transparent;color:var(--green);border:1px solid var(--green)}}
 input{{font:inherit;background:#fffdf9;color:var(--ink)}}
-.item{{padding:.45rem 0;border-bottom:1px solid var(--line)}}
+.item{{padding:.5rem 0;border-bottom:1px solid var(--line)}}
 .item:last-child{{border-bottom:0}}
-.foot{{margin-top:.8rem;font-size:.75rem;color:var(--muted)}}
+.foot{{margin-top:.9rem;font-size:.75rem;color:var(--muted);text-align:center}}
+.header-bar{{display:flex;justify-content:space-between;gap:.8rem;flex-wrap:wrap;align-items:flex-start}}
 @page{{size:A4 portrait;margin:12mm}}
 @media print{{
   html,body{{background:#fff!important}}
@@ -1281,38 +1311,43 @@ input{{font:inherit;background:#fffdf9;color:var(--ink)}}
 </head>
 <body>
 <div class="wrap">
-  <div class="card">
+  <div class="card section">
     <div class="muted">Live quote · powered by WEOS</div>
-    <h1>{co_name}</h1>
-    <div class="muted">GSTIN {esc(co.get('gstNo') or '—')}
-      {(' · ' + esc(co.get('phone'))) if co.get('phone') else ''}
-      {(' · ' + esc(co.get('email'))) if co.get('email') else ''}
-    </div>
-    {f"<div class='muted' style='margin-top:.25rem'>{esc(co.get('address'))}</div>" if co.get('address') else ""}
-  </div>
-  <div class="card">
-    <div class="row" style="display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap;align-items:center">
+    <div class="header-bar">
       <div>
-        <div class="muted">Quote number</div>
-        <strong style="font-size:1.15rem">{esc(record.get('quoteNumber'))}</strong>
-        <div class="muted" style="margin-top:.2rem">Versions: {versions_txt}</div>
+        <h1>{co_name}</h1>
+        <div class="muted">GSTIN {esc(co.get('gstNo') or '—')}
+          {(' · ' + esc(co.get('phone'))) if co.get('phone') else ''}
+          {(' · ' + esc(co.get('email'))) if co.get('email') else ''}
+        </div>
+        {f"<div class='muted' style='margin-top:.25rem'>{esc(co.get('address'))}</div>" if co.get('address') else ""}
       </div>
-      <span class="badge">{esc(badge)}</span>
+      <div style="text-align:right">
+        <span class="badge">{esc(badge)}</span>
+        {late_badge}
+      </div>
     </div>
-    <div class="muted" style="margin-top:.45rem">Customer: {esc(cust.get('name'))}
-      {(' · ' + esc(cust.get('phone'))) if cust.get('phone') else ''}
+  </div>
+  <div class="card section">
+    <h2>Quote</h2>
+    <div class="meta-grid">
+      <div><div class="l">Quote number</div><div class="v">{esc(record.get('quoteNumber'))}</div></div>
+      <div><div class="l">Dates</div><div class="v" style="font-weight:500;font-size:.88rem">{esc(date_line)}</div></div>
+      <div><div class="l">Customer</div><div class="v" style="font-weight:500;font-size:.88rem">{cust_line}</div></div>
+      {f'<div><div class="l">Address</div><div class="v" style="font-weight:500;font-size:.88rem">{addr}</div></div>' if addr else ''}
     </div>
     {kpis_html}
-    {f'<div style="margin-top:.75rem">{links_html}</div>' if links_html else ''}
+    {f'<div style="margin-top:.85rem">{links_html}</div>' if links_html else ''}
   </div>
   {access_notice}
   {approval_card}
-  {advances_html}
   {products_html}
+  {advances_html}
+  {terms_html}
   {pack_html}
   {decide_html}
   {monitor_html}
-  <p class="foot">Last updated {fmt_dt(record.get('updatedAt'))}. This page always loads the live project from the company database — not a PDF snapshot.</p>
+  <p class="foot">{esc(date_line)}. This page always loads the live project from the company database — not a PDF snapshot.</p>
 </div>
 </body>
 </html>"""

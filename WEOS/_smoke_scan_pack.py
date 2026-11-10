@@ -130,7 +130,7 @@ def main() -> int:
     _ok("approve quote" in html, "scanner approve in 15-day window", fails)
     _ok("reject quote" in html, "scanner reject in 7-day window", fails)
     _ok("approval status" in html, "approval status card visible", fails)
-    _ok("your name" in html and "mobile number" in html, "scanner identity form visible", fails)
+    _ok("your name" in html and "last 6" in html, "scanner identity form visible", fails)
     prods = rec.get("products") or []
     _ok(all(float(p.get("amount") or 0) > 0 for p in prods), f"all scan amounts >0 {prods}", fails)
     _ok(any("Hall" in str(p.get("location") or "") for p in prods), "scan location passed", fails)

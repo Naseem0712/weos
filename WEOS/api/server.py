@@ -1099,9 +1099,22 @@ def _pdf_response(
         created_fmt = _fmt(created_at)
         updated_fmt = _fmt(updated_at)
         payload["createdOn"] = created_fmt
-        # Print "Updated on" only for a genuine later-date edit of an existing quote
-        if updated_fmt and created_fmt and updated_fmt != created_fmt:
-            payload["updatedOn"] = updated_fmt
+        payload["quoteDate"] = created_fmt or payload.get("quoteDate")
+        # Mark "Updated" only when last edit is ≥48h after first generate (same V1 record).
+        try:
+            from WEOS.factory.quote_line_versions import quote_edit_dates
+
+            dates = quote_edit_dates({"createdAt": created_at, "updatedAt": updated_at}, hours=48)
+            payload["editedAfter48h"] = bool(dates.get("editedAfter48h"))
+            if dates.get("dateLine"):
+                payload["dateLine"] = dates["dateLine"]
+            if dates.get("editedAfter48h") and (dates.get("updatedOn") or updated_fmt):
+                payload["updatedOn"] = dates.get("updatedOn") or updated_fmt
+            else:
+                payload.pop("updatedOn", None)
+        except Exception:
+            if updated_fmt and created_fmt and updated_fmt != created_fmt:
+                payload["updatedOn"] = updated_fmt
     except Exception:
         pass
     # Keep uploaded design photos on calculated lines (calculate rebuilds line dicts).

@@ -263,7 +263,11 @@ def lines_for_commercial_display(doc: Mapping[str, Any]) -> list[dict[str, Any]]
 
 
 def remember_previous_version(doc: dict[str, Any], prev: Mapping[str, Any] | None) -> None:
-    """Keep the previous commercial lines on the same project when they change."""
+    """Keep one previous commercial snapshot for change-flag diffs (not a version picker).
+
+    Saves overwrite a single V1 document. We never grow a multi-version history
+    for the Load dropdown — at most one prior snap stays for hydrate / diffs.
+    """
     if not isinstance(prev, Mapping):
         return
     prev_lines = _usable(prev.get("lines"))
@@ -271,50 +275,122 @@ def remember_previous_version(doc: dict[str, Any], prev: Mapping[str, Any] | Non
         return
     cur_lines = _usable(doc.get("lines"))
     if line_signature(prev_lines) == line_signature(cur_lines):
+        # Still collapse any bloated history left from older builds.
+        collapse_quote_version_history(doc, keep_previous=True)
         return
-    versions = [dict(s) for s in (doc.get("quoteVersions") or []) if isinstance(s, Mapping)]
-    versions.append(
+    doc["quoteVersions"] = [
         {
-            "version": prev.get("version"),
+            "version": 1,
             "quotationId": prev.get("quotationId") or doc.get("quotationId"),
             "savedAt": prev.get("updatedAt"),
             "status": prev.get("status"),
             "lines": [slim_line(ln) for ln in prev_lines],
             "source": "save",
         }
-    )
-    doc["quoteVersions"] = versions[-15:]
+    ]
 
 
 def pin_approved_snapshot(doc: dict[str, Any]) -> None:
-    """Remember the lines that were on the project at approval time."""
+    """Remember the lines that were on the project at approval time (single V1)."""
     lines = _usable(doc.get("lines"))
     if not lines:
         return
-    try:
-        ver = int(doc.get("approvedVersion") or doc.get("version") or 1)
-    except (TypeError, ValueError):
-        ver = 1
-    versions = [dict(s) for s in (doc.get("quoteVersions") or []) if isinstance(s, Mapping)]
-    kept = []
-    for snap in versions:
-        try:
-            if int(snap.get("version") or 0) == ver:
-                continue
-        except (TypeError, ValueError):
-            pass
-        kept.append(snap)
-    kept.append(
+    doc["approvedVersion"] = 1
+    doc["quoteVersions"] = [
         {
-            "version": ver,
+            "version": 1,
             "quotationId": doc.get("quotationId"),
             "savedAt": doc.get("updatedAt"),
             "status": "approved",
             "lines": [slim_line(ln) for ln in lines],
             "source": "approve",
         }
-    )
-    doc["quoteVersions"] = kept[-15:]
+    ]
+
+
+def collapse_quote_version_history(doc: dict[str, Any], *, keep_previous: bool = True) -> dict[str, Any]:
+    """Force a single V1 record; drop superseded saved-vN history from the document."""
+    doc["version"] = 1
+    versions = [dict(s) for s in (doc.get("quoteVersions") or []) if isinstance(s, Mapping)]
+    if not keep_previous or not versions:
+        doc["quoteVersions"] = []
+        return doc
+    # Keep the newest usable prior snap only (for change flags / empty-line recover).
+    versions.sort(key=lambda row: int(row.get("version") or 0))
+    last = versions[-1]
+    if not _usable(last.get("lines")):
+        doc["quoteVersions"] = []
+        return doc
+    last["version"] = 1
+    doc["quoteVersions"] = [last]
+    return doc
+
+
+def prune_project_version_files(project_id: str) -> int:
+    """Delete ghost ``versions/{pid}_v*.json`` snapshots so storage matches single V1."""
+    pid = str(project_id or "").strip()
+    if not pid:
+        return 0
+    removed = 0
+    try:
+        from WEOS.paths import projects_dir
+
+        folder = projects_dir() / "versions"
+        if not folder.is_dir():
+            return 0
+        for path in list(folder.glob(f"{pid}_v*.json")):
+            try:
+                path.unlink()
+                removed += 1
+            except Exception:
+                _log.debug("version file prune skipped for %s", path.name, exc_info=True)
+    except Exception:
+        _log.debug("version file prune failed for %s", pid, exc_info=True)
+    return removed
+
+
+def quote_edit_dates(doc: Mapping[str, Any] | None, *, hours: float = 48.0) -> dict[str, Any]:
+    """createdAt / updatedAt on the same V1 object, plus a late-edit mark after ``hours``."""
+    from datetime import datetime, timedelta, timezone
+
+    src = doc if isinstance(doc, Mapping) else {}
+
+    def _parse(iso: Any) -> datetime | None:
+        raw = str(iso or "").strip()
+        if not raw:
+            return None
+        try:
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+
+    created = _parse(src.get("createdAt") or src.get("generatedAt") or src.get("quoteDate"))
+    updated = _parse(src.get("updatedAt") or src.get("updatedOn"))
+    edited_late = False
+    if created and updated:
+        edited_late = (updated - created) >= timedelta(hours=float(hours or 48))
+
+    def _fmt(dt: datetime | None) -> str | None:
+        if not dt:
+            return None
+        return dt.strftime("%d-%m-%Y")
+
+    return {
+        "createdAt": created.isoformat() if created else (src.get("createdAt") or None),
+        "updatedAt": updated.isoformat() if updated else (src.get("updatedAt") or None),
+        "createdOn": _fmt(created),
+        "updatedOn": _fmt(updated) if edited_late else None,
+        "editedAfter48h": edited_late,
+        "dateLine": (
+            f"Generated: {_fmt(created)}"
+            + (f" · Updated: {_fmt(updated)}" if edited_late and _fmt(updated) else "")
+            if _fmt(created)
+            else None
+        ),
+    }
 
 
 def _qty(ln: Mapping[str, Any]) -> float:
@@ -433,27 +509,8 @@ def presentation_doc(doc: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def quote_choice_summaries(doc: Mapping[str, Any]) -> dict[str, Any]:
-    """Current cart, saved versions, and Excel/outside sheets for one project."""
+    """Current cart + Excel/outside sheets. Saved vN history is not listed (single V1)."""
     versions: list[dict[str, Any]] = []
-    seen: set[int] = set()
-    for snap in doc.get("quoteVersions") or []:
-        if not isinstance(snap, Mapping):
-            continue
-        try:
-            ver = int(snap.get("version") or 0)
-        except (TypeError, ValueError):
-            ver = 0
-        if ver in seen:
-            continue
-        seen.add(ver)
-        versions.append(
-            {
-                "version": ver,
-                "quotationId": snap.get("quotationId") or doc.get("quotationId") or "",
-                "lineCount": len(_usable(snap.get("lines"))),
-                "kind": "version",
-            }
-        )
     excel: list[dict[str, Any]] = []
     for i, quote in enumerate(doc.get("packageQuotes") or []):
         if not isinstance(quote, Mapping):

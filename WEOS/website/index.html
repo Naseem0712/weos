@@ -586,7 +586,7 @@ textarea{max-width:100%}
             <select id="setupProjectPick" style="width:100%">
               <option value="new">New project — new quote number</option>
             </select>
-            <select id="setupVersionPick" style="width:100%;margin-top:.35rem" title="Every saved version and Excel sheet on this project"></select>
+            <select id="setupVersionPick" style="width:100%;margin-top:.35rem" title="Current quote and Excel sheets on this project"></select>
           </div>
           <div class="grow"><label class="l">Quote number (one per project — add text for a new version)</label><input id="projQuoteNo" placeholder="saves as this project’s quote number"/></div>
         </div>
@@ -6648,23 +6648,11 @@ function buildQuoteVersionChoices(doc) {
   doc = doc || {};
   const choices = [];
   const lines = Array.isArray(doc.lines) ? doc.lines : [];
+  // Single V1 — setup picker shows current quote + Excel sheets only.
   choices.push({
     id: 'current',
-    label: 'Current v' + (doc.version || 1) + ' · ' + lines.length + ' line(s)',
+    label: 'Current quote · ' + lines.length + ' line(s)',
     lines: lines,
-  });
-  const seen = {};
-  (doc.quoteVersions || []).forEach(snap => {
-    if (!snap) return;
-    const ver = snap.version;
-    if (ver == null || seen[String(ver)]) return;
-    seen[String(ver)] = true;
-    const n = Array.isArray(snap.lines) ? snap.lines.length : 0;
-    choices.push({
-      id: 'v:' + ver,
-      label: 'Saved v' + ver + (snap.quotationId ? ' · ' + snap.quotationId : '') + ' · ' + n + ' line(s)',
-      lines: snap.lines || [],
-    });
   });
   (doc.packageQuotes || []).forEach((q, i) => {
     const items = (q && q.items || []).filter(it => it && (Number(it.amount) > 0 || it.note || it.size));
@@ -6709,12 +6697,10 @@ async function refreshCartProjectPick() {
       const who = p.customer || p.customerMobile || '';
       const nm = p.name || '';
       const mark = (p.projectId === state.projectId && (state.loadedQuoteVersion || 'current') === 'current') ? ' (open)' : '';
+      // One row per quote / project (single V1) — never list saved v78…v93 ghosts.
       const label = [qn, nm, who].filter(Boolean).join(' · ') + mark;
       opts.push(`<option value="${esc(p.projectId)}">${esc(label)}</option>`);
       const choices = p.quoteChoices || {};
-      (choices.versions || []).forEach(v => {
-        opts.push(`<option value="${esc(p.projectId)}::v:${esc(v.version)}">${esc(qn)} · saved v${esc(v.version)} · ${esc(v.lineCount || 0)} line(s)</option>`);
-      });
       (choices.excel || []).forEach(v => {
         opts.push(`<option value="${esc(p.projectId)}::excel:${esc(v.id)}">${esc(qn)} · Excel ${esc(v.quotationId || v.sheetName || 'sheet')} · ${esc(v.lineCount || 0)} line(s)</option>`);
       });
@@ -7074,14 +7060,9 @@ async function lookupSetupClient(){
       const qn = p.quotationId || p.projectId;
       const sel = state.projectId && p.projectId === state.projectId && (state.loadedQuoteVersion || 'current') === 'current' ? ' selected' : '';
       const choices = p.quoteChoices || {};
-      const verCount = (choices.versions || []).length;
       const excelCount = (choices.excel || []).length;
-      const extra = (verCount || excelCount) ? ` · ${verCount} version(s)${excelCount ? ', ' + excelCount + ' Excel' : ''}` : '';
+      const extra = excelCount ? ` · ${excelCount} Excel` : '';
       opts.push(`<option value="${esc(p.projectId)}"${sel}>${esc(qn)} · ${esc(p.name||'')} · ${money(p.totalGrand != null ? p.totalGrand : p.grandTotal)}${extra}</option>`);
-      (choices.versions || []).forEach(v => {
-        const id = esc(p.projectId) + '::v:' + v.version;
-        opts.push(`<option value="${id}">${esc(qn)} · saved v${esc(v.version)} · ${esc(v.lineCount || 0)} line(s)</option>`);
-      });
       (choices.excel || []).forEach(v => {
         const id = esc(p.projectId) + '::excel:' + esc(v.id);
         opts.push(`<option value="${id}">${esc(qn)} · Excel ${esc(v.quotationId || v.sheetName || 'sheet')} · ${esc(v.lineCount || 0)} line(s)</option>`);
@@ -7932,7 +7913,7 @@ async function saveProject(silent) {
           });
           state.removedLines = doc.removedLines || [];
         }
-        if (!silent) toast('Saved v'+doc.version+(doc.quoteNumberVersioned ? ' · quote versioned' : ''));
+        if (!silent) toast('Quote saved'+(doc.quoteNumberVersioned ? ' · quote versioned' : ''));
         refreshSetupSummary();
         adoptPackageQuotes(doc);
         adoptQuoteDiscount(doc);
@@ -14588,13 +14569,7 @@ function fillCustomerQuoteSelector() {
     const qid = q.quotationId || q.projectId || '';
     const curVer = q.version || 1;
     const moneyBit = (q.totalGrand != null) ? (' · ' + money(q.totalGrand)) : ((q.grandTotal != null) ? (' · ' + money(q.grandTotal)) : '');
-    opts.push(`<option value="${esc(qid)}" data-pid="${esc(q.projectId||pid)}" data-ver="${curVer}" data-qid="${esc(qid)}">${esc(qid)} · current v${curVer}${moneyBit}</option>`);
-    ledgerQuoteVersions(q).forEach((v) => {
-      const vv = v && v.version;
-      if (vv == null || String(vv) === String(curVer)) return;
-      const gt = (v.grandTotal != null) ? (' · ' + money(v.grandTotal)) : '';
-      opts.push(`<option value="${esc(qid)}::v${vv}" data-pid="${esc(q.projectId||pid)}" data-ver="${vv}" data-qid="${esc(qid)}">${esc(qid)} · saved v${vv}${gt}</option>`);
-    });
+    opts.push(`<option value="${esc(qid)}" data-pid="${esc(q.projectId||pid)}" data-ver="1" data-qid="${esc(qid)}">${esc(qid)}${moneyBit}</option>`);
   });
   selQ.innerHTML = opts.join('');
   if (keep && Array.from(selQ.options).some((o) => o.value === keep)) selQ.value = keep;

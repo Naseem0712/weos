@@ -1092,7 +1092,10 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     logo_path = branding.get("logoPath")
     qid = payload.get("quotationId") or payload.get("quoteNumber") or payload.get("projectId") or "WEOS-QT"
     qdate = payload.get("quoteDate") or payload.get("createdOn") or date.today().strftime("%d-%m-%Y")
-    updated_on = payload.get("updatedOn")
+    updated_on = payload.get("updatedOn") if payload.get("editedAfter48h") else None
+    date_line = payload.get("dateLine")
+    if not date_line:
+        date_line = f"Generated: {qdate}" + (f" · Updated: {updated_on}" if updated_on else "")
     customer = payload.get("customer") or "—"
     cust_profile = payload.get("customerProfile") or {}
     from WEOS.factory.pdf_engine import project_print_name
@@ -1220,13 +1223,21 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     y -= 16
     c.drawString(M, y, f"Quote No: {qid}    Date: {qdate}")
     y -= 16
+    # Same V1 record: generate date + optional late-edit mark (≥48h after create).
+    set_font(c, 9)
+    c.setFillColorRGB(0.25, 0.25, 0.25)
+    c.drawString(M, y, str(date_line)[:110])
+    y -= 14
     if updated_on:
         c.setFillColorRGB(*accent)
         set_font(c, 9, bold=True)
-        c.drawString(M, y, f"Updated on: {updated_on}")
+        c.drawString(M, y, "Updated · edited after 48h")
         c.setFillColorRGB(0, 0, 0)
         set_font(c, 10)
         y -= 16
+    else:
+        c.setFillColorRGB(0, 0, 0)
+        set_font(c, 10)
     y -= 12
     cover_page = 1
     cover_bottom = M + 40

@@ -179,7 +179,26 @@ def render_customer_quote_sheet(
 
     qid = _txt(payload.get("quotationId") or payload.get("quoteNumber") or payload.get("projectId") or "—")
     status = _txt(payload.get("status") or "")
-    card_h = 74
+    try:
+        from WEOS.factory.quote_line_versions import quote_edit_dates
+
+        dates = quote_edit_dates(payload, hours=48)
+    except Exception:
+        dates = {}
+    date_line = _txt(payload.get("dateLine") or dates.get("dateLine") or "")
+    if not date_line:
+        qdate = _txt(payload.get("quoteDate") or payload.get("createdOn") or payload.get("createdAt"))
+        if qdate and "T" in qdate:
+            try:
+                qdate = datetime.fromisoformat(qdate.replace("Z", "+00:00")).strftime("%d-%m-%Y")
+            except Exception:
+                qdate = qdate[:10]
+        date_line = f"Generated: {qdate}" if qdate else ""
+        if payload.get("editedAfter48h") or dates.get("editedAfter48h"):
+            upd = _txt(payload.get("updatedOn") or dates.get("updatedOn") or "")
+            if upd:
+                date_line = f"{date_line} · Updated: {upd}" if date_line else f"Updated: {upd}"
+    card_h = 86 if date_line else 74
     card(card_h)
     inner = y - 14
     c.setFont("Helvetica", 8)
@@ -205,6 +224,14 @@ def render_customer_quote_sheet(
     )
     if extra:
         c.drawString(M + 10, inner - 52, extra[:95])
+    if date_line:
+        c.setFillColorRGB(*muted)
+        c.setFont("Helvetica", 7)
+        c.drawString(M + 10, inner - 64, date_line[:100])
+        if payload.get("editedAfter48h") or dates.get("editedAfter48h"):
+            c.setFillColorRGB(0.71, 0.33, 0.14)
+            c.setFont("Helvetica-Bold", 7)
+            c.drawRightString(W - M - 12, inner - 64, "Updated · after 48h")
     if status:
         c.setFillColorRGB(*green)
         c.setFont("Helvetica-Bold", 9)
