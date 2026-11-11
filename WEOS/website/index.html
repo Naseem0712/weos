@@ -9,7 +9,8 @@
   --bg:#e8e3d8; --ink:#141410; --muted:#5c584f; --panel:rgba(255,252,247,.94);
   --line:rgba(20,20,16,.12); --green:#0a5a48; --green2:#147a62; --copper:#b45324;
   --card:#fffdf9; --shadow:0 10px 40px rgba(20,20,16,.06); --radius:14px;
-  --nav:72px; --logo-w:310px; --side:calc(var(--logo-w) + 24px);
+  --nav:72px; --logo-w:168px; --side:200px; --cart-inspector:340px;
+  --stage-paper:#eef1f4; --stage-frame:#ffffff; --stage-ink:#1b2a25;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --serif: Georgia, "Palatino Linotype", Palatino, "Times New Roman", Times, serif;
 }
@@ -25,9 +26,9 @@ a{color:inherit}
 @media(max-width:900px){.app{grid-template-columns:1fr}.app.side-collapsed{grid-template-columns:1fr}.side{position:fixed;inset:0 auto 0 0;transform:translateX(-105%);z-index:40;transition:.25s}
 .side.open{transform:none}}
 .side{background:linear-gradient(165deg,#e4f1ff 0%,#e6f7ee 48%,#fdf5d8 100%);color:#1b2a25;
-  width:var(--side);max-width:100%;padding:.55rem .5rem .75rem;display:flex;flex-direction:column;gap:.2rem;border-right:1px solid rgba(20,60,50,.12);overflow-x:hidden}
-/* Brand logo: width drives the sidebar. Tagline is baked into the image. */
-.brand{margin:0 0 .15rem;padding:0;display:flex;justify-content:center;align-items:center}
+  width:var(--side);max-width:100%;padding:.45rem .4rem .7rem;display:flex;flex-direction:column;gap:.12rem;border-right:1px solid rgba(20,60,50,.12);overflow-x:hidden;min-width:0}
+/* Brand logo sits inside the rail; rail width is fixed (~200px), logo no longer drives it. */
+.brand{margin:0 0 .2rem;padding:.15rem .2rem .35rem;display:flex;justify-content:center;align-items:center;border-bottom:1px solid rgba(20,60,50,.1)}
 .brand img{display:block;width:var(--logo-w);height:auto;aspect-ratio:310/135;max-width:100%;object-fit:contain;padding:0;
   filter:drop-shadow(0 1px 2px rgba(0,0,0,.28))}
 @media(max-width:900px){.side{width:min(var(--side),92vw)}.brand img{width:min(var(--logo-w),100%)}}
@@ -108,7 +109,7 @@ a{color:inherit}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes belt{to{background-position:56px 0}}
 @keyframes docmove{0%{transform:translateX(0);opacity:.1}20%{opacity:1}75%{opacity:1}100%{transform:translateX(620px);opacity:.08}}
-.navbtn{border:0;background:transparent;color:#1f2d28;font-weight:500;text-align:left;padding:.65rem .75rem;border-radius:10px;cursor:pointer;width:100%;transition:background-color .15s ease,color .15s ease,transform .08s ease,box-shadow .15s ease}
+.navbtn{border:0;background:transparent;color:#1f2d28;font-weight:500;text-align:left;padding:.42rem .55rem;border-radius:8px;cursor:pointer;width:100%;font-size:.8rem;line-height:1.25;transition:background-color .15s ease,color .15s ease,transform .08s ease,box-shadow .15s ease}
 .navbtn:hover{background:rgba(10,90,72,.12);color:#0a5a48}
 .navbtn:active{background:rgba(10,90,72,.26);transform:scale(.98);box-shadow:inset 0 2px 6px rgba(10,90,72,.18)}
 .navbtn.active{background:rgba(10,90,72,.16);color:#084a3b;font-weight:600}
@@ -204,7 +205,7 @@ button.pill{border:0;font:inherit;cursor:pointer;transition:transform .08s ease,
 button.pill:hover{filter:brightness(1.08)}
 button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.16)}
 .pill.stub{background:#f3ebe2;color:var(--copper)}
-.preview{background:#d8dee6;border:1px solid var(--line);border-radius:12px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:.5rem}
+.preview{background:var(--stage-paper);border:1px solid var(--line);border-radius:12px;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:.5rem}
 .preview svg,.preview img{max-width:100%;max-height:100%;width:auto;height:auto;display:block;flex-shrink:0}
 .chip{display:inline-flex;align-items:center;gap:.3rem;background:#eef3ef;border:1px solid var(--line);border-radius:999px;padding:.15rem .55rem;font-size:.75rem}
 .chip button{border:0;background:transparent;cursor:pointer;font-size:.85rem;line-height:1;padding:0;color:#666}
@@ -212,54 +213,90 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
 @media(max-width:1000px){.two{grid-template-columns:1fr}}
 #view-cart.grid{height:calc(100vh - 5.75rem);grid-template-rows:minmax(0,1fr);overflow:hidden;align-content:stretch}
 #view-cart.grid:has(#memoryBanner.show){grid-template-rows:auto minmax(0,1fr)}
-#view-cart > .two.cart-split{align-items:stretch;height:100%;min-height:0;overflow:hidden;grid-template-columns:minmax(0,.92fr) minmax(0,1.18fr)}
+/* Bath Studio–style cart: narrow inspector | majority DesignCanvas */
+#view-cart > .two.cart-split{
+  align-items:stretch;height:100%;min-height:0;overflow:hidden;gap:.75rem;
+  grid-template-columns:minmax(260px,var(--cart-inspector)) minmax(0,1fr)
+}
 #view-cart .cart-tools,#view-cart .cart-preview{min-height:0;overscroll-behavior:contain}
 #view-cart .cart-tools{
   height:100%;max-height:100%;min-height:0;
   overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch;
   overscroll-behavior:contain;touch-action:pan-x pan-y
 }
-#view-cart .cart-preview{display:flex;flex-direction:column;overflow:hidden}
+#view-cart .cart-preview.design-stage{
+  display:flex;flex-direction:column;overflow:hidden;padding:.7rem .75rem .75rem;
+  background:linear-gradient(180deg,#fbfcfa 0%,#f4f6f8 100%);
+  border:1px solid rgba(20,40,36,.12);box-shadow:var(--shadow)
+}
+#view-cart .cart-preview .stage-chrome{
+  display:flex;align-items:flex-end;justify-content:space-between;gap:.55rem;flex-wrap:wrap;
+  flex:0 0 auto;margin:0 0 .5rem;padding:0 0 .45rem;border-bottom:1px solid rgba(20,40,36,.08)
+}
+#view-cart .cart-preview .stage-chrome .stage-title{margin:0;font-size:.95rem;font-weight:700;color:var(--stage-ink);letter-spacing:-.01em}
+#view-cart .cart-preview .stage-chrome .eyebrow{margin:0 0 .1rem;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
 #view-cart .cart-preview .preview-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.55rem;flex-wrap:wrap;flex:0 0 auto;margin-bottom:.45rem}
-#view-cart .cart-preview .preview-zoom{display:flex;align-items:center;gap:.28rem}
-#view-cart .cart-preview .preview{
-  flex:1 1 auto;min-height:0;height:clamp(520px,72vh,880px);
+#view-cart .cart-preview .stage-tools,#view-cart .cart-preview .preview-zoom{
+  display:flex;align-items:center;flex-wrap:wrap;gap:.28rem
+}
+#view-cart .cart-preview .stage-tools .btn,
+#view-cart .cart-preview .preview-zoom .btn{
+  padding:.28rem .5rem;font-size:.74rem;border-radius:8px;min-height:30px;line-height:1.1
+}
+#view-cart .cart-preview .stage-tools .btn[aria-pressed="true"],
+#view-cart .cart-preview .preview-zoom .btn[aria-pressed="true"]{
+  background:var(--green);color:#f4faf7;border-color:var(--green)
+}
+#view-cart .cart-preview .design-canvas-frame{
+  flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
+  border:1px solid rgba(20,40,36,.14);border-radius:12px;overflow:hidden;
+  background:var(--stage-frame);box-shadow:inset 0 0 0 1px rgba(255,255,255,.65)
+}
+#view-cart .cart-preview .preview,#view-cart .cart-preview #livePreview.preview{
+  flex:1 1 auto;min-height:0;height:auto;
   overflow:hidden;display:flex;align-items:center;justify-content:center;
-  padding:16px;overscroll-behavior:contain;cursor:grab;touch-action:none
+  padding:14px;overscroll-behavior:contain;cursor:grab;touch-action:none;
+  border:0;border-radius:0;background:var(--stage-paper)
 }
 #view-cart .cart-preview .preview.is-panning{cursor:grabbing;user-select:none}
 #view-cart .cart-preview .preview.zoomed{
   overflow:hidden;align-items:center;justify-content:center
 }
+#view-cart .cart-preview .preview.dims-hidden svg [stroke="#8b1e1a"],
+#view-cart .cart-preview .preview.dims-hidden svg [fill="#8b1e1a"]{display:none!important}
 #view-cart .cart-preview .preview svg,#view-cart .cart-preview .preview img{
   max-width:none;max-height:none;width:auto;height:auto;display:block;flex-shrink:0
 }
-#view-cart .cart-preview #wrapDesignPhoto,#view-cart .cart-preview #lineSpecs{flex:0 0 auto}
+#view-cart .cart-preview #wrapDesignPhoto,#view-cart .cart-preview #lineSpecs,
+#view-cart .cart-preview #lineAddonsPanel{flex:0 0 auto}
+/* One stage contract for all productWorldOf worlds — roomy only frees vertical scroll */
 #view-cart.preview-roomy.grid{height:auto;min-height:calc(100vh - 5.75rem);overflow:visible}
 #view-cart.preview-roomy > .two.cart-split{
   height:auto;min-height:calc(100vh - 8rem);overflow:visible;
-  grid-template-columns:minmax(260px,.72fr) minmax(480px,1.55fr)
+  grid-template-columns:minmax(260px,var(--cart-inspector)) minmax(0,1fr)
 }
 #view-cart.preview-roomy .cart-tools{
   height:auto;max-height:calc(100vh - 6.75rem);
   overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch
 }
 #view-cart.preview-roomy .cart-preview{overflow:visible}
+#view-cart.preview-roomy .cart-preview .design-canvas-frame{min-height:clamp(560px,72vh,980px)}
 #view-cart.preview-roomy .cart-preview .preview{
-  flex:0 0 auto;min-height:680px;height:clamp(680px,78vh,1100px);max-height:1100px
+  flex:1 1 auto;min-height:520px;height:auto;max-height:none
 }
 .admin-split{align-items:stretch}
 .admin-split > div:first-child{min-height:0;display:flex;flex-direction:column}
 .admin-split .canvas-wrap{flex:1 1 auto;min-height:280px;max-height:calc(100vh - 12rem);overscroll-behavior:contain}
 @media(max-width:1000px){
   #view-cart.grid{height:auto;overflow:visible;grid-template-rows:none}
-  #view-cart > .two.cart-split{height:auto;overflow:visible;min-height:0}
+  #view-cart > .two.cart-split{height:auto;overflow:visible;min-height:0;grid-template-columns:1fr}
   #view-cart .cart-tools{
     height:auto;max-height:calc(100vh - 8.25rem);
     overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch
   }
   #view-cart .cart-preview{max-height:none;overflow:visible}
-  #view-cart .cart-preview .preview{height:min(70vh,640px);min-height:360px}
+  #view-cart .cart-preview .design-canvas-frame{min-height:min(70vh,640px)}
+  #view-cart .cart-preview .preview{min-height:360px;height:min(70vh,640px)}
 }
 /* Tool column always shows a vertical scrollbar so shower layout settings stay reachable. */
 #view-cart .cart-tools{
@@ -386,18 +423,19 @@ img,svg,canvas{max-width:100%}
 .main,.panel,.card,.two,.row,.grow{min-width:0}
 textarea{max-width:100%}
 @media(min-width:701px) and (max-width:1100px){
-  :root{--logo-w:270px;--side:294px}
+  :root{--logo-w:148px;--side:188px;--cart-inspector:300px}
   .main{padding:.85rem .85rem 2rem}
   .prodgrid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
   .cards{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-  #view-cart .cart-preview .preview{height:min(64vh,620px);min-height:420px}
+  #view-cart .cart-preview .design-canvas-frame{min-height:min(64vh,620px)}
+  #view-cart .cart-preview .preview{min-height:420px}
 }
 @media(max-width:700px){
-  :root{--logo-w:min(250px,74vw);--side:min(320px,86vw);--radius:10px}
+  :root{--logo-w:min(160px,58vw);--side:min(220px,86vw);--cart-inspector:100%;--radius:10px}
   body{background:var(--bg)}
   .side{width:var(--side);max-width:86vw;padding:.45rem .45rem .8rem;box-shadow:18px 0 42px rgba(20,20,16,.2);overflow-y:auto}
   .brand{margin-bottom:.25rem}
-  .navbtn{padding:.62rem .7rem;border-radius:8px;font-size:.94rem}
+  .navbtn{padding:.55rem .6rem;border-radius:8px;font-size:.88rem}
   .main{padding:.6rem .55rem 4.5rem}
   .top{position:sticky;top:0;z-index:30;background:rgba(232,227,216,.96);backdrop-filter:blur(10px);padding:.45rem 0;margin:-.2rem 0 .65rem;border-bottom:1px solid rgba(20,20,16,.08)}
   .burger{min-height:40px;border-radius:8px;padding:.42rem .6rem}
@@ -451,11 +489,15 @@ textarea{max-width:100%}
     scrollbar-gutter:stable
   }
   #view-cart .cart-preview{overflow:visible}
+  #view-cart .cart-preview .stage-chrome,
   #view-cart .cart-preview .preview-head{display:grid;grid-template-columns:1fr;gap:.4rem}
+  #view-cart .cart-preview .stage-tools,
   #view-cart .cart-preview .preview-zoom{overflow-x:auto;justify-content:flex-start;padding-bottom:.15rem;-webkit-overflow-scrolling:touch}
+  #view-cart .cart-preview .design-canvas-frame{min-height:min(58vh,440px)}
   #view-cart .cart-preview .preview{height:min(58vh,440px);min-height:260px;padding:8px}
   #view-cart.preview-roomy.grid{height:auto;overflow:visible}
   #view-cart.preview-roomy > .two.cart-split{grid-template-columns:1fr;min-height:0}
+  #view-cart.preview-roomy .cart-preview .design-canvas-frame{min-height:min(74vh,620px)}
   #view-cart.preview-roomy .cart-preview .preview{min-height:420px;height:min(74vh,620px)}
   .canvas-wrap{height:min(62vh,520px);border-radius:10px}
   .canvas-page{margin:8px auto}
@@ -472,6 +514,7 @@ textarea{max-width:100%}
   .card,.panel{padding:.62rem .55rem}
   .main{padding-left:.45rem;padding-right:.45rem}
   table{min-width:560px}
+  #view-cart .cart-preview .design-canvas-frame{min-height:min(54vh,380px)}
   #view-cart .cart-preview .preview{height:min(54vh,380px);min-height:240px}
 }
 @page{size:A4 portrait;margin:12mm}
@@ -1681,20 +1724,25 @@ textarea{max-width:100%}
           <pre class="optbox" id="optBox">Optimization after Calculate</pre>
           <div class="err" id="cartErr"></div>
         </div>
-        <div class="panel cart-preview">
-          <div class="preview-head">
+        <div class="panel cart-preview design-stage">
+          <div class="stage-chrome preview-head">
             <div>
-              <strong>Live Preview</strong>
+              <p class="eyebrow">Shared design stage</p>
+              <strong class="stage-title">DesignCanvas</strong>
               <p class="muted" id="previewLabel" style="margin:.25rem 0 0">Select or add a line</p>
             </div>
-            <div class="preview-zoom">
+            <div class="stage-tools preview-zoom" role="toolbar" aria-label="Design canvas tools">
+              <button class="btn ghost sm" type="button" id="btnPrevUndo" title="Undo (coming soon)" disabled>Undo</button>
               <button class="btn ghost sm" type="button" id="btnPrevFit" title="Fit the whole drawing in the canvas">Fit</button>
               <button class="btn ghost sm" type="button" id="btnPrevZoomOut" title="Zoom out">−</button>
               <span id="prevZoomLabel" class="muted" style="min-width:3.1rem;text-align:center;font-size:.78rem">Fit</span>
               <button class="btn ghost sm" type="button" id="btnPrevZoomIn" title="Zoom in">+</button>
+              <button class="btn ghost sm" type="button" id="btnPrevDims" title="Show or hide dimension annotations" aria-pressed="true">Dims</button>
             </div>
           </div>
-          <div class="preview" id="livePreview"><span class="muted">SVG / hero</span></div>
+          <div class="design-canvas-frame">
+            <div class="preview" id="livePreview"><span class="muted">SVG / hero</span></div>
+          </div>
           <div class="row" id="wrapDesignPhoto" style="margin:.45rem 0 .2rem;gap:.5rem;align-items:center;flex-wrap:wrap">
             <label class="btn ghost sm" style="cursor:pointer">Upload design photo
               <input id="lineDesignPhoto" type="file" accept="image/*" hidden/>
@@ -3487,12 +3535,24 @@ function setPreviewZoom(next) {
   state.previewZoom = z;
   applyPreviewFit();
 }
+function syncPreviewDimsUi() {
+  const box = $('livePreview');
+  const btn = $('btnPrevDims');
+  const show = state.previewDims !== false;
+  if (box) box.classList.toggle('dims-hidden', !show);
+  if (btn) {
+    btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+    btn.textContent = show ? 'Dims' : 'Dims off';
+    btn.title = show ? 'Hide dimension annotations' : 'Show dimension annotations';
+  }
+}
 function initPreviewZoom() {
   const box = $('livePreview');
   if (!box) return;
   if (!state.previewZoom) state.previewZoom = 1;
   if (state.previewPanX == null) state.previewPanX = 0;
   if (state.previewPanY == null) state.previewPanY = 0;
+  if (state.previewDims == null) state.previewDims = true;
   if ($('btnPrevFit')) $('btnPrevFit').onclick = () => {
     state.previewPanX = 0;
     state.previewPanY = 0;
@@ -3503,6 +3563,14 @@ function initPreviewZoom() {
     const z = previewZoomValue() / 1.25;
     setPreviewZoom(z < 1.05 ? 1 : z);
   };
+  if ($('btnPrevDims') && !$('btnPrevDims')._bound) {
+    $('btnPrevDims')._bound = true;
+    $('btnPrevDims').onclick = () => {
+      state.previewDims = state.previewDims === false;
+      syncPreviewDimsUi();
+    };
+  }
+  syncPreviewDimsUi();
   if (!box._zoomBound) {
     box._zoomBound = true;
     let drag = null;
@@ -5751,13 +5819,15 @@ function setSpecialProductToolMode(world) {
   }
 }
 function syncPreviewRoomy(world) {
+  // Same DesignCanvas column contract for every productWorldOf world.
+  // Roomy only unlocks vertical scroll for tall shower/vent/fold drawings.
   const view = document.getElementById('view-cart');
   if (!view) return;
   const sys = String(($('lineSystem') && $('lineSystem').value) || '').toLowerCase();
   const w = String(world || '').toLowerCase();
   const roomy = w === 'shower' || w === 'ventilator' || sys === 'bifold' || sys.indexOf('fold') >= 0;
   view.classList.toggle('preview-roomy', roomy);
-  if (roomy && typeof applyPreviewFit === 'function') applyPreviewFit();
+  if (typeof applyPreviewFit === 'function') applyPreviewFit();
 }
 function applyProductWorld(opts) {
   opts = opts || {};
