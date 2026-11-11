@@ -351,6 +351,65 @@ def generate_job(
     # Append library materials into BOM when present
     if materials:
         bom = list(bom) + list(materials)
+
+    # Phase 2 — Series Setup members (wFactor/hFactor) + weight→hardware rules.
+    # Empty members/rules leave legacy cut-list / #admin-rules path untouched.
+    setup_pack: dict[str, Any] = {}
+    try:
+        from WEOS.factory.job_types import LineItem as _LI
+        from WEOS.factory.product_setup import apply_setup_bom
+
+        setup_blob = product.get("setup") if isinstance(product.get("setup"), Mapping) else None
+        glass_kg_total = sum(float(g.weight_kg or 0) * float(g.quantity or 1) for g in glass_items)
+        setup_pack = apply_setup_bom(
+            setup_blob,
+            width_mm=float(width),
+            height_mm=float(height),
+            ctx={
+                **dict(ctx),
+                "shutterCount": float(geom.get("shutterCount") or layout.glass_count or 1),
+                "glassCount": float(layout.glass_count or 0),
+                "meshCount": float(layout.mesh_count or 0),
+                "leafCount": float(operable_count or geom.get("shutterCount") or 1),
+                "system": str(layout.system or ""),
+            },
+            glass_kg_total=glass_kg_total,
+            shutter_count=float(geom.get("shutterCount") or layout.glass_count or 1),
+            system_type=str(
+                (setup_blob or {}).get("type")
+                or layout.system
+                or product.get("productType")
+                or ""
+            ),
+            qty=1.0,
+        )
+        for m in setup_pack.get("members") or []:
+            bom.append(
+                _LI(
+                    category="profile",
+                    description=str(m.get("name") or "member"),
+                    quantity=float(m.get("qty") or m.get("metres") or 0),
+                    unit=str(m.get("unit") or "RM").lower().replace("rm", "m"),
+                    length_mm=float(m.get("metres") or 0) * 1000.0,
+                    remarks=str(m.get("remarks") or ""),
+                    unit_rate=float(m["unitRate"]) if m.get("unitRate") is not None else None,
+                )
+            )
+        for h in setup_pack.get("hardware") or []:
+            item = _LI(
+                category="hardware",
+                description=str(h.get("name") or "hardware"),
+                quantity=float(h.get("qty") or 0),
+                unit=str(h.get("unit") or "PC"),
+                length_mm=0.0,
+                remarks=str(h.get("remarks") or ""),
+                unit_rate=float(h["unitRate"]) if h.get("unitRate") is not None else None,
+            )
+            hardware = list(hardware) + [item]
+            bom.append(item)
+    except Exception:
+        setup_pack = {}
+
     weight = compute_weight(
         product.get("weight") or {},
         glass_items,
@@ -359,6 +418,22 @@ def generate_job(
         hardware=hardware,
         frame_material=frame_material,
     )
+    # Prefer catalogue member kg when Series Setup members carry weightKgPerM.
+    try:
+        extra_alu = float((setup_pack or {}).get("aluminiumKgFromMembers") or 0)
+        if extra_alu > 0 and weight is not None:
+            details = dict(getattr(weight, "details", None) or {})
+            details["setupMembers"] = extra_alu
+            weight.details = details
+            # Only replace uplift/unknown frame kg when members actually contributed
+            if float(getattr(weight, "aluminium_kg", 0) or 0) <= 0 or str(
+                getattr(weight, "weight_source", "") or ""
+            ).startswith("glass"):
+                weight.aluminium_kg = extra_alu
+                weight.total_kg = float(weight.glass_kg or 0) + extra_alu + float(weight.hardware_kg or 0)
+                weight.weight_source = "catalogue"
+    except Exception:
+        pass
     quotation = compute_quotation(
         product.get("quotation") or {},
         weight=weight,

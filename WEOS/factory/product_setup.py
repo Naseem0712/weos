@@ -11,6 +11,14 @@ Setup*).  It captures, per product **type**:
   stays, door closers …) with **brand**, **unit**, **rate** and **quantity per
   shutter / leaf / config**.
 
+Phase 2 also ports WD-series concepts:
+
+* **members** — editable qty-master rows with ``wFactor`` / ``hFactor`` (width /
+  height piece counts), kg/m and ₹/m|rft for accurate cut metres;
+* **hardwareWeightRules** — min/max kg → SKU/name/rate, isolated by system type
+  (sliding wheels ≠ casement hinges ≠ style floorspring). Empty members / rules
+  fall back to the legacy section cards + ``#admin-rules`` formulas.
+
 The setup blob lives inside ``product.json`` (key ``setup``) so the durable
 Postgres product store mirrors it automatically and it round-trips through the
 Admin editor.  This module keeps the *shape* stable and provides small pure
@@ -22,6 +30,8 @@ helpers that turn a setup into engine-friendly artefacts:
 * :func:`derive_hardware`      – a flat hardware BOM list (optionally for one
   telescopic ``config`` such as ``"1+3"``) for cut-list / BOM / pricing
 * :func:`derive_weights`       – section weight (kg/m) map for weight calc
+* :func:`derive_member_cuts`   – cut metres from member wFactor/hFactor
+* :func:`pick_hardware_by_weight` – WD-style capacity pick for wheels/closers/…
 
 Everything degrades to sane empty values so callers never crash on a partial
 setup.
@@ -29,7 +39,7 @@ setup.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 # Canonical product types a setup can describe.
 SETUP_TYPES = ("sliding", "casement", "telescopic", "style")
@@ -51,6 +61,59 @@ DEFAULT_STANDARD_LENGTHS = {
     "casement": [5850],
     "telescopic": [3000],       # imported: 3 mtr only
     "style": [2400, 3000],      # imported: 2.4 & 3 mtr
+}
+
+MEMBER_ROLES = (
+    "outer",
+    "track",
+    "shutter",
+    "interlock",
+    "mesh",
+    "mullion",
+    "bead",
+    "other",
+)
+
+HARDWARE_WEIGHT_KINDS = (
+    "wheel",
+    "roller",
+    "door_closer",
+    "floor_spring",
+    "hinge",
+)
+
+# System-type isolation — sliding hardware must never auto-pick for casement, etc.
+SYSTEM_TYPES = (
+    "sliding",
+    "casement",
+    "tilt_turn",
+    "style",
+    "telescopic",
+    "fold",
+    "synchron",
+)
+
+# Map setup.type / layout.system aliases → hardware isolation key.
+_SYSTEM_ALIASES = {
+    "sliding": "sliding",
+    "slider": "sliding",
+    "casement": "casement",
+    "casements": "casement",
+    "openable": "casement",
+    "opening": "casement",
+    "tilt_turn": "tilt_turn",
+    "tilt-turn": "tilt_turn",
+    "tiltturn": "tilt_turn",
+    "style": "style",
+    "style_slide_door": "style",
+    "door": "style",
+    "telescopic": "telescopic",
+    "telescopic_sliding": "telescopic",
+    "fold": "fold",
+    "bifold": "fold",
+    "fold_sliding": "fold",
+    "synchron": "synchron",
+    "synchro": "synchron",
 }
 
 
@@ -113,6 +176,98 @@ def normalize_hardware(raw: Any) -> dict[str, Any]:
     }
 
 
+def normalize_member(raw: Any) -> dict[str, Any]:
+    """WD-style ProfileMember: name/role + wFactor/hFactor + kg/m + rate."""
+    r = raw if isinstance(raw, Mapping) else {}
+    role = _str(r.get("role") or r.get("memberClass") or "other").lower().replace(" ", "_")
+    # Accept WD memberClass labels → WEOS roles
+    role_aliases = {
+        "window": "outer",
+        "outer_frame": "outer",
+        "frame": "outer",
+        "2-track": "track",
+        "2.5-track": "track",
+        "3-track": "track",
+        "meeting": "interlock",
+        "openable_panel": "shutter",
+        "openable": "shutter",
+        "panel": "shutter",
+        "door_leaf": "shutter",
+        "sash": "shutter",
+        "mesh_panel": "mesh",
+        "glazing_bead": "bead",
+        "bead": "bead",
+    }
+    role = role_aliases.get(role, role)
+    if role not in MEMBER_ROLES:
+        role = "other"
+    rate_unit = _str(r.get("rateUnit") or "m").lower()
+    if rate_unit not in ("m", "rm", "rft", "ft"):
+        rate_unit = "m"
+    if rate_unit in ("rm",):
+        rate_unit = "m"
+    if rate_unit in ("ft",):
+        rate_unit = "rft"
+    mid = _str(r.get("id"))
+    return {
+        "id": mid,
+        "name": _str(r.get("name")),
+        "role": role,
+        "wFactor": _num(r.get("wFactor")) if r.get("wFactor") is not None else 0.0,
+        "hFactor": _num(r.get("hFactor")) if r.get("hFactor") is not None else 0.0,
+        "weightKgPerM": _num(r.get("weightKgPerM") or r.get("kgPerM") or r.get("weightPerMeter")),
+        "ratePerM": _num(r.get("ratePerM") or r.get("rate")) or 0.0,
+        "rateUnit": rate_unit,
+        "sku": _str(r.get("sku") or r.get("profileSkuId") or r.get("partNumber")),
+        "notes": _str(r.get("notes")),
+    }
+
+
+def normalize_hardware_weight_rule(raw: Any) -> dict[str, Any]:
+    """min/max kg → SKU/name/rate, scoped by hardware kind + system type."""
+    r = raw if isinstance(raw, Mapping) else {}
+    kind = _str(r.get("kind") or r.get("category") or "wheel").lower().replace(" ", "_").replace("-", "_")
+    if kind == "wheels":
+        kind = "wheel"
+    if kind == "rollers":
+        kind = "roller"
+    if kind in ("closer", "doorcloser"):
+        kind = "door_closer"
+    if kind in ("floorspring", "floor"):
+        kind = "floor_spring"
+    if kind in ("hinges",):
+        kind = "hinge"
+    if kind not in HARDWARE_WEIGHT_KINDS:
+        kind = "wheel"
+    system = normalize_system_type(r.get("systemType") or r.get("system") or "")
+    basis = _str(r.get("basis") or "shutter").lower()
+    if basis not in ("shutter", "leaf", "door", "window", "opening", "pair"):
+        basis = "shutter"
+    min_kg = _num(r.get("minKg"))
+    max_kg = _num(r.get("maxKg") or r.get("weightCapacityKg"))
+    return {
+        "kind": kind,
+        "systemType": system,
+        "minKg": float(min_kg) if min_kg is not None else 0.0,
+        "maxKg": float(max_kg) if max_kg is not None else 0.0,
+        "name": _str(r.get("name")),
+        "sku": _str(r.get("sku") or r.get("partNumber") or r.get("hardwareId")),
+        "brand": _str(r.get("brand")),
+        "rate": _num(r.get("rate") or r.get("unitRate")) or 0.0,
+        "unit": _str(r.get("unit") or "PC").upper(),
+        "qtyPer": _num(r.get("qtyPer") if r.get("qtyPer") is not None else r.get("qty")) or 1.0,
+        "basis": basis,
+        "notes": _str(r.get("notes")),
+    }
+
+
+def normalize_system_type(value: Any) -> str:
+    key = _str(value).lower().replace(" ", "_")
+    if not key:
+        return ""
+    return _SYSTEM_ALIASES.get(key, key if key in SYSTEM_TYPES else "")
+
+
 def _list_from_csv(value: Any) -> list[str]:
     if not value:
         return []
@@ -127,6 +282,18 @@ def _sections(raw: Any) -> list[dict[str, Any]]:
 def _hardware(raw: Any) -> list[dict[str, Any]]:
     items = raw if isinstance(raw, (list, tuple)) else ([raw] if raw else [])
     return [normalize_hardware(x) for x in items]
+
+
+def _members(raw: Any) -> list[dict[str, Any]]:
+    items = raw if isinstance(raw, (list, tuple)) else ([raw] if raw else [])
+    out = [normalize_member(x) for x in items]
+    return [m for m in out if m.get("name") or (m.get("wFactor") or m.get("hFactor"))]
+
+
+def _hardware_weight_rules(raw: Any) -> list[dict[str, Any]]:
+    items = raw if isinstance(raw, (list, tuple)) else ([raw] if raw else [])
+    out = [normalize_hardware_weight_rule(x) for x in items]
+    return [r for r in out if r.get("name") or r.get("sku") or r.get("maxKg")]
 
 
 # ── normalisation ───────────────────────────────────────────────────────────
@@ -155,6 +322,11 @@ def normalize_setup(raw: Any) -> dict[str, Any]:
         "imported": _bool(s.get("imported"), stype in ("telescopic", "style")),
         "standardLengths": std_lengths,
         "notes": _str(s.get("notes")),
+        # Phase 2 — WD members + weight→hardware (empty → legacy path)
+        "members": _members(s.get("members")),
+        "hardwareWeightRules": _hardware_weight_rules(
+            s.get("hardwareWeightRules") or s.get("weightHardwareRules")
+        ),
     }
 
     out["sliding"] = _norm_sliding(s.get("sliding"))
@@ -166,6 +338,8 @@ def normalize_setup(raw: Any) -> dict[str, Any]:
         "sectionSizes": derive_section_sizes(out),
         "hardware": derive_hardware(out),
         "weights": derive_weights(out),
+        "memberCount": len(out["members"]),
+        "hardwareWeightRuleCount": len(out["hardwareWeightRules"]),
     }
     return out
 
@@ -417,3 +591,311 @@ def flatten_setup_sections(setup: Mapping[str, Any] | None) -> list[dict[str, An
 def empty_setup(stype: str = "sliding") -> dict[str, Any]:
     """A blank, normalised setup for a given type (used to seed the editor)."""
     return normalize_setup({"type": stype})
+
+
+# ── Phase 2: member factors + weight→hardware ───────────────────────────────
+
+def _role_count(role: str, ctx: Mapping[str, Any]) -> float:
+    """How many times a member row repeats for this opening."""
+    shutters = float(ctx.get("shutterCount") or ctx.get("glassCount") or ctx.get("leafCount") or 1) or 1.0
+    mesh = float(ctx.get("meshCount") or 0) or 0.0
+    mullions = float(ctx.get("mullionCount") or ctx.get("mullions") or 0) or 0.0
+    if role in ("outer", "track", "other", "bead"):
+        return 1.0
+    if role == "shutter":
+        return max(shutters, 1.0)
+    if role == "interlock":
+        # Meeting stiles roughly one fewer than shutters; never below 1 when shutters≥2
+        return max(shutters - 1.0, 1.0) if shutters >= 2 else 0.0
+    if role == "mesh":
+        return max(mesh, 0.0)
+    if role == "mullion":
+        return max(mullions, 0.0)
+    return 1.0
+
+
+def _basis_multiplier(basis: str, ctx: Mapping[str, Any]) -> float:
+    b = (basis or "shutter").lower()
+    if b in ("shutter", "leaf"):
+        return float(ctx.get("shutterCount") or ctx.get("leafCount") or ctx.get("glassCount") or 1) or 1.0
+    if b == "door":
+        return float(ctx.get("doorCount") or ctx.get("leafCount") or 1) or 1.0
+    if b in ("window", "opening"):
+        return 1.0
+    if b == "pair":
+        return 1.0
+    return 1.0
+
+
+def derive_member_cuts(
+    setup: Mapping[str, Any] | None,
+    *,
+    width_mm: float,
+    height_mm: float,
+    ctx: Mapping[str, Any] | None = None,
+    qty: float = 1.0,
+) -> list[dict[str, Any]]:
+    """Cut metres from member wFactor/hFactor.
+
+    Empty ``members`` → ``[]`` (caller keeps legacy cut-list / formulas).
+    Metres = ((wFactor × W) + (hFactor × H)) / 1000 × roleCount × qty.
+    When rateUnit is rft, metres are converted to running feet for billing qty.
+    """
+    if not isinstance(setup, Mapping):
+        return []
+    members = setup.get("members") or []
+    if not members:
+        return []
+    context = dict(ctx or {})
+    w = max(float(width_mm or 0), 0.0)
+    h = max(float(height_mm or 0), 0.0)
+    q = max(float(qty or 1), 0.0)
+    lines: list[dict[str, Any]] = []
+    for raw in members:
+        m = normalize_member(raw)
+        if not m.get("name") and not (m.get("wFactor") or m.get("hFactor")):
+            continue
+        wf = float(m.get("wFactor") or 0)
+        hf = float(m.get("hFactor") or 0)
+        if wf <= 0 and hf <= 0:
+            continue
+        count = _role_count(str(m.get("role") or "other"), context)
+        if count <= 0:
+            continue
+        metres = ((wf * w + hf * h) / 1000.0) * count * q
+        if metres <= 0:
+            continue
+        rate_unit = str(m.get("rateUnit") or "m")
+        bill_qty = metres * (1.0 / 0.3048) if rate_unit == "rft" else metres
+        bill_unit = "RFT" if rate_unit == "rft" else "RM"
+        # Piece counts (integer factors → discrete pieces for cut sheet)
+        pieces_h = int(round(wf * count * q)) if wf and float(wf).is_integer() else None
+        pieces_v = int(round(hf * count * q)) if hf and float(hf).is_integer() else None
+        lines.append({
+            "category": "profile",
+            "name": m.get("name") or m.get("role") or "member",
+            "role": m.get("role"),
+            "sku": m.get("sku") or "",
+            "wFactor": wf,
+            "hFactor": hf,
+            "roleCount": count,
+            "metres": round(metres, 4),
+            "qty": round(bill_qty, 4),
+            "unit": bill_unit,
+            "unitRate": float(m.get("ratePerM") or 0),
+            "weightKgPerM": m.get("weightKgPerM"),
+            "weightKg": round(metres * float(m["weightKgPerM"]), 4) if m.get("weightKgPerM") else None,
+            "piecesH": pieces_h,
+            "piecesV": pieces_v,
+            "cutWidthMm": w if wf else None,
+            "cutHeightMm": h if hf else None,
+            "remarks": m.get("notes") or f"wFactor={wf} hFactor={hf}",
+        })
+    return lines
+
+
+def estimate_leaf_weight_kg(
+    setup: Mapping[str, Any] | None,
+    *,
+    width_mm: float,
+    height_mm: float,
+    glass_kg_total: float = 0.0,
+    shutter_count: float = 1.0,
+    ctx: Mapping[str, Any] | None = None,
+) -> float:
+    """Approx one leaf/shutter weight for hardware capacity pick.
+
+    Uses shutter-role member kg/m × perimeter share, plus glass/shutter_count.
+    Falls back to glass-only / shutter_count when members lack weights.
+    """
+    shutters = max(float(shutter_count or 1), 1.0)
+    glass_each = max(float(glass_kg_total or 0), 0.0) / shutters
+    context = dict(ctx or {})
+    context.setdefault("shutterCount", shutters)
+    section_kg = 0.0
+    for line in derive_member_cuts(
+        setup, width_mm=width_mm, height_mm=height_mm, ctx=context, qty=1.0
+    ):
+        role = str(line.get("role") or "")
+        if role not in ("shutter", "interlock", "bead"):
+            continue
+        wkg = line.get("weightKg")
+        if wkg is None:
+            continue
+        # Member lines already multiply by roleCount (all shutters); per-leaf share
+        section_kg += float(wkg) / shutters
+    return round(glass_each + section_kg, 3)
+
+
+def pick_hardware_by_weight(
+    rules: Sequence[Mapping[str, Any]] | None,
+    required_kg: float,
+    *,
+    kind: str,
+    system_type: str = "",
+) -> dict[str, Any] | None:
+    """WD ``pickWheelByWeight`` generalised: prefer capacity ≥ required; else heaviest.
+
+    Rules are filtered by ``kind`` and ``systemType`` (empty system on a rule
+    matches any; a typed rule never crosses systems).
+    """
+    want_kind = _str(kind).lower().replace("-", "_")
+    if want_kind == "rollers":
+        want_kind = "roller"
+    if want_kind == "wheels":
+        want_kind = "wheel"
+    # roller and wheel are interchangeable for sliding
+    kind_aliases = {want_kind}
+    if want_kind in ("wheel", "roller"):
+        kind_aliases = {"wheel", "roller"}
+    sys = normalize_system_type(system_type)
+    candidates: list[dict[str, Any]] = []
+    for raw in rules or []:
+        rule = normalize_hardware_weight_rule(raw)
+        if rule["kind"] not in kind_aliases:
+            continue
+        rule_sys = rule.get("systemType") or ""
+        if rule_sys and sys and rule_sys != sys:
+            continue
+        if rule_sys and not sys:
+            # setup type unknown — only accept untyped or matching later
+            pass
+        if not rule.get("name") and not rule.get("sku"):
+            continue
+        if float(rule.get("maxKg") or 0) <= 0 and float(rule.get("minKg") or 0) <= 0:
+            continue
+        candidates.append(rule)
+    if not candidates:
+        return None
+    req = max(float(required_kg or 0), 0.0)
+    # Prefer rules whose [minKg, maxKg] covers req; among those smallest maxKg.
+    covering = [
+        c for c in candidates
+        if float(c.get("minKg") or 0) <= req <= (float(c.get("maxKg") or 1e9) or 1e9)
+    ]
+    if covering:
+        covering.sort(key=lambda c: float(c.get("maxKg") or 1e9))
+        return covering[0]
+    # Else prefer capacity ≥ required (WD), else heaviest listed
+    ordered = sorted(candidates, key=lambda c: float(c.get("maxKg") or 0))
+    fit = next((c for c in ordered if float(c.get("maxKg") or 0) >= req), None)
+    return fit or ordered[-1]
+
+
+def apply_hardware_weight_rules(
+    setup: Mapping[str, Any] | None,
+    *,
+    leaf_weight_kg: float,
+    ctx: Mapping[str, Any] | None = None,
+    system_type: str | None = None,
+) -> list[dict[str, Any]]:
+    """Emit priced hardware lines for each kind present in the setup rules."""
+    if not isinstance(setup, Mapping):
+        return []
+    rules = setup.get("hardwareWeightRules") or []
+    if not rules:
+        return []
+    context = dict(ctx or {})
+    sys = normalize_system_type(
+        system_type
+        or setup.get("type")
+        or context.get("system")
+        or context.get("systemType")
+        or ""
+    )
+    # Unique kinds in rules that match this system (or untyped)
+    kinds: list[str] = []
+    for raw in rules:
+        rule = normalize_hardware_weight_rule(raw)
+        rule_sys = rule.get("systemType") or ""
+        if rule_sys and sys and rule_sys != sys:
+            continue
+        k = rule["kind"]
+        # collapse wheel/roller
+        key = "wheel" if k in ("wheel", "roller") else k
+        if key not in kinds:
+            kinds.append(key)
+    lines: list[dict[str, Any]] = []
+    for kind in kinds:
+        picked = pick_hardware_by_weight(rules, leaf_weight_kg, kind=kind, system_type=sys)
+        if not picked:
+            continue
+        qty_each = float(picked.get("qtyPer") or 1) or 1.0
+        basis = str(picked.get("basis") or "shutter")
+        qty = qty_each * _basis_multiplier(basis, context)
+        if qty <= 0:
+            continue
+        cap = picked.get("maxKg")
+        name = picked.get("name") or f"{kind} (auto)"
+        if cap:
+            name = f"{name} (≤{cap:g} kg)"
+        lines.append({
+            "category": "hardware",
+            "name": name,
+            "kind": picked.get("kind"),
+            "sku": picked.get("sku") or "",
+            "brand": picked.get("brand") or "",
+            "qty": round(qty, 4),
+            "unit": picked.get("unit") or "PC",
+            "unitRate": float(picked.get("rate") or 0),
+            "remarks": (
+                f"weight-pick {leaf_weight_kg:g}kg · {picked.get('systemType') or sys or 'any'}"
+                + (f" · {picked.get('notes')}" if picked.get("notes") else "")
+            ),
+            "selectBy": "weight",
+            "leafWeightKg": leaf_weight_kg,
+        })
+    return lines
+
+
+def apply_setup_bom(
+    setup: Mapping[str, Any] | None,
+    *,
+    width_mm: float,
+    height_mm: float,
+    ctx: Mapping[str, Any] | None = None,
+    glass_kg_total: float = 0.0,
+    shutter_count: float | None = None,
+    system_type: str | None = None,
+    qty: float = 1.0,
+) -> dict[str, Any]:
+    """Combine member cuts + weight-picked hardware for the calculate pipeline.
+
+    Returns empty lists when setup has no members/rules so legacy behaviour wins.
+    """
+    context = dict(ctx or {})
+    shutters = float(
+        shutter_count
+        if shutter_count is not None
+        else (context.get("shutterCount") or context.get("glassCount") or 1)
+    ) or 1.0
+    context.setdefault("shutterCount", shutters)
+    members = derive_member_cuts(
+        setup, width_mm=width_mm, height_mm=height_mm, ctx=context, qty=qty
+    )
+    leaf_kg = estimate_leaf_weight_kg(
+        setup,
+        width_mm=width_mm,
+        height_mm=height_mm,
+        glass_kg_total=glass_kg_total,
+        shutter_count=shutters,
+        ctx=context,
+    )
+    # If members gave no section weight, still allow glass-only leaf weight for pick
+    if leaf_kg <= 0 and glass_kg_total > 0:
+        leaf_kg = round(float(glass_kg_total) / shutters, 3)
+    hw = apply_hardware_weight_rules(
+        setup,
+        leaf_weight_kg=leaf_kg,
+        ctx=context,
+        system_type=system_type,
+    )
+    alu_kg = sum(float(m["weightKg"]) for m in members if m.get("weightKg") is not None)
+    return {
+        "members": members,
+        "hardware": hw,
+        "leafWeightKg": leaf_kg,
+        "aluminiumKgFromMembers": round(alu_kg, 4),
+        "usedMembers": bool(members),
+        "usedHardwareWeightRules": bool(hw),
+    }

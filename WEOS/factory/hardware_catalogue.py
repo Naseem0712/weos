@@ -146,11 +146,22 @@ def _basis_count(per: str, ctx: Mapping[str, Any]) -> float:
 
 
 def _select_by_weight(rule: Mapping[str, Any], weight_kg: float) -> dict[str, Any] | None:
-    """Pick a variant from weight ranges: first whose maxKg >= weight; else last."""
+    """Pick a variant from weight ranges: prefer minKg≤w≤maxKg; else first maxKg≥w; else last."""
     ranges = list(rule.get("ranges") or [])
     if not ranges:
         return None
     ordered = sorted(ranges, key=lambda r: float(r.get("maxKg", 1e9)))
+    covering: list[dict[str, Any]] = []
+    for rng in ordered:
+        try:
+            lo = float(rng.get("minKg", 0) or 0)
+            hi = float(rng.get("maxKg", 1e9))
+            if lo <= weight_kg <= hi:
+                covering.append(dict(rng))
+        except (TypeError, ValueError):
+            continue
+    if covering:
+        return covering[0]
     for rng in ordered:
         try:
             if weight_kg <= float(rng.get("maxKg", 1e9)):

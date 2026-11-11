@@ -1907,7 +1907,7 @@ textarea{max-width:100%}
             <div class="grow"><label class="l">Standard length(s) mm (comma)</label><input id="setupStdLen" placeholder="e.g. 5850 or 2400,3000"/></div>
             <label class="chk" style="display:flex;align-items:center;gap:.35rem;margin-bottom:.35rem"><input type="checkbox" id="setupImported"/> Imported material</label>
           </div>
-          <p class="muted" style="font-size:.78rem;margin:.4rem 0 .2rem">Fill the sections (dimensions · weight kg/m · standard length) and hardware (brand · rate · qty per shutter/leaf/config). Saved into this product and used for section sizes, BOM, glass &amp; weight.</p>
+          <p class="muted" style="font-size:.78rem;margin:.4rem 0 .2rem">Fill the sections (dimensions · weight kg/m · standard length) and hardware (brand · rate · qty per shutter/leaf/config). Optional <strong>member table</strong> (wFactor / hFactor) drives cut qty; <strong>hardware by weight</strong> auto-picks wheels / closers / hinges from leaf kg (system-isolated). Empty members → legacy path. Advanced formulas remain under Rules.</p>
           <div id="setupBody" style="margin-top:.4rem"></div>
           <div class="muted" id="setupDerived" style="font-size:.75rem;margin-top:.6rem"></div>
         </div>
@@ -13047,11 +13047,41 @@ const HW_COLS = [
   {k:'rate',t:'Rate',n:1,w:64},{k:'qtyPer',t:'Qty per',n:1,w:64},
   {k:'basis',t:'Per',sel:['shutter','leaf','door','window','config','pair','meter'],w:88},{k:'notes',t:'Notes',w:120},
 ];
+const MEMBER_ROLES = ['outer','track','shutter','interlock','mesh','mullion','bead','other'];
+const MEMBER_COLS = [
+  {k:'name',t:'Member / profile',w:130},
+  {k:'role',t:'Role',sel:MEMBER_ROLES,w:96},
+  {k:'wFactor',t:'wFactor',n:1,w:64},
+  {k:'hFactor',t:'hFactor',n:1,w:64},
+  {k:'weightKgPerM',t:'kg/m',n:1,w:64},
+  {k:'ratePerM',t:'Rate ₹',n:1,w:70},
+  {k:'rateUnit',t:'Unit',sel:['m','rft'],w:64},
+  {k:'sku',t:'SKU',w:90},
+];
+const HW_WEIGHT_KINDS = ['wheel','roller','door_closer','floor_spring','hinge'];
+const HW_WEIGHT_SYSTEMS = ['sliding','casement','tilt_turn','style','telescopic','fold','synchron'];
+const HW_WEIGHT_COLS = [
+  {k:'kind',t:'Kind',sel:HW_WEIGHT_KINDS,w:100},
+  {k:'systemType',t:'System',sel:HW_WEIGHT_SYSTEMS,w:96},
+  {k:'minKg',t:'Min kg',n:1,w:64},
+  {k:'maxKg',t:'Max kg',n:1,w:64},
+  {k:'name',t:'Name / SKU label',w:130},
+  {k:'sku',t:'SKU',w:80},
+  {k:'brand',t:'Brand',w:80},
+  {k:'rate',t:'Rate ₹',n:1,w:64},
+  {k:'unit',t:'Unit',w:56},
+  {k:'qtyPer',t:'Qty/basis',n:1,w:64},
+  {k:'basis',t:'Per',sel:['shutter','leaf','door','window','opening','pair'],w:80},
+];
 function blankSection(name,use){ return {name:name||'',use:use||'',wMm:null,hMm:null,wallMm:null,weightKgPerM:null,stdLengthMm:null,side:'',glassType:'',notes:''}; }
 function blankHardware(name){ return {name:name||'',brand:'',unit:'PC',rate:0,qtyPer:1,basis:'shutter',sizes:[],config:'',notes:''}; }
+function blankMember(name,role){ return {id:'',name:name||'',role:role||'outer',wFactor:2,hFactor:2,weightKgPerM:null,ratePerM:0,rateUnit:'m',sku:'',notes:''}; }
+function blankHwWeightRule(kind,systemType){ return {kind:kind||'wheel',systemType:systemType||'sliding',minKg:0,maxKg:40,name:'',sku:'',brand:'',rate:0,unit:'PC',qtyPer:2,basis:'shutter',notes:''}; }
 function ensureSetupShape(s, type){
   s = s && typeof s==='object' ? s : {};
   s.type = type;
+  s.members = Array.isArray(s.members) ? s.members : [];
+  s.hardwareWeightRules = Array.isArray(s.hardwareWeightRules) ? s.hardwareWeightRules : [];
   s.sliding = s.sliding || {};
   s.sliding.outerTrack = s.sliding.outerTrack || {sameAllSides:true};
   s.sliding.shutters = s.sliding.shutters || {sameAllSides:true};
@@ -13106,6 +13136,15 @@ function listCard(title, rows, tableId, addLabel){
     <button class="btn ghost sm" data-add="${tableId}">${addLabel||'Add row'}</button></div>
     <div data-list="${tableId}"></div></div>`;
 }
+function setupPhase2Cards(type){
+  const sys = ({sliding:'sliding',casement:'casement',telescopic:'telescopic',style:'style',fold:'fold',synchron:'synchron'}[type]||type||'sliding');
+  return `<h4 style="margin:.7rem 0 .2rem">Member table <span class="muted" style="font-weight:400;font-size:.74rem">wFactor = width pieces · hFactor = height pieces · empty → legacy sections/formulas</span></h4>
+    <p class="muted" style="font-size:.72rem;margin:0 0 .3rem">Doors: outer height 2 pcs one profile, width 2 pcs same or different — add multiple rows. Role drives how many times the row repeats (shutter × shutter count, interlock × shutters−1, …).</p>
+    ${listCard('Profiles · factors · kg/m · rate ₹/m or rft', state.setup.members, 'members', 'Add member')}
+    <h4 style="margin:.7rem 0 .2rem">Hardware by weight <span class="muted" style="font-weight:400;font-size:.74rem">leaf/shutter kg → auto pick · system-isolated</span></h4>
+    <p class="muted" style="font-size:.72rem;margin:0 0 .3rem">Sliding wheels ≠ casement hinges ≠ style floor spring. Prefer capacity ≥ required kg; else heaviest listed. Costs land on the quote hardware lines (set selling rate in cart).</p>
+    ${listCard('min/max kg → name · SKU · rate (system '+sys+')', state.setup.hardwareWeightRules, 'hardwareWeightRules', 'Add weight rule')}`;
+}
 function renderSetup(){
   const type = ($('setupType')&&$('setupType').value) || 'sliding';
   state.setup = ensureSetupShape(state.setup||{}, type);
@@ -13126,7 +13165,8 @@ function renderSetup(){
       <label class="chk" style="font-size:.78rem;margin-left:.8rem"><input type="checkbox" data-flag="sliding.mesh.sameAsShutter" ${mesh.sameAsShutter?'checked':''}/> Mesh uses same section as shutter</label>
       ${listCard('Mesh sections (if different)', mesh.sections, 'sliding.mesh.sections','Add mesh section')}
       <h4 style="margin:.6rem 0 .2rem">Hardware · rate · qty per 1 shutter</h4>
-      ${listCard('Rollers, connectors, PVC angles, interlock connectors/caps, lock guide, lock, handles', state.setup.sliding.hardware, 'sliding.hardware','Add hardware')}`;
+      ${listCard('Rollers, connectors, PVC angles, interlock connectors/caps, lock guide, lock, handles', state.setup.sliding.hardware, 'sliding.hardware','Add hardware')}
+      ${setupPhase2Cards(type)}`;
   } else if (type==='casement'){
     const g = state.setup.casement.glass;
     html += `<h4 style="margin:.4rem 0 .2rem">Outer frame</h4>${singleSectionCard('Outer frame','casement.outerFrame')}
@@ -13135,7 +13175,8 @@ function renderSetup(){
       <div class="row"><div><label class="l">Single (sg) clip mm</label><input data-num="casement.glass.sgClip" type="number" step="0.1" value="${g.sgClip==null?'':g.sgClip}" style="width:120px"/></div>
       <div><label class="l">DGU (dg) clip mm</label><input data-num="casement.glass.dgClip" type="number" step="0.1" value="${g.dgClip==null?'':g.dgClip}" style="width:120px"/></div></div>
       <h4 style="margin:.6rem 0 .2rem">Hardware · brand · rate · qty</h4>
-      ${listCard('Interlock/outer connectors, hinges, friction stay (sizes), shutter holder, door closer, stopper', state.setup.casement.hardware, 'casement.hardware','Add hardware')}`;
+      ${listCard('Interlock/outer connectors, hinges, friction stay (sizes), shutter holder, door closer, stopper', state.setup.casement.hardware, 'casement.hardware','Add hardware')}
+      ${setupPhase2Cards(type)}`;
   } else if (type==='telescopic' || type==='synchron'){
     const t = state.setup.telescopic;
     html += `<p class="muted" style="font-size:.76rem">${type==='synchron'?'Synchron / 2+2 sync':'Telescopic'} — vertical first → top &amp; bottom → joint connectors (GI) → top track.</p>
@@ -13152,12 +13193,14 @@ function renderSetup(){
     ['1+1','1+2','1+3','1+4','1+5'].forEach(cfg => {
       html += listCard('Set '+cfg, t.hardwareSets[cfg], 'telescopic.hardwareSets.'+cfg, 'Add to '+cfg);
     });
+    html += setupPhase2Cards(type);
   } else if (type==='fold'){
     html += `<p class="muted" style="font-size:.76rem">Fold &amp; sliding — cart uses bifold geometry. Register outer frame / leaf sections here.</p>
       ${singleSectionCard('Outer frame','casement.outerFrame')}
       ${singleSectionCard('Shutter / leaf','casement.shutter')}
       <h4 style="margin:.6rem 0 .2rem">Hardware</h4>
-      ${listCard('Hinges, locks, handles', state.setup.casement.hardware, 'casement.hardware','Add hardware')}`;
+      ${listCard('Hinges, locks, handles', state.setup.casement.hardware, 'casement.hardware','Add hardware')}
+      ${setupPhase2Cards(type)}`;
   } else if (type==='style'){
     const st = state.setup.style;
     html += `<p class="muted" style="font-size:.76rem">Imported. Std length 2.4 &amp; 3 mtr. Uses casement hardware + floor spring / pivot door options.</p>
@@ -13166,7 +13209,8 @@ function renderSetup(){
       <label class="chk" style="font-size:.78rem"><input type="checkbox" data-flag="style.usesCasementHardware" ${st.usesCasementHardware?'checked':''}/> Uses casement hardware</label>
       <h4 style="margin:.5rem 0 .2rem">Floor spring</h4><div data-hwsingle="style.floorSpring">${setupTable(HW_COLS,[st.floorSpring],null,{noDel:true})}</div>
       <h4 style="margin:.5rem 0 .2rem">Pivot door</h4><div data-hwsingle="style.pivotDoor">${setupTable(HW_COLS,[st.pivotDoor],null,{noDel:true})}</div>
-      <h4 style="margin:.5rem 0 .2rem">Additional hardware</h4>${listCard('Extra hardware', st.hardware, 'style.hardware','Add hardware')}`;
+      <h4 style="margin:.5rem 0 .2rem">Additional hardware</h4>${listCard('Extra hardware', st.hardware, 'style.hardware','Add hardware')}
+      ${setupPhase2Cards(type)}`;
   }
   box.innerHTML = html;
   wireSetup(box);
@@ -13182,17 +13226,26 @@ function wireSetup(box){
   box.querySelectorAll('[data-sec]').forEach(el=>{ const sec=secObj(el.dataset.sec); wireTable(el,SEC_COLS,[sec],renderSetup); });
   // single-hardware cards
   box.querySelectorAll('[data-hwsingle]').forEach(el=>{ const hw=getByPath(el.dataset.hwsingle)||blankHardware(); setByPath(el.dataset.hwsingle,hw); wireTable(el,HW_COLS,[hw],renderSetup); });
-  // list cards (sections or hardware)
+  // list cards (sections, hardware, members, weight rules)
   box.querySelectorAll('[data-list]').forEach(el=>{
     const path=el.dataset.list; const rows=getByPath(path)||[]; setByPath(path,rows);
-    const isMesh = path.endsWith('.sections');
-    const cols = isMesh ? SEC_COLS : HW_COLS;
+    let cols = HW_COLS;
+    if (path.endsWith('.sections')) cols = SEC_COLS;
+    else if (path === 'members') cols = MEMBER_COLS;
+    else if (path === 'hardwareWeightRules') cols = HW_WEIGHT_COLS;
     el.innerHTML = setupTable(cols, rows, null, {});
     wireTable(el, cols, rows, renderSetup);
   });
   box.querySelectorAll('[data-add]').forEach(b=> b.onclick = () => {
     const path=b.dataset.add; const rows=getByPath(path)||[]; setByPath(path,rows);
-    rows.push(path.endsWith('.sections') ? blankSection() : blankHardware());
+    const stype = (state.setup && state.setup.type) || 'sliding';
+    if (path.endsWith('.sections')) rows.push(blankSection());
+    else if (path === 'members') rows.push(blankMember('', stype==='casement'||stype==='style'?'outer':'track'));
+    else if (path === 'hardwareWeightRules') {
+      const kind = (stype==='sliding'||stype==='telescopic'||stype==='synchron') ? 'wheel'
+        : (stype==='style' ? 'floor_spring' : 'hinge');
+      rows.push(blankHwWeightRule(kind, stype==='synchron'?'synchron':stype));
+    } else rows.push(blankHardware());
     renderSetup();
   });
 }
@@ -13207,7 +13260,13 @@ function updateSetupDerived(){
   else if(t==='telescopic'){const x=state.setup.telescopic;sizes={topRail:face(x.verticalTop)||face(x.topTrack),bottomRail:face(x.verticalBottom),jamb:face(x.vertical)};}
   else if(t==='style'){const x=state.setup.style;sizes={topRail:face(x.top),bottomRail:face(x.bottom),jamb:face(x.outerFrame),leafStile:face(x.innerDoorVertical)};}
   const parts=Object.entries(sizes).filter(([,v])=>v).map(([k,v])=>`${k} ${v}mm`);
-  el.textContent = parts.length ? ('Derived section sizes → '+parts.join(' · ')) : 'Fill section W (mm) to derive geometry frame sizes.';
+  const memN = (state.setup.members||[]).filter(m=>m&&m.name).length;
+  const hwN = (state.setup.hardwareWeightRules||[]).filter(r=>r&&(r.name||r.sku)).length;
+  const extra = [];
+  if (memN) extra.push(memN+' member'+(memN===1?'':'s'));
+  if (hwN) extra.push(hwN+' weight rule'+(hwN===1?'':'s'));
+  const base = parts.length ? ('Derived section sizes → '+parts.join(' · ')) : 'Fill section W (mm) to derive geometry frame sizes.';
+  el.textContent = extra.length ? (base+' · Phase2: '+extra.join(', ')) : base;
 }
 document.querySelectorAll('#adminTabs .tab').forEach(t => t.onclick = () => {
   document.querySelectorAll('#adminTabs .tab').forEach(x => x.classList.toggle('active', x===t));
