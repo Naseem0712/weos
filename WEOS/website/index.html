@@ -272,27 +272,19 @@ body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
 #view-cart .cart-inspector .livebox{padding:.55rem .65rem;margin-top:.45rem}
 #view-cart .cart-inspector .livebox .big{font-size:1.2rem}
 #view-cart .cart-preview.design-stage{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  overflow:hidden;min-height:0;height:100%;padding:.12rem;container-type:size;container-name:cartstage;
+  /* Full workspace is the pan/clip viewport — no nested smaller square frame. */
+  display:flex;flex-direction:column;align-items:stretch;justify-content:stretch;
+  overflow:hidden;min-height:0;height:100%;width:100%;padding:0;container-type:size;container-name:cartstage;
   background:var(--stage-paper);
   border:1px solid rgba(20,40,36,.1);box-shadow:var(--shadow);border-radius:var(--radius)
 }
 #view-cart .cart-preview .design-canvas-frame,
 #view-cart.preview-roomy .cart-preview .design-canvas-frame{
-  flex:0 0 auto;box-sizing:border-box;
-  width:min(100cqw,100cqh);
-  height:min(100cqw,100cqh);
-  max-width:100%;max-height:100%;aspect-ratio:1 / 1;
+  flex:1 1 auto;box-sizing:border-box;min-width:0;min-height:0;
+  width:100%;height:100%;max-width:100%;max-height:100%;
   display:flex;flex-direction:column;
-  border:0;border-radius:10px;overflow:hidden;
+  border:0;border-radius:0;overflow:hidden;
   background:transparent;box-shadow:none
-}
-@supports not (width:1cqw){
-  #view-cart .cart-preview .design-canvas-frame,
-  #view-cart.preview-roomy .cart-preview .design-canvas-frame{
-    width:min(100%,min(78vh,calc(100vh - 7.5rem)));
-    height:min(100%,min(78vh,calc(100vh - 7.5rem)))
-  }
 }
 #view-cart .cart-preview .preview,#view-cart .cart-preview #livePreview.preview,
 #view-cart.preview-roomy .cart-preview .preview,#view-cart.preview-roomy .cart-preview #livePreview.preview{
@@ -347,10 +339,10 @@ body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
   .cart-workspace{grid-template-columns:1fr;grid-template-rows:minmax(320px,min(72vh,560px)) auto;height:auto}
   #view-cart.inspector-collapsed .cart-workspace{grid-template-columns:1fr;grid-template-rows:minmax(320px,min(72vh,560px))}
   #view-cart .cart-inspector.cart-tools{height:auto;max-height:min(48vh,420px);order:2}
-  #view-cart .cart-preview.design-stage{order:1;min-height:320px;height:min(72vh,560px)}
+  #view-cart .cart-preview.design-stage{order:1;min-height:320px;height:min(72vh,560px);width:100%}
   #view-cart .cart-preview .design-canvas-frame,
   #view-cart.preview-roomy .cart-preview .design-canvas-frame{
-    width:min(100cqw,100cqh,100%);height:min(100cqw,100cqh,100%);max-height:100%
+    width:100%;height:100%;max-width:100%;max-height:100%
   }
   .cart-lines-panel{position:fixed;top:auto;left:.5rem;right:.5rem;bottom:.5rem;width:auto;max-height:55vh}
 }
@@ -361,8 +353,7 @@ body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
   .cart-topbar .actions-inline #linkCustXlsx{display:inline-block}
   #view-cart .cart-preview .design-canvas-frame,
   #view-cart.preview-roomy .cart-preview .design-canvas-frame{
-    width:min(100%,min(70vh,calc(100vw - 1.5rem)));
-    height:min(100%,min(70vh,calc(100vw - 1.5rem)))
+    width:100%;height:100%;max-width:100%;max-height:100%
   }
 }
 .admin-split{align-items:stretch}
@@ -3495,8 +3486,8 @@ function previewZoomValue() {
   const z = Number(state.previewZoom);
   return Number.isFinite(z) && z > 0 ? z : 1;
 }
-/** Uniform stage inset — keep tiny so drawings fill the square stage. */
-const PREVIEW_FIT_INSET = 0.005;
+/** Uniform stage inset — tiny so drawings fill the full visible stage. */
+const PREVIEW_FIT_INSET = 0.004;
 function resetPreviewCamera() {
   state.previewZoom = 1;
   state.previewPanX = 0;
@@ -3643,8 +3634,12 @@ function _previewElementSignature(el) {
  */
 function normalizePreviewSvgViewport(svg) {
   if (!svg || !svg.tagName || svg.tagName.toLowerCase() !== 'svg') return;
-  if (svg.dataset.previewViewport === 'stage') return;
+  // Always re-strip paper — engines (window/shower/etc.) ship #ffffff full-bleed rects.
   stripPreviewPaperFill(svg);
+  if (svg.dataset.previewViewport === 'stage') {
+    try { svg.style.background = 'transparent'; } catch (_) {}
+    return;
+  }
   const vb = svg.getAttribute('viewBox');
   if (!vb) {
     try {
