@@ -225,7 +225,7 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
   overscroll-behavior:contain;touch-action:pan-x pan-y
 }
 #view-cart .cart-preview.design-stage{
-  display:flex;flex-direction:column;overflow:hidden;padding:.7rem .75rem .75rem;
+  display:flex;flex-direction:column;overflow:auto;padding:.7rem .75rem .75rem;
   background:linear-gradient(180deg,#fbfcfa 0%,#f4f6f8 100%);
   border:1px solid rgba(20,40,36,.12);box-shadow:var(--shadow)
 }
@@ -247,13 +247,26 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
 #view-cart .cart-preview .preview-zoom .btn[aria-pressed="true"]{
   background:var(--green);color:#f4faf7;border-color:var(--green)
 }
-#view-cart .cart-preview .design-canvas-frame{
-  flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
+/* Fixed square DesignCanvas: width = 100% of cart-preview column; height = width.
+   flex-shrink:0 + aspect-ratio — never crushed by specs or product-world swaps. */
+#view-cart .cart-preview .design-canvas-frame,
+#view-cart.preview-roomy .cart-preview .design-canvas-frame{
+  flex:0 0 auto;align-self:stretch;width:100%;max-width:100%;box-sizing:border-box;
+  aspect-ratio:1 / 1;height:auto;min-height:0;max-height:none;
+  display:flex;flex-direction:column;
   border:1px solid rgba(20,40,36,.14);border-radius:12px;overflow:hidden;
   background:var(--stage-frame);box-shadow:inset 0 0 0 1px rgba(255,255,255,.65)
 }
-#view-cart .cart-preview .preview,#view-cart .cart-preview #livePreview.preview{
-  flex:1 1 auto;min-height:0;height:auto;width:100%;
+/* Fallback when aspect-ratio is unavailable — keep a usable square-ish stage */
+@supports not (aspect-ratio:1 / 1){
+  #view-cart .cart-preview .design-canvas-frame,
+  #view-cart.preview-roomy .cart-preview .design-canvas-frame{
+    min-height:clamp(420px,52vw,560px);height:clamp(420px,52vw,560px)
+  }
+}
+#view-cart .cart-preview .preview,#view-cart .cart-preview #livePreview.preview,
+#view-cart.preview-roomy .cart-preview .preview,#view-cart.preview-roomy .cart-preview #livePreview.preview{
+  flex:1 1 auto;min-height:0;width:100%;height:100%;
   overflow:hidden;display:flex;align-items:center;justify-content:center;
   padding:14px;box-sizing:border-box;overscroll-behavior:contain;cursor:grab;touch-action:none;
   border:0;border-radius:0;background:var(--stage-paper)
@@ -283,8 +296,11 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
     overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch
   }
   #view-cart .cart-preview{max-height:none;overflow:visible}
-  #view-cart .cart-preview .design-canvas-frame{min-height:min(70vh,640px)}
-  #view-cart .cart-preview .preview{min-height:360px;height:min(70vh,640px)}
+  #view-cart .cart-preview .design-canvas-frame,
+  #view-cart.preview-roomy .cart-preview .design-canvas-frame{
+    flex:0 0 auto;width:100%;aspect-ratio:1 / 1;height:auto;min-height:0;max-height:none
+  }
+  #view-cart .cart-preview .preview{width:100%;height:100%;min-height:0}
 }
 /* Tool column always shows a vertical scrollbar so shower layout settings stay reachable. */
 #view-cart .cart-tools{
@@ -415,8 +431,11 @@ textarea{max-width:100%}
   .main{padding:.85rem .85rem 2rem}
   .prodgrid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
   .cards{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-  #view-cart .cart-preview .design-canvas-frame{min-height:min(64vh,620px)}
-  #view-cart .cart-preview .preview{min-height:420px}
+  #view-cart .cart-preview .design-canvas-frame,
+  #view-cart.preview-roomy .cart-preview .design-canvas-frame{
+    flex:0 0 auto;width:100%;aspect-ratio:1 / 1;height:auto;min-height:0;max-height:none
+  }
+  #view-cart .cart-preview .preview{width:100%;height:100%;min-height:0}
 }
 @media(max-width:700px){
   :root{--logo-w:min(160px,58vw);--side:min(220px,86vw);--cart-inspector:100%;--radius:10px}
@@ -481,8 +500,11 @@ textarea{max-width:100%}
   #view-cart .cart-preview .preview-head{display:grid;grid-template-columns:1fr;gap:.4rem}
   #view-cart .cart-preview .stage-tools,
   #view-cart .cart-preview .preview-zoom{overflow-x:auto;justify-content:flex-start;padding-bottom:.15rem;-webkit-overflow-scrolling:touch}
-  #view-cart .cart-preview .design-canvas-frame{min-height:min(58vh,440px)}
-  #view-cart .cart-preview .preview{height:min(58vh,440px);min-height:260px;padding:8px}
+  #view-cart .cart-preview .design-canvas-frame,
+  #view-cart.preview-roomy .cart-preview .design-canvas-frame{
+    flex:0 0 auto;width:100%;aspect-ratio:1 / 1;height:auto;min-height:0;max-height:none
+  }
+  #view-cart .cart-preview .preview{width:100%;height:100%;min-height:0;padding:8px}
   .canvas-wrap{height:min(62vh,520px);border-radius:10px}
   .canvas-page{margin:8px auto}
   .rail-tools,.rail-run,.livebox,.agent,.memory-banner,.safe-banner{border-radius:10px;padding:.62rem}
@@ -498,8 +520,11 @@ textarea{max-width:100%}
   .card,.panel{padding:.62rem .55rem}
   .main{padding-left:.45rem;padding-right:.45rem}
   table{min-width:560px}
-  #view-cart .cart-preview .design-canvas-frame{min-height:min(54vh,380px)}
-  #view-cart .cart-preview .preview{height:min(54vh,380px);min-height:240px}
+  #view-cart .cart-preview .design-canvas-frame,
+  #view-cart.preview-roomy .cart-preview .design-canvas-frame{
+    flex:0 0 auto;width:100%;aspect-ratio:1 / 1;height:auto;min-height:0;max-height:none
+  }
+  #view-cart .cart-preview .preview{width:100%;height:100%;min-height:0}
 }
 @page{size:A4 portrait;margin:12mm}
 @media print{
