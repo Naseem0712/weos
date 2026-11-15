@@ -301,35 +301,57 @@ body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
   max-width:none!important;max-height:none!important;width:auto;height:auto;display:block;flex-shrink:0;overflow:visible;
   background:transparent
 }
+.cart-lines-backdrop{
+  position:absolute;inset:0;z-index:39;background:rgba(18,20,15,.38);
+  opacity:0;pointer-events:none;transition:opacity .18s ease
+}
+#view-cart.lines-open .cart-lines-backdrop{opacity:1;pointer-events:auto}
 .cart-lines-panel{
-  position:absolute;z-index:40;top:.35rem;right:.35rem;bottom:.35rem;width:min(340px,92vw);
-  display:flex;flex-direction:column;gap:.4rem;padding:.55rem .6rem;
-  background:rgba(255,252,247,.98);border:1px solid var(--line);border-radius:14px;
-  box-shadow:0 18px 48px rgba(20,20,16,.16);transform:translateX(110%);opacity:0;pointer-events:none;
+  position:absolute;z-index:40;inset:.55rem;width:auto;max-width:none;
+  display:flex;flex-direction:column;gap:.45rem;padding:.7rem .75rem .55rem;
+  background:rgba(255,252,247,.995);border:1px solid var(--line);border-radius:16px;
+  box-shadow:0 22px 56px rgba(20,20,16,.22);transform:translateY(12px) scale(.985);opacity:0;pointer-events:none;
   transition:transform .22s ease,opacity .18s ease
 }
 #view-cart.lines-open .cart-lines-panel{transform:none;opacity:1;pointer-events:auto}
 .cart-lines-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.4rem;flex:0 0 auto}
-.cart-lines-head strong{font-size:.9rem}
+.cart-lines-head strong{font-size:1.05rem;font-family:Fraunces,serif}
 .cart-lines-cards{
-  flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:.45rem;-webkit-overflow-scrolling:touch
+  flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:.5rem;-webkit-overflow-scrolling:touch;
+  padding-right:.15rem
 }
 .quote-line-card{
-  border:1px solid var(--line);border-radius:12px;padding:.55rem .6rem;background:#fff;cursor:pointer;
+  border:1px solid var(--line);border-radius:12px;padding:.65rem .7rem;background:#fff;cursor:pointer;
   transition:border-color .15s,box-shadow .15s,background .15s
 }
 .quote-line-card:hover{border-color:var(--green);box-shadow:0 4px 14px rgba(10,90,72,.1)}
 .quote-line-card.active{border-color:var(--green);background:#f3faf6;box-shadow:0 0 0 1px rgba(10,90,72,.2)}
 .quote-line-card.cancelled{background:#fdecec;opacity:.92}
 .quote-line-card .qlc-top{display:flex;justify-content:space-between;gap:.35rem;align-items:baseline}
-.quote-line-card .qlc-serial{font-weight:700;font-size:.78rem;color:var(--green)}
-.quote-line-card .qlc-amt{font-weight:700;font-size:.84rem;white-space:nowrap}
-.quote-line-card .qlc-name{font-size:.84rem;font-weight:600;margin:.15rem 0}
-.quote-line-card .qlc-meta{font-size:.72rem;color:var(--muted);line-height:1.35}
-.quote-line-card .qlc-actions{display:flex;flex-wrap:wrap;gap:.25rem;margin-top:.4rem}
+.quote-line-card .qlc-serial{font-weight:700;font-size:.82rem;color:var(--green)}
+.quote-line-card .qlc-amt{font-weight:700;font-size:.9rem;white-space:nowrap}
+.quote-line-card .qlc-name{font-size:.88rem;font-weight:600;margin:.15rem 0}
+.quote-line-card .qlc-meta{font-size:.74rem;color:var(--muted);line-height:1.35}
+.quote-line-card .qlc-pricing{
+  display:grid;grid-template-columns:minmax(90px,1fr) minmax(110px,1.1fr) minmax(110px,1.1fr) minmax(90px,.9fr);
+  gap:.4rem;margin-top:.45rem;align-items:end
+}
+.quote-line-card .qlc-pricing .l{font-size:.65rem;margin:0 0 .12rem;display:block}
+.quote-line-card .qlc-pricing input,.quote-line-card .qlc-pricing select{
+  width:100%;padding:.32rem .4rem;font-size:.78rem;border-radius:8px;border:1px solid var(--line);background:#fff;box-sizing:border-box
+}
+.quote-line-card .qlc-pricing .qlc-area{font-weight:600;font-size:.82rem;padding:.35rem 0}
+.quote-line-card .qlc-actions{display:flex;flex-wrap:wrap;gap:.25rem;margin-top:.45rem}
 .quote-line-card .qlc-actions .btn{padding:.22rem .4rem;font-size:.7rem;min-height:26px}
-.cart-lines-foot{flex:0 0 auto;border-top:1px solid var(--line);padding-top:.4rem}
-.cart-lines-table-fold{flex:0 0 auto;max-height:40%;overflow:auto;border-top:1px dashed var(--line);padding-top:.35rem}
+.cart-lines-foot{flex:0 0 auto;border-top:1px solid var(--line);padding-top:.35rem;display:flex;flex-direction:column;gap:.35rem;background:rgba(255,252,247,.995)}
+.cart-lines-sticky{
+  display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;
+  padding:.45rem .55rem;border-radius:12px;background:#12140f;color:#fff
+}
+.cart-lines-sticky .cls-items{font-size:.88rem;font-weight:600;letter-spacing:.01em}
+.cart-lines-sticky .cls-total{font-size:1.25rem;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cart-lines-sticky .cls-sub{font-size:.72rem;opacity:.78;font-weight:500;margin-top:.08rem}
+.cart-lines-table-fold{flex:0 0 auto;max-height:28%;overflow:auto;border-top:1px dashed var(--line);padding-top:.35rem}
 .cart-lines-table-fold summary{cursor:pointer;font-size:.75rem;color:var(--muted);margin-bottom:.3rem}
 .cart-lines-table-fold table{font-size:.78rem}
 .cart-lines-table-fold input{padding:.25rem .3rem;font-size:.75rem;border-radius:6px}
@@ -344,7 +366,8 @@ body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
   #view-cart.preview-roomy .cart-preview .design-canvas-frame{
     width:100%;height:100%;max-width:100%;max-height:100%
   }
-  .cart-lines-panel{position:fixed;top:auto;left:.5rem;right:.5rem;bottom:.5rem;width:auto;max-height:55vh}
+  .cart-lines-panel{position:fixed;inset:.4rem;width:auto;max-height:none;border-radius:14px}
+  .quote-line-card .qlc-pricing{grid-template-columns:1fr 1fr}
 }
 @media(max-width:700px){
   .cart-topbar{flex-wrap:wrap;gap:.22rem;padding:.2rem .3rem}
@@ -798,7 +821,7 @@ textarea{max-width:100%}
             <button class="btn sm" id="btnSaveQuote" type="button" title="Save this cart + setup as a named quote on the server">Save Quote</button>
             <button class="btn ghost sm" id="btnAutosave" title="Save this cart as a named quote on the server">Save Quote</button>
             <button class="btn ghost sm" id="btnToggleInspector" type="button" title="Hide / show product inspector">Specs</button>
-            <button class="btn ghost sm" id="btnToggleQuoteLines" type="button" title="Open quote line cards">Lines</button>
+            <button class="btn ghost sm" id="btnToggleQuoteLines" type="button" title="Open Quote lines window — rates, amounts, totals">Lines</button>
           </div>
         </div>
         <div class="cart-workspace">
@@ -1778,7 +1801,8 @@ textarea{max-width:100%}
           <div class="err" id="cartErr"></div>
           </div>
         </div>
-        <aside class="cart-lines-panel" id="cartLinesPanel" aria-label="Quote lines">
+        <div class="cart-lines-backdrop" id="cartLinesBackdrop" hidden></div>
+        <aside class="cart-lines-panel" id="cartLinesPanel" aria-label="Quote lines" role="dialog" aria-modal="true">
           <div class="cart-lines-head">
             <div>
               <strong>Quote lines</strong>
@@ -1789,18 +1813,24 @@ textarea{max-width:100%}
           <div class="cart-lines-cards" id="cartLinesCards"></div>
           <div class="cart-lines-table-fold">
             <details>
-              <summary>Table edit (W × H × Qty)</summary>
+              <summary>Table edit (W × H × Qty × Rate)</summary>
               <div style="overflow:auto;margin-top:.8rem">
             <table>
-              <thead><tr><th>#</th><th>Product</th><th>Size</th><th>Qty</th><th>Options</th><th>Amount</th><th></th></tr></thead>
+              <thead><tr><th>#</th><th>Product</th><th>Size</th><th>Qty</th><th>Rate ₹</th><th>Options</th><th>Amount</th><th></th></tr></thead>
               <tbody id="cartBody"></tbody>
             </table>
           </div>
             </details>
           </div>
           <div class="cart-lines-foot">
-            <div class="total" id="cartTotal">₹ —</div>
             <div id="cartCommercialTotals" class="cart-commercial-totals"></div>
+            <div class="cart-lines-sticky" id="cartLinesSticky">
+              <div>
+                <div class="cls-items" id="cartStickyItems">0 items</div>
+                <div class="cls-sub" id="cartStickySub">Quote total</div>
+              </div>
+              <div class="cls-total" id="cartTotal">₹ —</div>
+            </div>
           </div>
         </aside>
       </div>
@@ -3347,6 +3377,14 @@ function setCartLinesOpen(open) {
   view.classList.toggle('lines-open', !!open);
   const btn = $('btnToggleQuoteLines');
   if (btn) btn.setAttribute('aria-pressed', open ? 'true' : 'false');
+  const bd = $('cartLinesBackdrop');
+  if (bd) {
+    if (open) bd.removeAttribute('hidden');
+    else bd.setAttribute('hidden', '');
+  }
+  if (open && typeof renderCart === 'function') {
+    try { renderCart(); } catch (_) {}
+  }
 }
 function setCartInspectorCollapsed(collapsed) {
   const view = $('view-cart');
@@ -3367,7 +3405,14 @@ function initCartLayoutChrome() {
   } catch (_) {}
   if ($('btnToggleQuoteLines')) $('btnToggleQuoteLines').onclick = () => setCartLinesOpen(!view.classList.contains('lines-open'));
   if ($('btnCloseQuoteLines')) $('btnCloseQuoteLines').onclick = () => setCartLinesOpen(false);
+  if ($('cartLinesBackdrop')) $('cartLinesBackdrop').onclick = () => setCartLinesOpen(false);
   if ($('btnToggleInspector')) $('btnToggleInspector').onclick = () => setCartInspectorCollapsed(!view.classList.contains('inspector-collapsed'));
+  if (!view._quoteLinesEscBound) {
+    view._quoteLinesEscBound = true;
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape' && view.classList.contains('lines-open')) setCartLinesOpen(false);
+    });
+  }
 }
 
 function restoreSideNav() {
@@ -4191,10 +4236,79 @@ function persistLineAddons(ln) {
   }
   return ln;
 }
+function clearLinePriceStamp(ln) {
+  if (!ln || typeof ln !== 'object') return ln;
+  delete ln.commercialTotal;
+  delete ln.sellingAmount;
+  delete ln.addonsAmount;
+  if (ln.selling && typeof ln.selling === 'object') {
+    delete ln.selling.windowAmount;
+    delete ln.selling.sellingAmount;
+    delete ln.selling.addonsAmount;
+  }
+  return ln;
+}
+function lineBillableQty(ln, qty) {
+  const q = Math.max(1, Number(qty != null ? qty : (ln.qty || ln.quantity || 1)) || 1);
+  const w = Number(ln.width || 0), h = Number(ln.height || 0);
+  const unit = String(ln.saleUnit || 'sqft').toLowerCase();
+  if (unit === 'sqft' || unit === 'sft') return (w > 0 && h > 0) ? (w * h / 1e6) * 10.7639 * q : 0;
+  if (unit === 'sqm') return (w > 0 && h > 0) ? (w * h / 1e6) * q : 0;
+  if (unit === 'rft') return (isRailCartLine(ln) ? (w / 304.8) : (2 * (w + h) / 304.8)) * q;
+  if (unit === 'rmt') return (isRailCartLine(ln) ? (w / 1000) : (2 * (w + h) / 1000)) * q;
+  if (unit === 'opening' || unit === 'pc' || unit === 'nos' || unit === 'each') return q;
+  return q;
+}
+function lineProductAmountFromRate(ln, rate) {
+  const r = Number(rate);
+  if (!Number.isFinite(r) || r <= 0) return null;
+  const billable = lineBillableQty(ln);
+  let amt = billable * r;
+  const ma = (typeof meshAddonDraftAmount === 'function') ? meshAddonDraftAmount(ln) : null;
+  if (ma && ma.amount > 0) amt += ma.amount;
+  return Number.isFinite(amt) && amt > 0 ? Math.round(amt * 100) / 100 : null;
+}
+function applyQuoteLineRate(ln, rateRaw, saleUnit) {
+  if (!ln) return null;
+  clearLinePriceStamp(ln);
+  if (saleUnit) ln.saleUnit = saleUnit;
+  const raw = (rateRaw === '' || rateRaw == null) ? null : Number(rateRaw);
+  ln.sellingRate = (raw != null && Number.isFinite(raw) && raw >= 0) ? raw : null;
+  if (ln.options && ln.options.railingQuote) delete ln.options.railingQuote.sellingTotal;
+  if (ln.options && ln.options.showerQuote) delete ln.options.showerQuote.sellingTotal;
+  if (ln.options && ln.options.ventilatorQuote) delete ln.options.ventilatorQuote.sellingTotal;
+  stampLineAmount(ln);
+  return ln;
+}
+function applyQuoteLineAmount(ln, amountRaw) {
+  if (!ln) return null;
+  const amt = Math.max(0, Number(amountRaw) || 0);
+  clearLinePriceStamp(ln);
+  const billable = lineBillableQty(ln);
+  if (billable > 0) {
+    ln.sellingRate = Math.round((amt / billable) * 100) / 100;
+    ln.saleUnit = ln.saleUnit || 'sqft';
+  } else {
+    const qty = Math.max(1, Number(ln.qty || 1) || 1);
+    ln.saleUnit = 'opening';
+    ln.sellingRate = Math.round((amt / qty) * 100) / 100;
+  }
+  if (ln.options && ln.options.railingQuote) delete ln.options.railingQuote.sellingTotal;
+  if (ln.options && ln.options.showerQuote) delete ln.options.showerQuote.sellingTotal;
+  if (ln.options && ln.options.ventilatorQuote) delete ln.options.ventilatorQuote.sellingTotal;
+  stampLineAmount(ln);
+  return ln;
+}
 function lineProductAmount(ln) {
   if (!ln) return null;
   if (isLineCancelled(ln)) return 0;
   const qty = Math.max(1, Number(ln.qty || ln.quantity || 1) || 1);
+  const rate = Number(ln.sellingRate != null ? ln.sellingRate : (ln.selling && ln.selling.sellingRate));
+  // Live rate wins over stale stamped windowAmount so Quote-lines edits recalculate totals.
+  if (Number.isFinite(rate) && rate > 0) {
+    const fromRate = lineProductAmountFromRate(ln, rate);
+    if (fromRate != null) return fromRate;
+  }
   if (ln.selling && Number(ln.selling.windowAmount) > 0) return Number(ln.selling.windowAmount);
   const rq = ln.options && ln.options.railingQuote;
   if (rq && Number(rq.sellingTotal) > 0) {
@@ -4205,25 +4319,10 @@ function lineProductAmount(ln) {
   if (sq && Number(sq.sellingTotal) > 0) return Number(sq.sellingTotal);
   const vq = ln.options && ln.options.ventilatorQuote;
   if (vq && Number(vq.sellingTotal) > 0) return Number(vq.sellingTotal);
-  const rate = Number(ln.sellingRate);
-  if (!Number.isFinite(rate) || rate <= 0) {
-    const stored = Number(ln.commercialTotal || ln.sellingAmount || (ln.selling && ln.selling.sellingAmount) || 0);
-    const add = lineAddonsTotal(ln);
-    if (stored > 0) return Math.max(0, Math.round((stored - add) * 100) / 100);
-    return null;
-  }
-  const w = Number(ln.width || 0), h = Number(ln.height || 0);
-  const unit = String(ln.saleUnit || 'sqft').toLowerCase();
-  let billable = qty;
-  if (unit === 'sqft' || unit === 'sft') billable = (w * h / 1e6) * 10.7639 * qty;
-  else if (unit === 'sqm') billable = (w * h / 1e6) * qty;
-  else if (unit === 'rft') billable = (isRailCartLine(ln) ? (w / 304.8) : (2 * (w + h) / 304.8)) * qty;
-  else if (unit === 'rmt') billable = (isRailCartLine(ln) ? (w / 1000) : (2 * (w + h) / 1000)) * qty;
-  else if (unit === 'opening' || unit === 'pc' || unit === 'nos' || unit === 'each') billable = qty;
-  let amt = billable * rate;
-  const ma = (typeof meshAddonDraftAmount === 'function') ? meshAddonDraftAmount(ln) : null;
-  if (ma && ma.amount > 0) amt += ma.amount;
-  return Number.isFinite(amt) && amt > 0 ? Math.round(amt * 100) / 100 : null;
+  const stored = Number(ln.commercialTotal || ln.sellingAmount || (ln.selling && ln.selling.sellingAmount) || 0);
+  const add = lineAddonsTotal(ln);
+  if (stored > 0) return Math.max(0, Math.round((stored - add) * 100) / 100);
+  return null;
 }
 function lineLiveAmount(ln) {
   if (!ln) return null;
@@ -4372,22 +4471,32 @@ function renderCommercialTotalsPanel() {
 function updateLiveCartTotal() {
   let sum = 0, any = false;
   const filt = String(state.quoteGroupFilter || 'All');
-  (state.lines || []).forEach((ln) => {
-    if (filt !== 'All' && lineQuoteGroup(ln) !== filt) return;
+  const visible = (state.lines || []).filter((ln) => filt === 'All' || lineQuoteGroup(ln) === filt);
+  visible.forEach((ln) => {
     if (isLineCancelled(ln)) { stampLineAmount(ln); return; }
     stampLineAmount(ln);
     const a = lineLiveAmount(ln);
     if (a != null && a > 0) { sum += a; any = true; }
   });
   if (!$('cartTotal')) return;
-  const br = quoteCommercialBreakdown(
-    (state.lines || []).filter((ln) => filt === 'All' || lineQuoteGroup(ln) === filt)
-  );
+  const br = quoteCommercialBreakdown(visible);
   if (br && br.grandTotal != null) $('cartTotal').textContent = money(br.grandTotal);
   else if (any) $('cartTotal').textContent = money(sum);
   else if (filt === 'All' && state.lastResult && state.lastResult.price && state.lastResult.price.total != null)
     $('cartTotal').textContent = money(state.lastResult.price.total);
   else $('cartTotal').textContent = money(0);
+  const active = visible.filter((ln) => !isLineCancelled(ln));
+  const itemCount = active.reduce((s, ln) => s + Math.max(0, Number(ln.qty || 1) || 0), 0);
+  const lineCount = active.length;
+  if ($('cartStickyItems')) {
+    $('cartStickyItems').textContent = `${itemCount} item${itemCount === 1 ? '' : 's'}`
+      + (lineCount !== itemCount ? ` · ${lineCount} line${lineCount === 1 ? '' : 's'}` : '');
+  }
+  if ($('cartStickySub')) {
+    $('cartStickySub').textContent = br && br.totalAreaSqft
+      ? `Total amount · ${br.totalAreaSqft} sft`
+      : 'Total amount';
+  }
   renderCommercialTotalsPanel();
 }
 function markdownEmphasisToHtml(text) {
@@ -6890,16 +6999,16 @@ function renderCart() {
   if (removed.length) {
     removed.forEach(ln => {
       const name = (ln && (ln.locationName || ln.positionName || ln.displayName || ln.product)) || 'Item';
-      html += `<tr style="background:#fdecec"><td></td><td colspan="6"><span style="color:#b42318;font-weight:700">REMOVED</span> ${esc(name)} <span class="muted">since previous version</span></td></tr>`;
+      html += `<tr style="background:#fdecec"><td></td><td colspan="7"><span style="color:#b42318;font-weight:700">REMOVED</span> ${esc(name)} <span class="muted">since previous version</span></td></tr>`;
     });
   }
   const importedRows = (typeof importedCartRows === 'function') ? importedCartRows() : [];
   if (!visible.length && !importedRows.length) {
-    html = (html || '') + '<tr><td colspan="7" class="muted">This quote has no lines yet — add a product' +
+    html = (html || '') + '<tr><td colspan="8" class="muted">This quote has no lines yet — add a product' +
       (state.quoteGroupFilter && state.quoteGroupFilter !== 'All' ? ' to section “' + esc(state.quoteGroupFilter) + '”' : '') +
       '</td></tr>';
   } else if (!visible.length && importedRows.length) {
-    html = (html || '') + '<tr><td colspan="7" class="muted">No Window Cart lines yet. Imported Excel lines are listed below.</td></tr>';
+    html = (html || '') + '<tr><td colspan="8" class="muted">No Window Cart lines yet. Imported Excel lines are listed below.</td></tr>';
   }
   if (visible.length) {
     let rowNo = 0;
@@ -6912,7 +7021,7 @@ function renderCart() {
           const a = lineLiveAmount(x);
           if (a != null && a > 0) { gAmt += a; gAny = true; }
         });
-        html += `<tr class="cart-group-row"><td colspan="7">${esc(g)}` +
+        html += `<tr class="cart-group-row"><td colspan="8">${esc(g)}` +
           `<span class="cart-group-meta">${gQty} items${gAny ? ' · ' + money(gAmt) : ''}</span></td></tr>`;
         lastGroup = g;
       }
@@ -6923,6 +7032,7 @@ function renderCart() {
       const addons = normalizeLineAddons(ln);
       const rowBg = cancelled ? '' : (i===state.selectedLine ? '#f3faf6' : '');
       const amtTxt = money(lineLiveAmount(ln));
+      const rateVal = ln.sellingRate != null && ln.sellingRate !== '' ? ln.sellingRate : '';
       const addonBits = addons.map(a => {
         const note = a.note ? (' — ' + esc(a.note)) : '';
         return '<div class="muted" style="font-size:.7rem">+ ' + esc(a.name) + note + ' · ' + a.qty + '×' + money(a.rate) + ' = ' + money(a.amount) + '</div>';
@@ -6930,9 +7040,10 @@ function renderCart() {
       html += `
     <tr class="${cancelled?'cart-row-cancelled':''}" style="${rowBg?'background:'+rowBg:''}">
       <td>${esc(serialCode)}</td>
-      <td>${cancelled?'<span class="cart-cancelled-mark">CANCELLED</span>':''}<span class="${cancelled?'cart-strike':''}">${cartLineProductLabel(ln)}</span>${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${esc(ln.locationName||ln.positionName)}</div>`:''}${shArea?`<div class="muted" style="font-size:.72rem">${esc(shArea)} sft</div>`:''}${ln.sellingRate!=null?`<div class="muted" style="font-size:.72rem">Sell ₹${ln.sellingRate}/${ln.saleUnit||'sqft'}</div>`:''}${showHeaders?'':`<div class="muted" style="font-size:.68rem">${esc(g)}</div>`}${addonBits}</td>
+      <td>${cancelled?'<span class="cart-cancelled-mark">CANCELLED</span>':''}<span class="${cancelled?'cart-strike':''}">${cartLineProductLabel(ln)}</span>${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${esc(ln.locationName||ln.positionName)}</div>`:''}${shArea?`<div class="muted" style="font-size:.72rem">${esc(shArea)} sft</div>`:''}${showHeaders?'':`<div class="muted" style="font-size:.68rem">${esc(g)}</div>`}${addonBits}</td>
       <td><input data-f="width" data-i="${i}" type="number" value="${ln.width != null ? ln.width : ''}" style="width:70px"/>×<input data-f="height" data-i="${i}" type="number" value="${ln.height != null ? ln.height : ''}" style="width:70px"/></td>
       <td><input data-f="qty" data-i="${i}" type="number" min="1" value="${ln.qty != null ? ln.qty : ''}" style="width:56px"/></td>
+      <td><input data-f="sellingRate" data-i="${i}" type="number" min="0" step="0.01" value="${rateVal}" style="width:72px" ${cancelled?'disabled':''} title="Rate ₹ / ${(ln.saleUnit||'sqft')}"/></td>
       <td style="font-size:.8rem">${ln.glass||''}<br>${ln.colour||''}</td>
       <td style="white-space:nowrap;font-weight:600" class="${cancelled?'cart-strike':''}">${amtTxt}</td>
       <td class="actions-inline">
@@ -6950,6 +7061,7 @@ function renderCart() {
       <td>${esc(row.name)}<div class="muted" style="font-size:.72rem">${esc(row.quote)}</div></td>
       <td>${esc(row.size || '—')}</td>
       <td>${esc(row.qty || '—')}</td>
+      <td class="muted">—</td>
       <td class="muted">Imported</td>
       <td style="white-space:nowrap;font-weight:600">${row.amount ? money(row.amount) : '—'}</td>
       <td></td>
@@ -6975,11 +7087,24 @@ function renderCart() {
       const active = i === state.selectedLine;
       const loc = ln.locationName || ln.positionName || '';
       const size = (ln.width != null && ln.height != null) ? (ln.width + '\u00d7' + ln.height) : '\u2014';
+      const area = lineAreaSqft(ln);
+      const unit = String(ln.saleUnit || 'sqft');
+      const rateVal = ln.sellingRate != null && ln.sellingRate !== '' ? ln.sellingRate : '';
+      const prodAmt = lineProductAmount(ln);
+      const amtVal = (prodAmt != null && prodAmt > 0) ? prodAmt : '';
       const cls = 'quote-line-card' + (cancelled ? ' cancelled' : '') + (active ? ' active' : '');
       cards += '<div class="' + cls + '" data-card-sel="' + i + '" role="button" tabindex="0">' +
         '<div class="qlc-top"><span class="qlc-serial">' + esc(serialCode) + '</span><span class="qlc-amt' + (cancelled ? ' cart-strike' : '') + '">' + money(lineLiveAmount(ln)) + '</span></div>' +
         '<div class="qlc-name' + (cancelled ? ' cart-strike' : '') + '">' + (cancelled ? '<span class="cart-cancelled-mark">CANCELLED </span>' : '') + cartLineProductLabel(ln) + '</div>' +
-        '<div class="qlc-meta">' + esc(size) + ' · qty ' + (ln.qty != null ? ln.qty : 1) + (loc ? ' · ' + esc(loc) : '') + (ln.colour ? ' · ' + esc(ln.colour) : '') + '</div>' +
+        '<div class="qlc-meta">' + esc(size) + ' · qty ' + (ln.qty != null ? ln.qty : 1) + (loc ? ' · ' + esc(loc) : '') + (ln.colour ? ' · ' + esc(ln.colour) : '') + (ln.glass ? ' · ' + esc(ln.glass) : '') + '</div>' +
+        '<div class="qlc-pricing" onclick="event.stopPropagation()">' +
+          '<div><label class="l">Area</label><div class="qlc-area">' + (area > 0 ? (area + ' sft') : '\u2014') + '</div></div>' +
+          '<div><label class="l">Rate \u20b9/' + esc(unit) + '</label><input data-ql-rate="' + i + '" type="number" min="0" step="0.01" placeholder="e.g. 950" value="' + rateVal + '" ' + (cancelled ? 'disabled' : '') + '/></div>' +
+          '<div><label class="l">Line amount \u20b9</label><input data-ql-amt="' + i + '" type="number" min="0" step="0.01" placeholder="auto" value="' + amtVal + '" ' + (cancelled ? 'disabled' : '') + '/></div>' +
+          '<div><label class="l">Sale unit</label><select data-ql-unit="' + i + '" ' + (cancelled ? 'disabled' : '') + '>' +
+            ['sqft','sqm','opening','rft'].map(u => '<option value="' + u + '"' + (unit === u ? ' selected' : '') + '>' + (u === 'sqft' ? 'Per Sq.Ft.' : u === 'sqm' ? 'Per Sq.M.' : u === 'opening' ? 'Per Opening' : 'Per RFT') + '</option>').join('') +
+          '</select></div>' +
+        '</div>' +
         '<div class="qlc-actions">' +
           '<button class="btn ghost sm" type="button" data-sel="' + i + '">Edit</button>' +
           '<button class="btn ghost sm" type="button" data-dup="' + i + '">Dup</button>' +
@@ -6995,35 +7120,45 @@ function renderCart() {
   $('cartBody').querySelectorAll('input[data-f]').forEach(inp => {
     inp.onchange = () => {
       const i = +inp.dataset.i; const f = inp.dataset.f;
-      state.lines[i][f] = f==='qty' ? +inp.value : +inp.value;
+      const ln = state.lines[i];
+      if (!ln) return;
       state.selectedLine = i;
+      if (f === 'sellingRate') {
+        applyQuoteLineRate(ln, inp.value, ln.saleUnit);
+      } else {
+        state.lines[i][f] = f === 'qty' ? +inp.value : +inp.value;
+        clearLinePriceStamp(ln);
+        stampLineAmount(ln);
+      }
       // Keep railing designer size in sync with cart width/height edits
-      const railLn = state.lines[i];
-      if (railLn && railLn.options && typeof railLn.options === 'object') {
-        const rc = railLn.options.railing = { ...(railLn.options.railing || {}) };
+      if (ln.options && typeof ln.options === 'object') {
+        const rc = ln.options.railing = { ...(ln.options.railing || {}) };
         if (f === 'width' && +inp.value > 0) {
           rc.lengthMm = +inp.value;
-          delete railLn.options.railingQuote;
+          delete ln.options.railingQuote;
         }
         if (f === 'height' && +inp.value > 0) {
           rc.heightMm = +inp.value;
-          delete railLn.options.railingQuote;
+          delete ln.options.railingQuote;
         }
       }
       scheduleSave();
       refreshPreview();
       updateLocalTotalHint();
       // sync draft fields + live price when editing a line
-      const ln = state.lines[i];
-      if (ln) {
-        $('lineProduct').value = ln.product;
-        $('lineW').value = ln.width; $('lineH').value = ln.height; $('lineQty').value = ln.qty;
-        if (ln.sellingRate != null) $('lineSellRate').value = ln.sellingRate;
-        if (ln.saleUnit) $('lineSaleUnit').value = ln.saleUnit;
-        if (ln.options && ln.options.railing) {
-          if (f === 'width' && $('rLenMm')) $('rLenMm').value = ln.width;
-          if (f === 'height' && $('rHtMm')) $('rHtMm').value = ln.height;
-        }
+      if ($('lineProduct')) $('lineProduct').value = ln.product;
+      if ($('lineW')) $('lineW').value = ln.width;
+      if ($('lineH')) $('lineH').value = ln.height;
+      if ($('lineQty')) $('lineQty').value = ln.qty;
+      if ($('lineSellRate')) $('lineSellRate').value = ln.sellingRate != null ? ln.sellingRate : '';
+      if (ln.saleUnit && $('lineSaleUnit')) $('lineSaleUnit').value = ln.saleUnit;
+      if (ln.options && ln.options.railing) {
+        if (f === 'width' && $('rLenMm')) $('rLenMm').value = ln.width;
+        if (f === 'height' && $('rHtMm')) $('rHtMm').value = ln.height;
+      }
+      if (f === 'sellingRate' || f === 'qty' || f === 'width' || f === 'height') {
+        renderCart();
+        updateLiveCartTotal();
       }
       scheduleLivePrice();
     };
@@ -7096,6 +7231,52 @@ function renderCart() {
       const btn = $('cartBody') && $('cartBody').querySelector('[' + attr + '="' + value + '"]');
       if (btn) btn.click();
     };
+    const syncSellRateInput = (ln) => {
+      if ($('lineSellRate')) $('lineSellRate').value = ln.sellingRate != null ? ln.sellingRate : '';
+      if (ln.saleUnit && $('lineSaleUnit')) $('lineSaleUnit').value = ln.saleUnit;
+    };
+    const commitQuoteLinePricing = (i) => {
+      const ln = state.lines[i];
+      if (!ln) return;
+      state.selectedLine = i;
+      syncSellRateInput(ln);
+      invalidatePdfCache();
+      scheduleSave();
+      renderCart();
+      updateLiveCartTotal();
+      scheduleLivePrice();
+    };
+    cardRoot.querySelectorAll('[data-ql-rate]').forEach(inp => {
+      inp.onchange = inp.onblur = () => {
+        const i = +inp.getAttribute('data-ql-rate');
+        const ln = state.lines[i];
+        if (!ln) return;
+        applyQuoteLineRate(ln, inp.value, (cardRoot.querySelector('[data-ql-unit="' + i + '"]') || {}).value || ln.saleUnit);
+        commitQuoteLinePricing(i);
+      };
+      inp.onclick = (ev) => ev.stopPropagation();
+    });
+    cardRoot.querySelectorAll('[data-ql-amt]').forEach(inp => {
+      inp.onchange = inp.onblur = () => {
+        const i = +inp.getAttribute('data-ql-amt');
+        const ln = state.lines[i];
+        if (!ln || inp.value === '') return;
+        applyQuoteLineAmount(ln, inp.value);
+        commitQuoteLinePricing(i);
+      };
+      inp.onclick = (ev) => ev.stopPropagation();
+    });
+    cardRoot.querySelectorAll('[data-ql-unit]').forEach(sel => {
+      sel.onchange = () => {
+        const i = +sel.getAttribute('data-ql-unit');
+        const ln = state.lines[i];
+        if (!ln) return;
+        const rateInp = cardRoot.querySelector('[data-ql-rate="' + i + '"]');
+        applyQuoteLineRate(ln, rateInp ? rateInp.value : ln.sellingRate, sel.value);
+        commitQuoteLinePricing(i);
+      };
+      sel.onclick = (ev) => ev.stopPropagation();
+    });
     cardRoot.querySelectorAll('[data-sel]').forEach(b => {
       b.onclick = (ev) => { ev.stopPropagation(); triggerCartBtn('data-sel', b.dataset.sel); };
     });
@@ -7110,10 +7291,11 @@ function renderCart() {
     });
     cardRoot.querySelectorAll('[data-card-sel]').forEach(card => {
       card.onclick = (ev) => {
-        if (ev.target.closest('button')) return;
+        if (ev.target.closest('button,input,select,label,.qlc-pricing')) return;
         triggerCartBtn('data-sel', card.getAttribute('data-card-sel'));
       };
       card.onkeydown = (ev) => {
+        if (ev.target.closest('input,select')) return;
         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); card.click(); }
       };
     });
@@ -11975,8 +12157,7 @@ function stampSelectedDraftAmount() {
     if (draft.qty) ln.qty = draft.qty;
     if (draft.sellingRate != null) ln.sellingRate = draft.sellingRate;
     if (draft.saleUnit) ln.saleUnit = draft.saleUnit;
-    delete ln.commercialTotal;
-    if (ln.selling) delete ln.selling.sellingAmount;
+    clearLinePriceStamp(ln);
     stampLineAmount(ln);
   }
   const merged = Object.assign({}, ln || {}, draft || {});

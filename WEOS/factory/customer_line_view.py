@@ -190,10 +190,69 @@ def _line_addons_amount(line: Mapping[str, Any]) -> float:
         return 0.0
 
 
+def _product_amount_from_rate(line: Mapping[str, Any], rate_n: float) -> float | None:
+    """Compute product amount from sellingRate × billable qty."""
+    selling = line.get("selling") if isinstance(line.get("selling"), Mapping) else {}
+    opts = _opts(line)
+    rq = opts.get("railingQuote") if isinstance(opts.get("railingQuote"), Mapping) else {}
+    try:
+        qty = int(round(float(line.get("qty") or line.get("quantity") or 1)))
+    except (TypeError, ValueError):
+        qty = 1
+    qty = max(qty, 1)
+    try:
+        width = float(line.get("width") or 0)
+        height = float(line.get("height") or 0)
+    except (TypeError, ValueError):
+        width = height = 0.0
+    sale_unit = str(
+        line.get("saleUnit") or selling.get("saleUnit") or rq.get("saleUnit") or "sqft"
+    ).strip() or "sqft"
+    try:
+        from WEOS.factory.live_pricing import line_sell_amount
+
+        sell = line_sell_amount(
+            line,
+            selling_rate=rate_n,
+            sale_unit=sale_unit,
+            qty=qty,
+            width_mm=width,
+            height_mm=height,
+        )
+        amt = _money((sell or {}).get("sellingAmount"))
+        if amt is not None and amt > 0:
+            return round(amt, 2)
+    except Exception:
+        pass
+    if sale_unit.lower() in ("opening", "pc", "nos", "each") or (not width and not height):
+        return round(rate_n * qty, 2)
+    return None
+
+
+def _line_selling_rate(line: Mapping[str, Any]) -> float | None:
+    selling = line.get("selling") if isinstance(line.get("selling"), Mapping) else {}
+    rate = line.get("sellingRate")
+    if rate is None or str(rate).strip() == "":
+        rate = selling.get("sellingRate") or line.get("customerRate")
+    opts = _opts(line)
+    rq = opts.get("railingQuote") if isinstance(opts.get("railingQuote"), Mapping) else {}
+    if rate is None or str(rate).strip() == "":
+        rate = rq.get("sellingPerUnit") or rq.get("sellingRate")
+    return _money(rate)
+
+
 def _product_amount_raw(line: Mapping[str, Any]) -> float | None:
     """Product/mesh selling only — never includes commercial line add-ons."""
     selling = line.get("selling") if isinstance(line.get("selling"), Mapping) else {}
     price = line.get("price") if isinstance(line.get("price"), Mapping) else {}
+
+    # Live sellingRate wins over stale stamped windowAmount (Quote lines rate edits).
+    rate_n = _line_selling_rate(line)
+    if rate_n is not None and rate_n > 0:
+        from_rate = _product_amount_from_rate(line, rate_n)
+        if from_rate is not None and from_rate > 0:
+            return from_rate
+
     win = _money(selling.get("windowAmount"))
     if win is not None and win > 0:
         return round(win, 2)
@@ -228,50 +287,6 @@ def _product_amount_raw(line: Mapping[str, Any]) -> float | None:
     if special is not None and special > 0:
         return special
 
-    rate = line.get("sellingRate")
-    if rate is None or str(rate).strip() == "":
-        rate = selling.get("sellingRate") or line.get("customerRate")
-    opts = _opts(line)
-    rq = opts.get("railingQuote") if isinstance(opts.get("railingQuote"), Mapping) else {}
-    if rate is None or str(rate).strip() == "":
-        rate = rq.get("sellingPerUnit") or rq.get("sellingRate")
-    rate_n = _money(rate)
-    if rate_n is None:
-        return None
-
-    try:
-        qty = int(round(float(line.get("qty") or line.get("quantity") or 1)))
-    except (TypeError, ValueError):
-        qty = 1
-    qty = max(qty, 1)
-    try:
-        width = float(line.get("width") or 0)
-        height = float(line.get("height") or 0)
-    except (TypeError, ValueError):
-        width = height = 0.0
-    sale_unit = str(
-        line.get("saleUnit") or selling.get("saleUnit") or rq.get("saleUnit") or "sqft"
-    ).strip() or "sqft"
-    try:
-        from WEOS.factory.live_pricing import line_sell_amount
-
-        sell = line_sell_amount(
-            line,
-            selling_rate=rate_n,
-            sale_unit=sale_unit,
-            qty=qty,
-            width_mm=width,
-            height_mm=height,
-        )
-        # Prefer windowAmount (excludes mesh? No — mesh is in sellingAmount via _add_mesh).
-        # line_sell_amount returns product+mesh in sellingAmount; windowAmount is pre-mesh.
-        amt = _money((sell or {}).get("sellingAmount"))
-        if amt is not None and amt > 0:
-            return round(amt, 2)
-    except Exception:
-        pass
-    if sale_unit.lower() in ("opening", "pc", "nos", "each") or (not width and not height):
-        return round(rate_n * qty, 2)
     return None
 
 
@@ -292,7 +307,14 @@ def customer_line_amount(
         return None
     selling = line.get("selling") if isinstance(line.get("selling"), Mapping) else {}
     addons_amt = _line_addons_amount(line)
-    # Trusted full stamp
+    # Rate-aware product amount first (covers Quote lines rate edits over stale stamps).
+    base = _product_amount_raw(line)
+    if base is not None and base > 0:
+        if not include_addons:
+            return round(base, 2)
+        return round(float(base) + addons_amt, 2)
+
+    # Trusted full stamp when no live rate / dimensions available
     if include_addons:
         stamped_add = _money(selling.get("addonsAmount") or line.get("addonsAmount"))
         full = _money(selling.get("sellingAmount") or line.get("commercialTotal") or line.get("sellingAmount"))
@@ -302,7 +324,6 @@ def customer_line_amount(
         if full is not None and full > 0 and stamped_add is not None:
             return round(full, 2)
 
-    base = _product_amount_raw(line)
     if base is None:
         return round(addons_amt, 2) if include_addons and addons_amt > 0 else None
     if not include_addons:
