@@ -44,6 +44,23 @@ WASTAGE_PCT_MAX = 2.5
 WASTAGE_MAX_REUSABLE_FT = 3.0
 
 
+def _mesh_fabric_pack(line: Mapping[str, Any]) -> dict[str, Any]:
+    """Mesh fabric for design cost + materials (in-track / rolling / collapsible)."""
+    try:
+        from WEOS.factory.mesh_addon import mesh_fabric_for_line, mesh_fabric_material_row
+    except Exception:
+        return {"mesh": None, "meshLines": [], "meshCost": 0.0}
+    fabric = mesh_fabric_for_line(line)
+    if not fabric:
+        return {"mesh": None, "meshLines": [], "meshCost": 0.0}
+    row = mesh_fabric_material_row(fabric)
+    return {
+        "mesh": dict(fabric),
+        "meshLines": [row],
+        "meshCost": float(fabric.get("amountUnit") or 0.0),
+    }
+
+
 def _f(v: Any, default: float = 0.0) -> float:
     try:
         if v is None or v == "":
@@ -1087,6 +1104,8 @@ def compute_casement_design_cost(
 
     glass = _glass_cost(line, width_mm=W, height_mm=H, qty=1.0)
     glass_amt = _f(glass.get("amount"))
+    mesh_pack = _mesh_fabric_pack(line)
+    mesh_amt = _f(mesh_pack.get("meshCost"))
 
     area_sft = (W * H / 1_000_000.0) * 10.7639
     from WEOS.factory.commercial_defaults import (
@@ -1101,7 +1120,7 @@ def compute_casement_design_cost(
     labour_amt = area_sft * labour_rate
     install_rate = installation_per_sft(costing.get("installationPerSft") or costing.get("installPerSft"))
     install_amt = area_sft * install_rate
-    material_sub = profile_purchased + hw_amt + glass_amt
+    material_sub = profile_purchased + hw_amt + glass_amt + mesh_amt
     cost_before_profit = material_sub + labour_amt + install_amt
     profit_pct = _f(costing.get("profitPercent"))
     profit_amt = cost_before_profit * (profit_pct / 100.0) if profit_pct else 0.0
@@ -1117,7 +1136,7 @@ def compute_casement_design_cost(
     elif area_sft > 0:
         suggested_rate = round(unit_total / area_sft, 2)
 
-    engine = "live" if (profile_net > 0 or hw_amt > 0 or glass_amt > 0 or labour_amt > 0 or install_amt > 0) else "stub"
+    engine = "live" if (profile_net > 0 or hw_amt > 0 or glass_amt > 0 or mesh_amt > 0 or labour_amt > 0 or install_amt > 0) else "stub"
     try:
         coat_mult = coating_multiplier_for_colour(colour)
         finish_family = finish_family_for_colour(colour)
@@ -1154,12 +1173,15 @@ def compute_casement_design_cost(
         "wastageCost": round(wastage_cost * qty, 2),
         "hardwareCost": round(hw_amt * qty, 2),
         "glassCost": round(glass_amt * qty, 2),
+        "meshCost": round(mesh_amt * qty, 2),
         "wastage": waste,
         "remnants": nest.get("remnantsCreated") or [],
         "remnantPool": nest.get("remnantPool") or {},
         "profiles": cuts.get("lines") or [],
         "hardware": hw_lines,
         "glass": glass,
+        "mesh": mesh_pack.get("mesh"),
+        "meshLines": mesh_pack.get("meshLines") or [],
         "counts": counts,
         "sideSwingOpenHw": _str(
             ((norm.get("casement") or {}).get("hardwarePack") or {}).get("openHardware") or "hinges"
@@ -1182,6 +1204,7 @@ def compute_casement_design_cost(
             "wastage": round(wastage_cost, 2),
             "hardware": round(hw_amt, 2),
             "glass": round(glass_amt, 2),
+            "mesh": round(mesh_amt, 2),
             "labour": round(labour_amt, 2),
             "installation": round(install_amt, 2),
             "profit": round(profit_amt, 2),
@@ -1394,15 +1417,25 @@ def compute_sliding_design_cost(
     opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
     colour = _str(line.get("colour") or opts.get("colour") or "white")
     shutters = max(_f(line.get("glassShutters") or opts.get("glassCount") or opts.get("glassShutters"), 2), 1)
+    # Rolling / collapsible are fabric add-ons — never count as in-track mesh sashes.
+    _addon_mesh = False
+    try:
+        from WEOS.factory.mesh_addon import is_addon_mesh
+
+        _addon_mesh = is_addon_mesh(line)
+    except Exception:
+        _addon_mesh = False
     mesh_n = max(
         _f(
             line.get("meshShutters")
             or opts.get("meshCount")
             or opts.get("meshShutters")
-            or (1 if (line.get("mesh") or opts.get("mesh")) else 0)
+            or (0 if _addon_mesh else (1 if (line.get("mesh") or opts.get("mesh")) else 0))
         ),
         0,
     )
+    if _addon_mesh:
+        mesh_n = 0.0
     opening = _str(
         line.get("opening")
         or line.get("openingType")
@@ -1684,6 +1717,8 @@ def compute_sliding_design_cost(
 
     glass = _glass_cost(line, width_mm=W, height_mm=H, qty=1.0)
     glass_amt = _f(glass.get("amount"))
+    mesh_pack = _mesh_fabric_pack(line)
+    mesh_amt = _f(mesh_pack.get("meshCost"))
     area_sft = (W * H / 1_000_000.0) * 10.7639
     from WEOS.factory.commercial_defaults import (
         coating_multiplier_for_colour,
@@ -1714,12 +1749,12 @@ def compute_sliding_design_cost(
     profile_amt = profile_net + wastage_cost
     waste = nest.get("wastage") or {}
 
-    material_sub = profile_amt + hw_amt + glass_amt
+    material_sub = profile_amt + hw_amt + glass_amt + mesh_amt
     cost_before = material_sub + labour_amt + install_amt
     profit_pct = _f(costing.get("profitPercent"))
     profit_amt = cost_before * (profit_pct / 100.0) if profit_pct else 0.0
     unit_total = cost_before + profit_amt
-    engine = "live" if (profile_amt > 0 or hw_amt > 0 or labour_amt > 0 or install_amt > 0) else "stub"
+    engine = "live" if (profile_amt > 0 or hw_amt > 0 or mesh_amt > 0 or labour_amt > 0 or install_amt > 0) else "stub"
     suggested = round(unit_total / area_sft, 2) if area_sft > 0 else None
     try:
         coat_mult = coating_multiplier_for_colour(colour)
@@ -1755,6 +1790,7 @@ def compute_sliding_design_cost(
         "wastageCost": round(wastage_cost * qty, 2),
         "hardwareCost": round(hw_amt * qty, 2),
         "glassCost": round(glass_amt * qty, 2),
+        "meshCost": round(mesh_amt * qty, 2),
         "wastage": waste,
         "remnants": nest.get("remnantsCreated") or [],
         "remnantPool": nest.get("remnantPool") or {},
@@ -1762,6 +1798,8 @@ def compute_sliding_design_cost(
         "profiles": profile_lines,
         "hardware": hw_lines,
         "glass": glass,
+        "mesh": mesh_pack.get("mesh"),
+        "meshLines": mesh_pack.get("meshLines") or [],
         "shutterGlassWeightKg": wheel_meta.get("shutterGlassWeightKg"),
         "wheelOptions": wheel_meta.get("wheelOptions") or [],
         "meshWheelOptions": wheel_meta.get("meshWheelOptions") or [],
@@ -1777,6 +1815,7 @@ def compute_sliding_design_cost(
             "wastage": round(wastage_cost, 2),
             "hardware": round(hw_amt, 2),
             "glass": round(glass_amt, 2),
+            "mesh": round(mesh_amt, 2),
             "labour": round(labour_amt, 2),
             "installation": round(install_amt, 2),
             "profit": round(profit_amt, 2),

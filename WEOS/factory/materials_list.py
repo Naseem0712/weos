@@ -186,6 +186,37 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
             "amount": h.get("amount"),
             "remarks": h.get("remarks") or "",
         })
+
+    # Mesh fabric (in-track standard/premium · rolling · collapsible)
+    mesh_lines = list(design.get("meshLines") or [])
+    if not mesh_lines:
+        try:
+            from WEOS.factory.mesh_addon import mesh_fabric_for_line, mesh_fabric_material_row
+
+            fabric = mesh_fabric_for_line(line)
+            if fabric:
+                mesh_lines = [mesh_fabric_material_row(fabric)]
+        except Exception:
+            mesh_lines = []
+    for m in mesh_lines:
+        if not isinstance(m, Mapping):
+            continue
+        materials.append({
+            "kind": "mesh",
+            "name": _str(m.get("catalogueName") or m.get("name") or "Mesh"),
+            "qty": m.get("qty") or m.get("areaSft"),
+            "pcs": m.get("pcs") or 1,
+            "unit": m.get("unit") or "sft",
+            "areaSft": m.get("areaSft") or m.get("qty"),
+            "widthMm": m.get("widthMm"),
+            "heightMm": m.get("heightMm"),
+            "unitRate": m.get("unitRate") if m.get("unitRate") is not None else m.get("rate"),
+            "amount": m.get("amount"),
+            "sides": _str(m.get("formula") or m.get("type") or ""),
+            "use": "mesh_fabric",
+            "stock": "—",
+            "remarks": _str(m.get("remarks") or m.get("formula") or ""),
+        })
     for h in line.get("hardware") or []:
         if isinstance(h, Mapping):
             nm, brand = _hw_display(h)

@@ -1293,20 +1293,69 @@ def render_svg_string(
                 f'stroke="{frame_stroke}" {_solid_sw(sw_seg)}/>'
             )
 
-    # Pleated / rolling mesh add-on — dotted grid over the chosen placement.
+    # Rolling / collapsible mesh add-on — bit-of-mesh strips + 38 mm members (inside).
     _addon = meta.get("mesh_addon") if isinstance(meta.get("mesh_addon"), Mapping) else None
     if _addon:
-        try:
-            ax0, ay0, ax1, ay1 = (float(_addon["x0"]), float(_addon["y0"]), float(_addon["x1"]), float(_addon["y1"]))
-        except (KeyError, TypeError, ValueError):
-            ax0 = ay0 = ax1 = ay1 = 0.0
-        if ax1 > ax0 and ay1 > ay0:
+        _rects = _addon.get("rects") if isinstance(_addon.get("rects"), list) else None
+        if not _rects:
+            try:
+                _rects = [{
+                    "x0": float(_addon["x0"]), "y0": float(_addon["y0"]),
+                    "x1": float(_addon["x1"]), "y1": float(_addon["y1"]),
+                    "memberOrient": "vertical",
+                    "memberMm": float(_addon.get("memberMm") or 38),
+                }]
+            except (KeyError, TypeError, ValueError):
+                _rects = []
+        _member_stroke = frame_stroke
+        for _ri, _rr in enumerate(_rects):
+            if not isinstance(_rr, Mapping):
+                continue
+            try:
+                ax0, ay0, ax1, ay1 = (float(_rr["x0"]), float(_rr["y0"]), float(_rr["x1"]), float(_rr["y1"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if ax1 <= ax0 or ay1 <= ay0:
+                continue
             parts.append(
                 f'<rect x="{tx(ax0):.2f}" y="{ty(ay1):.2f}" width="{tx(ax1) - tx(ax0):.2f}" height="{ty(ay0) - ty(ay1):.2f}" '
                 f'fill="url(#meshPleat)" stroke="#2b2b2b" stroke-dasharray="{6 * k:.1f} {4 * k:.1f}" '
-                f'{_solid_sw(max(0.9, sw_inner * 0.6))} data-mesh="{escape(str(_addon.get("type") or "addon"))}"/>'
+                f'{_solid_sw(max(0.9, sw_inner * 0.6))} data-mesh="{escape(str(_addon.get("type") or "addon"))}" '
+                f'data-mesh-inside="1" data-mesh-side="{escape(str(_rr.get("side") or ""))}"/>'
             )
-            if annotations:
+            try:
+                mem = float(_rr.get("memberMm") or _addon.get("memberMm") or 38.0)
+            except (TypeError, ValueError):
+                mem = 38.0
+            orient = str(_rr.get("memberOrient") or "vertical").lower()
+            if orient == "horizontal":
+                # Horizontal member along the bottom edge of the top mesh band
+                my = ay0
+                parts.append(
+                    f'<rect x="{tx(ax0):.2f}" y="{ty(my + mem):.2f}" width="{tx(ax1) - tx(ax0):.2f}" '
+                    f'height="{abs(ty(my) - ty(my + mem)):.2f}" fill="{_member_stroke}" fill-opacity="0.92" '
+                    f'stroke="none" data-mesh-member="horizontal" data-member-mm="{mem:g}"/>'
+                )
+            else:
+                # Vertical member on the inner edge of the side strip
+                side = str(_rr.get("side") or "").lower()
+                if side == "right" or (side != "left" and _ri > 0):
+                    mx = ax0
+                else:
+                    mx = ax1 - mem
+                parts.append(
+                    f'<rect x="{tx(mx):.2f}" y="{ty(ay1):.2f}" width="{tx(mx + mem) - tx(mx):.2f}" '
+                    f'height="{ty(ay0) - ty(ay1):.2f}" fill="{_member_stroke}" fill-opacity="0.92" '
+                    f'stroke="none" data-mesh-member="vertical" data-member-mm="{mem:g}"/>'
+                )
+        if annotations and _rects:
+            try:
+                ax0 = min(float(r["x0"]) for r in _rects if isinstance(r, Mapping))
+                ax1 = max(float(r["x1"]) for r in _rects if isinstance(r, Mapping))
+                ay1 = max(float(r["y1"]) for r in _rects if isinstance(r, Mapping))
+            except (ValueError, KeyError, TypeError):
+                ax0 = ax1 = ay1 = 0.0
+            if ax1 > ax0:
                 _lab = f"{str(_addon.get('type') or 'MESH').upper()} MESH {mm_n(_addon.get('widthMm') or 0)}×{mm_n(_addon.get('heightMm') or 0)}"
                 parts.append(
                     f'<text x="{tx((ax0 + ax1) / 2):.2f}" y="{ty(ay1) + 30 * k:.2f}" text-anchor="middle" '

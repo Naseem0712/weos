@@ -879,8 +879,15 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
     if is_bifold or is_casement or is_vent:
         mesh_on = False
         mesh_n_i = 0
+    mesh_fabric = None
+    try:
+        from WEOS.factory.mesh_addon import mesh_fabric_for_line
+
+        mesh_fabric = mesh_fabric_for_line(line)
+    except Exception:
+        mesh_fabric = None
     if mesh_addon:
-        # Pleated / rolling mesh: separate item — type · size · amount
+        # Rolling / collapsible: separate item — type · size · amount
         mesh_on = True
         mesh_n_i = 0
     mesh_bits = ["yes" if mesh_on else "no"]
@@ -897,13 +904,19 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
                 1 for p in list((layout or {}).get("panels") or []) if str(p.get("role") or "").lower() == "mesh"
             ) or 1
         mesh_bits.append(f"{mesh_n_i} shutter" + ("s" if mesh_n_i != 1 else ""))
+        if mesh_fabric and mesh_fabric.get("kind") == "intrack":
+            mesh_bits.append(str(mesh_fabric.get("typeLabel") or ""))
+            mesh_bits.append(
+                f"{mesh_fabric.get('areaSqft'):g} sft × ₹{mesh_fabric.get('rate'):g}"
+                if mesh_fabric.get("areaSqft") else ""
+            )
         if mesh_name:
             mesh_bits.append(str(mesh_name))
         if mesh_brand:
             mesh_bits.append(str(mesh_brand))
         if mesh_colour:
             mesh_bits.append(f"colour {mesh_colour}")
-    add("MESH", " · ".join(mesh_bits))
+    add("MESH", " · ".join(b for b in mesh_bits if b))
 
     if mat == "upvc":
         add("MATERIAL", "UPVC")

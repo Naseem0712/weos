@@ -256,6 +256,31 @@ def compute_ventilator(cfg: Mapping[str, Any] | None = None) -> dict[str, Any]:
 
     if area_sqft > 0:
         add("glass", glass_label, round(area_sqft, 3), "sqft", r_glass, sizeMm=f"{glass_thk:g} mm", glassColour=glass_colour)
+
+    # Outside fix mesh — ₹250/sft on vent area (default on)
+    vent_mesh = None
+    try:
+        from WEOS.factory.mesh_addon import DEFAULT_MESH_RATES, vent_fix_mesh_for_line
+
+        vent_mesh = vent_fix_mesh_for_line({
+            **dict(cfg),
+            "widthMm": width_mm,
+            "heightMm": height_mm,
+            "qty": qty,
+            "mesh": cfg.get("mesh") if "mesh" in cfg else cfg.get("fixMesh", True),
+            "meshRate": cfg.get("meshRate") or cfg.get("fixMeshRate") or (rates or {}).get("meshPerSqft"),
+        })
+    except Exception:
+        vent_mesh = None
+    if vent_mesh and float(vent_mesh.get("areaSqft") or 0) > 0:
+        add(
+            "fix_mesh",
+            "Fix mesh (outside)",
+            round(float(vent_mesh["areaSqft"]), 3),
+            "sqft",
+            float(vent_mesh.get("rate") or 250.0),
+            placement="outside",
+        )
     peri = 2.0 * (width_mm + height_mm)
     add("outer", f"Outer frame · {outer_name}", round(peri / MM_PER_FT, 3), "rft", r_outer, sizeMm=outer_name)
     if mode == "split":
@@ -350,6 +375,8 @@ def compute_ventilator(cfg: Mapping[str, Any] | None = None) -> dict[str, Any]:
         "areaSqft": round(area_sqft, 4),
         "saleUnit": sale_unit,
         "billableQty": round(billable, 4),
+        "fixMesh": vent_mesh,
+        "meshCost": float((vent_mesh or {}).get("amountUnit") or 0.0),
         "items": items,
         "bomDetails": items,
         "extras": extras,
@@ -621,6 +648,8 @@ def ventilator_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = Non
     if hinge_pos not in ("top", "left", "right"):
         hinge_pos = "top"
 
+    # Outside fix mesh pattern (drawn slightly oversized so it reads outside the frame)
+    mesh_cell = 7.0
     parts: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{svg_w:.1f}" height="{svg_h:.1f}" '
         f'viewBox="0 0 {svg_w:.1f} {svg_h:.1f}" data-model-system="ventilator" '
@@ -628,6 +657,11 @@ def ventilator_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = Non
         f'data-corner-markers="0" data-outer-miter="45" data-mullion-joint="90" '
         f'data-fan-dia="{mm_n(fan_d_mm)}">',
         f"<title>Bathroom ventilator {mm_n(width)}×{mm_n(height)}</title>",
+        '<defs>'
+        f'<pattern id="ventFixMesh" patternUnits="userSpaceOnUse" width="{mesh_cell:.1f}" height="{mesh_cell:.1f}">'
+        f'<path d="M0,0 L{mesh_cell:.1f},{mesh_cell:.1f} M{mesh_cell:.1f},0 L0,{mesh_cell:.1f}" '
+        f'stroke="#2a2a2a" stroke-width="0.55" stroke-opacity="0.5"/></pattern>'
+        '</defs>',
         '<rect width="100%" height="100%" fill="#ffffff"/>',
         f'<text x="{margin}" y="16" font-size="11" font-family="sans-serif" fill="#222">'
         f'Bathroom ventilator · {mm_n(width)}×{mm_n(height)} mm · {escape(colour.replace("_", " "))}'
@@ -635,6 +669,15 @@ def ventilator_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = Non
     ]
     x0 = margin
     y0 = 26.0
+    # Outside fix mesh — overhang the outer frame so it reads as external
+    if q.get("fixMesh") or q.get("meshCost"):
+        out_pad = max(frame_t * 0.55, 3.5)
+        parts.append(
+            f'<rect x="{x0 - out_pad:.1f}" y="{y0 - out_pad:.1f}" '
+            f'width="{elev_w + 2 * out_pad:.1f}" height="{elev_h + 2 * out_pad:.1f}" '
+            f'fill="url(#ventFixMesh)" stroke="#2b2b2b" stroke-width="0.7" stroke-dasharray="3 2" '
+            f'data-mesh="vent_fix" data-mesh-outside="1"/>'
+        )
 
     if mode == "full_cutout":
         gx, gy, gw, gh = x0 + frame_t, y0 + frame_t, elev_w - 2 * frame_t, elev_h - 2 * frame_t

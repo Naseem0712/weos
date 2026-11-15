@@ -1052,10 +1052,11 @@ textarea{max-width:100%}
               <input id="lineMesh" type="checkbox"/> Apply mesh
             </label>
             <div id="wrapMeshType" style="display:none"><label class="l">Mesh type</label>
-              <select id="lineMeshType" style="width:230px" title="Sliding mesh shutter = extra sash on its own track. Pleated / rolling mesh = add-on priced separately by area.">
-                <option value="sliding" selected>Sliding mesh shutter (wire, SS304)</option>
-                <option value="pleated">Pleated mesh</option>
-                <option value="rolling">Rolling mesh</option>
+              <select id="lineMeshType" style="width:250px" title="Standard/Premium = in-track mesh sash (W/2×H). Rolling ₹450/sft · Collapsible ₹480/sft on full window.">
+                <option value="standard" selected>Standard mesh (in-track) ₹150/sft</option>
+                <option value="premium">Premium mesh (in-track) ₹220/sft</option>
+                <option value="rolling">Rolling mesh (one-side) ₹450/sft</option>
+                <option value="collapsible">Collapsible mesh ₹480/sft</option>
               </select>
             </div>
             <div id="wrapMeshName" style="display:none"><label class="l">Mesh name</label><input id="lineMeshName" type="text" placeholder="e.g. SS304 mesh" style="width:150px"/></div>
@@ -1070,20 +1071,26 @@ textarea{max-width:100%}
             <div class="muted" id="meshHint" style="font-size:.78rem;flex:1"></div>
           </div>
           <div id="wrapMeshAddon" class="row" style="display:none;margin-top:.4rem;padding:.45rem .6rem;border:1px dashed var(--line);border-radius:10px;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
-            <div><label class="l">Mesh placement</label>
+            <div id="wrapMeshPlacement"><label class="l">Mesh placement</label>
               <select id="lineMeshPlacement" style="width:200px">
-                <option value="full" selected>Whole window</option>
-                <option value="left">Left side (one shutter width)</option>
-                <option value="right">Right side (one shutter width)</option>
+                <option value="left" selected>Left side (preview)</option>
+                <option value="right">Right side (preview)</option>
+                <option value="full">Whole window</option>
                 <option value="custom">Custom size</option>
+              </select>
+            </div>
+            <div id="wrapMeshCollapse" style="display:none"><label class="l">Collapse style</label>
+              <select id="lineMeshCollapse" style="width:210px" title="Center = mesh both sides; Top = mesh band at head with horizontal member">
+                <option value="center" selected>Center opening (both sides)</option>
+                <option value="top">Top opening (top band)</option>
               </select>
             </div>
             <div id="wrapMeshSize" class="row" style="display:none;gap:.4rem">
               <div><label class="l">Mesh W mm</label><input id="lineMeshW" type="number" min="1" step="1" placeholder="1200" style="width:84px"/></div>
               <div><label class="l">Mesh H mm</label><input id="lineMeshH" type="number" min="1" step="1" placeholder="1500" style="width:84px"/></div>
             </div>
-            <div><label class="l">Mesh rate ₹/sqft</label><input id="lineMeshRate" type="number" min="0" step="0.01" placeholder="0" style="width:92px"/></div>
-            <div class="muted" id="meshAddonHint" style="font-size:.74rem;flex:1;min-width:200px">Pleated / rolling mesh is priced separately: area × rate × qty, printed as its own MESH row.</div>
+            <div><label class="l">Mesh rate ₹/sqft</label><input id="lineMeshRate" type="number" min="0" step="0.01" placeholder="auto" style="width:92px"/></div>
+            <div class="muted" id="meshAddonHint" style="font-size:.74rem;flex:1;min-width:200px">Rolling ₹450 / Collapsible ₹480 on full window size; preview shows a bit of mesh + 38 mm members.</div>
           </div>
           <div id="casementPanelBox" style="display:none;margin-top:.45rem;padding:.5rem .6rem;border:1px dashed var(--line);border-radius:10px;background:rgba(0,0,0,.02)">
             <strong style="font-size:.82rem">Partitions / panels</strong>
@@ -4211,7 +4218,7 @@ function captureSeriesDesignFromForm(opts) {
     handleName: draft.handleName,
     hardwareBrand: draft.hardwareBrand,
     meshName: draft.meshName,
-    meshType: draft.meshType || 'sliding',
+    meshType: normalizeMeshTypeUi(draft.meshType || 'standard'),
     meshPlacement: draft.meshPlacement,
     meshW: draft.meshW,
     meshH: draft.meshH,
@@ -6057,22 +6064,47 @@ function renderPartChips() {
   });
 }
 
-// Mesh type helpers — 'sliding' = wire mesh sash on its own track (geometry);
-// 'pleated' / 'rolling' = priced add-on over the opening (no extra track).
+// Mesh type helpers —
+// 'standard' / 'premium' = in-track mesh sash · (W/2)×H · ₹150 / ₹220
+// 'rolling' / 'collapsible' = priced add-on on full W×H · ₹450 / ₹480 (no extra track).
+const MESH_DEFAULT_RATES = { standard: 150, premium: 220, rolling: 450, collapsible: 480, sliding: 150, pleated: 480 };
+function normalizeMeshTypeUi(v) {
+  v = String(v || 'standard').toLowerCase().replace(/-/g, '_');
+  if (v === 'pleated' || v === 'collapsable') return 'collapsible';
+  if (v === 'sliding' || v === 'in_track' || v === 'intrack') return 'standard';
+  if (v === 'premium' || v === 'rolling' || v === 'collapsible' || v === 'standard') return v;
+  return 'standard';
+}
 function currentMeshType() {
   const el = $('lineMeshType');
-  const v = el ? String(el.value || 'sliding').toLowerCase() : 'sliding';
-  return (v === 'pleated' || v === 'rolling') ? v : 'sliding';
+  return normalizeMeshTypeUi(el ? el.value : 'standard');
 }
-function isAddonMeshType(t) { t = String(t || '').toLowerCase(); return t === 'pleated' || t === 'rolling'; }
+function isAddonMeshType(t) {
+  t = normalizeMeshTypeUi(t);
+  return t === 'collapsible' || t === 'rolling';
+}
+function isIntrackMeshType(t) {
+  t = normalizeMeshTypeUi(t);
+  return t === 'standard' || t === 'premium';
+}
+function defaultMeshRateForType(t) {
+  return MESH_DEFAULT_RATES[normalizeMeshTypeUi(t)] || 150;
+}
 function applyMeshAddonVisibility() {
   const meshOn = !!($('lineMesh') && $('lineMesh').checked);
-  const addon = meshOn && isAddonMeshType(currentMeshType());
+  const mtype = currentMeshType();
+  const addon = meshOn && isAddonMeshType(mtype);
   const show = (id, on) => { const el = $(id); if (el) el.style.display = on ? '' : 'none'; };
   show('wrapMeshType', meshOn);
   show('wrapMeshAddon', addon);
-  const pl = $('lineMeshPlacement') ? String($('lineMeshPlacement').value || 'full') : 'full';
+  show('wrapMeshCollapse', addon && mtype === 'collapsible');
+  show('wrapMeshPlacement', addon && mtype === 'rolling');
+  const pl = $('lineMeshPlacement') ? String($('lineMeshPlacement').value || 'left') : 'left';
   show('wrapMeshSize', addon && pl === 'custom');
+  // Auto-fill catalogue rate when empty
+  if (addon && $('lineMeshRate') && String($('lineMeshRate').value || '').trim() === '') {
+    $('lineMeshRate').placeholder = String(defaultMeshRateForType(mtype));
+  }
   // Wire mesh shutters only make sense for the sliding mesh sash
   const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
   const ms = $('wrapMeshShutters');
@@ -6082,42 +6114,50 @@ function applyMeshAddonVisibility() {
   if (hint && addon) {
     const d = meshAddonDraftAmount();
     hint.textContent = d && d.amount > 0
-      ? `${d.label} → ₹${d.amount.toFixed(2)} (${d.areaSqft.toFixed(2)} sft × ₹${d.rate} × ${d.qty}) added as a separate MESH row`
-      : 'Pleated / rolling mesh is priced separately: area × rate × qty, printed as its own MESH row.';
+      ? `${d.label} → ₹${d.amount.toFixed(2)} (${d.areaSqft.toFixed(2)} sft × ₹${d.rate} × ${d.qty}) · full window`
+      : (mtype === 'collapsible'
+        ? 'Collapsible mesh: full W×H × ₹480/sft · preview inside with 38 mm members'
+        : 'Rolling mesh: full W×H × ₹450/sft · preview one side with 38 mm vertical');
+  } else if (hint && meshOn && isIntrackMeshType(mtype)) {
+    const W = parseFloat($('lineW') && $('lineW').value) || 0;
+    const H = parseFloat($('lineH') && $('lineH').value) || 0;
+    const rate = defaultMeshRateForType(mtype);
+    const area = (W / 2) * H * 10.7639 / 1e6;
+    hint.textContent = area > 0
+      ? `In-track ${mtype}: (W/2)×H = ${area.toFixed(2)} sft × ₹${rate}`
+      : `In-track ${mtype}: (W/2)×H × ₹${rate}/sft`;
   }
 }
 // Local estimate of the add-on (mirrors WEOS.factory.mesh_addon) for the hint / live total.
 function meshAddonDraftAmount(ln) {
   const src = ln || null;
   const meshOn = src ? !!(src.mesh || (src.options && src.options.mesh)) : !!($('lineMesh') && $('lineMesh').checked);
-  const type = src ? String(src.meshType || (src.options && src.options.meshType) || 'sliding') : currentMeshType();
+  const type = normalizeMeshTypeUi(src ? (src.meshType || (src.options && src.options.meshType) || 'standard') : currentMeshType());
   if (!meshOn || !isAddonMeshType(type)) return null;
   const W = src ? (+src.width || 0) : (parseFloat($('lineW') && $('lineW').value) || 0);
   const H = src ? (+src.height || 0) : (parseFloat($('lineH') && $('lineH').value) || 0);
   const qty = Math.max(1, src ? (parseInt(src.qty, 10) || 1) : (parseInt($('lineQty') && $('lineQty').value, 10) || 1));
-  const placement = String(src ? (src.meshPlacement || (src.options && src.options.meshPlacement) || 'full') : (($('lineMeshPlacement') && $('lineMeshPlacement').value) || 'full'));
-  const rate = parseFloat(src ? (src.meshRate ?? (src.options && src.options.meshRate)) : ($('lineMeshRate') && $('lineMeshRate').value)) || 0;
-  const g = Math.max(1, parseInt(src ? (src.glassShutters || (src.layout && src.layout.glassCount)) : ($('lineGlassShutters') && $('lineGlassShutters').value), 10) || 1);
-  let mw = W, mh = H;
-  if (placement === 'left' || placement === 'right') { mw = W / g; mh = H; }
-  else if (placement === 'custom') {
-    const cw = parseFloat(src ? (src.meshW ?? (src.options && src.options.meshW)) : ($('lineMeshW') && $('lineMeshW').value)) || 0;
-    const ch = parseFloat(src ? (src.meshH ?? (src.options && src.options.meshH)) : ($('lineMeshH') && $('lineMeshH').value)) || 0;
-    if (cw > 0 && ch > 0) { mw = cw; mh = ch; }
-  }
+  const placement = String(src ? (src.meshPlacement || (src.options && src.options.meshPlacement) || 'left') : (($('lineMeshPlacement') && $('lineMeshPlacement').value) || 'left'));
+  const collapse = String(src ? (src.meshCollapseStyle || (src.options && src.options.meshCollapseStyle) || 'center') : (($('lineMeshCollapse') && $('lineMeshCollapse').value) || 'center'));
+  let rate = parseFloat(src ? (src.meshRate ?? (src.options && src.options.meshRate)) : ($('lineMeshRate') && $('lineMeshRate').value));
+  if (!isFinite(rate) || rate <= 0) rate = defaultMeshRateForType(type);
+  // Rolling / collapsible charged on full window (placement is preview-only)
+  const mw = W, mh = H;
   const areaSqft = mw * mh * 10.7639 / 1e6;
   const amount = Math.round(areaSqft * rate * qty * 100) / 100;
-  const typeLabel = type === 'pleated' ? 'Pleated mesh' : 'Rolling mesh';
-  const plLabel = placement === 'left' ? 'left side' : placement === 'right' ? 'right side' : placement === 'custom' ? '' : 'whole window';
-  return { type, typeLabel, placement, widthMm: mw, heightMm: mh, areaSqft, rate, qty, amount,
-    label: [typeLabel, plLabel, `${Math.round(mw)}×${Math.round(mh)} mm`].filter(Boolean).join(' · ') };
+  const typeLabel = type === 'collapsible' ? 'Collapsible mesh' : 'Rolling mesh';
+  const styleLabel = type === 'collapsible'
+    ? (collapse === 'top' ? 'top opening' : 'center opening')
+    : (placement === 'right' ? 'right preview' : 'left preview');
+  return { type, typeLabel, placement, collapseStyle: collapse, widthMm: mw, heightMm: mh, areaSqft, rate, qty, amount,
+    label: [typeLabel, styleLabel, `${Math.round(mw)}×${Math.round(mh)} mm`].filter(Boolean).join(' · ') };
 }
 
 function applyMeshTrackRules() {
   const meshChk = $('lineMesh') && $('lineMesh').checked;
   const meshN = $('lineMeshShutters') ? (parseInt($('lineMeshShutters').value, 10) || 0) : 0;
   const addon = !!meshChk && isAddonMeshType(currentMeshType());
-  // Pleated / rolling mesh is an add-on — it never forces a mesh track.
+  // Rolling / collapsible mesh is an add-on — it never forces a mesh track.
   const mesh = !addon && (!!meshChk || meshN > 0);
   const trackEl = $('lineTrack');
   const hint = $('meshHint');
@@ -6125,7 +6165,8 @@ function applyMeshTrackRules() {
   if (!trackEl) return;
   let tc = parseFloat(trackEl.value) || 2;
   if (addon) {
-    if (hint) hint.textContent = `${currentMeshType() === 'pleated' ? 'Pleated' : 'Rolling'} mesh add-on (no mesh track)`;
+    const t = currentMeshType();
+    if (hint) hint.textContent = `${t === 'collapsible' ? 'Collapsible' : 'Rolling'} mesh add-on (no mesh track)`;
     return;
   }
   if (mesh && tc < 2.5) {
@@ -6134,7 +6175,8 @@ function applyMeshTrackRules() {
     tc = 3;
     if (hint) hint.textContent = 'Mesh needs 2.5/3-track — shifted to 3-track';
   } else if (mesh) {
-    if (hint) hint.textContent = `Mesh on ${tc}-track`;
+    const t = currentMeshType();
+    if (hint) hint.textContent = `${t === 'premium' ? 'Premium' : 'Standard'} mesh on ${tc}-track · (W/2)×H`;
   } else if (hint) {
     hint.textContent = '';
   }
@@ -6244,7 +6286,7 @@ function applySystemUiRules(opts) {
   // pleated / rolling mesh add-on (priced separately), so keep the checkbox.
   show('wrapMeshChk', (hasTracks || casement) && !shower && !ventilator && !surface && !grid && !bifold);
   if (casement && $('lineMesh') && $('lineMesh').checked && $('lineMeshType') && !isAddonMeshType($('lineMeshType').value)) {
-    $('lineMeshType').value = 'pleated';
+    $('lineMeshType').value = 'collapsible';
   }
   if (typeof applyMeshAddonVisibility === 'function') applyMeshAddonVisibility();
   show('wrapLineGlass', !surface);
@@ -7044,17 +7086,18 @@ function syncDraftFromLine(ln) {
   if ($('secLeaf')) $('secLeaf').value = ss.leafStile != null ? ss.leafStile : '';
   if ($('lineHandleName')) $('lineHandleName').value = ln.handleName || '';
   if ($('lineMeshName')) $('lineMeshName').value = ln.meshName || '';
-  // Mesh type / add-on (pleated / rolling) — restore from the line or its persisted options
+  // Mesh type / add-on (standard/premium/rolling/collapsible) — restore from line or options
   {
     const o = ln.options || {};
     const pick = (k) => (ln[k] != null && ln[k] !== '') ? ln[k] : ((o[k] != null && o[k] !== '') ? o[k] : null);
-    const mt = String(pick('meshType') || 'sliding').toLowerCase();
-    if ($('lineMeshType')) $('lineMeshType').value = (mt === 'pleated' || mt === 'rolling') ? mt : 'sliding';
-    if ($('lineMeshPlacement')) $('lineMeshPlacement').value = ['full', 'left', 'right', 'custom'].includes(String(pick('meshPlacement') || '')) ? String(pick('meshPlacement')) : 'full';
+    const mt = normalizeMeshTypeUi(pick('meshType') || 'standard');
+    if ($('lineMeshType')) $('lineMeshType').value = mt;
+    if ($('lineMeshPlacement')) $('lineMeshPlacement').value = ['full', 'left', 'right', 'custom'].includes(String(pick('meshPlacement') || '')) ? String(pick('meshPlacement')) : 'left';
+    if ($('lineMeshCollapse')) $('lineMeshCollapse').value = String(pick('meshCollapseStyle') || 'center') === 'top' ? 'top' : 'center';
     if ($('lineMeshW')) $('lineMeshW').value = pick('meshW') != null ? pick('meshW') : '';
     if ($('lineMeshH')) $('lineMeshH').value = pick('meshH') != null ? pick('meshH') : '';
     if ($('lineMeshRate')) $('lineMeshRate').value = pick('meshRate') != null ? pick('meshRate') : '';
-    if ($('lineMesh') && !ln.mesh && o.mesh && (mt === 'pleated' || mt === 'rolling')) $('lineMesh').checked = true;
+    if ($('lineMesh') && !ln.mesh && o.mesh && isAddonMeshType(mt)) $('lineMesh').checked = true;
   }
   applyMeshNameVisibility();
   if (typeof applyMeshAddonVisibility === 'function') applyMeshAddonVisibility();
@@ -7254,10 +7297,16 @@ function currentLineDraft() {
       return on;
     })(),
     meshType: currentMeshType(),
+    meshGrade: isIntrackMeshType(currentMeshType()) ? currentMeshType() : null,
     meshPlacement: (function(){
       if (!isAddonMeshType(currentMeshType()) || !($('lineMesh') && $('lineMesh').checked)) return null;
-      const v = $('lineMeshPlacement') ? String($('lineMeshPlacement').value || 'full') : 'full';
-      return ['full', 'left', 'right', 'custom'].includes(v) ? v : 'full';
+      const v = $('lineMeshPlacement') ? String($('lineMeshPlacement').value || 'left') : 'left';
+      return ['full', 'left', 'right', 'custom'].includes(v) ? v : 'left';
+    })(),
+    meshCollapseStyle: (function(){
+      if (currentMeshType() !== 'collapsible' || !($('lineMesh') && $('lineMesh').checked)) return null;
+      const v = $('lineMeshCollapse') ? String($('lineMeshCollapse').value || 'center') : 'center';
+      return v === 'top' ? 'top' : 'center';
     })(),
     meshW: (function(){
       if (!isAddonMeshType(currentMeshType())) return null;
@@ -7270,9 +7319,11 @@ function currentLineDraft() {
       return isFinite(v) && v > 0 ? v : null;
     })(),
     meshRate: (function(){
-      if (!isAddonMeshType(currentMeshType()) || !($('lineMesh') && $('lineMesh').checked)) return null;
+      if (!($('lineMesh') && $('lineMesh').checked)) return null;
       const v = $('lineMeshRate') ? parseFloat($('lineMeshRate').value) : NaN;
-      return isFinite(v) && v >= 0 ? v : null;
+      if (isFinite(v) && v > 0) return v;
+      // Catalogue defaults travel with the line so design_cost / materials stay stable
+      return defaultMeshRateForType(currentMeshType());
     })(),
     trackCount: (function(){
       const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
@@ -8293,7 +8344,7 @@ async function refreshPreview() {
       grid: (ln.system === 'grid') ? (ln.grid || currentGridSpec()) : null,
       handleName: ln.handleName || null,
       meshName: ln.meshName || null,
-      meshType: ln.meshType || (ln.options && ln.options.meshType) || 'sliding',
+      meshType: normalizeMeshTypeUi(ln.meshType || (ln.options && ln.options.meshType) || 'standard'),
       meshPlacement: ln.meshPlacement || (ln.options && ln.options.meshPlacement) || null,
       meshW: ln.meshW != null ? ln.meshW : ((ln.options && ln.options.meshW) || null),
       meshH: ln.meshH != null ? ln.meshH : ((ln.options && ln.options.meshH) || null),
@@ -13039,8 +13090,8 @@ if ($('lineMesh')) {
   });
 }
 applyMeshNameVisibility();
-// Mesh type (sliding sash / pleated / rolling) + add-on placement, size and rate
-['lineMeshType','lineMeshPlacement','lineMeshW','lineMeshH','lineMeshRate'].forEach(id => {
+// Mesh type (standard/premium/rolling/collapsible) + add-on placement, size and rate
+['lineMeshType','lineMeshPlacement','lineMeshCollapse','lineMeshW','lineMeshH','lineMeshRate'].forEach(id => {
   const el = $(id); if (!el) return;
   const handler = () => {
     applyMeshTrackRules();
