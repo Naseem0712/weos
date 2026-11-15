@@ -74,7 +74,7 @@ def main() -> None:
                     "glass": {"ratePerM": 18},
                 },
             },
-            "costing": {"labourPerSft": 35, "profitPercent": 15, "costEngine": "stub"},
+            "costing": {"labourPerSft": 35, "profitPercent": 15, "costEngine": "live", "projectWastageReuse": False},
         },
     }
     setup = normalize_setup(raw)
@@ -90,7 +90,7 @@ def main() -> None:
     _ok(cm["hardwarePack"]["topHungStay"]["enabled"] is False, "top-hung off when hinges")
     _ok(cm["hardwarePack"]["limitationArm"]["enabled"] is True, "limitation arm with hinges")
     _ok(cm["hardwarePack"]["frameConnectors"]["qty"] == 4, "frame connectors 4")
-    _ok(cm["costing"]["costEngine"] == "stub", "cost stub")
+    _ok(cm["costing"]["costEngine"] == "live", "cost live")
 
     sizes = derive_section_sizes(setup)
     _ok(sizes.get("leftJamb") == 50, f"jamb from active grills frame {sizes}")
@@ -230,7 +230,7 @@ def main() -> None:
 
     wastage = derive_casement_wastage_flags(stile)
     _ok(wastage.get("soldPerRft") is True, "wastage soldPerRft")
-    _ok(wastage.get("costEngine") == "stub", "wastage stub")
+    _ok(wastage.get("costEngine") in ("stub", "live"), f"wastage engine {wastage.get('costEngine')}")
 
     # ── Slim profile ─────────────────────────────────────────────────
     slim = normalize_setup({
@@ -260,9 +260,60 @@ def main() -> None:
     pack = apply_setup_bom(
         slim, width_mm=900, height_mm=2100, shutter_count=1, system_type="casement"
     )
-    _ok(pack.get("costEngine") == "stub", "BOM cost stub")
+    _ok(pack.get("costEngine") in ("stub", "live"), f"BOM cost engine {pack.get('costEngine')}")
     _ok(pack.get("quoteHardwareNotes"), f"quote notes on BOM {pack.get('quoteHardwareNotes')}")
     _ok(len(pack.get("hardware") or []) >= 1, f"hardware lines {pack.get('hardware')}")
+
+    # ── Design-driven cost (height split + panel types) ───────────────
+    from WEOS.factory.design_cost import compute_casement_design_cost, pack_std_length_wastage
+    from WEOS.factory.materials_list import build_quote_materials_list, materials_list_html
+
+    waste = pack_std_length_wastage([1.2, 1.5, 0.9], std_m=3.0, reuse=False)
+    _ok(waste["purchasedMetres"] >= waste["netMetres"], f"waste pack {waste}")
+    _ok(waste["wastageMetres"] > 0, "leftover charged when reuse off")
+
+    layout = {
+        "bands": [
+            {"heightMm": 600, "panels": [{"role": "fix", "widthMm": 1200, "profileSeries": "29mm eco"}]},
+            {
+                "heightMm": 1400,
+                "panels": [
+                    {"role": "door", "widthMm": 600},
+                    {"role": "openable", "widthMm": 600},
+                ],
+            },
+        ]
+    }
+    dcost = compute_casement_design_cost(
+        {
+            "width": 1200,
+            "height": 2000,
+            "qty": 1,
+            "glass": "8mm_toughened",
+            "casementLayout": layout,
+            "mullionSize": "slim",
+            "doorSize": "big",
+        },
+        setup=setup,
+    )
+    _ok(dcost.get("ok") is True, f"design cost ok {dcost}")
+    _ok(dcost.get("costEngine") == "live", f"design engine live {dcost.get('costEngine')}")
+    _ok(float(dcost.get("total") or 0) > 0, f"design total {dcost.get('total')}")
+    _ok(dcost.get("counts", {}).get("bands") == 2, f"bands {dcost.get('counts')}")
+    _ok((dcost.get("counts") or {}).get("sideSwingDoors") == 2, f"side doors {dcost.get('counts')}")
+    _ok(any("Mullion" in str(p.get("name") or "") or p.get("use") == "mullion" for p in (dcost.get("profiles") or [])), "mullion in profiles")
+    _ok(dcost.get("profitAmount", 0) > 0, f"profit from % {dcost.get('profitAmount')}")
+
+    mats = build_quote_materials_list(
+        [{"displayName": "Test casement", "width": 1200, "height": 2000, "qty": 1,
+          "colour": "black_texture", "glass": "8mm_toughened", "casementLayout": layout,
+          "product": "casement_stub"}],
+        customer="Smoke Customer",
+        colour="Black Texture",
+    )
+    _ok(mats.get("customer") == "Smoke Customer", "materials customer")
+    html = materials_list_html(mats)
+    _ok("Smoke Customer" in html and "Materials" in html, "materials html")
 
     print("Casement Product Gallery smoke passed.")
 

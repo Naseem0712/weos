@@ -3201,6 +3201,31 @@ def api_quote_live(body: LivePriceRequest) -> dict[str, Any]:
     return result
 
 
+@app.post("/api/quote/materials-list")
+async def api_quote_materials_list(request: Request) -> HTMLResponse:
+    """Printable materials + hardware list for products already on the quote."""
+    from WEOS.factory.materials_list import build_quote_materials_list, materials_list_html
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    lines = body.get("lines") or body.get("items") or []
+    if not isinstance(lines, list):
+        lines = []
+    pack = build_quote_materials_list(
+        lines,
+        customer=body.get("customer") or body.get("customerName"),
+        quote_date=body.get("date") or body.get("quoteDate"),
+        colour=body.get("colour") or body.get("color"),
+        project_name=body.get("projectName") or body.get("project"),
+    )
+    html = materials_list_html(pack)
+    return HTMLResponse(content=html, media_type="text/html; charset=utf-8")
+
+
 @app.get("/api/sale-units")
 def api_sale_units() -> dict[str, Any]:
     from WEOS.factory.live_pricing import SALE_UNITS

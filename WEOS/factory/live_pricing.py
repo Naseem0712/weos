@@ -294,10 +294,37 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
                     except (TypeError, ValueError):
                         pass
     cost_unit = float((calc.get("price") or {}).get("unitTotal") or (cost_total / max(qty, 1)))
+
+    # Design-driven cost (casement/sliding setup rates × canvas layout) overrides
+    # empty / stub factory totals when series setup has real rates.
+    design_cost: dict[str, Any] | None = None
+    try:
+        from WEOS.factory.design_cost import compute_design_cost
+
+        design_cost = compute_design_cost(payload, product=product)
+        if (
+            isinstance(design_cost, Mapping)
+            and design_cost.get("ok")
+            and design_cost.get("costEngine") == "live"
+            and float(design_cost.get("total") or 0) > 0
+        ):
+            # Prefer design cost when legacy quotation is empty or weaker
+            if cost_total <= 0 or float(design_cost.get("total") or 0) >= cost_total * 0.25:
+                cost_total = float(design_cost["total"])
+                cost_unit = float(design_cost.get("unitTotal") or (cost_total / max(qty, 1)))
+    except Exception:
+        design_cost = None
+
     sale_unit = str(line.get("saleUnit") or calc.get("saleUnit") or default_sale_unit(product))
     selling_rate = line.get("sellingRate")
     if selling_rate is None or selling_rate == "":
         selling_rate = line.get("customerRate") or calc.get("sellingRate")
+    # Auto-suggest sell rate from labour+profit design cost when user pre-set those
+    if (selling_rate is None or str(selling_rate).strip() == "") and design_cost and design_cost.get("suggestedSellRate"):
+        if design_cost.get("labourPerSft") or design_cost.get("profitPercent"):
+            selling_rate = design_cost["suggestedSellRate"]
+            if design_cost.get("saleUnit"):
+                sale_unit = str(design_cost["saleUnit"])
     has_sell = selling_rate is not None and str(selling_rate).strip() != ""
     sell = None
     if special and isinstance(calc.get("selling"), Mapping) and (calc.get("selling") or {}).get("sellingAmount"):
@@ -338,6 +365,25 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
         except Exception:
             section_specs = {}
 
+    cost_block: dict[str, Any] = {
+        "currency": (calc.get("price") or {}).get("currency", "INR"),
+        "unitTotal": round(cost_unit, 2),
+        "total": round(cost_total, 2),
+        "status": calc.get("status"),
+    }
+    if design_cost and design_cost.get("ok"):
+        cost_block.update({
+            "costEngine": design_cost.get("costEngine"),
+            "perWindowCost": design_cost.get("perWindowCost"),
+            "profitAmount": design_cost.get("profitAmount"),
+            "profitPercent": design_cost.get("profitPercent"),
+            "labourAmount": design_cost.get("labourAmount"),
+            "wastageCost": design_cost.get("wastageCost"),
+            "wastage": design_cost.get("wastage"),
+            "breakdown": design_cost.get("breakdown"),
+            "suggestedSellRate": design_cost.get("suggestedSellRate"),
+        })
+
     return {
         "product": product_id,
         "displayName": calc.get("displayName") or product.get("displayName"),
@@ -348,12 +394,8 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
         "saleUnits": SALE_UNITS,
         "saleUnit": sale_unit,
         "saleUnitLabel": SALE_UNITS.get(sale_unit, SALE_UNITS["sqft"])["label"],
-        "cost": {
-            "currency": (calc.get("price") or {}).get("currency", "INR"),
-            "unitTotal": round(cost_unit, 2),
-            "total": round(cost_total, 2),
-            "status": calc.get("status"),
-        },
+        "cost": cost_block,
+        "designCost": design_cost,
         "displayAmount": round(
             float((sell or {}).get("sellingAmount") or 0) or cost_total,
             2,

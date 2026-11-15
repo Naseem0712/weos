@@ -361,6 +361,17 @@ def generate_job(
 
         setup_blob = product.get("setup") if isinstance(product.get("setup"), Mapping) else None
         glass_kg_total = sum(float(g.weight_kg or 0) * float(g.quantity or 1) for g in glass_items)
+        # Count side-swing vs top-hung from layout packs (casement hardware stays).
+        side_swing_n = 0.0
+        top_hung_n = 0.0
+        for sp in layout.shutters:
+            if getattr(sp, "role", None) != "glass" or not getattr(sp, "operable", False):
+                continue
+            pack = str(getattr(sp, "pack", "") or "").lower()
+            if pack == "top_hung":
+                top_hung_n += 1.0
+            else:
+                side_swing_n += 1.0
         setup_pack = apply_setup_bom(
             setup_blob,
             width_mm=float(width),
@@ -371,6 +382,8 @@ def generate_job(
                 "glassCount": float(layout.glass_count or 0),
                 "meshCount": float(layout.mesh_count or 0),
                 "leafCount": float(operable_count or geom.get("shutterCount") or 1),
+                "sideSwingDoors": side_swing_n,
+                "topHungDoors": top_hung_n,
                 "system": str(layout.system or ""),
             },
             glass_kg_total=glass_kg_total,

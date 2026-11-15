@@ -790,6 +790,7 @@ textarea{max-width:100%}
                 <a class="btn ghost sm" id="linkCustPrint" href="#" title="Open quote PDF for printing">🖨 Print quote</a>
                 <a class="btn ghost sm" id="linkCustXlsx" href="#" title="Download quote as Excel">📊 Quote Excel</a>
                 <a class="btn sec sm" id="linkFact" href="#" title="Factory production sheet: panel schedule, glass sizes, hardware BOM, cut list, weights. No customer pricing.">🏭 Factory Sheet (PDF)</a>
+                <button class="btn ghost sm" type="button" id="btnMaterialsList" title="Materials + hardware list for products on this quote (catalogue names, customer, date, colour)">📋 Materials list</button>
                 <a class="btn ghost sm" id="linkQuote" href="#" target="_blank" title="Raw quotation data (JSON) — for integrations.">Quote data</a>
               </div>
             <div id="printCopyPanel" class="hidden" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;padding:.55rem .65rem;background:#fff">
@@ -900,6 +901,11 @@ textarea{max-width:100%}
               </select>
             </div>
             <div><label class="l">Fix size (mm)</label><input id="partSize" type="number" min="0" step="1" placeholder="e.g. 290" style="width:90px"/></div>
+            <div id="wrapFixSeries"><label class="l">Fix profile series</label>
+              <select id="partProfileSeries" style="min-width:140px" title="Which series makes this fixed panel (required for sliding fix — not anonymous)">
+                <option value="">— pick series —</option>
+              </select>
+            </div>
             <button class="btn ghost sm" id="btnAddPart" type="button" style="margin-top:1rem">Add fix</button>
             <div class="grow" id="partChips" style="display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;min-height:1.8rem"></div>
           </div>
@@ -943,7 +949,7 @@ textarea{max-width:100%}
           </div>
           <div id="casementPanelBox" style="display:none;margin-top:.45rem;padding:.5rem .6rem;border:1px dashed var(--line);border-radius:10px;background:rgba(0,0,0,.02)">
             <strong style="font-size:.82rem">Partitions / panels</strong>
-            <p class="muted" style="font-size:.72rem;margin:.15rem 0 .35rem">Height split stacks horizontal bands (transom between). Vertical split applies only to the selected band — mullion does not cut through other bands. Roles: Fix · Casement · Top hung · Door · Sliding.</p>
+            <p class="muted" style="font-size:.72rem;margin:.15rem 0 .35rem">Height split = stacked rows (transom mullion between). Vertical split = panels in the selected row only. Opening type per panel: Fixed · Casement (side hung) · Top hung · Door · Sliding. Divides use <em>mullion</em> (slim/big); door/casement/top-hung use <em>door sections</em> from Series Setup.</p>
             <div class="row" style="gap:.5rem;margin:.25rem 0 .45rem;flex-wrap:wrap;align-items:flex-end">
               <div><label class="l">Height split</label>
                 <select id="casementHSplit" style="width:110px" title="Stack horizontal bands / rows">
@@ -961,11 +967,23 @@ textarea{max-width:100%}
                   <option value="4">4 panels</option>
                 </select>
               </div>
+              <div><label class="l">Mullion (divides)</label>
+                <select id="casementMullionSize" style="width:90px" title="Slim or big mullion from Casement Series Setup">
+                  <option value="slim">Slim</option>
+                  <option value="big">Big</option>
+                </select>
+              </div>
+              <div><label class="l">Door section</label>
+                <select id="casementDoorSize" style="width:90px" title="Slim or big door section from Casement Series Setup">
+                  <option value="slim">Slim</option>
+                  <option value="big">Big</option>
+                </select>
+              </div>
               <span class="muted" id="casementVSplitHint" style="font-size:.7rem;flex:1;min-width:12rem">Equal sizes first — edit mm below. Heights sum to opening; widths sum to band.</span>
             </div>
             <div id="casementBandList" style="margin:.2rem 0 .35rem"></div>
             <div id="casementPanelList"></div>
-            <div id="casementSlidingNote" class="muted" style="display:none;font-size:.72rem;margin-top:.35rem;color:#9a3412">Sliding inside a casement band is drawn as a fixed lite here — use a Sliding product/series for track + profile, or keep this panel as Fix.</div>
+            <div id="casementSlidingNote" class="muted" style="display:none;font-size:.72rem;margin-top:.35rem;color:#9a3412">Sliding panel: pick the <strong>profile series</strong> for that fixed/sliding lite below (not anonymous). Full track geometry still uses a Sliding product.</div>
             <div class="row" style="gap:.5rem;margin-top:.4rem;flex-wrap:wrap;align-items:flex-end">
               <div><label class="l">Sash overlap mm</label>
                 <input id="lineSashOverlap" type="number" min="10" max="20" value="15" style="width:64px" title="Door overlap onto mullion and outer frame (10–20)"/>
@@ -1731,9 +1749,14 @@ textarea{max-width:100%}
             </div>
           </div>
           <div class="livebox" id="livePriceBox">
-            <div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.06em">Live amount</div>
+            <div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.06em">Live amount · design cost</div>
             <div class="big" id="liveCost">₹ —</div>
-            <div class="muted" id="liveMeta">Pick product + size — cost updates instantly</div>
+            <div class="muted" id="liveMeta">Pick product + size — cost follows canvas profiles</div>
+            <div class="row" id="liveCostBreak" style="display:none;gap:.6rem;flex-wrap:wrap;margin:.35rem 0 .15rem;font-size:.78rem">
+              <span>Per window <strong id="livePerWin">₹ —</strong></span>
+              <span>Profit <strong id="liveProfitAmt">₹ —</strong></span>
+              <span class="muted" id="liveWasteHint"></span>
+            </div>
             <div class="row2">
               <div class="kpi grow"><label class="l">Sale unit</label>
                 <select id="lineSaleUnit">
@@ -5195,12 +5218,48 @@ function equalCasementHeights(n, parentH) {
 }
 
 function defaultCasementPanel(i, n, widthMm, old) {
+  const role = casementPanelRole(old && old.role) || (i === 0 && n === 2 ? 'door' : 'openable');
   return {
     index: i,
-    role: casementPanelRole(old && old.role) || (i === 0 && n === 2 ? 'door' : 'openable'),
+    role,
     handleSide: (old && old.handleSide) === 'left' ? 'left' : (i === 0 ? 'right' : 'left'),
     widthMm: widthMm,
+    profileSeries: (old && old.profileSeries) || '',
+    doorSize: (old && old.doorSize) || (state.draftCasementDoorSize || 'slim'),
   };
+}
+function seriesSelectOptions(selected) {
+  const opts = [];
+  const seen = new Set();
+  const push = (id, label) => {
+    const v = String(id || '').trim();
+    if (!v || seen.has(v)) return;
+    seen.add(v);
+    opts.push({ id: v, label: label || v });
+  };
+  if ($('lineSeries') && $('lineSeries').value) {
+    const o = $('lineSeries').selectedOptions[0];
+    push($('lineSeries').value, o ? o.textContent : $('lineSeries').value);
+  }
+  Array.from(($('lineSeries') && $('lineSeries').options) || []).forEach(o => {
+    if (o.value) push(o.value, o.textContent);
+  });
+  (state.products || []).forEach(p => {
+    const sid = p && (p.sectionSeries || (p.catalogue && p.catalogue.sectionSeries));
+    if (sid) push(sid, sid);
+    if (p && p.displayName) push(p.id || p.displayName, p.displayName);
+  });
+  const sel = String(selected || '');
+  return '<option value="">— pick series —</option>' + opts.map(o =>
+    `<option value="${esc(o.id)}"${o.id === sel ? ' selected' : ''}>${esc(o.label)}</option>`
+  ).join('');
+}
+function syncFixSeriesSelect() {
+  const sel = $('partProfileSeries');
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = seriesSelectOptions(prev);
+  if (prev && Array.from(sel.options).some(o => o.value === prev)) sel.value = prev;
 }
 
 function flattenCasementLayout(layout) {
@@ -5217,6 +5276,8 @@ function flattenCasementLayout(layout) {
         handleSide: (p && p.handleSide) === 'left' ? 'left' : 'right',
         widthMm: (p && +p.widthMm > 0) ? +p.widthMm : null,
         heightMm: (band && +band.heightMm > 0) ? +band.heightMm : null,
+        profileSeries: (p && p.profileSeries) || '',
+        doorSize: (p && p.doorSize) || '',
       });
     });
   });
@@ -5410,9 +5471,19 @@ function ensureCasementPanels() {
       role: casementPanelRole(p && p.role),
       handleSide: (p && p.handleSide) === 'left' ? 'left' : 'right',
       widthMm: widths[i],
+      profileSeries: (p && p.profileSeries) || '',
+      doorSize: (p && p.doorSize) || (state.draftCasementDoorSize || 'slim'),
     }));
-    return { heightMm: heights[bi], panels };
+    return { heightMm: heights[bi], panels, mullionSize: (band && band.mullionSize) || state.draftCasementMullionSize || 'slim' };
   });
+  if ($('casementMullionSize')) {
+    state.draftCasementMullionSize = $('casementMullionSize').value || 'slim';
+  }
+  if ($('casementDoorSize')) {
+    state.draftCasementDoorSize = $('casementDoorSize').value || 'slim';
+  }
+  layout.mullionSize = state.draftCasementMullionSize || 'slim';
+  layout.doorSize = state.draftCasementDoorSize || 'slim';
   state.draftCasementLayout = layout;
   if ($('casementHSplit')) $('casementHSplit').value = String(nBands);
   const bi = Math.min(Math.max(state.selectedCasementBand || 0, 0), nBands - 1);
@@ -5520,6 +5591,8 @@ function renderCasementPanelList() {
   host.innerHTML = panels.map((p, i) => {
     const active = sel === i ? ' style="outline:2px solid var(--accent,#b33)"' : '';
     const needHandle = p.role === 'openable' || p.role === 'door';
+    const needSeries = p.role === 'fix' || p.role === 'sliding';
+    const needDoor = p.role === 'openable' || p.role === 'door' || p.role === 'top_hung';
     return `<div class="row" data-cp="${i}"${active} style="gap:.4rem;align-items:center;margin:.2rem 0;flex-wrap:wrap">
       <button type="button" class="btn ghost sm" data-cp-pick="${i}">${rowPrefix}${i + 1}</button>
       <select data-cp-role="${i}" style="width:150px">
@@ -5536,9 +5609,11 @@ function renderCasementPanelList() {
         <option value="left"${p.handleSide === 'left' ? ' selected' : ''}>Handle L</option>
         <option value="right"${p.handleSide !== 'left' ? ' selected' : ''}>Handle R</option>
       </select>
+      ${needSeries ? `<label class="muted" style="font-size:.7rem">Series <select data-cp-series="${i}" style="width:140px;margin-left:.15rem">${seriesSelectOptions(p.profileSeries)}</select></label>` : ''}
+      ${needDoor ? `<span class="muted" style="font-size:.68rem">Door sec: ${(p.doorSize || state.draftCasementDoorSize || 'slim')}</span>` : ''}
       ${p.role === 'top_hung' ? '<span class="muted" style="font-size:.68rem">Hinges top · handle bottom</span>' : ''}
-      ${p.role === 'door' ? '<span class="muted" style="font-size:.68rem">Door leaf · hardware on this panel</span>' : ''}
-      ${p.role === 'sliding' ? '<span class="muted" style="font-size:.68rem">Use Sliding series for track</span>' : ''}
+      ${p.role === 'door' ? '<span class="muted" style="font-size:.68rem">Door leaf · door sections only</span>' : ''}
+      ${p.role === 'sliding' ? '<span class="muted" style="font-size:.68rem">Pick series for this lite</span>' : ''}
     </div>`;
   }).join('');
   host.querySelectorAll('[data-cp-pick]').forEach(btn => {
@@ -5559,6 +5634,14 @@ function renderCasementPanelList() {
       state.draftCasementLayout.bands[bi].panels[i].handleSide = selEl.value;
       ensureCasementPanels();
       refreshPreview();
+      scheduleLivePrice();
+    };
+  });
+  host.querySelectorAll('[data-cp-series]').forEach(selEl => {
+    selEl.onchange = () => {
+      const i = +selEl.dataset.cpSeries;
+      state.draftCasementLayout.bands[bi].panels[i].profileSeries = selEl.value || '';
+      ensureCasementPanels();
       scheduleLivePrice();
     };
   });
@@ -5590,14 +5673,17 @@ function selectCasementPanel(i) {
 function renderPartChips() {
   const box = $('partChips');
   if (!box) return;
+  syncFixSeriesSelect();
   const parts = state.draftPartitions || [];
   if (!parts.length) {
     box.innerHTML = '<span class="muted" style="font-size:.75rem">No fix panels</span>';
     return;
   }
-  box.innerHTML = parts.map((p, i) =>
-    `<span class="chip">${p.side.toUpperCase()} fix ${p.sizeMm} mm <button type="button" data-rm-part="${i}" title="Remove">×</button></span>`
-  ).join('');
+  box.innerHTML = parts.map((p, i) => {
+    const series = p.profileSeries || p.sectionSeries || p.fixedSeries || '';
+    const seriesBit = series ? ` · ${series}` : ' · <em>no series</em>';
+    return `<span class="chip">${String(p.side||'').toUpperCase()} fix ${p.sizeMm} mm${seriesBit} <button type="button" data-rm-part="${i}" title="Remove">×</button></span>`;
+  }).join('');
   box.querySelectorAll('[data-rm-part]').forEach(btn => {
     btn.onclick = () => {
       state.draftPartitions.splice(+btn.dataset.rmPart, 1);
@@ -6407,7 +6493,13 @@ function syncDraftFromLine(ln) {
   if (lnSys === 'casement') {
     const cl = ln.casementLayout || (ln.options && ln.options.casementLayout);
     if (cl && Array.isArray(cl.bands) && cl.bands.length) {
+      state.draftCasementMullionSize = cl.mullionSize || ln.mullionSize || 'slim';
+      state.draftCasementDoorSize = cl.doorSize || ln.doorSize || 'slim';
+      if ($('casementMullionSize')) $('casementMullionSize').value = state.draftCasementMullionSize;
+      if ($('casementDoorSize')) $('casementDoorSize').value = state.draftCasementDoorSize;
       state.draftCasementLayout = {
+        mullionSize: state.draftCasementMullionSize,
+        doorSize: state.draftCasementDoorSize,
         bands: cl.bands.slice(0, 4).map((b, bi) => ({
           heightMm: (b && +b.heightMm > 0) ? +b.heightMm : null,
           panels: ((b && b.panels) || [{ role: 'openable' }]).slice(0, 4).map((p, i) => ({
@@ -6415,6 +6507,8 @@ function syncDraftFromLine(ln) {
             role: casementPanelRole(p && p.role),
             handleSide: (p && (p.handleSide || p.side) === 'left') ? 'left' : 'right',
             widthMm: (p && +p.widthMm > 0) ? +p.widthMm : null,
+            profileSeries: (p && p.profileSeries) || '',
+            doorSize: (p && p.doorSize) || state.draftCasementDoorSize,
           })),
         })),
       };
@@ -6644,13 +6738,18 @@ function currentLineDraft() {
       const layout = state.draftCasementLayout;
       if (!layout || !Array.isArray(layout.bands) || !layout.bands.length) return null;
       return {
+        mullionSize: ($('casementMullionSize') && $('casementMullionSize').value) || state.draftCasementMullionSize || 'slim',
+        doorSize: ($('casementDoorSize') && $('casementDoorSize').value) || state.draftCasementDoorSize || 'slim',
         bands: layout.bands.map(b => ({
           heightMm: (b && +b.heightMm > 0) ? +b.heightMm : undefined,
+          mullionSize: (b && b.mullionSize) || undefined,
           panels: ((b && b.panels) || []).map((p, i) => ({
             index: i,
             role: p.role || 'openable',
             handleSide: casementHandleSide(p),
             widthMm: (p.widthMm != null && +p.widthMm > 0) ? +p.widthMm : undefined,
+            profileSeries: p.profileSeries || undefined,
+            doorSize: p.doorSize || undefined,
           })),
         })),
       };
@@ -6660,6 +6759,8 @@ function currentLineDraft() {
       ensureCasementPanels();
       return flattenCasementLayout(state.draftCasementLayout || { bands: [] });
     })(),
+    mullionSize: (sys === 'casement' && $('casementMullionSize')) ? ($('casementMullionSize').value || 'slim') : null,
+    doorSize: (sys === 'casement' && $('casementDoorSize')) ? ($('casementDoorSize').value || 'slim') : null,
     sashOverlapMm: (function(){
       if (sys !== 'casement') return null;
       const n = $('lineSashOverlap') ? parseFloat($('lineSashOverlap').value) : 15;
@@ -6883,8 +6984,25 @@ async function refreshLivePrice() {
       0
     ) || 0;
     const sellN = Number((live.selling && live.selling.sellingAmount) || localSell || 0) || 0;
-    const shown = sellN > 0 ? sellN : costN;
-    $('liveCost').textContent = shown > 0 ? money(shown) : money(costN);
+    const design = live.designCost || live.cost || {};
+    const perWin = Number(design.perWindowCost != null ? design.perWindowCost : (live.cost && live.cost.unitTotal)) || 0;
+    const profitAmt = Number(design.profitAmount != null ? design.profitAmount : (live.cost && live.cost.profitAmount)) || 0;
+    $('liveCost').textContent = costN > 0 ? money(costN) : (sellN > 0 ? money(sellN) : '₹ —');
+    if ($('liveCostBreak')) {
+      const showBreak = costN > 0 || perWin > 0 || profitAmt > 0;
+      $('liveCostBreak').style.display = showBreak ? '' : 'none';
+      if ($('livePerWin')) $('livePerWin').textContent = perWin > 0 ? money(perWin) : money(costN / Math.max(draft.qty || 1, 1));
+      if ($('liveProfitAmt')) $('liveProfitAmt').textContent = profitAmt > 0 ? money(profitAmt) : '₹ 0';
+      const w = (live.cost && live.cost.wastage) || design.wastage || {};
+      if ($('liveWasteHint')) {
+        const eng = (live.cost && live.cost.costEngine) || design.costEngine || '';
+        const bits = [];
+        if (eng) bits.push(eng === 'live' ? 'design cost' : ('cost ' + eng));
+        if (w.wastageMetres > 0) bits.push('waste ' + (w.wastagePercent != null ? w.wastagePercent + '%' : ''));
+        if (live.cost && live.cost.wastageCost > 0) bits.push(money(live.cost.wastageCost));
+        $('liveWasteHint').textContent = bits.join(' · ');
+      }
+    }
     const m = live.metrics || {};
     $('liveMeta').textContent = `${m.areaSqft||'—'} sft · ${draft.width}×${draft.height} mm · qty ${draft.qty}` +
       (live.rateSource === 'customer_saved' ? ' · rate from customer history' : '');
@@ -6895,12 +7013,16 @@ async function refreshLivePrice() {
       }
     } else {
       $('liveSell').textContent = sellN > 0 ? money(sellN) : '₹ —';
+      if ($('lineSellRate').value === '' && live.cost && live.cost.suggestedSellRate != null) {
+        $('lineSellRate').value = live.cost.suggestedSellRate;
+      }
     }
     const wln = state.lines[state.selectedLine];
     if (wln) {
       if (costN > 0) {
         wln.costTotal = costN;
         wln.price = Object.assign({}, wln.price || {}, { total: costN, currency: 'INR' });
+        wln.designCost = live.designCost || null;
       }
       if (sellN > 0 || (live.selling && live.selling.sellingAmount > 0)) {
         if (live.selling && live.selling.sellingRate != null && wln.sellingRate == null) wln.sellingRate = live.selling.sellingRate;
@@ -6913,11 +7035,11 @@ async function refreshLivePrice() {
       updateLiveCartTotal();
     }
     if (live.margin) {
-      $('liveMargin').textContent = `Margin ${money(live.margin.marginAmount)} (${live.margin.marginPercent}%)`;
+      $('liveMargin').textContent = `Margin ${money(live.margin.marginAmount)} (${live.margin.marginPercent}%) · bump sell rate to raise profit`;
     } else {
       $('liveMargin').textContent = sellN > 0
         ? ''
-        : 'Enter selling rate to see sell amount & margin';
+        : 'Enter selling rate (or set labour ₹/sft + profit % in Series Setup)';
     }
   } catch(e) {
     $('liveMeta').textContent = e.message;
@@ -12364,14 +12486,57 @@ if ($('btnAddPart')) {
   $('btnAddPart').onclick = () => {
     const side = ($('partSide') && $('partSide').value) || '';
     const size = +(($('partSize') && $('partSize').value) || 0);
+    const series = ($('partProfileSeries') && $('partProfileSeries').value) || '';
     if (!side) { toast('Pick a side (top/bottom/left/right)'); return; }
     if (!(size > 0)) { toast('Enter fix size in mm'); return; }
+    const sys = ($('lineSystem') && $('lineSystem').value) || 'sliding';
+    if (sys === 'sliding' && !series) {
+      toast('Pick which profile series makes this fixed panel');
+      if ($('partProfileSeries')) $('partProfileSeries').focus();
+      return;
+    }
     // Replace existing partition on same side
     state.draftPartitions = (state.draftPartitions || []).filter(p => p.side !== side);
-    state.draftPartitions.push({ side, sizeMm: size, role: 'fix' });
+    state.draftPartitions.push({ side, sizeMm: size, role: 'fix', profileSeries: series || null });
     renderPartChips();
     refreshPreview();
     scheduleLivePrice();
+  };
+}
+['casementMullionSize','casementDoorSize'].forEach(id => {
+  const el = $(id); if (!el) return;
+  el.addEventListener('change', () => {
+    if (id === 'casementMullionSize') state.draftCasementMullionSize = el.value || 'slim';
+    if (id === 'casementDoorSize') state.draftCasementDoorSize = el.value || 'slim';
+    ensureCasementPanels();
+    refreshPreview();
+    scheduleLivePrice();
+  });
+});
+if ($('btnMaterialsList')) {
+  $('btnMaterialsList').onclick = async () => {
+    const lines = (state.lines || []).filter(ln => ln && !ln.cancelled);
+    if (!lines.length) { toast('Add products to the quote first'); return; }
+    try {
+      const body = {
+        customer: ($('cartCustomer') && $('cartCustomer').value) || ($('projCustName') && $('projCustName').value) || '',
+        projectName: ($('projName') && $('projName').value) || '',
+        colour: ($('lineColour') && $('lineColour').selectedOptions[0] && $('lineColour').selectedOptions[0].textContent) || '',
+        lines: lines,
+      };
+      const res = await fetch(API_BASE + '/api/quote/materials-list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(window.WEOS_AUTH_HEADERS || {}) },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const html = await res.text();
+      const w = window.open('', '_blank');
+      if (w) { w.document.write(html); w.document.close(); }
+      else toast('Pop-up blocked — allow pop-ups for materials list');
+    } catch (e) {
+      toast('Materials list failed: ' + (e.message || e));
+    }
   };
 }
 renderPartChips();
@@ -13611,8 +13776,8 @@ function blankCasementCosting(kind){
     projectWastageReuse:!(k==='stile'||k==='slim_profile'),
     allSideSameReuse:true,chargeFullStdLengthWhenSplit:true,
     verticalPcsPerDoor:2,topBottomPcsPerDoor:1,
-    costEngine:'stub',
-    notes:'Stile/slim usually per RFT coated; wastage reuse often off when top/bottom ≠ vertical.',
+    costEngine:'live',
+    notes:'Design cost uses canvas profiles · wastage reuse often off when top/bottom ≠ vertical.',
   };
 }
 function defaultBomForMode(mode){ return mode==='all_sides_same'?'all_side_4':(mode==='verticals_same_h_diff'?'v2_t1_b1':'v2_tb2'); }
@@ -14153,7 +14318,7 @@ function renderSetup(){
       </div>
       ${listCard('Extra hardware (optional freeform)', cm.hardware, 'casement.hardware','Add hardware')}`;
 
-    html += `<h4 style="margin:.7rem 0 .25rem">${kind==='normal'?'F':'E'} · Costing hooks <span class="muted" style="font-weight:400;font-size:.72rem">— engine stub</span></h4>
+    html += `<h4 style="margin:.7rem 0 .25rem">${kind==='normal'?'F':'E'} · Costing <span class="muted" style="font-weight:400;font-size:.72rem">— design cost uses canvas profiles · wastage reuse off charges leftover</span></h4>
       <div class="row" style="flex-wrap:wrap;gap:.4rem">
         <div><label class="l">Labour ₹/sft</label><input data-num="casement.costing.labourPerSft" type="number" step="0.01" value="${cost.labourPerSft??''}" style="width:100px"/></div>
         <div><label class="l">Profit %</label><input data-num="casement.costing.profitPercent" type="number" step="0.1" value="${cost.profitPercent??''}" style="width:90px"/></div>
@@ -14168,7 +14333,7 @@ function renderSetup(){
         <label class="chk" style="font-size:.78rem;margin-top:1.1rem"><input type="checkbox" data-flag="casement.costing.projectWastageReuse" ${cost.projectWastageReuse?'checked':''}/> Project wastage reuse</label>
         <label class="chk" style="font-size:.78rem;margin-top:1.1rem"><input type="checkbox" data-flag="casement.costing.chargeFullStdLengthWhenSplit" ${cost.chargeFullStdLengthWhenSplit?'checked':''}/> Full std length when split</label>
       </div>
-      <p class="muted" style="font-size:.7rem;margin:.25rem 0">Cost engine: <code>${cost.costEngine||'stub'}</code>. Stile/slim typically RFT coated · std 2.4 / 2.8 / 3 m.</p>
+      <p class="muted" style="font-size:.7rem;margin:.25rem 0">Live cart cost uses frame · mullion · door lengths from the design + hardware pack + glass + labour/profit. Cost engine flag: <code>${cost.costEngine||'stub'}</code> (becomes <code>live</code> when rates exist). Std 2.4 / 2.8 / 3 m · wastage 0–2.5% band / leftover charged when reuse off.</p>
       ${setupPhase2Cards(type)}`;
   } else if (type==='telescopic' || type==='synchron'){
     const t = state.setup.telescopic;

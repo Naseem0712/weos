@@ -1163,12 +1163,15 @@ def _norm_casement_costing(raw: Any, *, kind: str) -> dict[str, Any]:
         "chargeFullStdLengthWhenSplit": _bool(r.get("chargeFullStdLengthWhenSplit"), True),
         "verticalPcsPerDoor": int(_num(r.get("verticalPcsPerDoor")) or 2),
         "topBottomPcsPerDoor": int(_num(r.get("topBottomPcsPerDoor")) or 1),
-        "costEngine": _str(r.get("costEngine") or "stub"),
+        # "live" when fabricator has filled rates; design_cost flips to live at quote time
+        # even if this flag remains stub — prefer real calc over perpetual stub.
+        "costEngine": _str(r.get("costEngine") or "live"),
         "notes": _str(
             r.get("notes")
             or (
                 "Stile/slim usually per RFT coated; wastage reuse often off. "
-                "If top/bottom ≠ vertical → charge full std length (e.g. 2 pcs std/door verticals)."
+                "If top/bottom ≠ vertical → charge full std length (e.g. 2 pcs std/door verticals). "
+                "Design cost charges only profiles used on the canvas."
             )
         ),
     }
