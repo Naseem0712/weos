@@ -298,7 +298,7 @@ body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
 #view-cart.preview-roomy .cart-preview .preview,#view-cart.preview-roomy .cart-preview #livePreview.preview{
   flex:1 1 auto;min-height:0;width:100%;height:100%;
   overflow:hidden;display:flex;align-items:center;justify-content:center;
-  padding:4px;box-sizing:border-box;overscroll-behavior:contain;cursor:grab;touch-action:none;
+  padding:0;box-sizing:border-box;overscroll-behavior:contain;cursor:grab;touch-action:none;
   border:0;border-radius:0;background:transparent
 }
 #view-cart .cart-preview .preview.is-panning{cursor:grabbing;user-select:none}
@@ -306,7 +306,8 @@ body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
 #view-cart .cart-preview .preview.dims-hidden svg [stroke="#8b1e1a"],
 #view-cart .cart-preview .preview.dims-hidden svg [fill="#8b1e1a"]{display:none!important}
 #view-cart .cart-preview .preview svg,#view-cart .cart-preview .preview img{
-  max-width:none!important;max-height:none!important;width:auto;height:auto;display:block;flex-shrink:0;overflow:visible
+  max-width:none!important;max-height:none!important;width:auto;height:auto;display:block;flex-shrink:0;overflow:visible;
+  background:transparent
 }
 .cart-lines-panel{
   position:absolute;z-index:40;top:.35rem;right:.35rem;bottom:.35rem;width:min(340px,92vw);
@@ -3494,12 +3495,97 @@ function previewZoomValue() {
   const z = Number(state.previewZoom);
   return Number.isFinite(z) && z > 0 ? z : 1;
 }
-/** Uniform stage inset — same visual padding % for every product world. */
-const PREVIEW_FIT_INSET = 0.02;
+/** Uniform stage inset — keep tiny so drawings fill the square stage. */
+const PREVIEW_FIT_INSET = 0.005;
 function resetPreviewCamera() {
   state.previewZoom = 1;
   state.previewPanX = 0;
   state.previewPanY = 0;
+}
+function _previewFillLooksPaper(fill) {
+  const f = String(fill || '').trim().toLowerCase();
+  if (!f || f === 'none' || f === 'transparent') return false;
+  if (f === '#fff' || f === '#ffffff' || f === 'white' || f === 'rgb(255,255,255)') return true;
+  if (f === '#f3f5f7' || f === '#eef1f4' || f === '#fbfcfa' || f === '#f4f6f8') return true;
+  const hex = f.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    let h = hex[1];
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    return r >= 240 && g >= 240 && b >= 240;
+  }
+  return false;
+}
+/** Full-bleed white/near-white plate rects from shower/ventilator/railing engines. */
+function stripPreviewPaperFill(svg) {
+  if (!svg) return false;
+  let stripped = false;
+  const kids = Array.from(svg.children || []);
+  let vbW = 0, vbH = 0, vbX = 0, vbY = 0;
+  try {
+    const vb = svg.viewBox && svg.viewBox.baseVal;
+    if (vb && vb.width > 0 && vb.height > 0) {
+      vbW = vb.width; vbH = vb.height; vbX = vb.x; vbY = vb.y;
+    } else {
+      const parts = String(svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+      if (parts.length >= 4 && parts[2] > 0 && parts[3] > 0) {
+        vbX = parts[0]; vbY = parts[1]; vbW = parts[2]; vbH = parts[3];
+      }
+    }
+  } catch (_) {}
+  for (const n of kids) {
+    if (!n || (n.tagName || '').toLowerCase() !== 'rect') continue;
+    if (!_previewFillLooksPaper(n.getAttribute('fill'))) continue;
+    const wAttr = String(n.getAttribute('width') || '').trim();
+    const hAttr = String(n.getAttribute('height') || '').trim();
+    const x = parseFloat(n.getAttribute('x') || '0') || 0;
+    const y = parseFloat(n.getAttribute('y') || '0') || 0;
+    const isPct = (wAttr === '100%' || wAttr === '100') && (hAttr === '100%' || hAttr === '100');
+    let isFullBleed = isPct;
+    if (!isFullBleed && vbW > 0 && vbH > 0) {
+      const rw = parseFloat(wAttr);
+      const rh = parseFloat(hAttr);
+      if (rw >= vbW * 0.92 && rh >= vbH * 0.92 && Math.abs(x - vbX) <= 2 && Math.abs(y - vbY) <= 2) {
+        isFullBleed = true;
+      }
+    }
+    if (!isFullBleed) continue;
+    // Remove (don't just recolor) — leftover geometry would inflate getBBox / fit.
+    n.remove();
+    stripped = true;
+  }
+  try { svg.style.background = 'transparent'; } catch (_) {}
+  return stripped;
+}
+/**
+ * When authored viewBox has large empty padding, retarget to ink bbox so
+ * contain-fit can zoom the product into the square stage.
+ */
+function tightenPreviewViewBoxToInk(svg) {
+  if (!svg) return false;
+  try {
+    const ink = svg.getBBox();
+    if (!(ink && ink.width > 2 && ink.height > 2)) return false;
+    let curW = 0, curH = 0;
+    const vb = svg.viewBox && svg.viewBox.baseVal;
+    if (vb && vb.width > 0 && vb.height > 0) { curW = vb.width; curH = vb.height; }
+    else {
+      const parts = String(svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+      if (parts.length >= 4) { curW = parts[2]; curH = parts[3]; }
+    }
+    if (!(curW > 0 && curH > 0)) return false;
+    const waste = Math.max(1 - ink.width / curW, 1 - ink.height / curH);
+    // Always nudge a little after paper strip; tighten harder when waste is large.
+    if (waste < 0.04) return false;
+    const pad = Math.max(ink.width, ink.height) * (waste > 0.18 ? 0.015 : 0.025);
+    svg.setAttribute(
+      'viewBox',
+      `${ink.x - pad} ${ink.y - pad} ${ink.width + pad * 2} ${ink.height + pad * 2}`
+    );
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 function _previewContentBox(box) {
   if (!box) return { w: 0, h: 0 };
@@ -3552,25 +3638,29 @@ function _previewElementSignature(el) {
   return ['img', el.getAttribute('src') || '', el.naturalWidth || '', el.naturalHeight || ''].join('|');
 }
 /**
- * One viewport contract for every series/world: keep authored viewBox, strip
- * presentation width/height (mm vs px worlds), meet+center.
+ * One viewport contract for every series/world: drop white paper plates,
+ * tighten oversized viewBoxes to ink, strip presentation width/height, meet+center.
  */
 function normalizePreviewSvgViewport(svg) {
   if (!svg || !svg.tagName || svg.tagName.toLowerCase() !== 'svg') return;
   if (svg.dataset.previewViewport === 'stage') return;
+  stripPreviewPaperFill(svg);
   const vb = svg.getAttribute('viewBox');
   if (!vb) {
     try {
       const box = svg.getBBox();
       if (box && box.width > 0 && box.height > 0) {
-        const pad = Math.max(box.width, box.height) * 0.04;
+        const pad = Math.max(box.width, box.height) * 0.02;
         svg.setAttribute('viewBox', `${box.x - pad} ${box.y - pad} ${box.width + pad * 2} ${box.height + pad * 2}`);
       }
     } catch (_) {}
+  } else {
+    tightenPreviewViewBoxToInk(svg);
   }
   svg.removeAttribute('width');
   svg.removeAttribute('height');
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  svg.style.background = 'transparent';
   svg.dataset.previewViewport = 'stage';
 }
 /**
