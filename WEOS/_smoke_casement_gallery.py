@@ -86,8 +86,9 @@ def main() -> None:
     _ok(cm["doors"]["active"] == "big", "door big")
     _ok(cm["hardwarePack"]["openHardware"] == "hinges", "open = hinges")
     _ok(cm["hardwarePack"]["hinges"]["qty"] == 3, "hinge qty")
-    _ok(cm["hardwarePack"]["stay"]["enabled"] is False, "stay off when hinges")
-    _ok(cm["hardwarePack"]["topHungStay"]["enabled"] is False, "top-hung off when hinges")
+    # Top-hung stay catalogue remains available (top hung = stay only on quote);
+    # side-swing stay is what hinges mode turns off.
+    _ok(cm["hardwarePack"]["stay"]["enabled"] is False, "side-swing stay off when hinges")
     _ok(cm["hardwarePack"]["limitationArm"]["enabled"] is True, "limitation arm with hinges")
     _ok(cm["hardwarePack"]["frameConnectors"]["qty"] == 4, "frame connectors 4")
     _ok(cm["costing"]["costEngine"] == "live", "cost live")

@@ -61,7 +61,7 @@ setup.
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, MutableMapping, Sequence
 
 # Canonical product types a setup can describe.
 SETUP_TYPES = ("sliding", "casement", "telescopic", "style")
@@ -678,6 +678,11 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
     wings = r.get("wings") if isinstance(r.get("wings"), Mapping) else {}
     lock = r.get("lock") if isinstance(r.get("lock"), Mapping) else {}
     wheels = r.get("wheels") if isinstance(r.get("wheels"), Mapping) else {}
+    mesh_wheels = (
+        r.get("meshWheels")
+        if isinstance(r.get("meshWheels"), Mapping)
+        else (r.get("mesh_wheels") if isinstance(r.get("mesh_wheels"), Mapping) else {})
+    )
     lock_type = _str(lock.get("type") or "single_point").lower().replace("-", "_").replace(" ", "_")
     if lock_type in ("single", "sp"):
         lock_type = "single_point"
@@ -685,6 +690,20 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
         lock_type = "multipoint"
     if lock_type not in LOCK_TYPES:
         lock_type = "single_point"
+
+    def _wheel_block(block: Mapping[str, Any], *, default_name: str, default_cap: float | None = None) -> dict[str, Any]:
+        return {
+            "qtyPerShutter": _num(block.get("qtyPerShutter") if block.get("qtyPerShutter") is not None else 2) or 2.0,
+            "rate": _num(block.get("rate")) or 0.0,
+            "unit": _str(block.get("unit") or "PC").upper(),
+            "brand": _brand(block, name=_str(block.get("name") or default_name)),
+            "origin": _str(block.get("origin") or "indian"),
+            "name": _str(block.get("name") or default_name),
+            "id": _str(block.get("id") or block.get("hardwareId")),
+            "weightCapacityKg": _num(block.get("weightCapacityKg") or block.get("capacityKg") or default_cap),
+            "notes": _str(block.get("notes")),
+        }
+
     return {
         "trackConnectors": qty_rate("trackConnectors", 0, 8, name="Track connectors"),
         "shutterConnectors": qty_rate("shutterConnectors", 0, 4, name="Shutter connectors"),
@@ -720,16 +739,14 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
             "origin": _str(lock.get("origin") or "indian"),
             "notes": _str(lock.get("notes")),
         },
-        "wheels": {
-            "qtyPerShutter": _num(wheels.get("qtyPerShutter") if wheels.get("qtyPerShutter") is not None else 2) or 2.0,
-            "rate": _num(wheels.get("rate")) or 0.0,
-            "unit": _str(wheels.get("unit") or "PC").upper(),
-            "brand": _brand(wheels, name=_str(wheels.get("name") or "Wheels")),
-            "origin": _str(wheels.get("origin") or "indian"),
-            "name": _str(wheels.get("name")),
-            "weightCapacityKg": _num(wheels.get("weightCapacityKg") or wheels.get("capacityKg")),
-            "notes": _str(wheels.get("notes")),
-        },
+        # Glass shutter wheels — capacity should cover shutter glass weight
+        "wheels": _wheel_block(wheels, default_name="Wheels"),
+        # Mesh shutters use regular/light mesh wheels (not heavy glass wheels)
+        "meshWheels": _wheel_block(
+            mesh_wheels or {"name": "Mesh wheel", "rate": _num(wheels.get("rate")) or 70.0, "weightCapacityKg": 40.0},
+            default_name="Mesh wheel",
+            default_cap=40.0,
+        ),
     }
 
 
@@ -1125,15 +1142,16 @@ def _norm_casement_hardware_pack(raw: Any, *, kind: str) -> dict[str, Any]:
     if open_hw == "stay" and kind == "normal":
         hinge_block["enabled"] = False
         limitation["enabled"] = False
-        if not side_stay["enabled"] and not top_stay["enabled"]:
-            side_stay["enabled"] = True
+        side_stay["enabled"] = True
+        # topHungStay catalogue stays enabled for top-hung doors (stay-only path)
     else:
-        # Hinges / floor spring → no stay (unless slim explicitly keeps stays off)
-        side_stay["enabled"] = False if open_hw != "stay" else side_stay["enabled"]
-        top_stay["enabled"] = False if open_hw != "stay" else top_stay["enabled"]
+        # Side-swing hinges / floor spring → no side-swing stay.
+        # Top-hung stay remains available whenever top-hung doors appear on quote.
         if open_hw != "stay":
             side_stay["enabled"] = False
-            top_stay["enabled"] = False
+        if open_hw == "floor_spring":
+            # Floor spring mode does not use side stay; top-hung stay still OK on mixed layouts
+            pass
 
     lock = r.get("lock") if isinstance(r.get("lock"), Mapping) else {}
     lock_type = _str(lock.get("type") or "single_point").lower().replace("-", "_").replace(" ", "_")
@@ -1584,16 +1602,50 @@ def derive_casement_hardware_lines(
             "source": source,
         })
 
+    # Side-swing: stay XOR hinge (mutually exclusive). Top hung: stay only (never hinge).
     open_hw = _str(pack.get("openHardware") or "hinges")
+    side = pack.get("stay") if isinstance(pack.get("stay"), Mapping) else {}
+    top = pack.get("topHungStay") if isinstance(pack.get("topHungStay"), Mapping) else {}
+    side_flag = bool(side.get("enabled"))
+    top_flag = bool(top.get("enabled"))
+
+    if side_swing_doors is not None or top_hung_doors is not None:
+        side_n_doors = float(side_swing_doors) if side_swing_doors is not None else max(
+            doors - float(top_hung_doors or 0), 0.0
+        )
+        top_n_doors = float(top_hung_doors) if top_hung_doors is not None else max(
+            doors - side_n_doors, 0.0
+        )
+    else:
+        # No layout counts: never guess when both stay families are enabled
+        if open_hw == "stay" and side_flag and top_flag:
+            side_n_doors = 0.0
+            top_n_doors = 0.0
+        elif open_hw == "stay" and top_flag and not side_flag:
+            side_n_doors = 0.0
+            top_n_doors = doors
+        else:
+            # Hinges path, or sole side-stay family → all doors are side-swing
+            side_n_doors = doors
+            top_n_doors = 0.0
+
     hinges = pack.get("hinges") or {}
-    if open_hw == "hinges" and (hinges.get("enabled") is not False):
+    side_uses_hinge = open_hw == "hinges" and side_n_doors > 0 and (hinges.get("enabled") is not False)
+    side_uses_stay = open_hw == "stay" and side_n_doors > 0 and (side_flag or not top_flag)
+    # Top hung always uses stay when layout counts say so (never hinge), even if
+    # series openHardware is hinges. Without counts, only when top_flag is on.
+    top_uses_stay = top_n_doors > 0 and (
+        top_flag or side_swing_doors is not None or top_hung_doors is not None
+    )
+
+    if side_uses_hinge:
         hq = float(hinges.get("qty") or 3)
         add(
             _str(hinges.get("name") or "Hinge"),
-            hq * doors,
+            hq * side_n_doors,
             float(hinges.get("rate") or 0),
             hinges.get("unit") or "PC",
-            f"{hq:g}/door × {doors:g} doors (editable {CASEMENT_HINGE_QTY_MIN}–{CASEMENT_HINGE_QTY_MAX})",
+            f"{hq:g}/door × {side_n_doors:g} side-swing door(s) (editable {CASEMENT_HINGE_QTY_MIN}–{CASEMENT_HINGE_QTY_MAX})",
             brand=_str(hinges.get("brand")),
             capacity=_num(hinges.get("weightCapacityKg")),
         )
@@ -1601,58 +1653,39 @@ def derive_casement_hardware_lines(
         if lim.get("enabled") is not False:
             add(
                 _str(lim.get("name") or "Limitation arm"),
-                float(lim.get("qty") or 1) * doors,
+                float(lim.get("qty") or 1) * side_n_doors,
                 float(lim.get("rate") or 0),
                 lim.get("unit") or "PC",
-                "with hinges — no stay",
+                "with side-swing hinges — no stay",
                 brand=_str(lim.get("brand")),
                 capacity=_num(lim.get("weightCapacityKg")),
             )
 
-    # Stays — side-swing ≠ top-hung; 1 set per door of that kind
-    side = pack.get("stay") if isinstance(pack.get("stay"), Mapping) else {}
-    top = pack.get("topHungStay") if isinstance(pack.get("topHungStay"), Mapping) else {}
-    side_on = bool(side.get("enabled")) and open_hw == "stay"
-    top_on = bool(top.get("enabled")) and open_hw == "stay"
-
-    def _stay_door_qty(family_on: bool, explicit: float | None, other_on: bool) -> float:
-        if not family_on:
-            return 0.0
-        if explicit is not None:
-            return max(float(explicit), 0.0)
-        # If only one stay family enabled, assume all doors use it; if both on, require explicit counts
-        if other_on:
-            return 0.0
-        return doors
-
-    side_n = _stay_door_qty(side_on, side_swing_doors, top_on)
-    top_n = _stay_door_qty(top_on, top_hung_doors, side_on)
-
-    if side_on and side_n > 0:
+    if side_uses_stay and not side_uses_hinge:
         inch = side.get("selectedInch")
         label = _str(side.get("name") or "Side-swing stay")
         if inch:
             label = f'{label} ({inch:g}")'
         add(
             label,
-            side_n * float(side.get("setsPerDoor") or 1),  # 1 set per door
+            side_n_doors * float(side.get("setsPerDoor") or 1),
             float(side.get("rate") or 0),
             side.get("unit") or "SET",
-            f"1 set/door · side-swing only · {side_n:g} door(s)",
+            f"1 set/door · side-swing only · {side_n_doors:g} door(s)",
             brand=_str(side.get("brand")),
             source="casement.hardwarePack.stay",
         )
-    if top_on and top_n > 0:
+    if top_uses_stay:
         inch = top.get("selectedInch")
         label = _str(top.get("name") or "Top-hung stay")
         if inch:
             label = f'{label} ({inch:g}")'
         add(
             label,
-            top_n * float(top.get("setsPerDoor") or 1),
+            top_n_doors * float(top.get("setsPerDoor") or 1),
             float(top.get("rate") or 0),
             top.get("unit") or "SET",
-            f"1 set/door · top-hung only · {top_n:g} door(s) — not mixed with side-swing",
+            f"1 set/door · top-hung stay only (no hinge) · {top_n_doors:g} door(s)",
             brand=_str(top.get("brand")),
             source="casement.hardwarePack.topHungStay",
         )
@@ -2527,8 +2560,14 @@ def derive_sliding_hardware_lines(
     width_mm: float,
     height_mm: float,
     shutter_count: float = 2.0,
+    mesh_count: float = 0.0,
 ) -> list[dict[str, Any]]:
-    """Expand structured hardwarePack into priced BOM lines (per opening)."""
+    """Expand structured hardwarePack into priced BOM lines (per opening).
+
+    Glass wheels are charged per glass shutter; mesh wheels are charged per
+    mesh shutter (regular/light mesh wheels — never the heavy glass pick).
+    Other pack items stay per glass shutter unless noted.
+    """
     if not isinstance(setup, Mapping):
         return []
     sl = setup.get("sliding") if isinstance(setup.get("sliding"), Mapping) else None
@@ -2539,7 +2578,7 @@ def derive_sliding_hardware_lines(
         return []
 
     def _pack_configured(p: Mapping[str, Any]) -> bool:
-        for key in ("trackConnectors", "shutterConnectors", "wheels", "lock", "wings"):
+        for key in ("trackConnectors", "shutterConnectors", "wheels", "meshWheels", "lock", "wings"):
             block = p.get(key) if isinstance(p.get(key), Mapping) else {}
             if float(block.get("rate") or 0) > 0:
                 return True
@@ -2554,6 +2593,7 @@ def derive_sliding_hardware_lines(
     if not _pack_configured(pack):
         return []
     shutters = max(float(shutter_count or 1), 1.0)
+    mesh_n = max(float(mesh_count or 0), 0.0)
     w_m = max(float(width_mm or 0), 0.0) / 1000.0
     h_m = max(float(height_mm or 0), 0.0) / 1000.0
     perimeter = (h_m * 4.0) + (w_m * 4.0)  # EPDM / brush rule
@@ -2570,6 +2610,7 @@ def derive_sliding_hardware_lines(
         brand: str = "",
         origin: str = "indian",
         capacity: float | None = None,
+        source: str = "sliding.hardwarePack",
     ) -> None:
         if qty <= 0 and rate <= 0:
             return
@@ -2598,7 +2639,7 @@ def derive_sliding_hardware_lines(
             "brand": brand_r,
             "origin": origin,
             "remarks": remarks,
-            "source": "sliding.hardwarePack",
+            "source": source,
         })
 
     tc = pack.get("trackConnectors") or {}
@@ -2616,7 +2657,7 @@ def derive_sliding_hardware_lines(
         float(sc.get("qty") or 0) * shutters,
         float(sc.get("rate") or 0),
         sc.get("unit") or "PC",
-        "per shutter",
+        "per glass shutter",
         brand=_str(sc.get("brand")),
         origin=_str(sc.get("origin") or "indian"),
     )
@@ -2626,7 +2667,7 @@ def derive_sliding_hardware_lines(
         perimeter * shutters,
         float(epdm.get("ratePerM") or 0),
         "RM",
-        "height×4 + width×4 × shutters",
+        "height×4 + width×4 × glass shutters",
         brand=_str(epdm.get("brand")),
         origin=_str(epdm.get("origin") or "indian"),
     )
@@ -2647,7 +2688,7 @@ def derive_sliding_hardware_lines(
         wqty * shutters,
         float(wings.get("rate") or 0),
         "PC",
-        "4 split / 8 all-sides per shutter",
+        "4 split / 8 all-sides per glass shutter",
         brand=_str(wings.get("brand")),
         origin=_str(wings.get("origin") or "indian"),
     )
@@ -2657,6 +2698,7 @@ def derive_sliding_hardware_lines(
         1.0,
         float(lock.get("rate") or 0),
         lock.get("unit") or "SET",
+        "per opening",
         brand=_str(lock.get("brand")),
         origin=_str(lock.get("origin") or "indian"),
     )
@@ -2667,11 +2709,35 @@ def derive_sliding_hardware_lines(
         float(wheels.get("qtyPerShutter") or 2) * shutters,
         float(wheels.get("rate") or 0),
         wheels.get("unit") or "PC",
-        "per shutter",
+        f"per glass shutter · {shutters:g} shutter(s)",
         brand=_str(wheels.get("brand")),
         origin=_str(wheels.get("origin") or "indian"),
         capacity=_num(wheels.get("weightCapacityKg")),
+        source="sliding.hardwarePack.wheels",
     )
+    if mesh_n > 0:
+        mw = pack.get("meshWheels") if isinstance(pack.get("meshWheels"), Mapping) else {}
+        if not mw:
+            mw = {
+                "name": "Mesh wheel",
+                "qtyPerShutter": float(wheels.get("qtyPerShutter") or 2),
+                "rate": min(float(wheels.get("rate") or 70), 70.0),
+                "unit": "PC",
+                "brand": _str(wheels.get("brand")),
+                "origin": _str(wheels.get("origin") or "indian"),
+                "weightCapacityKg": 40.0,
+            }
+        add(
+            _str(mw.get("name") or "Mesh wheel"),
+            float(mw.get("qtyPerShutter") or 2) * mesh_n,
+            float(mw.get("rate") or 0),
+            mw.get("unit") or "PC",
+            f"regular mesh wheels · per mesh shutter · {mesh_n:g} shutter(s)",
+            brand=_str(mw.get("brand")),
+            origin=_str(mw.get("origin") or "indian"),
+            capacity=_num(mw.get("weightCapacityKg") or 40),
+            source="sliding.hardwarePack.meshWheels",
+        )
     return [ln for ln in lines if ln["qty"] > 0 or ln["unitRate"] > 0]
 
 
@@ -2864,6 +2930,159 @@ def pick_hardware_by_weight(
     return fit or ordered[-1]
 
 
+def shutter_glass_weight_kg(
+    glass_id: str | None,
+    *,
+    width_mm: float,
+    height_mm: float,
+    shutter_count: float = 1.0,
+) -> dict[str, Any]:
+    """Glass weight for one shutter from selected glass pack / thickness.
+
+    Pane approx = (opening width ÷ shutter count) × height. Uses catalogue
+    density / makeup via :func:`WEOS.factory.glass_catalogue.glass_weight`.
+    """
+    shutters = max(float(shutter_count or 1), 1.0)
+    pane_w = max(float(width_mm or 0), 0.0) / shutters
+    pane_h = max(float(height_mm or 0), 0.0)
+    gid = _str(glass_id)
+    out: dict[str, Any] = {
+        "glassId": gid or None,
+        "paneWidthMm": round(pane_w, 1),
+        "paneHeightMm": round(pane_h, 1),
+        "shutterCount": shutters,
+        "weightKg": 0.0,
+        "totalGlassKg": 0.0,
+    }
+    if not gid or pane_w <= 0 or pane_h <= 0:
+        return out
+    try:
+        from WEOS.factory.glass_catalogue import get_glass, glass_weight
+
+        spec = get_glass(gid)
+        if not isinstance(spec, Mapping):
+            return out
+        wt = glass_weight(spec, width_mm=pane_w, height_mm=pane_h, qty=1.0)
+        each = float(wt.get("weightKg") or 0)
+        out["weightKg"] = round(each, 3)
+        out["totalGlassKg"] = round(each * shutters, 3)
+        out["thicknessMm"] = spec.get("thicknessMm") or spec.get("overallMm")
+        out["glassName"] = _str(spec.get("name") or spec.get("label") or gid)
+        out["densityKgPerM3"] = float(spec.get("densityKgPerM3") or 2500.0)
+    except Exception:
+        pass
+    return out
+
+
+def list_wheel_options_for_weight(
+    required_kg: float = 0.0,
+    *,
+    for_mesh: bool = False,
+    max_mesh_kg: float = 80.0,
+) -> list[dict[str, Any]]:
+    """Catalogue wheels/rollers filtered for shutter weight (or regular mesh).
+
+    Glass shutters: prefer capacity ≥ required kg (still list heavier options).
+    Mesh shutters: only regular/light wheels (capacity ≤ ``max_mesh_kg``).
+    """
+    try:
+        from WEOS.factory.hardware_catalogue import list_hardware
+        items = list_hardware()
+    except Exception:
+        items = []
+    req = max(float(required_kg or 0), 0.0)
+    rows: list[dict[str, Any]] = []
+    for it in items:
+        if not isinstance(it, Mapping):
+            continue
+        cat = _str(it.get("category")).lower()
+        if cat not in ("wheel", "roller"):
+            continue
+        cap = _num(it.get("weightCapacityKg") or it.get("capacityKg") or it.get("maxKg"))
+        if cap is None:
+            continue
+        if for_mesh and float(cap) > float(max_mesh_kg):
+            continue
+        fit = float(cap) >= req
+        rows.append({
+            "id": _str(it.get("id")),
+            "name": _str(it.get("name") or "Wheel"),
+            "brand": _str(it.get("brand")),
+            "origin": _str(it.get("origin") or "indian"),
+            "rate": float(it.get("rate") or 0),
+            "unit": _str(it.get("unit") or "PC").upper(),
+            "qtyPerShutter": float(it.get("qtyPer") or 2) or 2.0,
+            "weightCapacityKg": float(cap),
+            "fits": fit if not for_mesh else True,
+            "forMesh": for_mesh,
+            "systemGroup": _str(it.get("systemGroup")),
+        })
+    rows.sort(key=lambda r: (0 if r.get("fits") else 1, float(r.get("weightCapacityKg") or 0), float(r.get("rate") or 0)))
+    return rows
+
+
+def suggest_wheel_for_weight(
+    required_kg: float,
+    *,
+    for_mesh: bool = False,
+    selected_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Pick catalogue wheel: honor ``selected_id`` if valid, else smallest capacity ≥ weight."""
+    opts = list_wheel_options_for_weight(required_kg, for_mesh=for_mesh)
+    if not opts:
+        return None
+    sid = _str(selected_id)
+    if sid:
+        hit = next((o for o in opts if o.get("id") == sid), None)
+        if hit:
+            return hit
+    if for_mesh:
+        return opts[0]
+    covering = [o for o in opts if o.get("fits")]
+    return covering[0] if covering else opts[-1]
+
+
+def wheel_block_from_option(opt: Mapping[str, Any] | None, *, default_name: str = "Wheels") -> dict[str, Any]:
+    """Map a catalogue wheel option into hardwarePack.wheels / meshWheels shape."""
+    if not isinstance(opt, Mapping):
+        return {
+            "qtyPerShutter": 2.0,
+            "rate": 0.0,
+            "unit": "PC",
+            "brand": "",
+            "origin": "indian",
+            "name": default_name,
+            "id": "",
+            "weightCapacityKg": None,
+            "notes": "",
+        }
+    return {
+        "qtyPerShutter": float(opt.get("qtyPerShutter") or opt.get("qtyPer") or 2) or 2.0,
+        "rate": float(opt.get("rate") or 0),
+        "unit": _str(opt.get("unit") or "PC").upper(),
+        "brand": _str(opt.get("brand")),
+        "origin": _str(opt.get("origin") or "indian"),
+        "name": _str(opt.get("name") or default_name),
+        "id": _str(opt.get("id")),
+        "weightCapacityKg": _num(opt.get("weightCapacityKg") or opt.get("capacityKg")),
+        "notes": _str(opt.get("notes") or ("regular mesh wheel" if "mesh" in default_name.lower() else "")),
+    }
+
+
+def apply_stay_size_rate(stay: MutableMapping[str, Any] | Mapping[str, Any], inch: float | None) -> dict[str, Any]:
+    """Set selectedInch on a stay block and sync rate from lengths catalogue."""
+    block = dict(stay) if isinstance(stay, Mapping) else {}
+    lengths = block.get("lengths") if isinstance(block.get("lengths"), list) else []
+    if inch is not None:
+        block["selectedInch"] = float(inch)
+    selected = _num(block.get("selectedInch") or inch)
+    if selected is not None and lengths:
+        match = next((x for x in lengths if isinstance(x, Mapping) and _num(x.get("inch")) == selected), None)
+        if match is not None:
+            block["rate"] = float(match.get("rate") or block.get("rate") or 0)
+    return block
+
+
 def apply_hardware_weight_rules(
     setup: Mapping[str, Any] | None,
     *,
@@ -3018,10 +3237,15 @@ def apply_setup_bom(
             width_mm=width_mm,
             height_mm=height_mm,
             shutter_count=shutters,
+            mesh_count=mesh_n,
         )
-        # Prefer weight-picked wheels when both exist; keep pack lines for the rest
+        # Prefer weight-picked glass wheels when both exist; always keep mesh wheels from pack
         if hw:
-            pack_hw = [ln for ln in pack_hw if "wheel" not in str(ln.get("name") or "").lower()]
+            pack_hw = [
+                ln for ln in pack_hw
+                if "meshWheels" in str(ln.get("source") or "")
+                or "wheel" not in str(ln.get("name") or "").lower()
+            ]
         hw = list(hw) + list(pack_hw)
     elif stype == "casement":
         side_n = context.get("sideSwingDoors") or context.get("side_swing_doors")

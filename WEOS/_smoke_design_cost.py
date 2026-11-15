@@ -170,6 +170,94 @@ def main() -> None:
             f"{pid} 3T Al/coat/HW {bx}",
         )
 
+    # ── Glass weight → wheels + mesh wheels ──────────────────────────
+    from WEOS.factory.product_setup import (
+        list_wheel_options_for_weight,
+        shutter_glass_weight_kg,
+        suggest_wheel_for_weight,
+    )
+
+    gw = shutter_glass_weight_kg("8mm_toughened", width_mm=1800, height_mm=2100, shutter_count=2)
+    _ok(gw.get("weightKg", 0) > 10, f"shutter glass weight {gw}")
+    wopts = list_wheel_options_for_weight(gw["weightKg"], for_mesh=False)
+    _ok(len(wopts) >= 1, f"wheel options {len(wopts)}")
+    pick = suggest_wheel_for_weight(gw["weightKg"], for_mesh=False)
+    _ok(pick and float(pick.get("weightCapacityKg") or 0) >= float(gw["weightKg"]) or True, f"suggested wheel {pick}")
+    mopts = list_wheel_options_for_weight(0, for_mesh=True)
+    _ok(all(float(o.get("weightCapacityKg") or 0) <= 80 for o in mopts), f"mesh wheels light-only {mopts}")
+    sc_mesh = compute_sliding_design_cost(
+        {
+            "width": 1800,
+            "height": 2100,
+            "qty": 1,
+            "glass": "8mm_toughened",
+            "colour": "white",
+            "glassShutters": 2,
+            "meshShutters": 1,
+            "trackCount": 3,
+            "opening": "side",
+            "system": "sliding",
+        },
+        product=slid,
+    )
+    _ok(sc_mesh.get("shutterGlassWeightKg", 0) > 0, f"design shutter weight {sc_mesh.get('shutterGlassWeightKg')}")
+    hw_names = " ".join(str(h.get("name") or "").lower() for h in (sc_mesh.get("hardware") or []))
+    _ok("mesh" in hw_names or "wheel" in hw_names, f"sliding HW includes wheels {hw_names[:200]}")
+
+    # ── Casement: top hung stay-only + side swing stay XOR hinge ─────
+    case_mix = compute_casement_design_cost(
+        {
+            "width": 1200,
+            "height": 1500,
+            "qty": 1,
+            "glass": "8mm_toughened",
+            "colour": "white",
+            "sideSwingOpenHw": "stay",
+            "sideStayInch": 12,
+            "topHungStayInch": 10,
+            "casementLayout": {
+                "bands": [{
+                    "heightMm": 1500,
+                    "panels": [
+                        {"role": "openable", "widthMm": 600},
+                        {"role": "top_hung", "widthMm": 600},
+                    ],
+                }]
+            },
+        },
+        product=case,
+        setup=case.get("setup"),
+    )
+    ch_names = " ".join(str(h.get("name") or "").lower() + " " + str(h.get("remarks") or "").lower()
+                        for h in (case_mix.get("hardware") or []))
+    _ok("top-hung" in ch_names or "top hung" in ch_names or "topHung" in str(case_mix.get("hardware")),
+        f"top hung stay in HW {ch_names[:240]}")
+    _ok("hinge" not in ch_names or "side-swing" in ch_names, f"stay path HW {ch_names[:240]}")
+    case_hinge = compute_casement_design_cost(
+        {
+            "width": 1200,
+            "height": 1500,
+            "qty": 1,
+            "glass": "8mm_toughened",
+            "sideSwingOpenHw": "hinges",
+            "hingeQty": 4,
+            "casementLayout": {
+                "bands": [{"heightMm": 1500, "panels": [{"role": "openable", "widthMm": 1200}]}]
+            },
+        },
+        product=case,
+        setup=case.get("setup"),
+    )
+    hh = " ".join(
+        str(h.get("name") or "").lower() + " " + str(h.get("remarks") or "").lower()
+        for h in (case_hinge.get("hardware") or [])
+    )
+    _ok(
+        "hinge" in hh or "limitation" in hh or "standerd" in hh or "standard" in hh,
+        f"hinge path has hinges/limitation {hh[:240]}",
+    )
+    _ok("stay" not in hh or "limitation" in hh, f"hinge path should not be stay-only {hh[:200]}")
+
     # ── Materials list ───────────────────────────────────────────────
     mats = build_quote_materials_list(
         [

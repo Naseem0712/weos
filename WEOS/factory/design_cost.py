@@ -19,10 +19,15 @@ from typing import Any, Mapping, MutableMapping, Sequence
 from WEOS.factory.product_setup import (
     CASEMENT_STD_LENGTHS_M,
     apply_setup_bom,
+    apply_stay_size_rate,
     derive_casement_wastage_flags,
+    list_wheel_options_for_weight,
     normalize_section,
     normalize_setup,
     setup_has_profile_rates,
+    shutter_glass_weight_kg,
+    suggest_wheel_for_weight,
+    wheel_block_from_option,
     with_active_track,
 )
 from WEOS.factory.remnant_stock import (
@@ -65,6 +70,157 @@ def _role(r: Any) -> str:
     if t in ("openable", "casement", "side_hung", "side_swing"):
         return "openable"
     return "openable"
+
+
+def _line_opt(line: Mapping[str, Any], *keys: str) -> Any:
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    for k in keys:
+        if line.get(k) not in (None, ""):
+            return line.get(k)
+        if isinstance(opts, Mapping) and opts.get(k) not in (None, ""):
+            return opts.get(k)
+    return None
+
+
+def _apply_sliding_wheel_clarity(
+    norm: Mapping[str, Any],
+    line: Mapping[str, Any],
+    *,
+    width_mm: float,
+    height_mm: float,
+    shutters: float,
+    mesh_n: float,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Patch sliding hardwarePack wheels from glass weight + user selection."""
+    import copy
+
+    setup = copy.deepcopy(dict(norm))
+    sl_raw = setup.get("sliding")
+    sl = dict(sl_raw) if isinstance(sl_raw, Mapping) else {}
+    setup["sliding"] = sl
+    pack = dict(sl.get("hardwarePack") or {}) if isinstance(sl.get("hardwarePack"), Mapping) else {}
+    sl["hardwarePack"] = pack
+
+    glass_id = _str(_line_opt(line, "glass", "glassId") or "")
+    gw = shutter_glass_weight_kg(
+        glass_id,
+        width_mm=width_mm,
+        height_mm=height_mm,
+        shutter_count=shutters,
+    )
+    leaf_kg = _f(gw.get("weightKg"))
+    wheel_id = _str(_line_opt(line, "wheelId", "selectedWheelId", "glassWheelId") or "")
+    mesh_wheel_id = _str(_line_opt(line, "meshWheelId", "selectedMeshWheelId") or "")
+
+    glass_opts = list_wheel_options_for_weight(leaf_kg, for_mesh=False)
+    mesh_opts = list_wheel_options_for_weight(0.0, for_mesh=True)
+    glass_pick = suggest_wheel_for_weight(leaf_kg, for_mesh=False, selected_id=wheel_id or None)
+    mesh_pick = suggest_wheel_for_weight(0.0, for_mesh=True, selected_id=mesh_wheel_id or None)
+
+    # Prefer catalogue pick; fall back to series pack rates when catalogue empty
+    if glass_pick:
+        pack["wheels"] = wheel_block_from_option(glass_pick, default_name=_str(glass_pick.get("name") or "Wheels"))
+    elif isinstance(pack.get("wheels"), Mapping):
+        pack["wheels"] = dict(pack["wheels"])
+    if mesh_n > 0:
+        if mesh_pick:
+            pack["meshWheels"] = wheel_block_from_option(mesh_pick, default_name="Mesh wheel")
+        elif not isinstance(pack.get("meshWheels"), Mapping):
+            # Light default when series pack omitted mesh wheels
+            base = pack.get("wheels") if isinstance(pack.get("wheels"), Mapping) else {}
+            pack["meshWheels"] = {
+                "qtyPerShutter": float(base.get("qtyPerShutter") or 2),
+                "rate": min(float(base.get("rate") or 70), 70.0),
+                "unit": "PC",
+                "brand": _str(base.get("brand")),
+                "origin": _str(base.get("origin") or "indian"),
+                "name": "Mesh wheel",
+                "weightCapacityKg": 40.0,
+                "notes": "regular mesh wheel",
+            }
+
+    meta = {
+        "shutterGlassWeightKg": leaf_kg,
+        "totalGlassKg": _f(gw.get("totalGlassKg")),
+        "paneWidthMm": gw.get("paneWidthMm"),
+        "paneHeightMm": gw.get("paneHeightMm"),
+        "glassName": gw.get("glassName"),
+        "wheelOptions": glass_opts,
+        "meshWheelOptions": mesh_opts,
+        "selectedWheel": pack.get("wheels"),
+        "selectedMeshWheel": pack.get("meshWheels") if mesh_n > 0 else None,
+    }
+    return setup, meta
+
+
+def _apply_casement_hw_clarity(
+    norm: Mapping[str, Any],
+    line: Mapping[str, Any],
+    *,
+    side_n: float,
+    top_n: float,
+) -> dict[str, Any]:
+    """Side-swing stay XOR hinge; top hung stay-only with selected size."""
+    import copy
+
+    setup = copy.deepcopy(dict(norm))
+    cm_raw = setup.get("casement")
+    cm = dict(cm_raw) if isinstance(cm_raw, Mapping) else {}
+    setup["casement"] = cm
+    pack = dict(cm.get("hardwarePack") or {}) if isinstance(cm.get("hardwarePack"), Mapping) else {}
+    cm["hardwarePack"] = pack
+
+    raw_open = _str(_line_opt(line, "sideSwingOpenHw", "openHardware", "sideOpenHardware") or pack.get("openHardware") or "hinges").lower()
+    if raw_open in ("friction_stay", "friction", "stays", "stay"):
+        open_hw = "stay"
+    elif raw_open in ("hinge", "hinges"):
+        open_hw = "hinges"
+    else:
+        open_hw = raw_open if raw_open in ("hinges", "stay", "floor_spring") else "hinges"
+
+    # Side-swing path only — top hung never uses hinge
+    if side_n > 0 and open_hw not in ("floor_spring",):
+        pack["openHardware"] = open_hw
+    elif top_n > 0 and side_n <= 0:
+        # Only top hung on layout — keep stay mode for series consistency
+        pack["openHardware"] = "stay" if open_hw == "stay" else pack.get("openHardware") or "hinges"
+
+    side_inch = _line_opt(line, "sideStayInch", "stayInch", "sideSwingStayInch")
+    top_inch = _line_opt(line, "topHungStayInch", "topStayInch")
+    hinge_qty = _line_opt(line, "hingeQty", "hingesPerDoor")
+
+    stay = dict(pack.get("stay") or {}) if isinstance(pack.get("stay"), Mapping) else {}
+    top_stay = dict(pack.get("topHungStay") or {}) if isinstance(pack.get("topHungStay"), Mapping) else {}
+    hinges = dict(pack.get("hinges") or {}) if isinstance(pack.get("hinges"), Mapping) else {}
+    lim = dict(pack.get("limitationArm") or {}) if isinstance(pack.get("limitationArm"), Mapping) else {}
+
+    if open_hw == "stay" and side_n > 0:
+        stay["enabled"] = True
+        hinges["enabled"] = False
+        lim["enabled"] = False
+        if side_inch not in (None, ""):
+            stay = apply_stay_size_rate(stay, _f(side_inch))
+    elif open_hw == "hinges" and side_n > 0:
+        hinges["enabled"] = True
+        lim["enabled"] = True if lim.get("enabled") is not False else False
+        stay["enabled"] = False
+        if hinge_qty not in (None, ""):
+            hinges["qty"] = max(2, min(8, int(_f(hinge_qty, 3))))
+
+    if top_n > 0:
+        top_stay["enabled"] = True
+        if top_inch not in (None, ""):
+            top_stay = apply_stay_size_rate(top_stay, _f(top_inch))
+        elif top_stay.get("selectedInch") is None and isinstance(top_stay.get("lengths"), list) and top_stay["lengths"]:
+            first = top_stay["lengths"][0]
+            if isinstance(first, Mapping):
+                top_stay = apply_stay_size_rate(top_stay, _f(first.get("inch"), 10))
+
+    pack["stay"] = stay
+    pack["topHungStay"] = top_stay
+    pack["hinges"] = hinges
+    pack["limitationArm"] = lim
+    return setup
 
 
 def _section_rate_per_m(sec: Mapping[str, Any] | None) -> float:
@@ -887,6 +1043,8 @@ def compute_casement_design_cost(
     side_n = float(counts.get("sideSwingDoors") or 0)
     top_n = float(counts.get("topHungDoors") or 0)
     operable = float(counts.get("operable") or (side_n + top_n) or 1)
+    # Side-swing stay XOR hinge; top hung stay-only + size from Specs
+    norm = _apply_casement_hw_clarity(norm, line, side_n=side_n, top_n=top_n)
     bom = apply_setup_bom(
         norm,
         width_mm=W,
@@ -1003,6 +1161,17 @@ def compute_casement_design_cost(
         "hardware": hw_lines,
         "glass": glass,
         "counts": counts,
+        "sideSwingOpenHw": _str(
+            ((norm.get("casement") or {}).get("hardwarePack") or {}).get("openHardware") or "hinges"
+        ),
+        "sideStayInch": ((norm.get("casement") or {}).get("hardwarePack") or {}).get("stay", {}).get("selectedInch")
+        if isinstance(((norm.get("casement") or {}).get("hardwarePack") or {}).get("stay"), Mapping)
+        else None,
+        "topHungStayInch": (
+            ((norm.get("casement") or {}).get("hardwarePack") or {}).get("topHungStay", {}).get("selectedInch")
+            if isinstance(((norm.get("casement") or {}).get("hardwarePack") or {}).get("topHungStay"), Mapping)
+            else None
+        ),
         "suggestedSellRate": suggested_rate,
         "saleUnit": sale_unit,
         "areaSft": round(area_sft, 3),
@@ -1248,6 +1417,16 @@ def compute_sliding_design_cost(
             norm = with_active_track(norm, track_count=track_c)
         except Exception:
             pass
+    # Glass weight → suggest/filter wheels; mesh shutters → regular mesh wheels
+    norm, wheel_meta = _apply_sliding_wheel_clarity(
+        norm,
+        line,
+        width_mm=W,
+        height_mm=H,
+        shutters=shutters,
+        mesh_n=mesh_n,
+    )
+    glass_kg_total = _f(wheel_meta.get("totalGlassKg"))
     bom = apply_setup_bom(
         norm,
         width_mm=W,
@@ -1261,7 +1440,9 @@ def compute_sliding_design_cost(
             "trackCount": track_c,
             "colour": colour,
             "system": "sliding",
+            "leafWeightKg": _f(wheel_meta.get("shutterGlassWeightKg")),
         },
+        glass_kg_total=glass_kg_total,
         shutter_count=shutters,
         system_type="sliding",
         qty=1.0,
@@ -1581,6 +1762,11 @@ def compute_sliding_design_cost(
         "profiles": profile_lines,
         "hardware": hw_lines,
         "glass": glass,
+        "shutterGlassWeightKg": wheel_meta.get("shutterGlassWeightKg"),
+        "wheelOptions": wheel_meta.get("wheelOptions") or [],
+        "meshWheelOptions": wheel_meta.get("meshWheelOptions") or [],
+        "selectedWheel": wheel_meta.get("selectedWheel"),
+        "selectedMeshWheel": wheel_meta.get("selectedMeshWheel"),
         "suggestedSellRate": suggested,
         "saleUnit": "sqft",
         "areaSft": round(area_sft, 3),
