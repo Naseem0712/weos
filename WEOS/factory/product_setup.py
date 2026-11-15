@@ -239,7 +239,8 @@ def normalize_section(raw: Any) -> dict[str, Any]:
         std_unit = "rft" if (r.get("stdLength") or r.get("standardLength")) else (
             "rmt" if r.get("stdLengthMm") or r.get("standardLengthMm") else "rft"
         )
-    rate_unit = _str(r.get("rateUnit") or "rft").lower()
+    # Excel / Series Setup aluminium rates are ₹/kg by default (not ₹/rft).
+    rate_unit = _str(r.get("rateUnit") or "kg").lower()
     if rate_unit in ("rm", "m", "mt"):
         rate_unit = "rmt"
     if rate_unit in ("ft", "feet"):

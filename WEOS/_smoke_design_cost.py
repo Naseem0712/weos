@@ -29,6 +29,9 @@ def main() -> None:
 
     sec = {"name": "Outer", "rate": 450, "rateUnit": "kg", "weightKgPerM": 0.6, "coatingCost": 22, "coatingUnit": "rft"}
     _ok(abs(_section_rate_per_m(sec) - 270.0) < 0.01, f"Al ₹/m = wt×rate → {_section_rate_per_m(sec)}")
+    # Missing rateUnit must default to kg (Excel), not rft
+    bare = {"name": "Outer", "rate": 450, "weightKgPerM": 0.6, "coatingCost": 22, "coatingUnit": "rft"}
+    _ok(abs(_section_rate_per_m(bare) - 270.0) < 0.01, f"missing rateUnit → kg {_section_rate_per_m(bare)}")
     rft_sec = {"name": "mesh adapter", "rate": 200, "rateUnit": "rft", "weightKgPerM": 0.8, "coatingCost": 9, "coatingUnit": "rft"}
     _ok(abs(_section_rate_per_m(rft_sec) - (200 / 0.3048)) < 0.1, f"Al per RFT → {_section_rate_per_m(rft_sec)}")
     rate_n, rate_u = _parse_rate("200 rft")

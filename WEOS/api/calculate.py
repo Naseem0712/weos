@@ -262,6 +262,14 @@ def products_catalog() -> list[dict[str, Any]]:
                         except (TypeError, ValueError):
                             continue
                         track_options.append({"id": tid, "label": f"{tid} track", "trackCount": float(tid) if tid != "2.5" else 2.5})
+            # Keep catalogue.trackOptions in sync with Series Setup so UI fallback
+            # (when trackOptions field is missing/stale) still offers 2/3/4 correctly.
+            if track_options:
+                cat["trackOptions"] = [
+                    float(o["trackCount"]) if o.get("trackCount") is not None else float(o["id"])
+                    for o in track_options
+                    if o.get("id") is not None
+                ]
             items.append(
                 {
                     "id": pid,

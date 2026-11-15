@@ -7672,14 +7672,27 @@ async function refreshLivePrice() {
       }
       if ($('liveCostParts')) {
         const parts = [];
-        const push = (label, v) => { const n = Number(v); if (n > 0) parts.push(label + ' ' + money(n)); };
-        push('Al', (live.cost && live.cost.aluminiumCost) != null ? live.cost.aluminiumCost : br.aluminium);
-        push('Coat', (live.cost && live.cost.coatingCost) != null ? live.cost.coatingCost : br.coating);
-        push('Glass', (live.cost && live.cost.glassCost) != null ? live.cost.glassCost : br.glass);
-        push('HW', (live.cost && live.cost.hardwareCost) != null ? live.cost.hardwareCost : br.hardware);
-        push('Labour', (live.cost && live.cost.labourAmount) != null ? live.cost.labourAmount : br.labour);
-        push('Install', (live.cost && live.cost.installationAmount) != null ? live.cost.installationAmount : br.installation);
-        push('Waste', (live.cost && live.cost.wastageCost) != null ? live.cost.wastageCost : br.wastage);
+        const cost = live.cost || {};
+        // Avoid `(cost && cost.aluminiumCost) != null` — when the field is missing,
+        // `undefined != null` is true in JS and we never fall back to designCost/breakdown.
+        const pickAmt = (...cands) => {
+          for (let i = 0; i < cands.length; i++) {
+            const v = cands[i];
+            if (v == null || v === '') continue;
+            const n = Number(v);
+            if (Number.isFinite(n) && n > 0) return n;
+          }
+          return 0;
+        };
+        const push = (label, v) => { if (v > 0) parts.push(label + ' ' + money(v)); };
+        push('Al', pickAmt(cost.aluminiumCost, design.aluminiumCost, br.aluminium));
+        push('Coat', pickAmt(cost.coatingCost, design.coatingCost, br.coating));
+        push('Glass', pickAmt(cost.glassCost, design.glassCost, br.glass));
+        push('HW', pickAmt(cost.hardwareCost, design.hardwareCost, br.hardware));
+        push('Labour', pickAmt(cost.labourAmount, design.labourAmount, br.labour));
+        push('Install', pickAmt(cost.installationAmount, design.installationAmount, br.installation));
+        push('Mesh', pickAmt(cost.meshCost, design.meshCost, br.mesh));
+        push('Waste', pickAmt(cost.wastageCost, design.wastageCost, br.wastage));
         $('liveCostParts').style.display = parts.length ? '' : 'none';
         $('liveCostParts').textContent = parts.join(' · ');
       }
@@ -7900,7 +7913,8 @@ function renderCart() {
           if (!br) return '';
           const bits = [];
           const push = (k, lab) => { const n = Number(br[k]); if (n > 0) bits.push(lab + ' ' + money(n)); };
-          push('aluminium','Al'); push('coating','Coat'); push('glass','Glass'); push('hardware','HW'); push('labour','Labour'); push('wastage','Waste');
+          push('aluminium','Al'); push('coating','Coat'); push('glass','Glass'); push('hardware','HW');
+          push('labour','Labour'); push('installation','Install'); push('mesh','Mesh'); push('wastage','Waste');
           return bits.length ? ('<div class="qlc-meta" style="margin-top:.15rem">' + bits.join(' · ') + '</div>') : '';
         })() +
         '<div class="qlc-pricing" onclick="event.stopPropagation()">' +
@@ -14431,7 +14445,7 @@ const HW_WEIGHT_COLS = [
   {k:'qtyPer',t:'Qty/basis',n:1,w:64},
   {k:'basis',t:'Per',sel:['shutter','leaf','door','window','opening','pair'],w:80},
 ];
-function blankSection(name,use){ return {name:name||'',use:use||'',wMm:null,hMm:null,wallMm:null,weightKgPerM:null,weightUnit:'m',stdLengthMm:null,stdLength:'',stdLengthUnit:'rft',rate:0,rateUnit:'rft',coatingCost:0,coatingUnit:'rft',side:'',glassType:'',notes:''}; }
+function blankSection(name,use){ return {name:name||'',use:use||'',wMm:null,hMm:null,wallMm:null,weightKgPerM:null,weightUnit:'m',stdLengthMm:null,stdLength:'',stdLengthUnit:'rft',rate:0,rateUnit:'kg',coatingCost:0,coatingUnit:'rft',side:'',glassType:'',notes:''}; }
 function blankHardware(name){ return {name:name||'',brand:'',unit:'PC',rate:0,qtyPer:1,basis:'shutter',sizes:[],config:'',notes:''}; }
 function blankMember(name,role){ return {id:'',name:name||'',role:role||'outer',wFactor:2,hFactor:2,weightKgPerM:null,ratePerM:0,rateUnit:'m',sku:'',notes:''}; }
 function blankHwWeightRule(kind,systemType){ return {kind:kind||'wheel',systemType:systemType||'sliding',minKg:0,maxKg:40,name:'',sku:'',brand:'',rate:0,unit:'PC',qtyPer:2,basis:'shutter',notes:''}; }

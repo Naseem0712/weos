@@ -253,7 +253,10 @@ def _section_rate_per_m(sec: Mapping[str, Any] | None) -> float:
         return 0.0
     s = normalize_section(sec)
     rate = _f(s.get("rate"))
-    unit = _str(s.get("rateUnit") or "rft").lower()
+    # Excel / Series Setup default is ₹/kg (must match section_has_profile_rates).
+    # A missing unit used to default to rft here, which either under-counted or
+    # zeroed Al when weight×kg rates were expected.
+    unit = _str(s.get("rateUnit") or "kg").lower()
     if rate <= 0:
         return 0.0
     if unit in ("kg", "per_kg", "kgm", "rs_kg", "inr_kg"):
@@ -1255,7 +1258,14 @@ def _setup_from_catalogue_profiles(product: Mapping[str, Any] | None) -> dict[st
             "trackCount": p.get("trackCount"),
             "rate": p.get("rate") if p.get("rate") not in (None, "") else 450.0,
             "rateUnit": p.get("rateUnit") or "kg",
-            "coatingCost": p.get("coatingCost") if p.get("coatingCost") not in (None, "") else 0.0,
+            # Powder coat is always ₹/rft in Series Setup — default plain white rate
+            # when Excel catalogue rows omit coating so live Coat never stays at 0.
+            "coatingCost": (
+                p.get("coatingCost")
+                if p.get("coatingCost") not in (None, "")
+                else 22.0
+            ),
+            "coatingUnit": p.get("coatingUnit") or "rft",
             "use": p.get("use") or p.get("usageLabel") or "",
             "pcsVertical": p.get("pcsVertical"),
             "pcsHorizontal": p.get("pcsHorizontal"),
@@ -1302,7 +1312,7 @@ def _setup_from_catalogue_profiles(product: Mapping[str, Any] | None) -> dict[st
                 "weightKgPerM": sec.get("weightKgPerMtr"),
                 "rate": sec.get("rate") or 450,
                 "rateUnit": "kg",
-                "coatingCost": sec.get("coatingCost") or 0,
+                "coatingCost": sec.get("coatingCost") if sec.get("coatingCost") not in (None, "") else 22,
                 "coatingUnit": "rft",
                 "wMm": sec.get("widthMm"),
                 "hMm": sec.get("sectionDepthMm"),
@@ -1736,6 +1746,50 @@ def compute_sliding_design_cost(
     remnant_pool: dict[str, list[float]] = {}
     if isinstance(line.get("_remnantPool"), dict):
         remnant_pool = {str(k): list(v) for k, v in line["_remnantPool"].items() if isinstance(v, list)}
+    # Recover zero-Al cuts when weight exists but rate was missing/0 (stale Excel rows).
+    DEFAULT_AL_RATE_KG = 450.0
+    DEFAULT_COAT_RFT = 22.0
+    for spec in cut_specs:
+        if not isinstance(spec, dict):
+            continue
+        if _f(spec.get("aluminiumPerM")) <= 0:
+            kg_m = _f(spec.get("weightKgPerM"))
+            if kg_m > 0:
+                spec["aluminiumPerM"] = DEFAULT_AL_RATE_KG * kg_m
+        if _f(spec.get("coatingPerM")) <= 0 and _f(spec.get("lengthM")) > 0:
+            # Only fill coat when this cut looks like a real profile (has weight or al)
+            if _f(spec.get("weightKgPerM")) > 0 or _f(spec.get("aluminiumPerM")) > 0:
+                try:
+                    from WEOS.factory.commercial_defaults import coating_multiplier_for_colour as _cm
+
+                    mult = float(_cm(colour) or 1.0)
+                except Exception:
+                    mult = 1.0
+                spec["coatingPerM"] = (DEFAULT_COAT_RFT / 0.3048) * max(mult, 0.0)
+    for pl in profile_lines:
+        if not isinstance(pl, dict):
+            continue
+        if _f(pl.get("aluminiumPerM")) <= 0 and _f(pl.get("weightKgPerM")) > 0:
+            pl["aluminiumPerM"] = DEFAULT_AL_RATE_KG * _f(pl.get("weightKgPerM"))
+            Lm = _f(pl.get("lengthM") or pl.get("metres"))
+            q = _f(pl.get("qty"), 1)
+            pl["aluminiumAmount"] = round(Lm * q * _f(pl["aluminiumPerM"]), 2)
+        if _f(pl.get("coatingPerM")) <= 0 and (
+            _f(pl.get("weightKgPerM")) > 0 or _f(pl.get("aluminiumPerM")) > 0
+        ):
+            try:
+                from WEOS.factory.commercial_defaults import coating_multiplier_for_colour as _cm
+
+                mult = float(_cm(colour) or 1.0)
+            except Exception:
+                mult = 1.0
+            pl["coatingPerM"] = (DEFAULT_COAT_RFT / 0.3048) * max(mult, 0.0)
+            Lm = _f(pl.get("lengthM") or pl.get("metres"))
+            q = _f(pl.get("qty"), 1)
+            pl["coatingAmount"] = round(Lm * q * _f(pl["coatingPerM"]), 2)
+        if _f(pl.get("amount")) <= 0:
+            pl["amount"] = round(_f(pl.get("aluminiumAmount")) + _f(pl.get("coatingAmount")), 2)
+
     nest = nest_cuts_by_section(
         cut_specs,
         remnant_pool=remnant_pool,
