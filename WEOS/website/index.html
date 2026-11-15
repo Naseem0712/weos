@@ -1950,7 +1950,7 @@ textarea{max-width:100%}
             <div class="grow"><label class="l">Standard length(s) mm (comma)</label><input id="setupStdLen" placeholder="e.g. 5850 or 2400,3000"/></div>
             <label class="chk" style="display:flex;align-items:center;gap:.35rem;margin-bottom:.35rem"><input type="checkbox" id="setupImported"/> Imported material</label>
           </div>
-          <p class="muted" style="font-size:.78rem;margin:.4rem 0 .2rem">Fill the sections (dimensions · weight kg/m · standard length) and hardware (brand · rate · qty per shutter/leaf/config). Optional <strong>member table</strong> (wFactor / hFactor) drives cut qty; <strong>hardware by weight</strong> auto-picks wheels / closers / hinges from leaf kg (system-isolated). Empty members → legacy path. Advanced formulas remain under Rules.</p>
+          <p class="muted" style="font-size:.78rem;margin:.4rem 0 .2rem">Sliding Product Gallery: tracks (2 / 2.5 / 3 / 4) → shutters → meeting → mesh → hardware → costing. Fill dims · weight · stock length · rate · coating. Optional <strong>member table</strong> (wFactor / hFactor) + <strong>hardware by weight</strong>. Glass types live in Engines → Glass Library. Empty members → legacy path.</p>
           <div id="setupBody" style="margin-top:.4rem"></div>
           <div class="muted" id="setupDerived" style="font-size:.75rem;margin-top:.6rem"></div>
         </div>
@@ -2668,7 +2668,7 @@ textarea{max-width:100%}
             <button type="button" class="btn ghost sm fold-btn" title="Collapse / expand">▾</button>
           </div>
           <div class="fold-body">
-          <p class="muted" style="font-size:.82rem;margin:.3rem 0 .6rem">Configure single / DGU / laminated glass with colour, brand, toughened + rate. <strong>How to add glass without coding:</strong> pick Makeup → Thickness → Colour → Toughened → optional Rate → <em>Save glass</em>, then click <em>Sync to products &amp; cart</em> (or use Preload defaults once). The cart Glass dropdown refreshes automatically.</p>
+          <p class="muted" style="font-size:.82rem;margin:.3rem 0 .6rem">Product Gallery · Glass panel: add glass types + rate/sft here (shared catalogue). Quotes only select glass — area × rate apply. <strong>How to add:</strong> Makeup → Thickness → Colour → Toughened → Rate → <em>Save glass</em>, then <em>Sync to products &amp; cart</em>. Sliding series setup points here (not per-series glass rows).</p>
           <div class="row" style="gap:.4rem;margin-bottom:.45rem;flex-wrap:wrap">
             <button class="btn sm ghost" id="btnGlSync" type="button" title="Push library + defaults into window products and refresh cart">Sync to products &amp; cart</button>
             <span class="muted" style="font-size:.72rem;align-self:center" id="glSyncHint"></span>
@@ -13212,6 +13212,8 @@ async function loadAdminProduct(id) {
   const setup = (p.setup && typeof p.setup === 'object') ? JSON.parse(JSON.stringify(p.setup)) : {};
   const stype = setup.type || ({ 'casements':'casement','casement':'casement','telescopic':'telescopic','telescopic_sliding':'telescopic','style':'style','style_slide_door':'style','fold':'fold','synchron':'synchron' }[p.productType] || 'sliding');
   state.setup = ensureSetupShape(setup, stype);
+  // Seed Sliding gallery track option dims from catalogue profiles when still blank
+  if (stype === 'sliding') seedSlidingTracksFromCatalogue(p.catalogue || {});
   if ($('setupType')) $('setupType').value = stype;
   if ($('setupImported')) $('setupImported').checked = !!setup.imported;
   if ($('setupStdLen')) $('setupStdLen').value = (Array.isArray(setup.standardLengths) && setup.standardLengths.length) ? setup.standardLengths.join(',') : (SETUP_STD_DEFAULTS[stype]||'');
@@ -13314,6 +13316,25 @@ const SEC_COLS = [
   {k:'wMm',t:'W mm',n:1,w:64},{k:'hMm',t:'H/Depth mm',n:1,w:74},{k:'wallMm',t:'Wall mm',n:1,w:64},
   {k:'weightKgPerM',t:'Wt kg/m',n:1,w:70},{k:'stdLengthMm',t:'Std len mm',n:1,w:78},
 ];
+/** Sliding gallery section row — dims + weight + stock + rate + coating. */
+const GALLERY_SEC_COLS = [
+  {k:'name',t:'Name',w:110},{k:'wMm',t:'W mm',n:1,w:58},{k:'hMm',t:'H mm',n:1,w:58},{k:'wallMm',t:'Wall',n:1,w:52},
+  {k:'weightKgPerM',t:'Wt kg',n:1,w:58},{k:'weightUnit',t:'/m|ft',sel:['m','ft'],w:56},
+  {k:'stdLength',t:'Std len',w:64},{k:'stdLengthUnit',t:'rft|rmt',sel:['rft','rmt'],w:64},
+  {k:'rate',t:'Rate ₹',n:1,w:58},{k:'rateUnit',t:'Unit',sel:['rft','rmt','kg'],w:58},
+  {k:'coatingCost',t:'Coat ₹',n:1,w:58},{k:'coatingUnit',t:'Coat u',sel:['rft','rmt'],w:58},
+];
+const TRACK_OPTION_IDS = ['2','2.5','3','4'];
+const TRACK_MODE_OPTS = [
+  {v:'all_sides_same', t:'All sides same'},
+  {v:'verticals_same_h_diff', t:'Verticals same · top/bottom different'},
+  {v:'all_different', t:'Verticals different · horizontals different'},
+];
+const BOM_PATTERN_OPTS = [
+  {v:'all_side_4', t:'All side 4 nos (V2+H2)'},
+  {v:'v2_t1_b1', t:'Vertical 2 · top 1 · bottom 1'},
+  {v:'v2_tb2', t:'Vertical 2 · top+bottom 2'},
+];
 const HW_COLS = [
   {k:'name',t:'Hardware',w:130},{k:'brand',t:'Brand',w:100},{k:'unit',t:'Unit',w:56},
   {k:'rate',t:'Rate',n:1,w:64},{k:'qtyPer',t:'Qty per',n:1,w:64},
@@ -13345,20 +13366,70 @@ const HW_WEIGHT_COLS = [
   {k:'qtyPer',t:'Qty/basis',n:1,w:64},
   {k:'basis',t:'Per',sel:['shutter','leaf','door','window','opening','pair'],w:80},
 ];
-function blankSection(name,use){ return {name:name||'',use:use||'',wMm:null,hMm:null,wallMm:null,weightKgPerM:null,stdLengthMm:null,side:'',glassType:'',notes:''}; }
+function blankSection(name,use){ return {name:name||'',use:use||'',wMm:null,hMm:null,wallMm:null,weightKgPerM:null,weightUnit:'m',stdLengthMm:null,stdLength:'',stdLengthUnit:'rft',rate:0,rateUnit:'rft',coatingCost:0,coatingUnit:'rft',side:'',glassType:'',notes:''}; }
 function blankHardware(name){ return {name:name||'',brand:'',unit:'PC',rate:0,qtyPer:1,basis:'shutter',sizes:[],config:'',notes:''}; }
 function blankMember(name,role){ return {id:'',name:name||'',role:role||'outer',wFactor:2,hFactor:2,weightKgPerM:null,ratePerM:0,rateUnit:'m',sku:'',notes:''}; }
 function blankHwWeightRule(kind,systemType){ return {kind:kind||'wheel',systemType:systemType||'sliding',minKg:0,maxKg:40,name:'',sku:'',brand:'',rate:0,unit:'PC',qtyPer:2,basis:'shutter',notes:''}; }
+function railCountForTrack(id){ const v=parseFloat(id); if(!(v>0)) return 2; if(v>=4) return 4; if(v>=3) return 3; return 2; }
+function blankTrackSides(){ return {all:blankSection('','track'),vertical:blankSection('','track_vertical'),top:blankSection('','track_top'),bottom:blankSection('','track_bottom'),leftVertical:blankSection('','track_left'),rightVertical:blankSection('','track_right')}; }
+function blankTrackOption(id){ const tid=String(id||'2'); return {id:tid,label:tid+' track',trackCount:parseFloat(tid)||2,railCount:railCountForTrack(tid),meshCapable:parseFloat(tid)>=2.5,sides:blankTrackSides(),notes:''}; }
+function blankHardwarePack(){ return {
+  trackConnectors:{qty:0,rate:0,unit:'PC',notes:''},
+  shutterConnectors:{qty:0,rate:0,unit:'PC',notes:''},
+  epdm:{ratePerM:0,formula:'height_m*4 + width_m*4',notes:''},
+  brush:{ratePerM:0,formula:'height_m*4 + width_m*4',notes:''},
+  wings:{rate:0,qtyAllSidesSame:8,qtySplit:4,notes:''},
+  lock:{type:'single_point',rate:0,unit:'SET',notes:''},
+  wheels:{qtyPerShutter:2,rate:0,unit:'PC',notes:''},
+}; }
+function blankSlidingCosting(){ return {labourPerSft:null,profitPercent:null,cutFromOwnStock:true,allSideSameLowWastage:true,projectWastageReuse:true,costEngine:'stub',notes:'Full project cost runs when all products are on the quote.'}; }
+function defaultBomForMode(mode){ return mode==='all_sides_same'?'all_side_4':(mode==='verticals_same_h_diff'?'v2_t1_b1':'v2_tb2'); }
 function ensureSetupShape(s, type){
   s = s && typeof s==='object' ? s : {};
   s.type = type;
   s.members = Array.isArray(s.members) ? s.members : [];
   s.hardwareWeightRules = Array.isArray(s.hardwareWeightRules) ? s.hardwareWeightRules : [];
   s.sliding = s.sliding || {};
-  s.sliding.outerTrack = s.sliding.outerTrack || {sameAllSides:true};
-  s.sliding.shutters = s.sliding.shutters || {sameAllSides:true};
-  s.sliding.mesh = s.sliding.mesh || {compatible:false,sameAsShutter:true,sections:[]};
-  s.sliding.hardware = s.sliding.hardware || [];
+  const sl = s.sliding;
+  sl.trackMode = sl.trackMode || (sl.outerTrack && sl.outerTrack.sameAllSides===false ? 'verticals_same_h_diff' : 'all_sides_same');
+  sl.bomPattern = sl.bomPattern || defaultBomForMode(sl.trackMode);
+  sl.activeTrackOption = sl.activeTrackOption || '2';
+  if (!Array.isArray(sl.trackOptions) || !sl.trackOptions.length) {
+    sl.trackOptions = TRACK_OPTION_IDS.map(blankTrackOption);
+  } else {
+    const byId = {};
+    sl.trackOptions.forEach(o => { if (o && o.id!=null) byId[String(o.id)] = o; });
+    sl.trackOptions = TRACK_OPTION_IDS.map(id => {
+      const o = byId[id] || blankTrackOption(id);
+      o.id = id; o.label = o.label || (id+' track');
+      o.railCount = railCountForTrack(id);
+      o.trackCount = parseFloat(id)||2;
+      o.sides = Object.assign(blankTrackSides(), o.sides||{});
+      ['all','vertical','top','bottom','leftVertical','rightVertical'].forEach(k => { o.sides[k] = Object.assign(blankSection(), o.sides[k]||{}); });
+      return o;
+    });
+  }
+  sl.outerTrack = sl.outerTrack || {sameAllSides:true};
+  sl.outerTrack.sameAllSides = sl.trackMode === 'all_sides_same';
+  sl.shutters = sl.shutters || {sameAllSides:true};
+  sl.shutters.mode = sl.shutters.mode || (sl.shutters.sameAllSides===false ? 'split' : 'all_sides_same');
+  sl.shutters.sameAllSides = sl.shutters.mode === 'all_sides_same';
+  sl.shutters.allSides = sl.shutters.allSides || blankSection('Shutter','sash');
+  sl.shutters.interlockSlim = sl.shutters.interlockSlim || sl.shutters.interlockSide || blankSection('Slim interlock','interlock');
+  sl.shutters.interlockRenf = sl.shutters.interlockRenf || blankSection('Reinforcement interlock','interlock');
+  sl.meeting = sl.meeting || {enabled:false,section:blankSection('Meeting section','meeting'),notes:'Used when 4 glass shutters (center opening).'};
+  sl.meeting.section = sl.meeting.section || blankSection('Meeting section','meeting');
+  sl.mesh = sl.mesh || {compatible:false,sameAsShutter:true,sections:[]};
+  sl.mesh.adapter = sl.mesh.adapter || {sameAllSides:true,section:blankSection('Mesh adapter','mesh')};
+  sl.mesh.adapter.section = sl.mesh.adapter.section || blankSection('Mesh adapter','mesh');
+  sl.mesh.meshSection = sl.mesh.meshSection || blankSection('Mesh section','mesh');
+  sl.mesh.sections = Array.isArray(sl.mesh.sections) ? sl.mesh.sections : [];
+  sl.hardware = Array.isArray(sl.hardware) ? sl.hardware : [];
+  sl.hardwarePack = Object.assign(blankHardwarePack(), sl.hardwarePack||{});
+  ['trackConnectors','shutterConnectors','epdm','brush','wings','lock','wheels'].forEach(k => {
+    sl.hardwarePack[k] = Object.assign(blankHardwarePack()[k], sl.hardwarePack[k]||{});
+  });
+  sl.costing = Object.assign(blankSlidingCosting(), sl.costing||{});
   s.casement = s.casement || {glass:{},hardware:[]};
   s.casement.glass = s.casement.glass || {};
   s.casement.hardware = s.casement.hardware || [];
@@ -13403,6 +13474,73 @@ function singleSectionCard(title, path){
   return `<div class="card" style="padding:.5rem"><strong style="font-size:.8rem">${title}</strong>
     <div data-sec="${path}">${setupTable(SEC_COLS,[s],null,{noDel:true})}</div></div>`;
 }
+function gallerySectionCard(title, path){
+  const s = secObj(path);
+  return `<div class="card" style="padding:.45rem .5rem;margin:.25rem 0"><strong style="font-size:.78rem">${title}</strong>
+    <div data-gsec="${path}">${setupTable(GALLERY_SEC_COLS,[s],null,{noDel:true})}</div></div>`;
+}
+function activeSlidingTrack(){
+  const sl = state.setup.sliding;
+  const id = String(sl.activeTrackOption||'2');
+  return (sl.trackOptions||[]).find(o => String(o.id)===id) || (sl.trackOptions||[])[0];
+}
+function seedSlidingTracksFromCatalogue(cat){
+  if (!state.setup || !state.setup.sliding) return;
+  const profiles = (cat && Array.isArray(cat.profiles)) ? cat.profiles : [];
+  const tracks = profiles.filter(pr => pr && String(pr.usage||'').toLowerCase() === 'track');
+  if (!tracks.length) return;
+  const sl = state.setup.sliding;
+  tracks.forEach(pr => {
+    const tc = pr.trackCount != null ? pr.trackCount : null;
+    let id = null;
+    if (tc != null) {
+      id = Math.abs(Number(tc) - 2.5) < 0.01 ? '2.5' : String(Number(tc));
+    } else {
+      const m = String(pr.name||'').match(/(2\.5|2|3|4)\s*track/i);
+      if (m) id = m[1];
+    }
+    if (!TRACK_OPTION_IDS.includes(id)) return;
+    const opt = (sl.trackOptions||[]).find(o => String(o.id)===id);
+    if (!opt || !opt.sides) return;
+    const all = opt.sides.all || blankSection();
+    const blank = all.wMm == null && all.hMm == null && !all.weightKgPerM;
+    if (!blank) return;
+    const filled = Object.assign(blankSection(pr.name|| (id+' track'), 'track'), {
+      name: pr.name || (id+' track'),
+      use: 'track',
+      wMm: pr.widthMm ?? null,
+      hMm: pr.sectionDepthMm ?? null,
+      wallMm: pr.wallThicknessMm ?? null,
+      weightKgPerM: pr.weightKgPerMtr ?? null,
+      stdLength: pr.standardLength || '',
+      stdLengthUnit: 'rft',
+    });
+    opt.sides.all = filled;
+    opt.sides.vertical = Object.assign(blankSection(), filled, {use:'track_vertical'});
+    opt.sides.top = Object.assign(blankSection(), filled, {use:'track_top'});
+    opt.sides.bottom = Object.assign(blankSection(), filled, {use:'track_bottom'});
+    opt.meshCapable = !!pr.meshCapable || parseFloat(id) >= 2.5;
+    opt.label = pr.name || opt.label;
+  });
+  // Seed shutter / interlock / meeting from catalogue once
+  const sash = profiles.find(pr => pr && /sash|shutter/i.test(String(pr.usage||'')+String(pr.name||'')));
+  const slim = profiles.find(pr => pr && /slim/i.test(String(pr.name||'')) && /interlock/i.test(String(pr.usage||'')+String(pr.name||'')));
+  const renf = profiles.find(pr => pr && /renf/i.test(String(pr.name||'')));
+  const meet = profiles.find(pr => pr && String(pr.usage||'').toLowerCase()==='meeting');
+  const fillFrom = (pr, into, use) => {
+    if (!pr || !into) return;
+    if (into.wMm != null || into.hMm != null || into.weightKgPerM) return;
+    Object.assign(into, {
+      name: pr.name||into.name, use: use||into.use,
+      wMm: pr.widthMm??null, hMm: pr.sectionDepthMm??null, wallMm: pr.wallThicknessMm??null,
+      weightKgPerM: pr.weightKgPerMtr??null, stdLength: pr.standardLength||'', stdLengthUnit:'rft',
+    });
+  };
+  if (sash) { fillFrom(sash, sl.shutters.allSides, 'sash'); fillFrom(sash, sl.shutters.handleSide, 'handle'); fillFrom(sash, sl.shutters.top, 'top'); fillFrom(sash, sl.shutters.bottom, 'bottom'); }
+  if (slim) fillFrom(slim, sl.shutters.interlockSlim, 'interlock');
+  if (renf) fillFrom(renf, sl.shutters.interlockRenf, 'interlock');
+  if (meet) { sl.meeting.enabled = true; fillFrom(meet, sl.meeting.section, 'meeting'); }
+}
 function listCard(title, rows, tableId, addLabel){
   return `<div class="card" style="padding:.5rem"><div class="row" style="justify-content:space-between"><strong style="font-size:.8rem">${title}</strong>
     <button class="btn ghost sm" data-add="${tableId}">${addLabel||'Add row'}</button></div>
@@ -13423,21 +13561,106 @@ function renderSetup(){
   const box = $('setupBody'); if (!box) return;
   let html = '';
   if (type==='sliding'){
-    const ot = state.setup.sliding.outerTrack, sh = state.setup.sliding.shutters, mesh = state.setup.sliding.mesh;
-    html += `<h4 style="margin:.4rem 0 .2rem">Outer track</h4>
-      <label class="chk" style="font-size:.78rem"><input type="checkbox" data-flag="sliding.outerTrack.sameAllSides" ${ot.sameAllSides?'checked':''}/> Same section on all sides</label>
-      <div class="two">${singleSectionCard('Top track','sliding.outerTrack.top')}${singleSectionCard('Bottom track','sliding.outerTrack.bottom')}</div>
-      <div class="two">${singleSectionCard('Vertical tracks','sliding.outerTrack.verticals')}${singleSectionCard('Bottom track rails','sliding.outerTrack.bottomRails')}</div>
-      <h4 style="margin:.6rem 0 .2rem">Shutters</h4>
-      <label class="chk" style="font-size:.78rem"><input type="checkbox" data-flag="sliding.shutters.sameAllSides" ${sh.sameAllSides?'checked':''}/> Same section on all sides</label>
-      <div class="two">${singleSectionCard('Top rail','sliding.shutters.top')}${singleSectionCard('Bottom rail','sliding.shutters.bottom')}</div>
-      <div class="two">${singleSectionCard('Handle-side stile','sliding.shutters.handleSide')}${singleSectionCard('Interlock-side stile','sliding.shutters.interlockSide')}</div>
-      <h4 style="margin:.6rem 0 .2rem">Mesh <span class="muted" style="font-weight:400;font-size:.75rem">(mesh-compatible tracks only)</span></h4>
-      <label class="chk" style="font-size:.78rem"><input type="checkbox" data-flag="sliding.mesh.compatible" ${mesh.compatible?'checked':''}/> Mesh compatible</label>
-      <label class="chk" style="font-size:.78rem;margin-left:.8rem"><input type="checkbox" data-flag="sliding.mesh.sameAsShutter" ${mesh.sameAsShutter?'checked':''}/> Mesh uses same section as shutter</label>
-      ${listCard('Mesh sections (if different)', mesh.sections, 'sliding.mesh.sections','Add mesh section')}
-      <h4 style="margin:.6rem 0 .2rem">Hardware · rate · qty per 1 shutter</h4>
-      ${listCard('Rollers, connectors, PVC angles, interlock connectors/caps, lock guide, lock, handles', state.setup.sliding.hardware, 'sliding.hardware','Add hardware')}
+    const sl = state.setup.sliding, sh = sl.shutters, mesh = sl.mesh, hp = sl.hardwarePack, cost = sl.costing;
+    const opt = activeSlidingTrack() || blankTrackOption(sl.activeTrackOption||'2');
+    const mode = sl.trackMode || 'all_sides_same';
+    const railN = railCountForTrack(opt.id);
+    html += `<div style="padding:.55rem .65rem;border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,#f7faf8,#fff);margin-bottom:.55rem">
+      <strong style="font-size:.88rem">Sliding Product Gallery</strong>
+      <p class="muted" style="font-size:.72rem;margin:.2rem 0 0">Same workflow for every sliding series under Sliding. Tracks change by option (2 / 2.5 / 3 / 4); shutters stay shared. Glass catalogue → Engines · Glass Library.</p>
+    </div>`;
+    html += `<h4 style="margin:.35rem 0 .25rem">A · Tracks</h4>
+      <div class="row" style="flex-wrap:wrap;gap:.45rem;align-items:flex-end">
+        <div><label class="l">Track mode</label>
+          <select data-str="sliding.trackMode" style="width:260px">${TRACK_MODE_OPTS.map(o=>`<option value="${o.v}" ${mode===o.v?'selected':''}>${o.t}</option>`).join('')}</select>
+        </div>
+        <div><label class="l">BOM / fill pattern</label>
+          <select data-str="sliding.bomPattern" style="width:220px">${BOM_PATTERN_OPTS.map(o=>`<option value="${o.v}" ${sl.bomPattern===o.v?'selected':''}>${o.t}</option>`).join('')}</select>
+        </div>
+        <div><label class="l">Active track option</label>
+          <select data-str="sliding.activeTrackOption" style="width:110px">${TRACK_OPTION_IDS.map(id=>`<option value="${id}" ${String(sl.activeTrackOption)===id?'selected':''}>${id} track</option>`).join('')}</select>
+        </div>
+        <div class="muted" style="font-size:.75rem;padding-bottom:.35rem">Rails auto: <strong>${railN}</strong> (2.5 → 2 rails only)</div>
+      </div>
+      <p class="muted" style="font-size:.72rem;margin:.35rem 0 .2rem">Fill dims · wt · std length · rate · coating for the selected track option. Other options keep their own rates/weights; shutters do not change.</p>`;
+    if (mode==='all_sides_same') {
+      html += gallerySectionCard('Track — all sides ('+opt.label+')', 'sliding.trackOptions.'+TRACK_OPTION_IDS.indexOf(String(opt.id))+'.sides.all');
+    } else if (mode==='verticals_same_h_diff') {
+      const ix = TRACK_OPTION_IDS.indexOf(String(opt.id));
+      html += gallerySectionCard('Vertical both sides', 'sliding.trackOptions.'+ix+'.sides.vertical');
+      html += `<div class="two">${gallerySectionCard('Top track','sliding.trackOptions.'+ix+'.sides.top')}${gallerySectionCard('Bottom track','sliding.trackOptions.'+ix+'.sides.bottom')}</div>`;
+    } else {
+      const ix = TRACK_OPTION_IDS.indexOf(String(opt.id));
+      html += `<div class="two">${gallerySectionCard('Left vertical','sliding.trackOptions.'+ix+'.sides.leftVertical')}${gallerySectionCard('Right vertical','sliding.trackOptions.'+ix+'.sides.rightVertical')}</div>`;
+      html += `<div class="two">${gallerySectionCard('Top track','sliding.trackOptions.'+ix+'.sides.top')}${gallerySectionCard('Bottom track','sliding.trackOptions.'+ix+'.sides.bottom')}</div>`;
+    }
+    // Keep legacy outerTrack cards collapsed for older data visibility
+    html += `<details style="margin:.35rem 0"><summary class="muted" style="font-size:.72rem;cursor:pointer">Legacy outer-track cards (optional mirror)</summary>
+      <div class="two">${singleSectionCard('Top','sliding.outerTrack.top')}${singleSectionCard('Bottom','sliding.outerTrack.bottom')}</div>
+      <div class="two">${singleSectionCard('Verticals','sliding.outerTrack.verticals')}${singleSectionCard('Bottom rails','sliding.outerTrack.bottomRails')}</div>
+    </details>`;
+
+    html += `<h4 style="margin:.7rem 0 .25rem">B · Shutter doors</h4>
+      <div class="row" style="flex-wrap:wrap;gap:.5rem;align-items:center">
+        <label class="chk" style="font-size:.78rem"><input type="radio" name="shMode" data-shmode="all_sides_same" ${sh.mode==='all_sides_same'?'checked':''}/> All sides same (e.g. 4 nos)</label>
+        <label class="chk" style="font-size:.78rem"><input type="radio" name="shMode" data-shmode="split" ${sh.mode==='split'?'checked':''}/> Split: handle · slim/renf interlock · top+bottom</label>
+      </div>`;
+    if (sh.mode==='all_sides_same') {
+      html += gallerySectionCard('Shutter — all sides same', 'sliding.shutters.allSides');
+    } else {
+      html += `<div class="two">${gallerySectionCard('Handle-side vertical','sliding.shutters.handleSide')}${gallerySectionCard('Slim interlock (1st shutter)','sliding.shutters.interlockSlim')}</div>`;
+      html += gallerySectionCard('Reinforcement interlock (2nd shutter)', 'sliding.shutters.interlockRenf');
+      html += `<div class="two">${gallerySectionCard('Top horizontal','sliding.shutters.top')}${gallerySectionCard('Bottom horizontal','sliding.shutters.bottom')}</div>`;
+    }
+    html += `<h4 style="margin:.55rem 0 .2rem">Meeting section <span class="muted" style="font-weight:400;font-size:.72rem">— 4 glass shutters / center opening</span></h4>
+      <label class="chk" style="font-size:.78rem"><input type="checkbox" data-flag="sliding.meeting.enabled" ${sl.meeting.enabled?'checked':''}/> Enable meeting section</label>
+      ${sl.meeting.enabled ? gallerySectionCard('Meeting section','sliding.meeting.section') : ''}`;
+
+    html += `<h4 style="margin:.7rem 0 .25rem">Mesh <span class="muted" style="font-weight:400;font-size:.72rem">(same series — adapter + mesh section)</span></h4>
+      <label class="chk" style="font-size:.78rem"><input type="checkbox" data-flag="sliding.mesh.compatible" ${mesh.compatible?'checked':''}/> Mesh shutter in this series</label>
+      <label class="chk" style="font-size:.78rem;margin-left:.8rem"><input type="checkbox" data-flag="sliding.mesh.adapter.sameAllSides" ${mesh.adapter.sameAllSides?'checked':''}/> Adapter all sides same</label>`;
+    if (mesh.compatible) {
+      html += gallerySectionCard('Mesh adapter', 'sliding.mesh.adapter.section');
+      html += gallerySectionCard('Mesh section', 'sliding.mesh.meshSection');
+    }
+
+    html += `<h4 style="margin:.7rem 0 .25rem">C · Hardware (per shutter)</h4>
+      <div class="row" style="flex-wrap:wrap;gap:.4rem">
+        <div><label class="l">Track connectors 0–8</label><input data-num="sliding.hardwarePack.trackConnectors.qty" type="number" min="0" max="8" step="1" value="${hp.trackConnectors.qty??0}" style="width:90px"/></div>
+        <div><label class="l">Rate /pc</label><input data-num="sliding.hardwarePack.trackConnectors.rate" type="number" step="0.01" value="${hp.trackConnectors.rate??0}" style="width:90px"/></div>
+        <div><label class="l">Shutter connectors 0–4</label><input data-num="sliding.hardwarePack.shutterConnectors.qty" type="number" min="0" max="4" step="1" value="${hp.shutterConnectors.qty??0}" style="width:90px"/></div>
+        <div><label class="l">Rate /pc</label><input data-num="sliding.hardwarePack.shutterConnectors.rate" type="number" step="0.01" value="${hp.shutterConnectors.rate??0}" style="width:90px"/></div>
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:.4rem;margin-top:.35rem">
+        <div><label class="l">EPDM ₹/mtr</label><input data-num="sliding.hardwarePack.epdm.ratePerM" type="number" step="0.01" value="${hp.epdm.ratePerM??0}" style="width:90px" title="Calc: height×4 + width×4"/></div>
+        <div><label class="l">Brush ₹/mtr</label><input data-num="sliding.hardwarePack.brush.ratePerM" type="number" step="0.01" value="${hp.brush.ratePerM??0}" style="width:90px" title="Same calc as EPDM"/></div>
+        <div><label class="l">Wings / angle ₹</label><input data-num="sliding.hardwarePack.wings.rate" type="number" step="0.01" value="${hp.wings.rate??0}" style="width:90px" title="4/shutter split · 8 if all-side same"/></div>
+        <div><label class="l">Wheels qty/shutter</label><input data-num="sliding.hardwarePack.wheels.qtyPerShutter" type="number" step="1" value="${hp.wheels.qtyPerShutter??2}" style="width:90px"/></div>
+        <div><label class="l">Wheel rate</label><input data-num="sliding.hardwarePack.wheels.rate" type="number" step="0.01" value="${hp.wheels.rate??0}" style="width:90px"/></div>
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:.4rem;margin-top:.35rem">
+        <div><label class="l">Lock type</label>
+          <select data-str="sliding.hardwarePack.lock.type" style="width:140px">
+            <option value="single_point" ${hp.lock.type==='single_point'?'selected':''}>Single point</option>
+            <option value="multipoint" ${hp.lock.type==='multipoint'?'selected':''}>Multipoint</option>
+            <option value="mortice" ${hp.lock.type==='mortice'?'selected':''}>Mortice</option>
+          </select>
+        </div>
+        <div><label class="l">Lock rate</label><input data-num="sliding.hardwarePack.lock.rate" type="number" step="0.01" value="${hp.lock.rate??0}" style="width:90px"/></div>
+      </div>
+      <p class="muted" style="font-size:.7rem;margin:.3rem 0">EPDM/Brush = (H×4 + W×4) m per shutter. Wings = 4 (slim/renf) or 8 (all-side same).</p>
+      ${listCard('Extra hardware (optional freeform)', sl.hardware, 'sliding.hardware','Add hardware')}`;
+
+    html += `<h4 style="margin:.7rem 0 .25rem">D · Costing hooks <span class="muted" style="font-weight:400;font-size:.72rem">— engine stub until full quote</span></h4>
+      <div class="row" style="flex-wrap:wrap;gap:.4rem">
+        <div><label class="l">Labour ₹/sft</label><input data-num="sliding.costing.labourPerSft" type="number" step="0.01" value="${cost.labourPerSft??''}" style="width:100px"/></div>
+        <div><label class="l">Profit %</label><input data-num="sliding.costing.profitPercent" type="number" step="0.1" value="${cost.profitPercent??''}" style="width:90px"/></div>
+        <label class="chk" style="font-size:.78rem;margin-top:1.1rem"><input type="checkbox" data-flag="sliding.costing.cutFromOwnStock" ${cost.cutFromOwnStock?'checked':''}/> Cut from own section stock</label>
+        <label class="chk" style="font-size:.78rem;margin-top:1.1rem"><input type="checkbox" data-flag="sliding.costing.projectWastageReuse" ${cost.projectWastageReuse?'checked':''}/> Project wastage reuse</label>
+      </div>
+      <p class="muted" style="font-size:.7rem;margin:.25rem 0">All-side same track dims → lower wastage. Full project cost when all products are on the quote. Cost engine: <code>${cost.costEngine||'stub'}</code>.</p>
+      <h4 style="margin:.7rem 0 .2rem">E · Glass panel</h4>
+      <p class="muted" style="font-size:.75rem;margin:0 0 .4rem">Add glass types + rate/sft in <strong>Engines → Glass Library</strong>, then Sync. Quotes only select glass — area × rate apply. Not edited per series here.</p>
       ${setupPhase2Cards(type)}`;
   } else if (type==='casement'){
     const g = state.setup.casement.glass;
@@ -13491,11 +13714,48 @@ function renderSetup(){
 function getByPath(path){ return path.split('.').reduce((o,k)=> (o&&o[k]!=null)?o[k]:undefined, state.setup); }
 function setByPath(path,val){ const parts=path.split('.'); let o=state.setup; for(let i=0;i<parts.length-1;i++){o[parts[i]]=o[parts[i]]||{};o=o[parts[i]];} o[parts[parts.length-1]]=val; }
 function wireSetup(box){
-  box.querySelectorAll('[data-flag]').forEach(cb=> cb.onchange = () => { setByPath(cb.dataset.flag, cb.checked); });
-  box.querySelectorAll('[data-num]').forEach(inp=> inp.onchange = () => { setByPath(inp.dataset.num, inp.value===''?null:+inp.value); updateSetupDerived(); });
-  box.querySelectorAll('[data-str]').forEach(inp=> inp.onchange = () => { setByPath(inp.dataset.str, inp.value); });
-  // single-section cards
+  box.querySelectorAll('[data-flag]').forEach(cb=> cb.onchange = () => {
+    setByPath(cb.dataset.flag, cb.checked);
+    // Meeting / mesh toggles need a re-render to show/hide section cards
+    if (/sliding\.(meeting\.enabled|mesh\.compatible)/.test(cb.dataset.flag||'')) renderSetup();
+    else updateSetupDerived();
+  });
+  box.querySelectorAll('[data-num]').forEach(inp=> inp.onchange = () => {
+    let v = inp.value===''?null:+inp.value;
+    const path = inp.dataset.num||'';
+    if (path.endsWith('trackConnectors.qty') && v!=null) v = Math.max(0, Math.min(8, v));
+    if (path.endsWith('shutterConnectors.qty') && v!=null) v = Math.max(0, Math.min(4, v));
+    setByPath(path, v);
+    updateSetupDerived();
+  });
+  box.querySelectorAll('[data-str]').forEach(inp=> inp.onchange = () => {
+    const path = inp.dataset.str;
+    setByPath(path, inp.value);
+    if (path === 'sliding.trackMode') {
+      state.setup.sliding.outerTrack = state.setup.sliding.outerTrack || {};
+      state.setup.sliding.outerTrack.sameAllSides = inp.value === 'all_sides_same';
+      state.setup.sliding.bomPattern = defaultBomForMode(inp.value);
+      renderSetup(); return;
+    }
+    if (path === 'sliding.activeTrackOption' || path === 'sliding.bomPattern' || path === 'sliding.hardwarePack.lock.type') {
+      if (path === 'sliding.activeTrackOption') {
+        const opt = activeSlidingTrack();
+        if (opt) opt.railCount = railCountForTrack(opt.id);
+      }
+      renderSetup(); return;
+    }
+    updateSetupDerived();
+  });
+  box.querySelectorAll('[data-shmode]').forEach(rb => rb.onchange = () => {
+    if (!rb.checked) return;
+    state.setup.sliding.shutters.mode = rb.dataset.shmode;
+    state.setup.sliding.shutters.sameAllSides = rb.dataset.shmode === 'all_sides_same';
+    renderSetup();
+  });
+  // single-section cards (legacy SEC_COLS)
   box.querySelectorAll('[data-sec]').forEach(el=>{ const sec=secObj(el.dataset.sec); wireTable(el,SEC_COLS,[sec],renderSetup); });
+  // gallery section cards (dims + rate + coating)
+  box.querySelectorAll('[data-gsec]').forEach(el=>{ const sec=secObj(el.dataset.gsec); wireTable(el,GALLERY_SEC_COLS,[sec],()=>updateSetupDerived()); });
   // single-hardware cards
   box.querySelectorAll('[data-hwsingle]').forEach(el=>{ const hw=getByPath(el.dataset.hwsingle)||blankHardware(); setByPath(el.dataset.hwsingle,hw); wireTable(el,HW_COLS,[hw],renderSetup); });
   // list cards (sections, hardware, members, weight rules)
@@ -13526,19 +13786,32 @@ function updateSetupDerived(){
   const t=state.setup.type;
   const face=(s)=> (s&&(s.wMm||s.wallMm))||0;
   let sizes={};
-  if(t==='sliding'){const ot=state.setup.sliding.outerTrack,sh=state.setup.sliding.shutters;
-    sizes={topRail:face(ot.top),bottomRail:face(ot.bottom),jamb:face(ot.verticals),leafStile:face(sh.interlockSide)||face(sh.handleSide)};}
+  if(t==='sliding'){
+    const sl=state.setup.sliding, sh=sl.shutters, opt=activeSlidingTrack(), sides=(opt&&opt.sides)||{};
+    const mode=sl.trackMode||'all_sides_same';
+    if(mode==='all_sides_same'){ const f=face(sides.all)||face(sides.vertical); sizes={track:f,leafStile:face(sh.allSides)||face(sh.interlockSlim)||face(sh.handleSide)}; }
+    else if(mode==='verticals_same_h_diff'){ sizes={topRail:face(sides.top),bottomRail:face(sides.bottom),jamb:face(sides.vertical),leafStile:face(sh.interlockSlim)||face(sh.handleSide)}; }
+    else { sizes={topRail:face(sides.top),bottomRail:face(sides.bottom),leftJamb:face(sides.leftVertical),rightJamb:face(sides.rightVertical),leafStile:face(sh.interlockSlim)||face(sh.handleSide)}; }
+    sizes.rails = railCountForTrack(sl.activeTrackOption||'2');
+    sizes.trackOpt = sl.activeTrackOption||'2';
+  }
   else if(t==='casement'){const c=state.setup.casement;const fw=face(c.outerFrame);sizes={frame:fw,leafStile:face(c.shutter)||fw};}
   else if(t==='telescopic'){const x=state.setup.telescopic;sizes={topRail:face(x.verticalTop)||face(x.topTrack),bottomRail:face(x.verticalBottom),jamb:face(x.vertical)};}
   else if(t==='style'){const x=state.setup.style;sizes={topRail:face(x.top),bottomRail:face(x.bottom),jamb:face(x.outerFrame),leafStile:face(x.innerDoorVertical)};}
-  const parts=Object.entries(sizes).filter(([,v])=>v).map(([k,v])=>`${k} ${v}mm`);
+  const parts=Object.entries(sizes).filter(([,v])=>v!=null&&v!==''&&v!==0).map(([k,v])=>`${k} ${typeof v==='number'?v+'mm':v}`);
   const memN = (state.setup.members||[]).filter(m=>m&&m.name).length;
   const hwN = (state.setup.hardwareWeightRules||[]).filter(r=>r&&(r.name||r.sku)).length;
   const extra = [];
   if (memN) extra.push(memN+' member'+(memN===1?'':'s'));
   if (hwN) extra.push(hwN+' weight rule'+(hwN===1?'':'s'));
-  const base = parts.length ? ('Derived section sizes → '+parts.join(' · ')) : 'Fill section W (mm) to derive geometry frame sizes.';
-  el.textContent = extra.length ? (base+' · Phase2: '+extra.join(', ')) : base;
+  if (t==='sliding') {
+    const sl=state.setup.sliding;
+    extra.push('mode '+ (sl.trackMode||'all_sides_same'));
+    extra.push('BOM '+(sl.bomPattern||''));
+    if (sl.costing && sl.costing.costEngine) extra.push('cost '+sl.costing.costEngine);
+  }
+  const base = parts.length ? ('Derived → '+parts.join(' · ')) : 'Fill section W (mm) to derive geometry frame sizes.';
+  el.textContent = extra.length ? (base+' · '+extra.join(' · ')) : base;
 }
 document.querySelectorAll('#adminTabs .tab').forEach(t => t.onclick = () => {
   document.querySelectorAll('#adminTabs .tab').forEach(x => x.classList.toggle('active', x===t));

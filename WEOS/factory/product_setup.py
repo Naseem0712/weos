@@ -2,14 +2,21 @@
 
 A "setup" is the structured, editable definition a fabricator fills in when they
 register a series in the Product Library (Admin · Product Library → *Series
-Setup*).  It captures, per product **type**:
+Setup* / Sliding Product Gallery).  It captures, per product **type**:
 
 * the aluminium **sections** (outer track / frame, shutters, mesh, verticals,
-  rails …) with dimensions, **weight (kg/m)** and **standard length (mm)**, with
-  per-side variants when sides differ; and
+  rails …) with dimensions, **weight (kg/m|ft)**, **standard length (rft/rmt)**,
+  **rate** and **coating**, with per-side variants when sides differ; and
 * the **hardware** items (rollers, connectors, hinges, locks, handles, friction
   stays, door closers …) with **brand**, **unit**, **rate** and **quantity per
   shutter / leaf / config**.
+
+Sliding Product Gallery (series under Sliding selection):
+
+* **trackMode** — all sides same / verticals same + H different / all different
+* **trackOptions** — 2 / 2.5 / 3 / 4 (own weight/rate; rail count auto; shutters shared)
+* **bomPattern** — v2_tb2 / v2_t1_b1 / all_side_4
+* shutters (all-sides or split + slim/renf), meeting, mesh adapter, hardwarePack, costing stub
 
 Phase 2 also ports WD-series concepts:
 
@@ -140,9 +147,88 @@ def _bool(value: Any, default: bool = False) -> bool:
     return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
+# Sliding Product Gallery — track side modes & BOM fill patterns.
+TRACK_MODES = (
+    "all_sides_same",           # one track type on all sides
+    "verticals_same_h_diff",    # both verticals same; top/bottom different
+    "all_different",            # left/right verticals + horizontals different
+)
+TRACK_OPTION_IDS = ("2", "2.5", "3", "4")
+BOM_PATTERNS = (
+    "v2_tb2",       # vertical 2 nos, top+bottom track 2 nos
+    "v2_t1_b1",     # vertical 2, top 1, bottom 1
+    "all_side_4",   # track all side 4 nos (= vertical 2 + horizontal 2)
+)
+SHUTTER_MODES = ("all_sides_same", "split")
+LOCK_TYPES = ("single_point", "multipoint", "mortice")
+WEIGHT_UNITS = ("m", "ft")
+LENGTH_UNITS = ("rft", "rmt")
+RATE_UNITS = ("rft", "rmt", "kg")
+COATING_UNITS = ("rft", "rmt")
+
+
+def rail_count_for_track_option(track_id: Any) -> int:
+    """2 / 2.5 → 2 rails; 3 → 3; 4 → 4."""
+    try:
+        v = float(track_id)
+    except (TypeError, ValueError):
+        return 2
+    if v >= 4:
+        return 4
+    if v >= 3:
+        return 3
+    return 2  # 2 and 2.5 track → 2 rails only
+
+
+def default_bom_pattern(track_mode: str) -> str:
+    """Match fill/BOM pattern to the track mode the fabricator picked."""
+    mode = _str(track_mode).lower()
+    if mode == "all_sides_same":
+        return "all_side_4"
+    if mode == "verticals_same_h_diff":
+        return "v2_t1_b1"
+    if mode == "all_different":
+        return "v2_tb2"
+    return "all_side_4"
+
+
 def normalize_section(raw: Any) -> dict[str, Any]:
-    """A single aluminium section row."""
+    """A single aluminium section row (dims · weight · stock · rate · coating)."""
     r = raw if isinstance(raw, Mapping) else {}
+    weight_unit = _str(r.get("weightUnit") or "m").lower()
+    if weight_unit not in WEIGHT_UNITS:
+        weight_unit = "m"
+    std_unit = _str(r.get("stdLengthUnit") or r.get("standardLengthUnit") or "").lower()
+    if std_unit in ("rm", "m", "mt", "meter", "metre"):
+        std_unit = "rmt"
+    if std_unit in ("ft", "feet", "foot"):
+        std_unit = "rft"
+    if std_unit not in LENGTH_UNITS:
+        # Prefer explicit mm stock when only stdLengthMm is present.
+        std_unit = "rft" if (r.get("stdLength") or r.get("standardLength")) else (
+            "rmt" if r.get("stdLengthMm") or r.get("standardLengthMm") else "rft"
+        )
+    rate_unit = _str(r.get("rateUnit") or "rft").lower()
+    if rate_unit in ("rm", "m", "mt"):
+        rate_unit = "rmt"
+    if rate_unit in ("ft", "feet"):
+        rate_unit = "rft"
+    if rate_unit not in RATE_UNITS:
+        rate_unit = "rft"
+    coating_unit = _str(r.get("coatingUnit") or "rft").lower()
+    if coating_unit in ("rm", "m", "mt"):
+        coating_unit = "rmt"
+    if coating_unit in ("ft", "feet"):
+        coating_unit = "rft"
+    if coating_unit not in COATING_UNITS:
+        coating_unit = "rft"
+    std_len = r.get("stdLength")
+    if std_len is None:
+        std_len = r.get("standardLength")
+    # Keep numeric mm when that is all we have (legacy Series Setup).
+    std_length_mm = _num(r.get("stdLengthMm") or r.get("standardLengthMm"))
+    if std_len is None and std_length_mm is not None:
+        std_len = std_length_mm
     return {
         "name": _str(r.get("name")),
         "use": _str(r.get("use") or r.get("position")),
@@ -150,7 +236,14 @@ def normalize_section(raw: Any) -> dict[str, Any]:
         "hMm": _num(r.get("hMm") or r.get("heightMm") or r.get("depthMm")),
         "wallMm": _num(r.get("wallMm") or r.get("thicknessMm")),
         "weightKgPerM": _num(r.get("weightKgPerM") or r.get("weightKgPerMtr")),
-        "stdLengthMm": _num(r.get("stdLengthMm") or r.get("standardLengthMm")),
+        "weightUnit": weight_unit,
+        "stdLengthMm": std_length_mm,
+        "stdLength": std_len if isinstance(std_len, (int, float)) else _str(std_len) or None,
+        "stdLengthUnit": std_unit,
+        "rate": _num(r.get("rate") or r.get("ratePerUnit") or r.get("unitRate")) or 0.0,
+        "rateUnit": rate_unit,
+        "coatingCost": _num(r.get("coatingCost") or r.get("coatingRate")) or 0.0,
+        "coatingUnit": coating_unit,
         "side": _str(r.get("side")),
         "glassType": _str(r.get("glassType")),  # '', 'sg' or 'dg'
         "notes": _str(r.get("notes")),
@@ -334,14 +427,205 @@ def normalize_setup(raw: Any) -> dict[str, Any]:
     out["telescopic"] = _norm_telescopic(s.get("telescopic"))
     out["style"] = _norm_style(s.get("style"))
 
-    out["derived"] = {
+    derived: dict[str, Any] = {
         "sectionSizes": derive_section_sizes(out),
         "hardware": derive_hardware(out),
         "weights": derive_weights(out),
         "memberCount": len(out["members"]),
         "hardwareWeightRuleCount": len(out["hardwareWeightRules"]),
     }
+    if stype == "sliding":
+        derived["trackFill"] = derive_sliding_track_fill(out)
+        derived["activeTrackOption"] = (out.get("sliding") or {}).get("activeTrackOption")
+        derived["railCount"] = (derived["trackFill"] or {}).get("rails")
+        derived["costEngine"] = ((out.get("sliding") or {}).get("costing") or {}).get("costEngine", "stub")
+    out["derived"] = derived
     return out
+
+
+def _norm_track_mode(value: Any) -> str:
+    mode = _str(value).lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "all": "all_sides_same",
+        "same": "all_sides_same",
+        "all_sides": "all_sides_same",
+        "same_all_sides": "all_sides_same",
+        "vertical_same": "verticals_same_h_diff",
+        "verticals_same": "verticals_same_h_diff",
+        "vh_diff": "verticals_same_h_diff",
+        "split_h": "verticals_same_h_diff",
+        "different": "all_different",
+        "all_diff": "all_different",
+        "full_split": "all_different",
+    }
+    mode = aliases.get(mode, mode)
+    return mode if mode in TRACK_MODES else "all_sides_same"
+
+
+def _norm_bom_pattern(value: Any, track_mode: str = "all_sides_same") -> str:
+    pat = _str(value).lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "vertical_2_top_bottom_2": "v2_tb2",
+        "v2_topbottom_2": "v2_tb2",
+        "vertical_2_top_1_bottom_1": "v2_t1_b1",
+        "v2_t1b1": "v2_t1_b1",
+        "all_side": "all_side_4",
+        "all_sides_4": "all_side_4",
+        "track_all_side_4": "all_side_4",
+        "4_nos": "all_side_4",
+    }
+    pat = aliases.get(pat, pat)
+    if pat in BOM_PATTERNS:
+        return pat
+    return default_bom_pattern(track_mode)
+
+
+def _blank_track_sides() -> dict[str, Any]:
+    return {
+        "all": normalize_section({"use": "track"}),
+        "vertical": normalize_section({"use": "track_vertical"}),
+        "top": normalize_section({"use": "track_top"}),
+        "bottom": normalize_section({"use": "track_bottom"}),
+        "leftVertical": normalize_section({"use": "track_left"}),
+        "rightVertical": normalize_section({"use": "track_right"}),
+    }
+
+
+def normalize_track_option(raw: Any) -> dict[str, Any]:
+    """One track option (2 / 2.5 / 3 / 4) under the same series — shutters unchanged."""
+    r = raw if isinstance(raw, Mapping) else {}
+    tid = _str(r.get("id") or r.get("trackCount") or r.get("count") or "2")
+    # Normalise "2 track" / 2.5 → canonical id
+    cleaned = tid.lower().replace("track", "").replace(" ", "").strip()
+    if cleaned in TRACK_OPTION_IDS:
+        tid = cleaned
+    else:
+        try:
+            f = float(cleaned)
+            tid = "2.5" if abs(f - 2.5) < 0.01 else str(int(f)) if f == int(f) else str(f)
+        except (TypeError, ValueError):
+            tid = "2"
+    if tid not in TRACK_OPTION_IDS:
+        tid = "2"
+    sides = r.get("sides") if isinstance(r.get("sides"), Mapping) else {}
+    # Accept flat legacy keys on the option itself
+    base = _blank_track_sides()
+    for key in base:
+        src = sides.get(key) if key in sides else r.get(key)
+        if src is not None:
+            base[key] = normalize_section(src)
+    # If only a single section blob was stored, treat it as "all"
+    if isinstance(r.get("section"), Mapping):
+        base["all"] = normalize_section(r.get("section"))
+    label = _str(r.get("label") or r.get("name")) or f"{tid} track"
+    try:
+        track_count = float(tid)
+    except ValueError:
+        track_count = 2.0
+    return {
+        "id": tid,
+        "label": label,
+        "trackCount": track_count,
+        "railCount": int(r.get("railCount") or rail_count_for_track_option(tid)),
+        "meshCapable": _bool(r.get("meshCapable"), float(tid) >= 2.5),
+        "sides": base,
+        "notes": _str(r.get("notes")),
+    }
+
+
+def default_track_options() -> list[dict[str, Any]]:
+    return [normalize_track_option({"id": x}) for x in TRACK_OPTION_IDS]
+
+
+def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
+    """Structured per-shutter hardware (connectors, EPDM, wings, brush, lock, wheels)."""
+    r = raw if isinstance(raw, Mapping) else {}
+
+    def qty_rate(key: str, default_qty: float = 0.0, max_qty: float | None = None) -> dict[str, Any]:
+        block = r.get(key) if isinstance(r.get(key), Mapping) else {}
+        qty = _num(block.get("qty") if block.get("qty") is not None else default_qty)
+        if qty is None:
+            qty = default_qty
+        if max_qty is not None:
+            qty = max(0.0, min(float(qty), float(max_qty)))
+        return {
+            "qty": float(qty),
+            "rate": _num(block.get("rate")) or 0.0,
+            "unit": _str(block.get("unit") or "PC").upper(),
+            "notes": _str(block.get("notes")),
+        }
+
+    epdm = r.get("epdm") if isinstance(r.get("epdm"), Mapping) else {}
+    brush = r.get("brush") if isinstance(r.get("brush"), Mapping) else {}
+    wings = r.get("wings") if isinstance(r.get("wings"), Mapping) else {}
+    lock = r.get("lock") if isinstance(r.get("lock"), Mapping) else {}
+    wheels = r.get("wheels") if isinstance(r.get("wheels"), Mapping) else {}
+    lock_type = _str(lock.get("type") or "single_point").lower().replace("-", "_").replace(" ", "_")
+    if lock_type in ("single", "sp"):
+        lock_type = "single_point"
+    if lock_type in ("multi", "mp"):
+        lock_type = "multipoint"
+    if lock_type not in LOCK_TYPES:
+        lock_type = "single_point"
+    return {
+        "trackConnectors": qty_rate("trackConnectors", 0, 8),
+        "shutterConnectors": qty_rate("shutterConnectors", 0, 4),
+        "epdm": {
+            "ratePerM": _num(epdm.get("ratePerM") or epdm.get("rate")) or 0.0,
+            # height×4 + width×4 (m) — computed at quote time
+            "formula": _str(epdm.get("formula") or "height_m*4 + width_m*4"),
+            "notes": _str(epdm.get("notes")),
+        },
+        "brush": {
+            "ratePerM": _num(brush.get("ratePerM") or brush.get("rate")) or 0.0,
+            "formula": _str(brush.get("formula") or "height_m*4 + width_m*4"),
+            "notes": _str(brush.get("notes")),
+        },
+        "wings": {
+            # 4/shutter if slim or renf interlock; 8 if all-side same section
+            "rate": _num(wings.get("rate")) or 0.0,
+            "qtyAllSidesSame": int(_num(wings.get("qtyAllSidesSame")) or 8),
+            "qtySplit": int(_num(wings.get("qtySplit")) or 4),
+            "notes": _str(wings.get("notes")),
+        },
+        "lock": {
+            "type": lock_type,
+            "rate": _num(lock.get("rate")) or 0.0,
+            "unit": _str(lock.get("unit") or "SET").upper(),
+            "notes": _str(lock.get("notes")),
+        },
+        "wheels": {
+            "qtyPerShutter": _num(wheels.get("qtyPerShutter") if wheels.get("qtyPerShutter") is not None else 2) or 2.0,
+            "rate": _num(wheels.get("rate")) or 0.0,
+            "unit": _str(wheels.get("unit") or "PC").upper(),
+            "notes": _str(wheels.get("notes")),
+        },
+    }
+
+
+def _norm_sliding_costing(raw: Any) -> dict[str, Any]:
+    """Labour / profit / wastage hooks — full project cost may stub until all products quoted."""
+    r = raw if isinstance(raw, Mapping) else {}
+    return {
+        "labourPerSft": _num(r.get("labourPerSft") or r.get("labourRate")),
+        "profitPercent": _num(r.get("profitPercent") or r.get("profit")),
+        "cutFromOwnStock": _bool(r.get("cutFromOwnStock"), True),
+        "allSideSameLowWastage": _bool(r.get("allSideSameLowWastage"), True),
+        "projectWastageReuse": _bool(r.get("projectWastageReuse"), True),
+        "costEngine": _str(r.get("costEngine") or "stub"),  # stub | live
+        "notes": _str(r.get("notes") or "Full project cost runs when all products are on the quote."),
+    }
+
+
+def bom_qty_for_pattern(pattern: str) -> dict[str, int]:
+    """Piece counts for track fill patterns (per opening)."""
+    p = _norm_bom_pattern(pattern)
+    if p == "v2_tb2":
+        return {"vertical": 2, "top": 2, "bottom": 2, "horizontal": 0, "all": 0}
+    if p == "v2_t1_b1":
+        return {"vertical": 2, "top": 1, "bottom": 1, "horizontal": 0, "all": 0}
+    # all_side_4
+    return {"vertical": 2, "top": 0, "bottom": 0, "horizontal": 2, "all": 4}
 
 
 def _norm_sliding(raw: Any) -> dict[str, Any]:
@@ -349,27 +633,113 @@ def _norm_sliding(raw: Any) -> dict[str, Any]:
     ot = r.get("outerTrack") if isinstance(r.get("outerTrack"), Mapping) else {}
     sh = r.get("shutters") if isinstance(r.get("shutters"), Mapping) else {}
     mesh = r.get("mesh") if isinstance(r.get("mesh"), Mapping) else {}
+    meeting = r.get("meeting") if isinstance(r.get("meeting"), Mapping) else {}
+    track_mode = _norm_track_mode(
+        r.get("trackMode") or ot.get("trackMode")
+        or ("all_sides_same" if _bool(ot.get("sameAllSides"), True) else "verticals_same_h_diff")
+    )
+    bom_pattern = _norm_bom_pattern(r.get("bomPattern") or ot.get("bomPattern"), track_mode)
+
+    # Track options — prefer explicit list; else seed 2/2.5/3/4
+    opts_raw = r.get("trackOptions")
+    if isinstance(opts_raw, (list, tuple)) and opts_raw:
+        track_options = [normalize_track_option(x) for x in opts_raw]
+        # Ensure unique ids, keep order
+        seen: set[str] = set()
+        uniq: list[dict[str, Any]] = []
+        for opt in track_options:
+            if opt["id"] in seen:
+                continue
+            seen.add(opt["id"])
+            uniq.append(opt)
+        for tid in TRACK_OPTION_IDS:
+            if tid not in seen:
+                uniq.append(normalize_track_option({"id": tid}))
+        track_options = uniq
+    else:
+        track_options = default_track_options()
+        # Migrate legacy outerTrack section cards into the active option "all"/sides
+        active0 = track_options[0]
+        sides = active0["sides"]
+        if ot.get("top") or ot.get("bottom") or ot.get("verticals"):
+            sides["top"] = normalize_section(ot.get("top"))
+            sides["bottom"] = normalize_section(ot.get("bottom"))
+            sides["vertical"] = normalize_section(ot.get("verticals"))
+            if _bool(ot.get("sameAllSides"), True):
+                sides["all"] = normalize_section(ot.get("verticals") or ot.get("top") or ot.get("bottom"))
+
+    active = _str(r.get("activeTrackOption") or r.get("trackCount") or "2")
+    if active not in TRACK_OPTION_IDS:
+        try:
+            f = float(active)
+            active = "2.5" if abs(f - 2.5) < 0.01 else str(int(f))
+        except (TypeError, ValueError):
+            active = "2"
+    if active not in {o["id"] for o in track_options}:
+        active = track_options[0]["id"]
+
+    shutter_mode = _str(sh.get("mode") or "").lower()
+    if shutter_mode not in SHUTTER_MODES:
+        shutter_mode = "all_sides_same" if _bool(sh.get("sameAllSides"), True) else "split"
+
+    # Freeform hardware list (legacy) + structured pack
+    hw_list = r.get("hardware")
+    hw_pack_raw = r.get("hardwarePack") if isinstance(r.get("hardwarePack"), Mapping) else None
+    if isinstance(hw_list, Mapping) and not hw_pack_raw:
+        # New UI may store structured pack under "hardware" as object
+        hw_pack_raw = hw_list
+        hw_list = hw_list.get("items") if isinstance(hw_list.get("items"), (list, tuple)) else []
+
+    adapter = mesh.get("adapter") if isinstance(mesh.get("adapter"), Mapping) else {}
+    mesh_section = mesh.get("meshSection") if isinstance(mesh.get("meshSection"), Mapping) else mesh.get("section")
+
     return {
+        "trackMode": track_mode,
+        "bomPattern": bom_pattern,
+        "activeTrackOption": active,
+        "trackOptions": track_options,
         "outerTrack": {
-            "sameAllSides": _bool(ot.get("sameAllSides"), True),
+            # Legacy mirror for older UI / derive_section_sizes
+            "sameAllSides": track_mode == "all_sides_same",
+            "trackMode": track_mode,
+            "bomPattern": bom_pattern,
             "top": normalize_section(ot.get("top")),
             "bottom": normalize_section(ot.get("bottom")),
             "verticals": normalize_section(ot.get("verticals")),
             "bottomRails": normalize_section(ot.get("bottomRails")),
+            "leftVertical": normalize_section(ot.get("leftVertical")),
+            "rightVertical": normalize_section(ot.get("rightVertical")),
         },
         "shutters": {
-            "sameAllSides": _bool(sh.get("sameAllSides"), True),
+            "mode": shutter_mode,
+            "sameAllSides": shutter_mode == "all_sides_same",
+            "allSides": normalize_section(sh.get("allSides") or (sh.get("top") if shutter_mode == "all_sides_same" else None)),
             "top": normalize_section(sh.get("top")),
             "bottom": normalize_section(sh.get("bottom")),
             "handleSide": normalize_section(sh.get("handleSide")),
-            "interlockSide": normalize_section(sh.get("interlockSide")),
+            "interlockSide": normalize_section(sh.get("interlockSide")),  # slim (1st shutter)
+            "interlockSlim": normalize_section(sh.get("interlockSlim") or sh.get("interlockSide")),
+            "interlockRenf": normalize_section(sh.get("interlockRenf") or sh.get("reinforcement")),
+            "notes": _str(sh.get("notes")),
+        },
+        "meeting": {
+            "enabled": _bool(meeting.get("enabled"), False),
+            "section": normalize_section(meeting.get("section") or meeting),
+            "notes": _str(meeting.get("notes") or "Used when 4 glass shutters (center opening)."),
         },
         "mesh": {
             "compatible": _bool(mesh.get("compatible"), False),
             "sameAsShutter": _bool(mesh.get("sameAsShutter"), True),
+            "adapter": {
+                "sameAllSides": _bool(adapter.get("sameAllSides"), True),
+                "section": normalize_section(adapter.get("section") or adapter),
+            },
+            "meshSection": normalize_section(mesh_section),
             "sections": _sections(mesh.get("sections")),
         },
-        "hardware": _hardware(r.get("hardware")),
+        "hardware": _hardware(hw_list if isinstance(hw_list, (list, tuple)) else []),
+        "hardwarePack": _norm_sliding_hardware_pack(hw_pack_raw or {}),
+        "costing": _norm_sliding_costing(r.get("costing")),
     }
 
 
@@ -440,13 +810,50 @@ def derive_section_sizes(setup: Mapping[str, Any]) -> dict[str, float]:
             out[key] = float(val)
 
     if stype == "sliding":
-        ot = (setup.get("sliding") or {}).get("outerTrack") or {}
-        sh = (setup.get("sliding") or {}).get("shutters") or {}
-        put("topRail", _face(ot.get("top")))
-        put("bottomRail", _face(ot.get("bottom")))
-        put("leftJamb", _face(ot.get("verticals")))
-        put("rightJamb", _face(ot.get("verticals")))
-        put("leafStile", _face(sh.get("interlockSide")) or _face(sh.get("handleSide")) or _face(sh.get("top")))
+        sl = setup.get("sliding") or {}
+        ot = sl.get("outerTrack") or {}
+        sh = sl.get("shutters") or {}
+        # Prefer active track option sides when filled
+        active = _str(sl.get("activeTrackOption") or "2")
+        opt = next(
+            (o for o in (sl.get("trackOptions") or []) if isinstance(o, Mapping) and _str(o.get("id")) == active),
+            None,
+        )
+        sides = (opt or {}).get("sides") if isinstance(opt, Mapping) else None
+        mode = _str(sl.get("trackMode") or ot.get("trackMode") or "all_sides_same")
+        if isinstance(sides, Mapping):
+            if mode == "all_sides_same":
+                face = _face(sides.get("all")) or _face(sides.get("vertical")) or _face(sides.get("top"))
+                put("topRail", face)
+                put("bottomRail", face)
+                put("leftJamb", face)
+                put("rightJamb", face)
+            elif mode == "verticals_same_h_diff":
+                put("topRail", _face(sides.get("top")))
+                put("bottomRail", _face(sides.get("bottom")))
+                put("leftJamb", _face(sides.get("vertical")))
+                put("rightJamb", _face(sides.get("vertical")))
+            else:
+                put("topRail", _face(sides.get("top")))
+                put("bottomRail", _face(sides.get("bottom")))
+                put("leftJamb", _face(sides.get("leftVertical")))
+                put("rightJamb", _face(sides.get("rightVertical")))
+        if "topRail" not in out:
+            put("topRail", _face(ot.get("top")))
+            put("bottomRail", _face(ot.get("bottom")))
+            put("leftJamb", _face(ot.get("leftVertical")) or _face(ot.get("verticals")))
+            put("rightJamb", _face(ot.get("rightVertical")) or _face(ot.get("verticals")))
+        put(
+            "leafStile",
+            _face(sh.get("interlockSlim"))
+            or _face(sh.get("interlockSide"))
+            or _face(sh.get("handleSide"))
+            or _face(sh.get("allSides"))
+            or _face(sh.get("top")),
+        )
+        if isinstance(opt, Mapping) and opt.get("railCount"):
+            out["trackRailCount"] = float(opt["railCount"])
+            out["trackCount"] = float(opt.get("trackCount") or active or 2)
     elif stype == "casement":
         c = setup.get("casement") or {}
         fw = _face(c.get("outerFrame"))
@@ -591,6 +998,170 @@ def flatten_setup_sections(setup: Mapping[str, Any] | None) -> list[dict[str, An
 def empty_setup(stype: str = "sliding") -> dict[str, Any]:
     """A blank, normalised setup for a given type (used to seed the editor)."""
     return normalize_setup({"type": stype})
+
+
+def active_track_option(setup: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Return the normalised active track option from a sliding setup."""
+    if not isinstance(setup, Mapping):
+        return None
+    sl = setup.get("sliding") if _str(setup.get("type")).lower() == "sliding" else setup
+    if not isinstance(sl, Mapping):
+        return None
+    if "trackOptions" not in sl and isinstance(setup.get("sliding"), Mapping):
+        sl = setup["sliding"]
+    active = _str(sl.get("activeTrackOption") or "2")
+    for opt in sl.get("trackOptions") or []:
+        if isinstance(opt, Mapping) and _str(opt.get("id")) == active:
+            return normalize_track_option(opt)
+    opts = sl.get("trackOptions") or []
+    return normalize_track_option(opts[0]) if opts else None
+
+
+def derive_sliding_track_fill(
+    setup: Mapping[str, Any] | None,
+    *,
+    width_mm: float = 0.0,
+    height_mm: float = 0.0,
+) -> dict[str, Any]:
+    """BOM fill sketch for the active track option (qty + section refs).
+
+    Cost engine may stub pricing; this always returns structure for the UI/BOM.
+    """
+    if not isinstance(setup, Mapping):
+        return {"pattern": "all_side_4", "rails": 2, "pieces": {}, "lines": []}
+    sl = setup.get("sliding") if isinstance(setup.get("sliding"), Mapping) else setup
+    if not isinstance(sl, Mapping):
+        return {"pattern": "all_side_4", "rails": 2, "pieces": {}, "lines": []}
+    pattern = _norm_bom_pattern(sl.get("bomPattern"), _str(sl.get("trackMode")))
+    pieces = bom_qty_for_pattern(pattern)
+    opt = active_track_option(setup if setup.get("sliding") else {"sliding": sl, "type": "sliding"})
+    if opt is None and isinstance(setup.get("sliding"), Mapping):
+        opt = active_track_option(setup)
+    sides = (opt or {}).get("sides") or {}
+    mode = _str(sl.get("trackMode") or "all_sides_same")
+    w = max(float(width_mm or 0), 0.0)
+    h = max(float(height_mm or 0), 0.0)
+    lines: list[dict[str, Any]] = []
+
+    def add_line(role: str, qty: int, sec: Any, length_mm: float) -> None:
+        if qty <= 0:
+            return
+        section = normalize_section(sec) if sec is not None else normalize_section({})
+        lines.append({
+            "role": role,
+            "qty": qty,
+            "lengthMm": length_mm or None,
+            "section": section,
+            "trackOption": (opt or {}).get("id"),
+            "railCount": (opt or {}).get("railCount"),
+        })
+
+    if mode == "all_sides_same":
+        sec = sides.get("all") or sides.get("vertical")
+        add_line("track_all", pieces.get("all") or 4, sec, 0)
+    elif mode == "verticals_same_h_diff":
+        add_line("track_vertical", pieces.get("vertical") or 2, sides.get("vertical"), h)
+        add_line("track_top", pieces.get("top") or 1, sides.get("top"), w)
+        add_line("track_bottom", pieces.get("bottom") or 1, sides.get("bottom"), w)
+    else:
+        add_line("track_left", 1, sides.get("leftVertical"), h)
+        add_line("track_right", 1, sides.get("rightVertical"), h)
+        top_q = pieces.get("top") or 1
+        bot_q = pieces.get("bottom") or 1
+        add_line("track_top", top_q, sides.get("top"), w)
+        add_line("track_bottom", bot_q, sides.get("bottom"), w)
+
+    return {
+        "pattern": pattern,
+        "trackMode": mode,
+        "rails": int((opt or {}).get("railCount") or rail_count_for_track_option((opt or {}).get("id"))),
+        "trackOption": (opt or {}).get("id"),
+        "pieces": pieces,
+        "lines": lines,
+        "costEngine": ((sl.get("costing") or {}) if isinstance(sl.get("costing"), Mapping) else {}).get("costEngine", "stub"),
+    }
+
+
+def derive_sliding_hardware_lines(
+    setup: Mapping[str, Any] | None,
+    *,
+    width_mm: float,
+    height_mm: float,
+    shutter_count: float = 2.0,
+) -> list[dict[str, Any]]:
+    """Expand structured hardwarePack into priced BOM lines (per opening)."""
+    if not isinstance(setup, Mapping):
+        return []
+    sl = setup.get("sliding") if isinstance(setup.get("sliding"), Mapping) else None
+    if not isinstance(sl, Mapping):
+        return []
+    pack = sl.get("hardwarePack") if isinstance(sl.get("hardwarePack"), Mapping) else {}
+    if not pack:
+        return []
+
+    def _pack_configured(p: Mapping[str, Any]) -> bool:
+        for key in ("trackConnectors", "shutterConnectors", "wheels", "lock", "wings"):
+            block = p.get(key) if isinstance(p.get(key), Mapping) else {}
+            if float(block.get("rate") or 0) > 0:
+                return True
+            if key in ("trackConnectors", "shutterConnectors") and float(block.get("qty") or 0) > 0:
+                return True
+        for key in ("epdm", "brush"):
+            block = p.get(key) if isinstance(p.get(key), Mapping) else {}
+            if float(block.get("ratePerM") or block.get("rate") or 0) > 0:
+                return True
+        return False
+
+    if not _pack_configured(pack):
+        return []
+    shutters = max(float(shutter_count or 1), 1.0)
+    w_m = max(float(width_mm or 0), 0.0) / 1000.0
+    h_m = max(float(height_mm or 0), 0.0) / 1000.0
+    perimeter = (h_m * 4.0) + (w_m * 4.0)  # EPDM / brush rule
+    same_shutter = _str((sl.get("shutters") or {}).get("mode")) == "all_sides_same"
+    lines: list[dict[str, Any]] = []
+
+    def add(name: str, qty: float, rate: float, unit: str = "PC", remarks: str = "") -> None:
+        if qty <= 0 and rate <= 0:
+            return
+        lines.append({
+            "category": "hardware",
+            "name": name,
+            "qty": round(qty, 4),
+            "unit": unit,
+            "unitRate": float(rate or 0),
+            "remarks": remarks,
+            "source": "sliding.hardwarePack",
+        })
+
+    tc = pack.get("trackConnectors") or {}
+    add("Track connectors", float(tc.get("qty") or 0), float(tc.get("rate") or 0), tc.get("unit") or "PC")
+    sc = pack.get("shutterConnectors") or {}
+    add(
+        "Shutter connectors",
+        float(sc.get("qty") or 0) * shutters,
+        float(sc.get("rate") or 0),
+        sc.get("unit") or "PC",
+        "per shutter",
+    )
+    epdm = pack.get("epdm") or {}
+    add("EPDM dual-side", perimeter * shutters, float(epdm.get("ratePerM") or 0), "RM", "height×4 + width×4 × shutters")
+    brush = pack.get("brush") or {}
+    add("Brush", perimeter * shutters, float(brush.get("ratePerM") or 0), "RM", "same as EPDM")
+    wings = pack.get("wings") or {}
+    wqty = float(wings.get("qtyAllSidesSame") or 8) if same_shutter else float(wings.get("qtySplit") or 4)
+    add("Wings / angle", wqty * shutters, float(wings.get("rate") or 0), "PC", "4 split / 8 all-sides per shutter")
+    lock = pack.get("lock") or {}
+    add(f"Lock ({lock.get('type') or 'single_point'})", 1.0, float(lock.get("rate") or 0), lock.get("unit") or "SET")
+    wheels = pack.get("wheels") or {}
+    add(
+        "Wheels",
+        float(wheels.get("qtyPerShutter") or 2) * shutters,
+        float(wheels.get("rate") or 0),
+        wheels.get("unit") or "PC",
+        "per shutter",
+    )
+    return [ln for ln in lines if ln["qty"] > 0 or ln["unitRate"] > 0]
 
 
 # ── Phase 2: member factors + weight→hardware ───────────────────────────────
@@ -890,7 +1461,27 @@ def apply_setup_bom(
         ctx=context,
         system_type=system_type,
     )
+    # Sliding Product Gallery — structured hardwarePack + track fill sketch
+    track_fill: dict[str, Any] = {}
+    pack_hw: list[dict[str, Any]] = []
+    if _str(setup.get("type")).lower() == "sliding" or isinstance(setup.get("sliding"), Mapping):
+        track_fill = derive_sliding_track_fill(
+            setup, width_mm=width_mm, height_mm=height_mm
+        )
+        pack_hw = derive_sliding_hardware_lines(
+            setup,
+            width_mm=width_mm,
+            height_mm=height_mm,
+            shutter_count=shutters,
+        )
+        # Prefer weight-picked wheels when both exist; keep pack lines for the rest
+        if hw:
+            pack_hw = [ln for ln in pack_hw if "wheel" not in str(ln.get("name") or "").lower()]
+        hw = list(hw) + list(pack_hw)
     alu_kg = sum(float(m["weightKg"]) for m in members if m.get("weightKg") is not None)
+    costing = {}
+    if isinstance(setup.get("sliding"), Mapping):
+        costing = (setup.get("sliding") or {}).get("costing") or {}
     return {
         "members": members,
         "hardware": hw,
@@ -898,4 +1489,8 @@ def apply_setup_bom(
         "aluminiumKgFromMembers": round(alu_kg, 4),
         "usedMembers": bool(members),
         "usedHardwareWeightRules": bool(hw),
+        "trackFill": track_fill,
+        "hardwarePackLines": pack_hw,
+        "costing": costing if isinstance(costing, Mapping) else {},
+        "costEngine": (costing.get("costEngine") if isinstance(costing, Mapping) else None) or "stub",
     }
