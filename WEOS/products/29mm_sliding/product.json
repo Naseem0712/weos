@@ -6,7 +6,7 @@
   "units": "mm",
   "version": 2,
   "status": "hidden",
-  "hiddenReason": "Manufacturing engine — use Excel series (e.g. 29mm_premium) in Product Library",
+  "hiddenReason": "Manufacturing engine — use Excel series in Product Library",
   "hiddenAt": "2026-11-15T18:15:00+00:00",
   "description": "29mm-style two-track sliding — complete digital product + manufacturing rules.",
   "tagline": "Two-track residential & commercial sliding",

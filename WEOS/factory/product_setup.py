@@ -556,20 +556,55 @@ def _blank_track_sides() -> dict[str, Any]:
     }
 
 
+def canonical_track_id(value: Any) -> str:
+    """Normalize 2 / 2.5 / 3 / 4 track labels to a TRACK_OPTION_IDS id."""
+    tid = _str(value or "2")
+    cleaned = tid.lower().replace("track", "").replace(" ", "").strip()
+    if cleaned in TRACK_OPTION_IDS:
+        return cleaned
+    try:
+        f = float(cleaned)
+        return "2.5" if abs(f - 2.5) < 0.01 else str(int(f)) if f == int(f) else str(f)
+    except (TypeError, ValueError):
+        return "2"
+
+
+def section_has_profile_rates(sec: Any) -> bool:
+    """True when a section can produce non-zero Al or coating ₹/m."""
+    if not isinstance(sec, Mapping):
+        return False
+    s = normalize_section(sec)
+    if _str(s.get("name")) and (_num(s.get("weightKgPerM")) or 0) > 0:
+        return True
+    rate = _num(s.get("rate")) or 0.0
+    if rate <= 0:
+        return bool((_num(s.get("coatingCost")) or 0) > 0 and _str(s.get("name")))
+    unit = _str(s.get("rateUnit") or "kg").lower()
+    if unit in ("kg", "per_kg", "kgm"):
+        return (_num(s.get("weightKgPerM")) or 0) > 0
+    return True
+
+
+def track_option_is_defined(opt: Any) -> bool:
+    """Track option exists on Series Setup / Excel when any side has name+weight/rate."""
+    if not isinstance(opt, Mapping):
+        return False
+    sides = opt.get("sides") if isinstance(opt.get("sides"), Mapping) else {}
+    if not sides and isinstance(opt.get("section"), Mapping):
+        return section_has_profile_rates(opt.get("section"))
+    for side in sides.values():
+        if section_has_profile_rates(side):
+            return True
+    # Flat option fields (import shorthand)
+    if section_has_profile_rates(opt):
+        return True
+    return bool((_num(opt.get("weightKgPerM")) or 0) > 0 and (_num(opt.get("rate")) or 0) > 0)
+
+
 def normalize_track_option(raw: Any) -> dict[str, Any]:
     """One track option (2 / 2.5 / 3 / 4) under the same series — shutters unchanged."""
     r = raw if isinstance(raw, Mapping) else {}
-    tid = _str(r.get("id") or r.get("trackCount") or r.get("count") or "2")
-    # Normalise "2 track" / 2.5 → canonical id
-    cleaned = tid.lower().replace("track", "").replace(" ", "").strip()
-    if cleaned in TRACK_OPTION_IDS:
-        tid = cleaned
-    else:
-        try:
-            f = float(cleaned)
-            tid = "2.5" if abs(f - 2.5) < 0.01 else str(int(f)) if f == int(f) else str(f)
-        except (TypeError, ValueError):
-            tid = "2"
+    tid = canonical_track_id(r.get("id") or r.get("trackCount") or r.get("count") or "2")
     if tid not in TRACK_OPTION_IDS:
         tid = "2"
     sides = r.get("sides") if isinstance(r.get("sides"), Mapping) else {}
@@ -587,7 +622,7 @@ def normalize_track_option(raw: Any) -> dict[str, Any]:
         track_count = float(tid)
     except ValueError:
         track_count = 2.0
-    return {
+    out = {
         "id": tid,
         "label": label,
         "trackCount": track_count,
@@ -596,6 +631,8 @@ def normalize_track_option(raw: Any) -> dict[str, Any]:
         "sides": base,
         "notes": _str(r.get("notes")),
     }
+    out["defined"] = track_option_is_defined(out)
+    return out
 
 
 def default_track_options() -> list[dict[str, Any]]:
@@ -2007,21 +2044,138 @@ def empty_setup(stype: str = "sliding") -> dict[str, Any]:
     return normalize_setup({"type": stype})
 
 
-def active_track_option(setup: Mapping[str, Any] | None) -> dict[str, Any] | None:
-    """Return the normalised active track option from a sliding setup."""
+def defined_track_options(setup: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """Track options that exist on this series (Excel / Series Setup), not empty placeholders."""
+    if not isinstance(setup, Mapping):
+        return []
+    sl = setup.get("sliding") if isinstance(setup.get("sliding"), Mapping) else None
+    if not isinstance(sl, Mapping) and _str(setup.get("type")).lower() == "sliding":
+        sl = setup
+    if not isinstance(sl, Mapping):
+        return []
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in sl.get("trackOptions") or []:
+        opt = normalize_track_option(raw)
+        if not opt.get("defined"):
+            continue
+        if opt["id"] in seen:
+            continue
+        seen.add(opt["id"])
+        out.append(opt)
+    return out
+
+
+def select_track_option(
+    setup: Mapping[str, Any] | None,
+    track_count: Any = None,
+) -> dict[str, Any] | None:
+    """Pick track option for BOM/cost: prefer cart trackCount, else active, else first defined.
+
+    Never returns an empty placeholder when a defined track exists on the series.
+    """
     if not isinstance(setup, Mapping):
         return None
-    sl = setup.get("sliding") if _str(setup.get("type")).lower() == "sliding" else setup
+    sl = setup.get("sliding") if isinstance(setup.get("sliding"), Mapping) else None
+    if not isinstance(sl, Mapping) and _str(setup.get("type")).lower() == "sliding":
+        sl = setup
     if not isinstance(sl, Mapping):
         return None
-    if "trackOptions" not in sl and isinstance(setup.get("sliding"), Mapping):
-        sl = setup["sliding"]
-    active = _str(sl.get("activeTrackOption") or "2")
-    for opt in sl.get("trackOptions") or []:
-        if isinstance(opt, Mapping) and _str(opt.get("id")) == active:
-            return normalize_track_option(opt)
-    opts = sl.get("trackOptions") or []
-    return normalize_track_option(opts[0]) if opts else None
+    opts_all = [normalize_track_option(o) for o in (sl.get("trackOptions") or []) if isinstance(o, Mapping)]
+    defined = [o for o in opts_all if o.get("defined")]
+    pool = defined or opts_all
+    if not pool:
+        return None
+
+    wanted = None
+    if track_count not in (None, ""):
+        wanted = canonical_track_id(track_count)
+    if not wanted:
+        wanted = canonical_track_id(sl.get("activeTrackOption") or pool[0]["id"])
+
+    by_id = {o["id"]: o for o in pool}
+    if wanted in by_id:
+        return by_id[wanted]
+    # Nearest defined track by count
+    try:
+        w = float(wanted)
+        ranked = sorted(pool, key=lambda o: abs(float(o.get("trackCount") or o["id"]) - w))
+        return ranked[0]
+    except (TypeError, ValueError):
+        return pool[0]
+
+
+def setup_has_profile_rates(setup: Mapping[str, Any] | None) -> bool:
+    """True when sliding/casement setup has at least one section with billable Al/coat."""
+    if not isinstance(setup, Mapping):
+        return False
+    try:
+        norm = normalize_setup(setup)
+    except Exception:
+        norm = setup
+    if not isinstance(norm, Mapping):
+        return False
+    if defined_track_options(norm):
+        return True
+    sl = norm.get("sliding") if isinstance(norm.get("sliding"), Mapping) else {}
+    shut = sl.get("shutters") if isinstance(sl.get("shutters"), Mapping) else {}
+    for key in ("allSides", "handleSide", "top", "bottom", "interlockSlim", "interlockRenf", "glassReducer"):
+        if section_has_profile_rates(shut.get(key)):
+            return True
+    cm = norm.get("casement") if isinstance(norm.get("casement"), Mapping) else {}
+
+    def _walk_sections(node: Any, depth: int = 0) -> bool:
+        if depth > 5 or node is None:
+            return False
+        if isinstance(node, Mapping):
+            if section_has_profile_rates(node):
+                return True
+            return any(_walk_sections(v, depth + 1) for v in node.values())
+        if isinstance(node, (list, tuple)):
+            return any(_walk_sections(v, depth + 1) for v in node)
+        return False
+
+    for key in (
+        "outerFrame",
+        "outer",
+        "mullions",
+        "mullion",
+        "doors",
+        "door",
+        "shutter",
+        "leaf",
+        "sash",
+        "frame",
+        "glassClips",
+    ):
+        if _walk_sections(cm.get(key)):
+            return True
+    return False
+
+
+def with_active_track(setup: Mapping[str, Any] | None, track_count: Any = None) -> dict[str, Any]:
+    """Copy setup with ``activeTrackOption`` synced to cart trackCount (defined tracks only)."""
+    import copy
+
+    if not isinstance(setup, Mapping):
+        return {}
+    out = copy.deepcopy(dict(setup))
+    norm = normalize_setup(out)
+    opt = select_track_option(norm, track_count=track_count)
+    if opt and isinstance(norm.get("sliding"), dict):
+        norm["sliding"]["activeTrackOption"] = opt["id"]
+        # Drop undefined placeholders from the working copy used for BOM/cost
+        defined = defined_track_options(norm)
+        if defined:
+            # Keep undefined slots out of costing selection, but preserve defined list order
+            by_id = {o["id"]: o for o in (norm["sliding"].get("trackOptions") or []) if isinstance(o, Mapping)}
+            norm["sliding"]["trackOptions"] = [by_id.get(o["id"], o) for o in defined]
+    return norm
+
+
+def active_track_option(setup: Mapping[str, Any] | None, track_count: Any = None) -> dict[str, Any] | None:
+    """Return the normalised active track option from a sliding setup."""
+    return select_track_option(setup, track_count=track_count)
 
 
 def assign_sliding_interlocks(
@@ -2285,10 +2439,12 @@ def derive_sliding_track_fill(
     *,
     width_mm: float = 0.0,
     height_mm: float = 0.0,
+    track_count: Any = None,
 ) -> dict[str, Any]:
     """BOM fill sketch for the active track option (qty + section refs).
 
-    Cost engine may stub pricing; this always returns structure for the UI/BOM.
+    ``track_count`` from the cart overrides saved ``activeTrackOption`` so 3/4-track
+    live cost uses that series' defined track sections (not an empty placeholder).
     """
     if not isinstance(setup, Mapping):
         return {"pattern": "all_side_4", "rails": 2, "pieces": {}, "lines": []}
@@ -2297,9 +2453,10 @@ def derive_sliding_track_fill(
         return {"pattern": "all_side_4", "rails": 2, "pieces": {}, "lines": []}
     pattern = _norm_bom_pattern(sl.get("bomPattern"), _str(sl.get("trackMode")))
     pieces = bom_qty_for_pattern(pattern)
-    opt = active_track_option(setup if setup.get("sliding") else {"sliding": sl, "type": "sliding"})
+    blob = setup if setup.get("sliding") else {"sliding": sl, "type": "sliding"}
+    opt = select_track_option(blob, track_count=track_count)
     if opt is None and isinstance(setup.get("sliding"), Mapping):
-        opt = active_track_option(setup)
+        opt = select_track_option(setup, track_count=track_count)
     sides = (opt or {}).get("sides") or {}
     mode = _str(sl.get("trackMode") or "all_sides_same")
     w = max(float(width_mm or 0), 0.0)
@@ -2824,9 +2981,6 @@ def apply_setup_bom(
     interlock_pack: dict[str, Any] = {}
     shutter_frames: dict[str, Any] = {}
     if stype == "sliding":
-        track_fill = derive_sliding_track_fill(
-            setup, width_mm=width_mm, height_mm=height_mm
-        )
         mesh_n = float(
             context.get("meshCount")
             or context.get("meshShutters")
@@ -2835,6 +2989,12 @@ def apply_setup_bom(
         )
         opening = context.get("opening") or context.get("openingType") or context.get("shutterOpening")
         track_c = context.get("trackCount") or context.get("track_count")
+        track_fill = derive_sliding_track_fill(
+            setup,
+            width_mm=width_mm,
+            height_mm=height_mm,
+            track_count=track_c,
+        )
         colour_ctx = _str(context.get("colour") or context.get("color") or "")
         shutter_frames = derive_sliding_shutter_frame_cuts(
             setup,

@@ -91,7 +91,12 @@ def main() -> None:
     _ok(br.get("labour", 0) > 0, f"casement labour {br.get('labour')}")
 
     # ── Live sliding + interlocks ────────────────────────────────────
+    from WEOS.factory.product_setup import defined_track_options
+
     slid = load_product("35mm_prestige", strict=False)
+    defined = defined_track_options(slid.get("setup") or {})
+    _ok(any(o["id"] == "3" for o in defined), f"35mm defined tracks {[o['id'] for o in defined]}")
+    _ok("4" in {o["id"] for o in defined}, "35mm has 4-track defined")
     scost = compute_sliding_design_cost(
         {
             "width": 1800,
@@ -116,6 +121,54 @@ def main() -> None:
     _ok("glass_reducer" in uses, f"glass reducer in profiles {uses}")
     sbr = scost.get("breakdown") or {}
     _ok(sbr.get("aluminium", 0) > 0 and sbr.get("coating", 0) > 0, f"sliding Al/coat {sbr}")
+    _ok(sbr.get("hardware", 0) > 0, f"sliding HW {sbr.get('hardware')}")
+
+    # Cart trackCount must select that series' track section (not saved active=2 only)
+    sc4 = compute_sliding_design_cost(
+        {
+            "width": 2050,
+            "height": 1970,
+            "qty": 1,
+            "glass": "5mm_clear_toughened",
+            "colour": "white",
+            "glassShutters": 4,
+            "meshShutters": 0,
+            "trackCount": 4,
+            "opening": "side",
+            "system": "sliding",
+        },
+        product=slid,
+    )
+    b4 = sc4.get("breakdown") or {}
+    _ok(
+        sc4.get("ok") and b4.get("aluminium", 0) > 5000 and b4.get("coating", 0) > 0 and b4.get("hardware", 0) > 0,
+        f"4-track 2050×1970 Al/coat/HW {b4} total={sc4.get('total')}",
+    )
+    # 25mm / 29mm must not offer undefined 4-track as the only BOM source
+    p25 = load_product("25mm_prestige", strict=False)
+    t25 = {o["id"] for o in defined_track_options(p25.get("setup") or {})}
+    _ok("4" not in t25 and "3" in t25, f"25mm defined tracks only {t25}")
+    for pid in ("27mm_high_end_domal", "31mm_gulf_lux_slim", "32mm_dual_euro"):
+        px = load_product(pid, strict=False)
+        sx = compute_sliding_design_cost(
+            {
+                "width": 2050,
+                "height": 1970,
+                "qty": 1,
+                "glass": "5mm_clear_toughened",
+                "colour": "white",
+                "glassShutters": 3,
+                "trackCount": 3,
+                "opening": "side",
+                "system": "sliding",
+            },
+            product=px,
+        )
+        bx = sx.get("breakdown") or {}
+        _ok(
+            bx.get("aluminium", 0) > 0 and bx.get("coating", 0) > 0 and bx.get("hardware", 0) > 0,
+            f"{pid} 3T Al/coat/HW {bx}",
+        )
 
     # ── Materials list ───────────────────────────────────────────────
     mats = build_quote_materials_list(

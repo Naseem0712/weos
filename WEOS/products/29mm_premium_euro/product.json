@@ -209,6 +209,6 @@
     "source": "excel_section_catalogue",
     "productId": "29mm_sliding"
   },
-  "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
+  "hiddenReason": "Duplicate 29mm — keep 29mm_premium",
   "hiddenAt": "2026-11-15T18:08:55.621735+00:00"
 }

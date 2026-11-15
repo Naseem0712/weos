@@ -133,6 +133,6 @@
     "source": "excel_section_catalogue",
     "productId": "35mm_sliding"
   },
-  "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
+  "hiddenReason": "Duplicate 35mm gulf — keep 35mm_gulf / 35mm_prestige",
   "hiddenAt": "2026-11-15T18:08:55.624673+00:00"
 }

@@ -6522,6 +6522,63 @@ function productHasTracks(p, ln, sys) {
   if (typ.includes('slid') || typ.includes('tele') || typ.includes('sync') || typ.includes('fold') || typ === 'windows' || typ === 'door' || typ === 'style') return true;
   return s ? (s.indexOf('slid') >= 0 || s.indexOf('fold') >= 0) : false;
 }
+/** Track ids that exist on this series' Series Setup / Excel (never empty placeholders). */
+function seriesDefinedTrackOptions(p) {
+  const out = [];
+  const seen = new Set();
+  const push = (id, label) => {
+    const tid = String(id == null ? '' : id).trim();
+    if (!tid || seen.has(tid)) return;
+    seen.add(tid);
+    out.push({ id: tid, label: label || (tid + ' track') });
+  };
+  if (p && Array.isArray(p.trackOptions) && p.trackOptions.length) {
+    p.trackOptions.forEach(o => {
+      if (!o) return;
+      push(o.id != null ? o.id : o.trackCount, o.label);
+    });
+  }
+  const cat = p && p.catalogue;
+  if (!out.length && cat) {
+    const raw = cat.trackOptions || [];
+    if (Array.isArray(raw)) {
+      raw.forEach(t => {
+        const n = parseFloat(t);
+        if (!isFinite(n)) return;
+        const tid = Math.abs(n - 2.5) < 0.01 ? '2.5' : String(parseInt(n, 10));
+        push(tid);
+      });
+    }
+    (cat.tracks || []).forEach(t => {
+      if (!t) return;
+      const n = parseFloat(t.count != null ? t.count : t.trackCount);
+      if (!isFinite(n)) return;
+      const tid = Math.abs(n - 2.5) < 0.01 ? '2.5' : String(parseInt(n, 10));
+      push(tid, t.name || (tid + ' track'));
+    });
+  }
+  return out;
+}
+function fillLineTrackOptions(preferId) {
+  const sel = $('lineTrack');
+  if (!sel) return;
+  const p = selectedProductMeta();
+  const defined = seriesDefinedTrackOptions(p);
+  const prev = preferId != null ? String(preferId) : String(sel.value || '');
+  // Fallback: keep classic 2/2.5/3/4 only when series has no track metadata at all
+  // (legacy products). Prefer defined-only so invalid tracks cannot be selected.
+  const opts = defined.length
+    ? defined
+    : [
+        { id: '2', label: '2 track' },
+        { id: '2.5', label: '2.5 track' },
+        { id: '3', label: '3 track' },
+        { id: '4', label: '4 track' },
+      ];
+  sel.innerHTML = opts.map(o => `<option value="${o.id}">${o.label || (o.id + ' track')}</option>`).join('');
+  if (prev && opts.some(o => String(o.id) === prev)) sel.value = prev;
+  else sel.value = String(opts[0].id);
+}
 function setSpecialProductToolMode(world) {
   const win = $('windowCartTools');
   if (win) {
@@ -6680,12 +6737,12 @@ function applyProductWorld(opts) {
       $('lineSeries').value = '';
     }
   }
-  // Default track from catalogue when present.
-  if (p && $('lineTrack')) {
-    const tc = (p.catalogue && (p.catalogue.trackCount || (p.catalogue.trackOptions || [])[0])) || null;
-    if (tc != null && (opts.rebindSeries || !$('lineTrack').value || $('lineTrack').value === '2')) {
-      $('lineTrack').value = String(tc);
-    }
+  // Track dropdown: only series-defined tracks (Excel / Series Setup).
+  if ($('lineTrack')) {
+    const prefer = (opts.rebindSeries || !$('lineTrack').value)
+      ? ((p && p.catalogue && (p.catalogue.trackCount || (p.catalogue.trackOptions || [])[0])) || null)
+      : $('lineTrack').value;
+    fillLineTrackOptions(prefer);
   }
   const sizes = p && p.catalogue && p.catalogue.sectionSizes;
   if (sizes && typeof sizes === 'object') {
@@ -6778,7 +6835,10 @@ function syncDraftFromLine(ln) {
     }
   }
   if ($('lineMesh')) $('lineMesh').checked = !!ln.mesh;
-  if ($('lineTrack') && ln.trackCount != null) $('lineTrack').value = String(ln.trackCount);
+  if ($('lineTrack')) {
+    fillLineTrackOptions(ln.trackCount != null ? ln.trackCount : undefined);
+    if (ln.trackCount != null) $('lineTrack').value = String(ln.trackCount);
+  }
   if ($('lineSystem')) {
     const world = productWorldOf(selectedProductMeta(), ln);
     if (world === 'louver') $('lineSystem').value = ln.system || 'louver';

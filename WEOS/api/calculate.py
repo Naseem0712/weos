@@ -238,6 +238,30 @@ def products_catalog() -> list[dict[str, Any]]:
             cat = dict(p.get("catalogue") or {})
             if section_sizes and not cat.get("sectionSizes"):
                 cat["sectionSizes"] = section_sizes
+            track_options = []
+            setup_type = None
+            if setup:
+                try:
+                    from WEOS.factory.product_setup import defined_track_options, normalize_setup
+
+                    norm = normalize_setup(setup)
+                    setup_type = str(norm.get("type") or "") or None
+                    track_options = [
+                        {"id": o["id"], "label": o.get("label") or f"{o['id']} track", "trackCount": o.get("trackCount")}
+                        for o in defined_track_options(norm)
+                    ]
+                except Exception:
+                    track_options = []
+            if not track_options:
+                # Catalogue track list (Excel series without full setup yet)
+                raw_opts = cat.get("trackOptions") or []
+                if isinstance(raw_opts, (list, tuple)):
+                    for t in raw_opts:
+                        try:
+                            tid = "2.5" if abs(float(t) - 2.5) < 0.01 else str(int(float(t)))
+                        except (TypeError, ValueError):
+                            continue
+                        track_options.append({"id": tid, "label": f"{tid} track", "trackCount": float(tid) if tid != "2.5" else 2.5})
             items.append(
                 {
                     "id": pid,
@@ -260,6 +284,8 @@ def products_catalog() -> list[dict[str, Any]]:
                     "linkedProductId": p.get("linkedProductId"),
                     "sectionSizes": section_sizes,
                     "productType": p.get("productType"),
+                    "setupType": setup_type,
+                    "trackOptions": track_options,
                     "manufacturingReady": not (p.get("_stub") or p.get("status") == "stub"),
                     "ratesEditable": bool(p.get("ratesEditable", True)),
                 }

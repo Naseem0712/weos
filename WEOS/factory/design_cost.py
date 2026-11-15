@@ -22,6 +22,8 @@ from WEOS.factory.product_setup import (
     derive_casement_wastage_flags,
     normalize_section,
     normalize_setup,
+    setup_has_profile_rates,
+    with_active_track,
 )
 from WEOS.factory.remnant_stock import (
     WASTAGE_THRESHOLD_M,
@@ -819,13 +821,16 @@ def compute_casement_design_cost(
 ) -> dict[str, Any]:
     """Actual casement cost from canvas layout + series setup rates."""
     product = product if isinstance(product, Mapping) else {}
-    setup_blob = setup
-    if setup_blob is None:
-        setup_blob = product.get("setup") if isinstance(product.get("setup"), Mapping) else None
+    setup_blob = resolve_costing_setup(line, product=product, setup=setup)
     if not isinstance(setup_blob, Mapping):
         return {"ok": False, "costEngine": "stub", "reason": "no_setup", "total": 0.0}
 
-    norm = normalize_setup(setup_blob)
+    norm = normalize_setup(setup_blob) if not isinstance(setup_blob.get("casement"), Mapping) else setup_blob
+    if not isinstance(norm.get("casement"), Mapping):
+        try:
+            norm = normalize_setup(setup_blob)
+        except Exception:
+            return {"ok": False, "costEngine": "stub", "reason": "not_casement", "total": 0.0}
     if _str(norm.get("type")).lower() != "casement" and not isinstance(norm.get("casement"), Mapping):
         return {"ok": False, "costEngine": "stub", "reason": "not_casement", "total": 0.0}
 
@@ -1015,6 +1020,184 @@ def compute_casement_design_cost(
     }
 
 
+def _try_load_setup(product_id: str | None) -> dict[str, Any] | None:
+    pid = _str(product_id)
+    if not pid:
+        return None
+    try:
+        from WEOS.factory.product_loader import load_product
+
+        doc = load_product(pid, strict=False)
+        setup = doc.get("setup") if isinstance(doc.get("setup"), Mapping) else None
+        return dict(setup) if isinstance(setup, Mapping) else None
+    except Exception:
+        return None
+
+
+def _setup_from_catalogue_profiles(product: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Build a minimal sliding setup from catalogue.profiles when Series Setup is missing."""
+    if not isinstance(product, Mapping):
+        return None
+    cat = product.get("catalogue") if isinstance(product.get("catalogue"), Mapping) else {}
+    profiles = list(cat.get("profiles") or [])
+    if not profiles:
+        return None
+    try:
+        from WEOS.factory.profile_hardware_import import _build_sliding_setup, _setup_section_from_row
+    except Exception:
+        _build_sliding_setup = None  # type: ignore
+    # Convert catalogue profiles → import section rows (preserve weight/dims; default Al ₹450/kg)
+    sections: list[dict[str, Any]] = []
+    for p in profiles:
+        if not isinstance(p, Mapping):
+            continue
+        row = {
+            "name": p.get("name") or "",
+            "usage": p.get("usage") or "",
+            "usageLabel": p.get("usageLabel") or "",
+            "widthMm": p.get("widthMm"),
+            "sectionDepthMm": p.get("sectionDepthMm"),
+            "weightKgPerMtr": p.get("weightKgPerMtr") or p.get("weightKgPerM"),
+            "wallThicknessMm": p.get("wallThicknessMm"),
+            "standardLength": p.get("standardLength"),
+            "trackCount": p.get("trackCount"),
+            "rate": p.get("rate") if p.get("rate") not in (None, "") else 450.0,
+            "rateUnit": p.get("rateUnit") or "kg",
+            "coatingCost": p.get("coatingCost") if p.get("coatingCost") not in (None, "") else 0.0,
+            "use": p.get("use") or p.get("usageLabel") or "",
+            "pcsVertical": p.get("pcsVertical"),
+            "pcsHorizontal": p.get("pcsHorizontal"),
+            "allSidesSame": p.get("allSidesSame"),
+            "bomHint": p.get("bomHint"),
+            "designNote": p.get("designNote"),
+            "glassOptions": p.get("glassOptions") or [],
+            "centerOpeningOnly": p.get("centerOpeningOnly"),
+        }
+        sections.append(row)
+    if not sections:
+        return None
+    series = {
+        "id": _str(product.get("id") or product.get("sectionSeries") or "catalogue"),
+        "title": product.get("displayName") or product.get("id"),
+        "family": "sliding",
+        "sections": sections,
+    }
+    if _build_sliding_setup:
+        try:
+            return _build_sliding_setup(series, [])
+        except Exception:
+            pass
+    # Minimal fallback without import helper
+    from WEOS.factory.product_setup import normalize_setup as _ns
+
+    track_options = []
+    seen: set[str] = set()
+    for sec in sections:
+        tc = sec.get("trackCount")
+        if tc is None:
+            continue
+        tid = "2.5" if abs(float(tc) - 2.5) < 0.01 else str(int(float(tc)))
+        if tid in seen:
+            continue
+        seen.add(tid)
+        try:
+            from WEOS.factory.profile_hardware_import import _setup_section_from_row as _ss
+
+            s = _ss(sec)
+        except Exception:
+            s = {
+                "name": sec.get("name"),
+                "weightKgPerM": sec.get("weightKgPerMtr"),
+                "rate": sec.get("rate") or 450,
+                "rateUnit": "kg",
+                "coatingCost": sec.get("coatingCost") or 0,
+                "coatingUnit": "rft",
+                "wMm": sec.get("widthMm"),
+                "hMm": sec.get("sectionDepthMm"),
+                "wallMm": sec.get("wallThicknessMm"),
+            }
+        track_options.append({
+            "id": tid,
+            "label": f"{tid} track",
+            "sides": {"all": s, "vertical": s, "top": s, "bottom": s},
+        })
+    return _ns({"type": "sliding", "sliding": {"trackOptions": track_options, "activeTrackOption": (track_options[0]["id"] if track_options else "2")}})
+
+
+def resolve_costing_setup(
+    line: Mapping[str, Any] | None,
+    *,
+    product: Mapping[str, Any] | None = None,
+    setup: Mapping[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Resolve the richest sliding/casement setup for live design cost.
+
+    Prefers product.setup with profile rates; else sectionSeries product; else
+    linked engine; else catalogue.profiles → ephemeral setup. Syncs cart trackCount.
+    """
+    product = product if isinstance(product, Mapping) else {}
+    line = line if isinstance(line, Mapping) else {}
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    setup_blob = setup if isinstance(setup, Mapping) else None
+    if setup_blob is None and isinstance(product.get("setup"), Mapping):
+        setup_blob = dict(product.get("setup") or {})
+
+    candidates: list[dict[str, Any]] = []
+    if isinstance(setup_blob, Mapping) and setup_blob:
+        candidates.append(dict(setup_blob))
+
+    cat = product.get("catalogue") if isinstance(product.get("catalogue"), Mapping) else {}
+    series_id = _str(
+        line.get("sectionSeries")
+        or opts.get("sectionSeries")
+        or product.get("sectionSeries")
+        or cat.get("sectionSeries")
+    )
+    pid = _str(product.get("id") or line.get("product") or line.get("productId"))
+    if series_id and series_id != pid:
+        alt = _try_load_setup(series_id)
+        if alt:
+            candidates.append(alt)
+
+    linked = _str(product.get("linkedProductId") or cat.get("productId"))
+    if linked and linked != pid:
+        alt = _try_load_setup(linked)
+        if alt:
+            candidates.append(alt)
+
+    chosen: dict[str, Any] | None = None
+    for cand in candidates:
+        if setup_has_profile_rates(cand):
+            chosen = cand
+            break
+    if chosen is None and candidates:
+        # Last resort: first candidate even if empty (labour/install still apply)
+        chosen = candidates[0]
+
+    # Only hydrate sliding catalogue profiles for sliding/window series — never
+    # overwrite a casement setup with an ephemeral sliding BOM.
+    ptype = _str(product.get("productType") or line.get("system") or opts.get("system")).lower()
+    wants_casement = "casement" in ptype or "openable" in ptype
+    if not wants_casement and isinstance(chosen, Mapping):
+        wants_casement = _str(chosen.get("type")).lower() == "casement"
+    if (chosen is None or not setup_has_profile_rates(chosen)) and not wants_casement:
+        built = _setup_from_catalogue_profiles(product)
+        if built and setup_has_profile_rates(built):
+            chosen = built
+
+    if not isinstance(chosen, Mapping):
+        return None
+
+    track_c = line.get("trackCount") if line.get("trackCount") is not None else opts.get("trackCount")
+    try:
+        st = _str(chosen.get("type")).lower()
+        if st == "casement" or wants_casement:
+            return normalize_setup(chosen)
+        return with_active_track(chosen, track_count=track_c)
+    except Exception:
+        return normalize_setup(chosen)
+
+
 def compute_sliding_design_cost(
     line: Mapping[str, Any],
     *,
@@ -1023,10 +1206,16 @@ def compute_sliding_design_cost(
 ) -> dict[str, Any]:
     """Sliding cost from setup track/shutter rates + hardware (best-effort live)."""
     product = product if isinstance(product, Mapping) else {}
-    setup_blob = setup or (product.get("setup") if isinstance(product.get("setup"), Mapping) else None)
+    setup_blob = resolve_costing_setup(line, product=product, setup=setup)
     if not isinstance(setup_blob, Mapping):
         return {"ok": False, "costEngine": "stub", "reason": "no_setup", "total": 0.0}
-    norm = normalize_setup(setup_blob)
+    norm = normalize_setup(setup_blob) if not setup_blob.get("sliding") else setup_blob
+    if not isinstance(norm.get("sliding"), Mapping) and _str(norm.get("type")).lower() != "sliding":
+        # resolve may already return normalized setup
+        try:
+            norm = normalize_setup(setup_blob)
+        except Exception:
+            return {"ok": False, "costEngine": "stub", "reason": "not_sliding", "total": 0.0}
     if _str(norm.get("type")).lower() != "sliding" and not isinstance(norm.get("sliding"), Mapping):
         return {"ok": False, "costEngine": "stub", "reason": "not_sliding", "total": 0.0}
 
@@ -1053,6 +1242,12 @@ def compute_sliding_design_cost(
         or ""
     )
     track_c = line.get("trackCount") if line.get("trackCount") is not None else opts.get("trackCount")
+    # Ensure cart track is applied even if resolve skipped with_active_track
+    if track_c is not None:
+        try:
+            norm = with_active_track(norm, track_count=track_c)
+        except Exception:
+            pass
     bom = apply_setup_bom(
         norm,
         width_mm=W,
@@ -1419,8 +1614,23 @@ def compute_design_cost(
             product = load_product(product_id_of(line), strict=False)
         except Exception:
             product = {}
-    setup = product.get("setup") if isinstance(product.get("setup"), Mapping) else None
+    # Prefer Excel series product when cart product is an engine + sectionSeries
     payload = dict(line) if isinstance(line, Mapping) else {}
+    series_id = _str(
+        payload.get("sectionSeries")
+        or (payload.get("options") or {}).get("sectionSeries")
+        or product.get("sectionSeries")
+    )
+    if series_id and series_id != _str(product.get("id")):
+        try:
+            from WEOS.factory.product_loader import load_product
+
+            series_prod = load_product(series_id, strict=False)
+            if isinstance(series_prod.get("setup"), Mapping) and setup_has_profile_rates(series_prod["setup"]):
+                product = series_prod
+        except Exception:
+            pass
+    setup = resolve_costing_setup(payload, product=product)
     if remnant_pool is not None:
         payload["_remnantPool"] = remnant_pool
     system = _str(
