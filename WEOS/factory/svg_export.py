@@ -671,17 +671,18 @@ def _draw_plan(
     shutters = [s for s in (meta.get("shutters") or []) if isinstance(s, Mapping)]
     y_mid = plan_y0 + plan_h / 2.0
     band = plan_h * 0.30
-    sw = 0.6 * stroke_scale
+    sw = 1.15 * stroke_scale
 
     # Outer frame / track box
     parts.append(
         f'<rect x="{tx(0):.2f}" y="{ty(plan_y0 + plan_h):.2f}" width="{tx(W) - tx(0):.2f}" '
-        f'height="{ty(plan_y0) - ty(plan_y0 + plan_h):.2f}" fill="none" stroke="#222" '
-        f'stroke-width="{0.8 * stroke_scale:.2f}"/>'
+        f'height="{ty(plan_y0) - ty(plan_y0 + plan_h):.2f}" fill="none" stroke="#111" '
+        f'stroke-width="{1.55 * stroke_scale:.2f}"/>'
     )
     parts.append(
-        f'<text x="{tx(W / 2):.2f}" y="{ty(plan_y0 - 14 * stroke_scale):.2f}" text-anchor="middle" '
-        f'font-family="Segoe UI, Arial, sans-serif" font-size="{24 * stroke_scale:.0f}" fill="#666">PLAN</text>'
+        f'<text x="{tx(W / 2):.2f}" y="{ty(plan_y0 - 16 * stroke_scale):.2f}" text-anchor="middle" '
+        f'font-family="Segoe UI, Arial, sans-serif" font-size="{28 * stroke_scale:.0f}" '
+        f'font-weight="700" fill="#222">PLAN</text>'
     )
 
     if not shutters:
@@ -725,7 +726,8 @@ def _draw_plan(
         plan_lbl = "OPENABLE · hinge side" if operable_glass else "FIXED PANELS"
         parts.append(
             f'<text x="{tx(W / 2):.2f}" y="{ty(y_mid - band * 1.4):.2f}" text-anchor="middle" '
-            f'font-family="Segoe UI, Arial, sans-serif" font-size="{14 * stroke_scale:.0f}" fill="#173a63">{plan_lbl}</text>'
+            f'font-family="Segoe UI, Arial, sans-serif" font-size="{18 * stroke_scale:.0f}" '
+            f'font-weight="600" fill="#173a63">{plan_lbl}</text>'
         )
         return
 
@@ -759,17 +761,19 @@ def _draw_plan(
             yy = int_y + (ext_y - int_y) * (lv / float(n_levels - 1))
             parts.append(
                 f'<line x1="{tx(left_x):.2f}" y1="{ty(yy):.2f}" x2="{tx(W - left_x):.2f}" y2="{ty(yy):.2f}" '
-                f'stroke="#c3d0dd" {_solid_sw(0.5 * stroke_scale)}/>'
+                f'stroke="#94a3b8" {_solid_sw(0.95 * stroke_scale)}/>'
             )
 
     # External / Internal labels at the far left
     parts.append(
-        f'<text x="{tx(left_x) - 6 * stroke_scale:.2f}" y="{ty(ext_y) + 4 * stroke_scale:.2f}" text-anchor="end" '
-        f'font-family="Segoe UI, Arial, sans-serif" font-size="{12 * stroke_scale:.0f}" fill="#0b3d7a">External</text>'
+        f'<text x="{tx(left_x) - 6 * stroke_scale:.2f}" y="{ty(ext_y) + 5 * stroke_scale:.2f}" text-anchor="end" '
+        f'font-family="Segoe UI, Arial, sans-serif" font-size="{16 * stroke_scale:.0f}" '
+        f'font-weight="600" fill="#0b3d7a">External</text>'
     )
     parts.append(
-        f'<text x="{tx(left_x) - 6 * stroke_scale:.2f}" y="{ty(int_y) + 4 * stroke_scale:.2f}" text-anchor="end" '
-        f'font-family="Segoe UI, Arial, sans-serif" font-size="{12 * stroke_scale:.0f}" fill="#0b3d7a">Internal</text>'
+        f'<text x="{tx(left_x) - 6 * stroke_scale:.2f}" y="{ty(int_y) + 5 * stroke_scale:.2f}" text-anchor="end" '
+        f'font-family="Segoe UI, Arial, sans-serif" font-size="{16 * stroke_scale:.0f}" '
+        f'font-weight="600" fill="#0b3d7a">Internal</text>'
     )
 
     # Mesh sash (frontmost/internal) — dark wire line on its own mesh track
@@ -778,11 +782,12 @@ def _draw_plan(
         x0, x1 = float(s.get("x0") or 0), float(s.get("x1") or 0)
         parts.append(
             f'<line x1="{tx(x0):.2f}" y1="{ty(mesh_y):.2f}" x2="{tx(x1):.2f}" y2="{ty(mesh_y):.2f}" '
-            f'stroke="#1a1a1a" {_solid_sw(2.0 * stroke_scale)}/>'
+            f'stroke="#111111" {_solid_sw(2.6 * stroke_scale)}/>'
         )
         parts.append(
-            f'<text x="{tx((x0 + x1) / 2):.2f}" y="{ty(mesh_y) - 3 * stroke_scale:.2f}" text-anchor="middle" '
-            f'font-family="Segoe UI, Arial, sans-serif" font-size="{9 * stroke_scale:.0f}" fill="#1a1a1a">MESH</text>'
+            f'<text x="{tx((x0 + x1) / 2):.2f}" y="{ty(mesh_y) - 4 * stroke_scale:.2f}" text-anchor="middle" '
+            f'font-family="Segoe UI, Arial, sans-serif" font-size="{12 * stroke_scale:.0f}" '
+            f'font-weight="700" fill="#111111">MESH</text>'
         )
 
     # One offset track bar per glass sash: one line per track level
@@ -793,24 +798,25 @@ def _draw_plan(
         yy = _level_y(depth) if n_levels > 2 else (int_y if is_front else ext_y)
         parts.append(
             f'<line x1="{tx(x0):.2f}" y1="{ty(yy):.2f}" x2="{tx(x1):.2f}" y2="{ty(yy):.2f}" '
-            f'stroke="#0b3d7a" {_solid_sw(1.8 * stroke_scale)}/>'
+            f'stroke="#0b3d7a" {_solid_sw(2.55 * stroke_scale)}/>'
         )
         # End ticks
         for ex in (x0, x1):
             parts.append(
-                f'<line x1="{tx(ex):.2f}" y1="{ty(yy) - 4 * stroke_scale:.2f}" x2="{tx(ex):.2f}" '
-                f'y2="{ty(yy) + 4 * stroke_scale:.2f}" stroke="#0b3d7a" stroke-width="{1.4 * stroke_scale:.2f}"/>'
+                f'<line x1="{tx(ex):.2f}" y1="{ty(yy) - 5 * stroke_scale:.2f}" x2="{tx(ex):.2f}" '
+                f'y2="{ty(yy) + 5 * stroke_scale:.2f}" stroke="#0b3d7a" stroke-width="{2.0 * stroke_scale:.2f}"/>'
             )
         # Circled panel number below
         cxp = (x0 + x1) / 2.0
         num_y = y_mid - band * 1.35
         parts.append(
-            f'<circle cx="{tx(cxp):.2f}" cy="{ty(num_y):.2f}" r="{9 * stroke_scale:.2f}" fill="none" '
-            f'stroke="#0b3d7a" stroke-width="{1.3 * stroke_scale:.2f}"/>'
+            f'<circle cx="{tx(cxp):.2f}" cy="{ty(num_y):.2f}" r="{11 * stroke_scale:.2f}" fill="none" '
+            f'stroke="#0b3d7a" stroke-width="{1.85 * stroke_scale:.2f}"/>'
         )
         parts.append(
-            f'<text x="{tx(cxp):.2f}" y="{ty(num_y) + 4 * stroke_scale:.2f}" text-anchor="middle" '
-            f'font-family="Segoe UI, Arial, sans-serif" font-size="{12 * stroke_scale:.0f}" fill="#0b3d7a">{pos + 1}</text>'
+            f'<text x="{tx(cxp):.2f}" y="{ty(num_y) + 5 * stroke_scale:.2f}" text-anchor="middle" '
+            f'font-family="Segoe UI, Arial, sans-serif" font-size="{15 * stroke_scale:.0f}" '
+            f'font-weight="700" fill="#0b3d7a">{pos + 1}</text>'
         )
 
 
@@ -823,7 +829,7 @@ def _draw_plan_bifold(parts: list[str], *, tx, ty, shutters, W: float, y_mid: fl
     amp = plan_h * 0.30
     bounds = [float(glass[0].get("nomX0") or 0)] + [float(s.get("nomX1") or 0) for s in glass]
     pts = [(bounds[j], y_mid + (amp if j % 2 == 0 else -amp)) for j in range(len(bounds))]
-    sw = max(0.95, 1.05 * stroke_scale)
+    sw = max(1.25, 1.45 * stroke_scale)
 
     def _line_segment(a: tuple[float, float], b: tuple[float, float], gap_px: float = 3.0) -> tuple[float, float, float, float]:
         ax, ay = tx(a[0]), ty(a[1])
@@ -845,7 +851,8 @@ def _draw_plan_bifold(parts: list[str], *, tx, ty, shutters, W: float, y_mid: fl
         mx, my = (x1 + x2) / 2.0, (y1 + y2) / 2.0
         parts.append(
             f'<text x="{mx:.2f}" y="{my - 4 * stroke_scale:.2f}" text-anchor="middle" '
-            f'font-family="Segoe UI, Arial, sans-serif" font-size="{8 * stroke_scale:.0f}" fill="#0b3d7a">{pack}{i + 1}</text>'
+            f'font-family="Segoe UI, Arial, sans-serif" font-size="{12 * stroke_scale:.0f}" '
+            f'font-weight="600" fill="#0b3d7a">{pack}{i + 1}</text>'
         )
 
     # Hinge dots at real hinge vertices: inside a pack and at each outer pivot.
@@ -968,9 +975,12 @@ def render_svg_string(
     k = ref / 1000.0  # 1.0 at ~1000 mm reference
     k = max(0.55, min(k, 4.0))
 
-    plan_gap = (90.0 * k) if (annotations and include_plan) else 0.0
-    plan_h = (70.0 * k) if plan_gap else 0.0
-    dim_pad = (110.0 * k) if annotations else 0.0
+    # Plan sits just under the bottom width dims — keep the elev→plan gap tight.
+    # (Old 90*k gap + plan_y0=min_y+0.25*margin parked the plan under most of the
+    # bottom margin, leaving a huge empty band on large openings.)
+    plan_gap = (32.0 * k) if (annotations and include_plan) else 0.0
+    plan_h = (78.0 * k) if plan_gap else 0.0
+    dim_pad = (130.0 * k) if annotations else 0.0  # covers overall width text at -122*k
     margin = float(margin) * k
     # Tighter margin for PDF so geometry fills the design column
     if pdf:
@@ -1484,14 +1494,17 @@ def render_svg_string(
                 )
 
         if include_plan and plan_h > 0:
+            # Seat plan directly under dim_pad (+ plan_gap), not under the SVG
+            # bottom margin — that margin stays as padding below the PLAN label.
+            _elev_bottom = float(min(ys))
             _draw_plan(
                 parts,
                 tx=tx,
                 ty=ty,
                 model=model,
-                plan_y0=min_y + margin * 0.25,
+                plan_y0=_elev_bottom - dim_pad - plan_gap - plan_h,
                 plan_h=plan_h,
-                stroke_scale=max(0.55, min(k * 0.45, 1.05)),
+                stroke_scale=max(0.95, min(k * 0.85, 2.6)),
             )
 
     parts.append("</svg>")
