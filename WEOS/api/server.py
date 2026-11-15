@@ -3255,6 +3255,31 @@ async def api_quote_materials_list(request: Request) -> HTMLResponse:
     return HTMLResponse(content=html, media_type="text/html; charset=utf-8")
 
 
+@app.get("/api/stock")
+def api_stock_viewer() -> dict[str, Any]:
+    """Reusable aluminium remnant / bar stock for the Stock viewer UI."""
+    from WEOS.factory.remnant_stock import stock_viewer_payload
+
+    return stock_viewer_payload()
+
+
+@app.post("/api/stock/remnants")
+async def api_stock_merge_remnants(request: Request) -> dict[str, Any]:
+    """Persist quote remnants (>~3 ft) into leftover stock."""
+    from WEOS.factory.remnant_stock import merge_remnants_into_stock
+
+    try:
+        raw = await request.json()
+    except Exception:
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    remnants = raw.get("remnants") or raw.get("leftovers") or []
+    if not isinstance(remnants, list):
+        remnants = []
+    return merge_remnants_into_stock(remnants)
+
+
 @app.get("/api/sale-units")
 def api_sale_units() -> dict[str, Any]:
     from WEOS.factory.live_pricing import SALE_UNITS

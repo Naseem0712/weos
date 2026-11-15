@@ -378,10 +378,18 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
             "profitAmount": design_cost.get("profitAmount"),
             "profitPercent": design_cost.get("profitPercent"),
             "labourAmount": design_cost.get("labourAmount"),
+            "installationAmount": design_cost.get("installationAmount"),
+            "aluminiumCost": design_cost.get("aluminiumCost"),
+            "coatingCost": design_cost.get("coatingCost"),
+            "glassCost": design_cost.get("glassCost"),
+            "hardwareCost": design_cost.get("hardwareCost"),
             "wastageCost": design_cost.get("wastageCost"),
             "wastage": design_cost.get("wastage"),
+            "interlocks": design_cost.get("interlocks"),
             "breakdown": design_cost.get("breakdown"),
             "suggestedSellRate": design_cost.get("suggestedSellRate"),
+            "coatingFinishFamily": design_cost.get("coatingFinishFamily"),
+            "coatingBrand": design_cost.get("coatingBrand"),
         })
 
     return {

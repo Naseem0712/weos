@@ -2,16 +2,19 @@
 
 Casement / sliding costing from ``setup.casement`` / ``setup.sliding`` rates,
 layout (bands · panels · partitions), hardware packs, glass, labour ₹/sft and
-profit %.  Wastage: when project reuse is off (casement gallery default for
-stile/slim), leftover on std-length bars that cannot be reused is charged;
-reported waste ratio is clamped to the **0–2.5%** band for display when the
-true leftover is tiny, otherwise the full leftover cost is still added.
+profit %.
+
+Aluminium = section weight (kg/m) × rate (₹/kg|rft|rmt) × cut length.
+Powder coating = section coating ₹ × finish multiplier (plain / texture+20% /
+wooden+50%), separate from aluminium.
+Wastage: cut from std bars; leftover ≤ ~3 ft is scrap charged to the product;
+leftover > ~3 ft is reusable remnant (in-quote pool + persisted stock hook).
 """
 
 from __future__ import annotations
 
 import math
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, MutableMapping, Sequence
 
 from WEOS.factory.product_setup import (
     CASEMENT_STD_LENGTHS_M,
@@ -20,10 +23,18 @@ from WEOS.factory.product_setup import (
     normalize_section,
     normalize_setup,
 )
+from WEOS.factory.remnant_stock import (
+    WASTAGE_THRESHOLD_M,
+    is_reusable_remnant_m,
+    merge_remnants_into_stock,
+    remnant_key,
+)
 
 # Fabricator wastage band (percent of purchased bar length attributable to scrap).
 WASTAGE_PCT_MIN = 0.0
 WASTAGE_PCT_MAX = 2.5
+# Alias for callers / UI
+WASTAGE_MAX_REUSABLE_FT = 3.0
 
 
 def _f(v: Any, default: float = 0.0) -> float:
@@ -55,7 +66,14 @@ def _role(r: Any) -> str:
 
 
 def _section_rate_per_m(sec: Mapping[str, Any] | None) -> float:
-    """Convert section rate (rft/rmt/pc) to ₹ per metre."""
+    """Aluminium ₹ per metre from section rate + weight.
+
+    ``rateUnit``:
+    - ``kg`` → rate × weightKgPerM  (Excel / Series Setup default)
+    - ``rmt`` / ``m`` → rate as ₹/m
+    - ``rft`` / ``ft`` → rate / 0.3048 → ₹/m
+    Coating is separate via ``_coating_per_m``.
+    """
     if not isinstance(sec, Mapping):
         return 0.0
     s = normalize_section(sec)
@@ -63,11 +81,18 @@ def _section_rate_per_m(sec: Mapping[str, Any] | None) -> float:
     unit = _str(s.get("rateUnit") or "rft").lower()
     if rate <= 0:
         return 0.0
+    if unit in ("kg", "per_kg", "kgm", "rs_kg", "inr_kg"):
+        kg_m = _section_weight_kg_per_m(s)
+        return rate * kg_m if kg_m > 0 else 0.0
     if unit in ("rmt", "rm", "m"):
         return rate
     if unit in ("rft", "ft"):
         return rate / 0.3048  # ₹/ft → ₹/m
-    return rate  # pc / unknown — treat as per metre if length billed
+    # pc / unknown with weight → treat rate as ₹/kg when weight present
+    kg_m = _section_weight_kg_per_m(s)
+    if kg_m > 0 and unit in ("pc", "pcs", ""):
+        return rate * kg_m
+    return rate
 
 
 def _coating_per_m(
@@ -139,6 +164,46 @@ def _section_stock_label(sec: Mapping[str, Any] | None, *, fallback_std_m: float
     return "—"
 
 
+def _section_std_m(sec: Mapping[str, Any] | None, *, fallback: float = 3.0) -> float:
+    """Best std bar length in metres from section stock fields."""
+    if not isinstance(sec, Mapping):
+        return max(_f(fallback, 3.0), 0.1)
+    s = normalize_section(sec)
+    mm = _f(s.get("stdLengthMm"))
+    if mm > 0:
+        return max(mm / 1000.0, 0.1)
+    unit = _str(s.get("stdLengthUnit") or "rft").lower()
+    raw = s.get("stdLength")
+    # "12, 16" / "12 / 16" → prefer longest listed stock
+    if isinstance(raw, str) and raw.strip():
+        nums: list[float] = []
+        for part in raw.replace("/", ",").replace(";", ",").split(","):
+            part = part.strip().lower().replace("ft", "").replace("rft", "").replace("m", "")
+            try:
+                n = float(part)
+            except ValueError:
+                continue
+            if n > 0:
+                nums.append(n)
+        if nums:
+            n = max(nums)
+            if unit in ("rmt", "rm", "m"):
+                return max(n, 0.1)
+            return max(n * 0.3048, 0.1)  # rft default
+    if isinstance(raw, (int, float)) and float(raw) > 0:
+        n = float(raw)
+        if unit in ("rmt", "rm", "m"):
+            return max(n, 0.1)
+        return max(n * 0.3048, 0.1)
+    return max(_f(fallback, 3.0), 0.1)
+
+
+def _section_pool_key(sec: Mapping[str, Any] | None, *, series: str = "", colour: str = "", use: str = "") -> str:
+    s = normalize_section(sec) if isinstance(sec, Mapping) else {}
+    name = _str(s.get("name")) or _str(use) or "section"
+    return remnant_key(series=series or name, section=name, colour=colour)
+
+
 def _pick_std_m(costing: Mapping[str, Any] | None) -> float:
     c = costing if isinstance(costing, Mapping) else {}
     stds = c.get("stdLengthsM") or CASEMENT_STD_LENGTHS_M
@@ -158,67 +223,222 @@ def pack_std_length_wastage(
     std_m: float,
     reuse: bool,
     charge_full_when_split: bool = False,
+    remnants_in: Sequence[float] | None = None,
+    wastage_threshold_m: float = WASTAGE_THRESHOLD_M,
 ) -> dict[str, Any]:
-    """First-fit pack cuts into standard bars; return purchased m + wastage cost basis.
+    """First-fit pack cuts into std bars (+ optional remnant pool).
 
-    When ``reuse`` is False (casement gallery often off), leftover on each bar
-    is scrap and charged.  ``wastagePercent`` is clamped to 0–2.5 for UI when the
-    scrap share is tiny; full leftover metres still drive ``wastageMetres``.
+    Leftover ≤ ~3 ft → **wastage** (charged). Leftover > ~3 ft → **reusable
+    remnant** (not charged; returned in ``remnantsOut`` for in-quote / stock).
+    When ``reuse`` is False, existing remnants are not consumed, but new >3 ft
+    leftovers are still classified as remnants (not scrap).
     """
     std = max(float(std_m or 3.0), 0.1)
+    thresh = max(_f(wastage_threshold_m, WASTAGE_THRESHOLD_M), 0.0)
     pieces = sorted((max(float(x), 0.0) for x in cut_lengths_m if _f(x) > 0), reverse=True)
     net = sum(pieces)
+    empty = {
+        "netMetres": 0.0,
+        "purchasedMetres": 0.0,
+        "wastageMetres": 0.0,
+        "remnantMetres": 0.0,
+        "wastagePercent": 0.0,
+        "bars": 0,
+        "stdLengthM": std,
+        "reuse": bool(reuse),
+        "wastageThresholdM": round(thresh, 4),
+        "wastageThresholdFt": round(thresh / 0.3048, 2),
+        "remnantsOut": [],
+        "remnantsUsedM": 0.0,
+    }
     if not pieces:
-        return {
-            "netMetres": 0.0,
-            "purchasedMetres": 0.0,
-            "wastageMetres": 0.0,
-            "wastagePercent": 0.0,
-            "bars": 0,
-            "stdLengthM": std,
-            "reuse": bool(reuse),
-        }
+        return empty
+
+    # Bins: remaining length after cuts. Seed from reusable stock when reuse on.
+    bins: list[dict[str, Any]] = []
+    remnants_used = 0.0
+    if reuse:
+        for rem in sorted((_f(x) for x in (remnants_in or []) if _f(x) > thresh), reverse=True):
+            bins.append({"source": "remnant", "capacity": rem, "remaining": rem, "new": False})
+
+    def _place(L: float) -> None:
+        nonlocal remnants_used
+        for b in bins:
+            if b["remaining"] + 1e-9 >= L:
+                if b["source"] == "remnant" and abs(b["remaining"] - b["capacity"]) < 1e-9:
+                    remnants_used += b["capacity"]
+                b["remaining"] -= L
+                return
+        # New std bar
+        bins.append({"source": "new", "capacity": std, "remaining": std - L, "new": True})
 
     if charge_full_when_split and not reuse:
-        # Each piece consumes a full std length when sides differ (gallery flag).
-        bars = len(pieces)
-        purchased = bars * std
-        waste = max(purchased - net, 0.0)
-    elif reuse:
-        # Ideal: buy only net length (project reuses offcuts elsewhere).
-        purchased = net
-        waste = 0.0
-        bars = max(1, int(math.ceil(net / std))) if net else 0
-    else:
-        # Pack into std bars; leftover per bar is wastage.
-        remaining: list[float] = []
+        # One new bar per piece (gallery: top/bottom ≠ vertical).
         for L in pieces:
-            placed = False
-            for i, rem in enumerate(remaining):
-                if rem + 1e-9 >= L:
-                    remaining[i] = rem - L
-                    placed = True
-                    break
-            if not placed:
-                remaining.append(std - L)
-        bars = len(remaining)
-        purchased = bars * std
-        waste = max(purchased - net, 0.0)
+            bins.append({"source": "new", "capacity": std, "remaining": max(std - L, 0.0), "new": True})
+    else:
+        for L in pieces:
+            if L > std + 1e-9:
+                # Oversized: charge full piece as net; no pack
+                bins.append({"source": "new", "capacity": L, "remaining": 0.0, "new": True})
+            else:
+                _place(L)
+
+    new_bars = [b for b in bins if b.get("new")]
+    purchased = sum(b["capacity"] for b in new_bars)
+    waste = 0.0
+    remnant_out: list[float] = []
+    for b in bins:
+        left = max(_f(b.get("remaining")), 0.0)
+        if left <= 1e-9:
+            continue
+        if is_reusable_remnant_m(left, threshold_m=thresh):
+            remnant_out.append(round(left, 4))
+        else:
+            waste += left
 
     pct_raw = (waste / purchased * 100.0) if purchased > 0 else 0.0
-    # Display band 0–2.5 when scrap is a small share of a bar; keep true metres.
     pct_ui = min(max(pct_raw, WASTAGE_PCT_MIN), WASTAGE_PCT_MAX) if waste > 0 else 0.0
     if pct_raw > WASTAGE_PCT_MAX:
-        pct_ui = round(pct_raw, 3)  # show real % when leftover is large
+        pct_ui = round(pct_raw, 3)
     return {
         "netMetres": round(net, 4),
         "purchasedMetres": round(purchased, 4),
         "wastageMetres": round(waste, 4),
+        "remnantMetres": round(sum(remnant_out), 4),
         "wastagePercent": round(pct_ui, 3),
         "wastagePercentRaw": round(pct_raw, 3),
-        "bars": bars,
+        "bars": len(new_bars),
         "stdLengthM": std,
         "reuse": bool(reuse),
+        "wastageThresholdM": round(thresh, 4),
+        "wastageThresholdFt": round(thresh / 0.3048, 2),
+        "remnantsOut": remnant_out,
+        "remnantsUsedM": round(remnants_used, 4),
+    }
+
+
+def nest_cuts_by_section(
+    cut_specs: Sequence[Mapping[str, Any]],
+    *,
+    remnant_pool: MutableMapping[str, list[float]] | None = None,
+    reuse: bool = True,
+    charge_full_when_split: bool = False,
+    wastage_threshold_m: float = WASTAGE_THRESHOLD_M,
+    default_std_m: float = 3.0,
+) -> dict[str, Any]:
+    """Nest cuts grouped by section key; share remnant pool across groups/lines.
+
+    Each cut spec: ``{lengthM, key, stdM?, aluminiumPerM, coatingPerM, ...}``.
+    """
+    pool: MutableMapping[str, list[float]] = remnant_pool if remnant_pool is not None else {}
+    by_key: dict[str, list[Mapping[str, Any]]] = {}
+    for c in cut_specs or []:
+        if not isinstance(c, Mapping):
+            continue
+        if _f(c.get("lengthM")) <= 0:
+            continue
+        key = _str(c.get("key") or c.get("sectionKey") or "section")
+        by_key.setdefault(key, []).append(c)
+
+    groups: list[dict[str, Any]] = []
+    total_waste_m = 0.0
+    total_waste_cost = 0.0
+    total_al = 0.0
+    total_coat = 0.0
+    total_net_m = 0.0
+    total_purch_m = 0.0
+    remnants_created: list[dict[str, Any]] = []
+
+    for key, specs in by_key.items():
+        lengths = [_f(s.get("lengthM")) for s in specs]
+        std = _f(specs[0].get("stdM"), default_std_m) if specs else default_std_m
+        al_m = _f(specs[0].get("aluminiumPerM"))
+        coat_m = _f(specs[0].get("coatingPerM"))
+        # Prefer weighted average if rates differ within key
+        if len(specs) > 1:
+            tw = sum(_f(s.get("lengthM")) for s in specs) or 1.0
+            al_m = sum(_f(s.get("aluminiumPerM")) * _f(s.get("lengthM")) for s in specs) / tw
+            coat_m = sum(_f(s.get("coatingPerM")) * _f(s.get("lengthM")) for s in specs) / tw
+        seed = list(pool.get(key) or []) if reuse else []
+        pack = pack_std_length_wastage(
+            lengths,
+            std_m=std or default_std_m,
+            reuse=reuse,
+            charge_full_when_split=charge_full_when_split,
+            remnants_in=seed,
+            wastage_threshold_m=wastage_threshold_m,
+        )
+        # Consume used remnants from pool; push new remnants back
+        if reuse and key in pool:
+            used_budget = _f(pack.get("remnantsUsedM"))
+            kept: list[float] = []
+            for rem in sorted(pool.get(key) or [], reverse=True):
+                if used_budget > 1e-9 and rem <= used_budget + 1e-9:
+                    used_budget -= rem
+                elif used_budget > 1e-9 and rem > used_budget:
+                    # partially conceptually consumed — keep remainder if reusable
+                    left = rem - used_budget
+                    used_budget = 0.0
+                    if is_reusable_remnant_m(left, threshold_m=wastage_threshold_m):
+                        kept.append(left)
+                else:
+                    kept.append(rem)
+            pool[key] = kept
+        for rem in pack.get("remnantsOut") or []:
+            pool.setdefault(key, []).append(_f(rem))
+            remnants_created.append({
+                "key": key,
+                "lengthM": _f(rem),
+                "series": _str(specs[0].get("series")) if specs else "",
+                "section": _str(specs[0].get("sectionName") or specs[0].get("name")) if specs else key,
+                "colour": _str(specs[0].get("colour")) if specs else "",
+            })
+        waste_m = _f(pack.get("wastageMetres"))
+        net_m = _f(pack.get("netMetres"))
+        rate_combo = al_m + coat_m
+        waste_cost = waste_m * rate_combo
+        al_cost = net_m * al_m
+        coat_cost = net_m * coat_m
+        total_waste_m += waste_m
+        total_waste_cost += waste_cost
+        total_al += al_cost
+        total_coat += coat_cost
+        total_net_m += net_m
+        total_purch_m += _f(pack.get("purchasedMetres"))
+        groups.append({
+            "key": key,
+            "pack": pack,
+            "aluminiumCost": round(al_cost, 2),
+            "coatingCost": round(coat_cost, 2),
+            "wastageCost": round(waste_cost, 2),
+            "aluminiumPerM": round(al_m, 4),
+            "coatingPerM": round(coat_m, 4),
+        })
+
+    return {
+        "groups": groups,
+        "aluminiumCost": round(total_al, 2),
+        "coatingCost": round(total_coat, 2),
+        "wastageCost": round(total_waste_cost, 2),
+        "wastageMetres": round(total_waste_m, 4),
+        "netMetres": round(total_net_m, 4),
+        "purchasedMetres": round(total_purch_m, 4),
+        "remnantsCreated": remnants_created,
+        "remnantPool": {k: [round(_f(x), 4) for x in v] for k, v in pool.items()},
+        "wastage": {
+            "netMetres": round(total_net_m, 4),
+            "purchasedMetres": round(total_purch_m, 4),
+            "wastageMetres": round(total_waste_m, 4),
+            "remnantMetres": round(sum(_f(r.get("lengthM")) for r in remnants_created), 4),
+            "wastagePercent": round(
+                (total_waste_m / total_purch_m * 100.0) if total_purch_m > 0 else 0.0,
+                3,
+            ),
+            "wastageThresholdM": round(wastage_threshold_m, 4),
+            "wastageThresholdFt": round(wastage_threshold_m / 0.3048, 2),
+            "reuse": bool(reuse),
+        },
     }
 
 
@@ -366,7 +586,13 @@ def derive_casement_profile_cuts(
 
     lines: list[dict[str, Any]] = []
     cuts_m: list[float] = []
+    cut_specs: list[dict[str, Any]] = []
     coat_mult = coating_multiplier
+    series_label = ""
+    try:
+        series_label = _str((setup or {}).get("id") or (setup or {}).get("series") or "")
+    except Exception:
+        series_label = ""
 
     def add_profile(
         name: str,
@@ -379,18 +605,41 @@ def derive_casement_profile_cuts(
     ) -> None:
         if qty <= 0 or length_m <= 0:
             return
-        rate_m = _section_rate_per_m(sec)
-        coat_m = _coating_per_m(sec, colour=colour, coating_multiplier=coat_mult)
+        s = normalize_section(sec) if isinstance(sec, Mapping) else {}
+        rate_m = _section_rate_per_m(s)
+        coat_m = _coating_per_m(s, colour=colour, coating_multiplier=coat_mult)
         total_m = length_m * qty
-        for _ in range(int(max(round(qty), 1))):
+        n_int = int(max(round(qty), 1))
+        for _ in range(n_int):
             cuts_m.append(length_m)
-        # If qty is fractional, still bill metres
         if abs(qty - round(qty)) > 1e-6:
             cuts_m.append(length_m * (qty - int(qty)))
-        amount = total_m * (rate_m + coat_m)
-        display = _str(sec.get("name")) or name
-        kg_m = _section_weight_kg_per_m(sec)
+        al_amt = total_m * rate_m
+        coat_amt = total_m * coat_m
+        amount = al_amt + coat_amt
+        display = _str(s.get("name")) or name
+        kg_m = _section_weight_kg_per_m(s)
         pcs = int(round(qty)) if abs(qty - round(qty)) < 1e-6 else round(qty, 4)
+        std_m = _section_std_m(s, fallback=3.0)
+        key = _section_pool_key(s, series=series_label, colour=_str(colour), use=use)
+        piece_count = n_int
+        if abs(qty - round(qty)) > 1e-6:
+            piece_count += 1
+        for i in range(piece_count):
+            Lm = length_m if i < n_int else length_m * (qty - int(qty))
+            if Lm <= 0:
+                continue
+            cut_specs.append({
+                "lengthM": Lm,
+                "key": key,
+                "stdM": std_m,
+                "aluminiumPerM": rate_m,
+                "coatingPerM": coat_m,
+                "sectionName": display,
+                "series": series_label,
+                "colour": _str(colour),
+                "use": use,
+            })
         lines.append({
             "category": "profile",
             "name": display,
@@ -401,13 +650,21 @@ def derive_casement_profile_cuts(
             "metres": round(total_m, 4),
             "unit": "RM",
             "unitRate": round(rate_m + coat_m, 4),
+            "aluminiumPerM": round(rate_m, 4),
+            "coatingPerM": round(coat_m, 4),
+            "aluminiumAmount": round(al_amt, 2),
+            "coatingAmount": round(coat_amt, 2),
             "amount": round(amount, 2),
+            "rateUnit": _str(s.get("rateUnit") or "kg"),
             "catalogueName": display,
             "remarks": remarks,
             "sides": _str(remarks) or use.replace("_", " "),
-            "stock": _section_stock_label(sec),
+            "stock": _section_stock_label(s, fallback_std_m=std_m),
+            "stdLengthM": round(std_m, 4),
+            "sectionKey": key,
             "weightKgPerM": round(kg_m, 4) if kg_m else None,
             "weightKg": round(kg_m * total_m, 3) if kg_m else None,
+            "colour": _str(colour),
         })
 
     # Outer frame — always used
@@ -478,6 +735,7 @@ def derive_casement_profile_cuts(
     return {
         "lines": lines,
         "cutsM": cuts_m,
+        "cutSpecs": cut_specs,
         "counts": {
             "bands": n_bands,
             "panels": len(panels),
@@ -498,32 +756,51 @@ def _glass_cost(line: Mapping[str, Any], *, width_mm: float, height_mm: float, q
     name = _str(line.get("glass") or line.get("glassName") or "Glass")
     breakdown = None
     gid = _str(line.get("glass"))
+    thickness_mm = None
+    glass_colour = None
+    pack_name = None
+    kind = None
+    g: Mapping[str, Any] | None = None
     try:
         from WEOS.factory.glass_catalogue import cart_glass_options, get_glass
 
         g = get_glass(gid) if gid else None
         if isinstance(g, Mapping):
-            name = _str(g.get("name") or g.get("label") or name)
+            name = _str(g.get("name") or g.get("label") or g.get("displayName") or name)
+            pack_name = name
             rate = _f(g.get("rate") or g.get("ratePerSft") or g.get("ratePerSqft"))
+            thickness_mm = g.get("thicknessMm") or g.get("overallMm")
+            glass_colour = _str(g.get("colour") or g.get("color") or "")
+            kind = _str(g.get("kind") or g.get("type") or "")
             if isinstance(g.get("rateBreakdown"), Mapping):
                 breakdown = dict(g["rateBreakdown"])
         if rate <= 0 and gid:
-            # Fall back to synced cart / product option rate
             for opt in cart_glass_options(merge_library=True):
                 if str(opt.get("id") or "") == gid:
                     rate = _f(opt.get("rate") or opt.get("ratePerSft"))
                     name = _str(opt.get("label") or opt.get("name") or name)
+                    pack_name = name
+                    thickness_mm = opt.get("thicknessMm") or thickness_mm
+                    glass_colour = _str(opt.get("colour") or glass_colour or "")
                     if isinstance(opt.get("rateBreakdown"), Mapping):
                         breakdown = dict(opt["rateBreakdown"])
                     break
     except Exception:
         pass
-    # Line-level override
     rate = _f(line.get("glassRate") or (line.get("options") or {}).get("glassRate"), rate)
-    amt = area_sft * rate * max(qty, 1.0)
+    q = max(qty, 1.0)
+    amt = area_sft * rate * q
     out = {
         "name": name,
-        "areaSft": round(area_sft * max(qty, 1.0), 3),
+        "packName": pack_name or name,
+        "areaSft": round(area_sft * q, 3),
+        "widthMm": round(width_mm, 1),
+        "heightMm": round(height_mm, 1),
+        "sizeLabel": f"{round(width_mm):g}×{round(height_mm):g} mm",
+        "qty": q,
+        "thicknessMm": _f(thickness_mm) if thickness_mm is not None else None,
+        "colour": glass_colour or None,
+        "kind": kind or None,
         "unitRate": rate,
         "amount": round(amt, 2),
         "catalogueName": name,
@@ -578,31 +855,28 @@ def compute_casement_design_cost(
     cm = norm.get("casement") or {}
     costing = cm.get("costing") if isinstance(cm.get("costing"), Mapping) else {}
     flags = derive_casement_wastage_flags(norm)
-    # Match gallery: casement wastage reuse often off
     reuse = bool(flags.get("projectWastageReuse"))
     if costing.get("projectWastageReuse") is False:
         reuse = False
     std_m = _pick_std_m(costing)
     charge_full = bool(flags.get("chargeFullStdLength"))
+    remnant_pool: dict[str, list[float]] = {}
+    if isinstance(line.get("_remnantPool"), dict):
+        remnant_pool = {str(k): list(v) for k, v in line["_remnantPool"].items() if isinstance(v, list)}
 
-    waste = pack_std_length_wastage(
-        cuts.get("cutsM") or [],
-        std_m=std_m,
+    nest = nest_cuts_by_section(
+        cuts.get("cutSpecs") or [],
+        remnant_pool=remnant_pool,
         reuse=reuse,
         charge_full_when_split=charge_full,
+        default_std_m=std_m,
     )
-
-    profile_net = sum(_f(ln.get("amount")) for ln in (cuts.get("lines") or []))
-    # Scale profile cost by purchased/net when charging wastage bars
-    net_m = _f(waste.get("netMetres"))
-    purch_m = _f(waste.get("purchasedMetres"))
-    if net_m > 0 and purch_m > net_m and not reuse:
-        scale = purch_m / net_m
-        profile_purchased = profile_net * scale
-        wastage_cost = profile_purchased - profile_net
-    else:
-        profile_purchased = profile_net
-        wastage_cost = 0.0
+    waste = nest.get("wastage") or {}
+    al_amt = _f(nest.get("aluminiumCost"))
+    coat_amt = _f(nest.get("coatingCost"))
+    wastage_cost = _f(nest.get("wastageCost"))
+    profile_net = al_amt + coat_amt
+    profile_purchased = profile_net + wastage_cost
 
     # Hardware from pack — only operable doors (side-swing ≠ top-hung)
     side_n = float(counts.get("sideSwingDoors") or 0)
@@ -630,10 +904,17 @@ def compute_casement_design_cost(
         r = _f(h.get("unitRate") or h.get("rate"))
         amt = q * r
         hw_amt += amt
+        brand = ""
+        try:
+            from WEOS.factory.hardware_brands import resolve_hardware_brand
+            brand = resolve_hardware_brand(h, brand=h.get("brand"), origin=h.get("origin"), name=h.get("name"))
+        except Exception:
+            brand = _str(h.get("brand"))
         hw_lines.append({
             "category": "hardware",
             "name": _str(h.get("name")),
             "catalogueName": _str(h.get("name")),
+            "brand": brand,
             "qty": q,
             "unit": _str(h.get("unit") or "PC"),
             "unitRate": r,
@@ -645,7 +926,13 @@ def compute_casement_design_cost(
     glass_amt = _f(glass.get("amount"))
 
     area_sft = (W * H / 1_000_000.0) * 10.7639
-    from WEOS.factory.commercial_defaults import installation_per_sft, labour_per_sft
+    from WEOS.factory.commercial_defaults import (
+        coating_multiplier_for_colour,
+        default_coating_brand,
+        finish_family_for_colour,
+        installation_per_sft,
+        labour_per_sft,
+    )
 
     labour_rate = labour_per_sft(costing.get("labourPerSft"))
     labour_amt = area_sft * labour_rate
@@ -668,15 +955,14 @@ def compute_casement_design_cost(
         suggested_rate = round(unit_total / area_sft, 2)
 
     engine = "live" if (profile_net > 0 or hw_amt > 0 or glass_amt > 0 or labour_amt > 0 or install_amt > 0) else "stub"
-    # Flip costing flag for future loads
-    if engine == "live" and isinstance(costing, dict):
-        pass
-
     try:
-        from WEOS.factory.commercial_defaults import coating_multiplier_for_colour
         coat_mult = coating_multiplier_for_colour(colour)
+        finish_family = finish_family_for_colour(colour)
+        coat_brand = default_coating_brand()
     except Exception:
         coat_mult = 1.0
+        finish_family = "plain"
+        coat_brand = ""
 
     return {
         "ok": True,
@@ -694,14 +980,20 @@ def compute_casement_design_cost(
         "installationAmount": round(install_amt * qty, 2),
         "installationPerSft": install_rate,
         "coatingMultiplier": coat_mult,
+        "coatingFinishFamily": finish_family,
+        "coatingBrand": coat_brand,
         "colour": colour,
         "materialCost": round(material_sub * qty, 2),
+        "aluminiumCost": round(al_amt * qty, 2),
+        "coatingCost": round(coat_amt * qty, 2),
         "profileCost": round(profile_purchased * qty, 2),
         "profileNetCost": round(profile_net * qty, 2),
         "wastageCost": round(wastage_cost * qty, 2),
         "hardwareCost": round(hw_amt * qty, 2),
         "glassCost": round(glass_amt * qty, 2),
         "wastage": waste,
+        "remnants": nest.get("remnantsCreated") or [],
+        "remnantPool": nest.get("remnantPool") or {},
         "profiles": cuts.get("lines") or [],
         "hardware": hw_lines,
         "glass": glass,
@@ -710,7 +1002,9 @@ def compute_casement_design_cost(
         "saleUnit": sale_unit,
         "areaSft": round(area_sft, 3),
         "breakdown": {
-            "profiles": round(profile_purchased, 2),
+            "aluminium": round(al_amt, 2),
+            "coating": round(coat_amt, 2),
+            "profiles": round(profile_net, 2),
             "wastage": round(wastage_cost, 2),
             "hardware": round(hw_amt, 2),
             "glass": round(glass_amt, 2),
@@ -741,12 +1035,38 @@ def compute_sliding_design_cost(
     qty = max(_f(line.get("qty") or line.get("quantity"), 1.0), 1.0)
     opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
     colour = _str(line.get("colour") or opts.get("colour") or "white")
-    shutters = max(_f(line.get("glassShutters") or opts.get("glassCount"), 2), 1)
+    shutters = max(_f(line.get("glassShutters") or opts.get("glassCount") or opts.get("glassShutters"), 2), 1)
+    mesh_n = max(
+        _f(
+            line.get("meshShutters")
+            or opts.get("meshCount")
+            or opts.get("meshShutters")
+            or (1 if (line.get("mesh") or opts.get("mesh")) else 0)
+        ),
+        0,
+    )
+    opening = _str(
+        line.get("opening")
+        or line.get("openingType")
+        or opts.get("opening")
+        or opts.get("openingType")
+        or ""
+    )
+    track_c = line.get("trackCount") if line.get("trackCount") is not None else opts.get("trackCount")
     bom = apply_setup_bom(
         norm,
         width_mm=W,
         height_mm=H,
-        ctx={"shutterCount": shutters, "glassCount": shutters, "system": "sliding"},
+        ctx={
+            "shutterCount": shutters,
+            "glassCount": shutters,
+            "meshCount": mesh_n,
+            "meshShutters": mesh_n,
+            "opening": opening or None,
+            "trackCount": track_c,
+            "colour": colour,
+            "system": "sliding",
+        },
         shutter_count=shutters,
         system_type="sliding",
         qty=1.0,
@@ -754,59 +1074,192 @@ def compute_sliding_design_cost(
     sl = norm.get("sliding") or {}
     costing = sl.get("costing") if isinstance(sl.get("costing"), Mapping) else {}
 
-    profile_amt = 0.0
-    profile_lines = []
+    profile_lines: list[dict[str, Any]] = []
+    cut_specs: list[dict[str, Any]] = []
+    series_label = _str(
+        line.get("sectionSeries")
+        or product.get("id")
+        or product.get("displayName")
+        or "sliding"
+    )
     # Track fill lengths
     for tf in (bom.get("trackFill") or {}).get("lines") or []:
         sec = tf.get("section") if isinstance(tf.get("section"), Mapping) else {}
+        s = normalize_section(sec) if sec else {}
         length_mm = _f(tf.get("lengthMm"))
+        role = _str(tf.get("role"))
         if length_mm <= 0:
-            # all-side pattern without lengths — use W or H by role
-            role = _str(tf.get("role"))
             length_mm = H if "vertical" in role or "left" in role or "right" in role else W
             if "all" in role:
-                # 2W + 2H billed as 4 pieces average
                 length_mm = (2 * W + 2 * H) / max(_f(tf.get("qty"), 4), 1)
         q = _f(tf.get("qty"), 1)
         Lm = length_mm / 1000.0
-        rate_m = _section_rate_per_m(sec) + _coating_per_m(sec, colour=colour)
-        amt = Lm * q * rate_m
-        profile_amt += amt
-        kg_m = _section_weight_kg_per_m(sec)
-        role = _str(tf.get("role"))
+        al_m = _section_rate_per_m(s)
+        coat_m = _coating_per_m(s, colour=colour)
+        al_amt = Lm * q * al_m
+        coat_amt = Lm * q * coat_m
+        amt = al_amt + coat_amt
+        kg_m = _section_weight_kg_per_m(s)
+        std_m = _section_std_m(s, fallback=5.85)
+        display = _str(s.get("name")) or role or "Track"
+        key = _section_pool_key(s, series=series_label, colour=colour, use="track")
+        pcs = int(round(q)) if abs(q - round(q)) < 1e-6 else round(q, 4)
+        for _ in range(max(int(round(q)), 1)):
+            cut_specs.append({
+                "lengthM": Lm,
+                "key": key,
+                "stdM": std_m,
+                "aluminiumPerM": al_m,
+                "coatingPerM": coat_m,
+                "sectionName": display,
+                "series": series_label,
+                "colour": colour,
+                "use": "track",
+            })
         profile_lines.append({
             "category": "profile",
-            "name": _str(sec.get("name")) or role or "Track",
-            "catalogueName": _str(sec.get("name")) or role,
+            "name": display,
+            "catalogueName": display,
             "qty": q,
-            "pcs": int(round(q)) if abs(q - round(q)) < 1e-6 else round(q, 4),
+            "pcs": pcs,
             "lengthM": round(Lm, 4),
             "metres": round(Lm * q, 4),
             "unit": "RM",
-            "unitRate": round(rate_m, 4),
+            "unitRate": round(al_m + coat_m, 4),
+            "aluminiumPerM": round(al_m, 4),
+            "coatingPerM": round(coat_m, 4),
+            "aluminiumAmount": round(al_amt, 2),
+            "coatingAmount": round(coat_amt, 2),
             "amount": round(amt, 2),
+            "rateUnit": _str(s.get("rateUnit") or "kg"),
             "use": "track",
             "sides": role.replace("_", " ") or "track",
-            "stock": _section_stock_label(sec, fallback_std_m=5.85),
+            "stock": _section_stock_label(s, fallback_std_m=std_m),
+            "stdLengthM": round(std_m, 4),
+            "sectionKey": key,
             "weightKgPerM": round(kg_m, 4) if kg_m else None,
             "weightKg": round(kg_m * Lm * q, 3) if kg_m else None,
+            "colour": colour,
             "remarks": role,
         })
 
-    # Member cuts
+    def _append_bom_profile_lines(raw_lines: Sequence[Any], *, default_use: str) -> None:
+        for il in raw_lines or []:
+            if not isinstance(il, Mapping):
+                continue
+            sec = il.get("section") if isinstance(il.get("section"), Mapping) else {}
+            s = normalize_section(sec) if sec else {}
+            q = _f(il.get("qty"), 1)
+            Lm = _f(il.get("lengthM"))
+            if Lm <= 0:
+                Lm = H / 1000.0
+            al_m = _section_rate_per_m(s)
+            coat_m = _coating_per_m(s, colour=colour)
+            al_amt_l = Lm * q * al_m
+            coat_amt_l = Lm * q * coat_m
+            kg_m = _section_weight_kg_per_m(s)
+            std_m = _section_std_m(s, fallback=5.85)
+            display = _str(il.get("catalogueName") or il.get("name") or s.get("name") or il.get("use") or default_use)
+            key = _section_pool_key(s, series=series_label, colour=colour, use=_str(il.get("use") or default_use))
+            for _ in range(max(int(round(q)), 1)):
+                cut_specs.append({
+                    "lengthM": Lm,
+                    "key": key,
+                    "stdM": std_m,
+                    "aluminiumPerM": al_m,
+                    "coatingPerM": coat_m,
+                    "sectionName": display,
+                    "series": series_label,
+                    "colour": colour,
+                    "use": _str(il.get("use") or default_use),
+                })
+            profile_lines.append({
+                "category": "profile",
+                "name": display,
+                "catalogueName": display,
+                "qty": q,
+                "pcs": int(round(q)) if abs(q - round(q)) < 1e-6 else round(q, 4),
+                "lengthM": round(Lm, 4),
+                "metres": round(Lm * q, 4),
+                "unit": "RM",
+                "unitRate": round(al_m + coat_m, 4),
+                "aluminiumPerM": round(al_m, 4),
+                "coatingPerM": round(coat_m, 4),
+                "aluminiumAmount": round(al_amt_l, 2),
+                "coatingAmount": round(coat_amt_l, 2),
+                "amount": round(al_amt_l + coat_amt_l, 2),
+                "rateUnit": _str(s.get("rateUnit") or "kg"),
+                "use": _str(il.get("use") or default_use),
+                "sides": _str(il.get("sides") or il.get("use") or default_use),
+                "stock": _section_stock_label(s, fallback_std_m=std_m),
+                "stdLengthM": round(std_m, 4),
+                "sectionKey": key,
+                "weightKgPerM": round(kg_m, 4) if kg_m else None,
+                "weightKg": round(kg_m * Lm * q, 3) if kg_m else None,
+                "colour": colour,
+                "remarks": _str(il.get("remarks")),
+                "pcsVertical": s.get("pcsVertical"),
+                "pcsHorizontal": s.get("pcsHorizontal"),
+            })
+
+    # Shutter frames from Excel V/H / V2 H2
+    shutter_pack = bom.get("shutterFrames") if isinstance(bom.get("shutterFrames"), Mapping) else {}
+    _append_bom_profile_lines(shutter_pack.get("lines") or [], default_use="shutter")
+
+    # Interlocks (slim / renf / mesh-slim) + glass reducer 1/interlock
+    inter_pack = bom.get("interlocks") if isinstance(bom.get("interlocks"), Mapping) else {}
+    _append_bom_profile_lines(inter_pack.get("lines") or [], default_use="interlock")
+
+    # Member cuts (legacy wFactor/hFactor) — metres already billed
     for m in bom.get("members") or []:
-        q = _f(m.get("qty") or m.get("metres"))
-        r = _f(m.get("unitRate"))
-        amt = q * r
-        profile_amt += amt
+        metres = _f(m.get("metres"))
+        q = _f(m.get("qty") or metres)
+        # Members may already convert rft; prefer metres × (kg rate) when weight present
+        kg_m = _f(m.get("weightKgPerM"))
+        rate_unit = _str(m.get("rateUnit") or "m").lower()
+        raw_rate = _f(m.get("unitRate") or m.get("ratePerM") or m.get("rate"))
+        if rate_unit == "kg" and kg_m > 0 and metres > 0:
+            al_m = raw_rate * kg_m
+            bill_m = metres
+        elif _str(m.get("unit") or "").upper() == "RFT" and metres > 0:
+            al_m = raw_rate / 0.3048
+            bill_m = metres
+        else:
+            al_m = raw_rate
+            bill_m = metres if metres > 0 else q
+        al_amt = bill_m * al_m
+        name = _str(m.get("name"))
+        key = remnant_key(series=series_label, section=name or "member", colour=colour)
+        if bill_m > 0:
+            cut_specs.append({
+                "lengthM": bill_m,
+                "key": key,
+                "stdM": 5.85,
+                "aluminiumPerM": al_m,
+                "coatingPerM": 0.0,
+                "sectionName": name,
+                "series": series_label,
+                "colour": colour,
+                "use": "member",
+            })
         profile_lines.append({
             "category": "profile",
-            "name": _str(m.get("name")),
-            "catalogueName": _str(m.get("name")),
+            "name": name,
+            "catalogueName": name,
             "qty": q,
+            "pcs": 1,
+            "lengthM": round(bill_m, 4) if bill_m else None,
+            "metres": round(bill_m, 4) if bill_m else None,
             "unit": _str(m.get("unit") or "RM"),
-            "unitRate": r,
-            "amount": round(amt, 2),
+            "unitRate": round(al_m, 4),
+            "aluminiumPerM": round(al_m, 4),
+            "coatingPerM": 0.0,
+            "aluminiumAmount": round(al_amt, 2),
+            "coatingAmount": 0.0,
+            "amount": round(al_amt, 2),
+            "weightKgPerM": kg_m or None,
+            "colour": colour,
+            "sectionKey": key,
         })
 
     # Fixed partition series surcharge — anonymous fix is not allowed when series set
@@ -826,6 +1279,7 @@ def compute_sliding_design_cost(
                 "amount": 0,
                 "remarks": f"{_str(p.get('side'))} {_f(p.get('sizeMm'))} mm — series {series}",
                 "use": "fixed_partition",
+                "colour": colour,
             })
 
     hw_amt = 0.0
@@ -835,10 +1289,17 @@ def compute_sliding_design_cost(
         r = _f(h.get("unitRate") or h.get("rate"))
         amt = q * r
         hw_amt += amt
+        brand = ""
+        try:
+            from WEOS.factory.hardware_brands import resolve_hardware_brand
+            brand = resolve_hardware_brand(h, brand=h.get("brand"), origin=h.get("origin"), name=h.get("name"))
+        except Exception:
+            brand = _str(h.get("brand"))
         hw_lines.append({
             "category": "hardware",
             "name": _str(h.get("name")),
             "catalogueName": _str(h.get("name")),
+            "brand": brand,
             "qty": q,
             "unit": _str(h.get("unit") or "PC"),
             "unitRate": r,
@@ -850,6 +1311,8 @@ def compute_sliding_design_cost(
     area_sft = (W * H / 1_000_000.0) * 10.7639
     from WEOS.factory.commercial_defaults import (
         coating_multiplier_for_colour,
+        default_coating_brand,
+        finish_family_for_colour,
         installation_per_sft,
         labour_per_sft,
     )
@@ -859,16 +1322,21 @@ def compute_sliding_design_cost(
     install_rate = installation_per_sft(costing.get("installationPerSft") or costing.get("installPerSft"))
     install_amt = area_sft * install_rate
     reuse = bool(costing.get("projectWastageReuse", True))
-    waste = pack_std_length_wastage(
-        [ _f(ln.get("lengthM")) for ln in profile_lines for _ in range(max(int(_f(ln.get("qty"), 1)), 1)) ],
-        std_m=5.85,  # typical sliding bar
+    remnant_pool: dict[str, list[float]] = {}
+    if isinstance(line.get("_remnantPool"), dict):
+        remnant_pool = {str(k): list(v) for k, v in line["_remnantPool"].items() if isinstance(v, list)}
+    nest = nest_cuts_by_section(
+        cut_specs,
+        remnant_pool=remnant_pool,
         reuse=reuse,
+        default_std_m=5.85,
     )
-    wastage_cost = 0.0
-    if not reuse and _f(waste.get("netMetres")) > 0:
-        scale = _f(waste.get("purchasedMetres")) / max(_f(waste.get("netMetres")), 1e-9)
-        wastage_cost = max(profile_amt * (scale - 1.0), 0.0)
-        profile_amt = profile_amt + wastage_cost
+    al_amt = _f(nest.get("aluminiumCost"))
+    coat_amt = _f(nest.get("coatingCost"))
+    wastage_cost = _f(nest.get("wastageCost"))
+    profile_net = al_amt + coat_amt
+    profile_amt = profile_net + wastage_cost
+    waste = nest.get("wastage") or {}
 
     material_sub = profile_amt + hw_amt + glass_amt
     cost_before = material_sub + labour_amt + install_amt
@@ -879,8 +1347,12 @@ def compute_sliding_design_cost(
     suggested = round(unit_total / area_sft, 2) if area_sft > 0 else None
     try:
         coat_mult = coating_multiplier_for_colour(colour)
+        finish_family = finish_family_for_colour(colour)
+        coat_brand = default_coating_brand()
     except Exception:
         coat_mult = 1.0
+        finish_family = "plain"
+        coat_brand = ""
     return {
         "ok": True,
         "costEngine": engine,
@@ -897,13 +1369,20 @@ def compute_sliding_design_cost(
         "installationAmount": round(install_amt * qty, 2),
         "installationPerSft": install_rate,
         "coatingMultiplier": coat_mult,
+        "coatingFinishFamily": finish_family,
+        "coatingBrand": coat_brand,
         "colour": colour,
         "materialCost": round(material_sub * qty, 2),
+        "aluminiumCost": round(al_amt * qty, 2),
+        "coatingCost": round(coat_amt * qty, 2),
         "profileCost": round(profile_amt * qty, 2),
         "wastageCost": round(wastage_cost * qty, 2),
         "hardwareCost": round(hw_amt * qty, 2),
         "glassCost": round(glass_amt * qty, 2),
         "wastage": waste,
+        "remnants": nest.get("remnantsCreated") or [],
+        "remnantPool": nest.get("remnantPool") or {},
+        "interlocks": inter_pack.get("assignment") or {},
         "profiles": profile_lines,
         "hardware": hw_lines,
         "glass": glass,
@@ -911,7 +1390,9 @@ def compute_sliding_design_cost(
         "saleUnit": "sqft",
         "areaSft": round(area_sft, 3),
         "breakdown": {
-            "profiles": round(profile_amt - wastage_cost, 2),
+            "aluminium": round(al_amt, 2),
+            "coating": round(coat_amt, 2),
+            "profiles": round(profile_net, 2),
             "wastage": round(wastage_cost, 2),
             "hardware": round(hw_amt, 2),
             "glass": round(glass_amt, 2),
@@ -926,6 +1407,7 @@ def compute_design_cost(
     line: Mapping[str, Any],
     *,
     product: Mapping[str, Any] | None = None,
+    remnant_pool: MutableMapping[str, list[float]] | None = None,
 ) -> dict[str, Any]:
     """Route to casement / sliding design cost; stub otherwise."""
     product = product if isinstance(product, Mapping) else {}
@@ -938,18 +1420,90 @@ def compute_design_cost(
         except Exception:
             product = {}
     setup = product.get("setup") if isinstance(product.get("setup"), Mapping) else None
+    payload = dict(line) if isinstance(line, Mapping) else {}
+    if remnant_pool is not None:
+        payload["_remnantPool"] = remnant_pool
     system = _str(
-        line.get("system")
-        or (line.get("options") or {}).get("system")
+        payload.get("system")
+        or (payload.get("options") or {}).get("system")
         or (setup or {}).get("type")
         or product.get("productType")
         or ""
     ).lower()
     if "casement" in system or "openable" in system or (setup and _str(setup.get("type")) == "casement"):
-        return compute_casement_design_cost(line, product=product, setup=setup)
+        return compute_casement_design_cost(payload, product=product, setup=setup)
     if "sliding" in system or (setup and _str(setup.get("type")) == "sliding"):
-        return compute_sliding_design_cost(line, product=product, setup=setup)
-    # Try casement layout presence
-    if line.get("casementLayout") or (line.get("options") or {}).get("casementLayout"):
-        return compute_casement_design_cost(line, product=product, setup=setup)
+        return compute_sliding_design_cost(payload, product=product, setup=setup)
+    if payload.get("casementLayout") or (payload.get("options") or {}).get("casementLayout"):
+        return compute_casement_design_cost(payload, product=product, setup=setup)
     return {"ok": False, "costEngine": "stub", "reason": "unsupported", "total": 0.0}
+
+
+def compute_quote_design_costs(
+    lines: Sequence[Mapping[str, Any]],
+    *,
+    persist_remnants: bool = False,
+) -> dict[str, Any]:
+    """Cost all quote lines sharing one remnant pool (same series/section reuse).
+
+    Short leftovers (≤3 ft) are charged on the line that created them; longer
+    remnants feed later lines, then optionally ``inventory.json``.
+    """
+    pool: dict[str, list[float]] = {}
+    results: list[dict[str, Any]] = []
+    all_remnants: list[dict[str, Any]] = []
+    totals = {
+        "aluminium": 0.0,
+        "coating": 0.0,
+        "glass": 0.0,
+        "hardware": 0.0,
+        "labour": 0.0,
+        "installation": 0.0,
+        "wastage": 0.0,
+        "total": 0.0,
+    }
+    for raw in lines or []:
+        if not isinstance(raw, Mapping) or raw.get("cancelled"):
+            continue
+        cost = compute_design_cost(raw, remnant_pool=pool)
+        # Keep pool mutations from nested nest_cuts
+        if isinstance(cost.get("remnantPool"), dict):
+            pool.clear()
+            for k, v in cost["remnantPool"].items():
+                if isinstance(v, list):
+                    pool[str(k)] = list(v)
+        for r in cost.get("remnants") or []:
+            if isinstance(r, Mapping):
+                all_remnants.append(dict(r))
+        results.append({"lineId": raw.get("lineId") or raw.get("id"), "cost": cost})
+        if cost.get("ok"):
+            totals["aluminium"] += _f(cost.get("aluminiumCost"))
+            totals["coating"] += _f(cost.get("coatingCost"))
+            totals["glass"] += _f(cost.get("glassCost"))
+            totals["hardware"] += _f(cost.get("hardwareCost"))
+            totals["labour"] += _f(cost.get("labourAmount"))
+            totals["installation"] += _f(cost.get("installationAmount"))
+            totals["wastage"] += _f(cost.get("wastageCost"))
+            totals["total"] += _f(cost.get("total"))
+
+    persisted = None
+    if persist_remnants and all_remnants:
+        try:
+            persisted = merge_remnants_into_stock(all_remnants)
+        except Exception as exc:
+            persisted = {"ok": False, "error": str(exc)}
+
+    return {
+        "ok": True,
+        "lines": results,
+        "totals": {k: round(v, 2) for k, v in totals.items()},
+        "remnantPool": {k: [round(_f(x), 4) for x in v] for k, v in pool.items()},
+        "remnants": all_remnants,
+        "persistedStock": persisted,
+        "wastageThresholdFt": WASTAGE_MAX_REUSABLE_FT,
+        "notes": (
+            "In-quote remnant reuse across lines of the same series/section. "
+            "Leftover ≤3 ft charged as wastage; >3 ft kept as reusable stock"
+            + (" and merged into inventory.json." if persist_remnants else " (persist_remnants=False).")
+        ),
+    }

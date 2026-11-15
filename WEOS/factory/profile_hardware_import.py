@@ -140,19 +140,26 @@ def _parse_dims(val: Any) -> tuple[float | None, float | None]:
 
 
 def _parse_rate(val: Any) -> tuple[float | None, str]:
-    """Return (rate, unit). Default unit ``kg``; ``200 per rft`` → rft."""
+    """Return (rate, unit).
+
+    Excel: most profile rates are **per kg**; when the cell explicitly says
+    ``rft`` / ``per rft`` / ``200 rft`` use **per RFT**. Coating is always
+    stored separately as per-RFT (see ``coatingUnit``).
+    """
     if val is None or val == "":
         return None, "kg"
     if isinstance(val, (int, float)):
         return float(val), "kg"
-    s = str(val).strip().lower()
+    s = str(val).strip().lower().replace("₹", "").replace("rs", " ")
     n = _num(val)
-    if "rft" in s or "per rft" in s or "/rft" in s:
+    if re.search(r"per\s*rft|/rft|\brft\b", s):
         return n, "rft"
-    if "rmt" in s or "per m" in s or "/m" in s:
+    if re.search(r"per\s*rmt|per\s*m\b|/m\b|\brmt\b", s) and "rft" not in s:
         return n, "rmt"
-    if "pc" in s or "nos" in s:
+    if re.search(r"\bpc\b|\bnos\b|per\s*pc", s):
         return n, "pc"
+    if re.search(r"per\s*kg|/kg|\bkg\b", s):
+        return n, "kg"
     return n, "kg"
 
 
@@ -163,16 +170,101 @@ def _parse_std_length(val: Any) -> str | None:
     return t
 
 
-def _parse_use_sides(all_side: Any, use_v: Any, use_h: Any) -> str:
+def parse_use_bom_counts(
+    all_side: Any = None,
+    use_v: Any = None,
+    use_h: Any = None,
+    *,
+    section_name: str | None = None,
+) -> dict[str, Any]:
+    """Map Excel ``use all side`` / ``use V`` / ``use H`` → cut pcs.
+
+    - **V** / ``use V`` = vertical pcs (per shutter / outer as row context)
+    - **H** / ``use H`` = horizontal pcs
+    - **V2 H2** (in all-side) = one section builds the whole frame/shutter
+      (all sides same) → 2 vertical + 2 horizontal
+
+    Some sheet rows put top/bottom qty in the V column and vertical L/R qty in
+    H (inverted). When the product name clearly says top/bottom or vertical,
+    counts are swapped to the matching axis.
+    """
+    raw_all = _clean(all_side) or ""
+    blob = " ".join(
+        str(x) for x in (raw_all, use_v, use_h) if x is not None and str(x).strip() != ""
+    ).lower().replace(",", " ")
+    compact = re.sub(r"\s+", "", blob)
+
+    all_sides_same = bool(
+        re.search(r"v\s*2", blob) and re.search(r"h\s*2", blob)
+    ) or ("v2" in compact and "h2" in compact) or ("allside" in compact) or ("all side" in blob)
+
+    pcs_v: int | None = None
+    pcs_h: int | None = None
+
+    def _as_int(val: Any) -> int | None:
+        if val is None or str(val).strip() == "":
+            return None
+        # Bare "V" / "H" without digit → 1
+        s = str(val).strip().lower()
+        if s in ("v", "h"):
+            return 1
+        n = _num(val)
+        if n is None:
+            m = re.search(r"(\d+)", s)
+            return int(m.group(1)) if m else None
+        return int(round(float(n)))
+
+    pcs_v = _as_int(use_v)
+    pcs_h = _as_int(use_h)
+
+    # Digits embedded in all-side text: v2, h2, V1, …
+    if pcs_v is None:
+        mv = re.search(r"\bv\s*([0-9]+)\b", blob)
+        if mv:
+            pcs_v = int(mv.group(1))
+        elif re.search(r"\bv\b", blob) and not all_sides_same:
+            pcs_v = 1
+    if pcs_h is None:
+        mh = re.search(r"\bh\s*([0-9]+)\b", blob)
+        if mh:
+            pcs_h = int(mh.group(1))
+        elif re.search(r"\bh\b", blob) and not all_sides_same:
+            pcs_h = 1
+
+    if all_sides_same:
+        pcs_v = 2 if pcs_v is None else pcs_v
+        pcs_h = 2 if pcs_h is None else pcs_h
+
+    # Name-based axis correction for inverted Excel columns
+    nl = (section_name or "").lower()
+    is_horiz_name = any(k in nl for k in ("top", "bottom", "horizon"))
+    is_vert_name = any(k in nl for k in ("vertical", "left", "right", "jamb")) and not is_horiz_name
+    if is_horiz_name and pcs_v and not pcs_h:
+        pcs_h, pcs_v = pcs_v, None
+    elif is_vert_name and pcs_h and not pcs_v:
+        pcs_v, pcs_h = pcs_h, None
+
     bits: list[str] = []
-    a = _clean(all_side)
-    if a:
-        bits.append(a)
+    if raw_all:
+        bits.append(raw_all)
     if use_v is not None and str(use_v).strip() != "":
         bits.append(f"V{_clean(use_v) or use_v}")
     if use_h is not None and str(use_h).strip() != "":
         bits.append(f"H{_clean(use_h) or use_h}")
-    return " ".join(str(b) for b in bits)
+    return {
+        "use": " ".join(str(b) for b in bits),
+        "allSidesSame": all_sides_same,
+        "pcsVertical": pcs_v,
+        "pcsHorizontal": pcs_h,
+        "bomHint": (
+            "all_sides_same_v2h2" if all_sides_same
+            else ("split_vh" if (pcs_v or pcs_h) else "unspecified")
+        ),
+    }
+
+
+def _parse_use_sides(all_side: Any, use_v: Any, use_h: Any, *, section_name: str | None = None) -> str:
+    return str(parse_use_bom_counts(all_side, use_v, use_h, section_name=section_name).get("use") or "")
 
 
 def _is_series_header(name: str | None, product: str | None) -> bool:
@@ -264,6 +356,10 @@ def _section_record(
     coating: float | None,
     use: str,
     notes: str = "",
+    pcs_vertical: int | None = None,
+    pcs_horizontal: int | None = None,
+    all_sides_same: bool | None = None,
+    bom_hint: str | None = None,
 ) -> dict[str, Any]:
     usage = infer_usage(name)
     # Prefer shutter/interlock when name implies it
@@ -283,6 +379,12 @@ def _section_record(
         usage = "other"
     if "door" in nl and "track" not in nl:
         usage = "sash"
+    if "reducer" in nl:
+        usage = "other"
+    # Coating on sheet is always ₹/RFT
+    ru = str(rate_unit or "kg").lower()
+    if ru not in ("kg", "rft", "rmt", "pc"):
+        ru = "kg"
     return {
         "id": f"{series_id}__{_slug(name)}",
         "name": name,
@@ -302,10 +404,14 @@ def _section_record(
         "glassOptions": parse_glass_options(name),
         "centerOpeningOnly": is_center_opening_only(name),
         "rate": rate,
-        "rateUnit": rate_unit,
+        "rateUnit": ru,
         "coatingCost": coating,
         "coatingUnit": "rft",
         "use": use,
+        "pcsVertical": pcs_vertical,
+        "pcsHorizontal": pcs_horizontal,
+        "allSidesSame": bool(all_sides_same) if all_sides_same is not None else None,
+        "bomHint": bom_hint,
     }
 
 
@@ -314,11 +420,23 @@ def _setup_section_from_row(sec: Mapping[str, Any]) -> dict[str, Any]:
     depth = sec.get("sectionDepthMm")
     rate = sec.get("rate")
     rate_unit = str(sec.get("rateUnit") or "kg").lower()
-    if rate_unit not in ("kg", "rft", "rmt"):
+    if rate_unit not in ("kg", "rft", "rmt", "pc"):
         rate_unit = "kg"
+    # Re-parse use text when pcs missing (legacy imports)
+    use_raw = sec.get("use") or sec.get("usageLabel") or ""
+    parsed = parse_use_bom_counts(use_raw, section_name=str(sec.get("name") or ""))
+    pcs_v = sec.get("pcsVertical")
+    pcs_h = sec.get("pcsHorizontal")
+    if pcs_v is None:
+        pcs_v = parsed.get("pcsVertical")
+    if pcs_h is None:
+        pcs_h = parsed.get("pcsHorizontal")
+    all_same = sec.get("allSidesSame")
+    if all_same is None:
+        all_same = parsed.get("allSidesSame")
     return {
         "name": sec.get("name") or "",
-        "use": sec.get("use") or sec.get("usageLabel") or "",
+        "use": use_raw or parsed.get("use") or "",
         "wMm": face,   # elevation face
         "hMm": depth,  # into opening (not drawn as face width)
         "wallMm": sec.get("wallThicknessMm"),
@@ -329,7 +447,11 @@ def _setup_section_from_row(sec: Mapping[str, Any]) -> dict[str, Any]:
         "rate": float(rate) if rate is not None else 0.0,
         "rateUnit": rate_unit,
         "coatingCost": float(sec.get("coatingCost") or 0) or 0.0,
-        "coatingUnit": "rft",
+        "coatingUnit": "rft",  # Excel coating column is always per RFT
+        "pcsVertical": int(pcs_v) if pcs_v is not None else None,
+        "pcsHorizontal": int(pcs_h) if pcs_h is not None else None,
+        "allSidesSame": bool(all_same) if all_same is not None else None,
+        "bomHint": sec.get("bomHint") or parsed.get("bomHint"),
         "notes": sec.get("designNote") or "",
     }
 
@@ -377,10 +499,11 @@ def parse_sliding_sheet(ws) -> list[dict[str, Any]]:
         weight = _num(cells[4] if len(cells) > 4 else None)
         rate, rate_unit = _parse_rate(cells[5] if len(cells) > 5 else None)
         std_len = _parse_std_length(cells[6] if len(cells) > 6 else None)
-        use = _parse_use_sides(
+        use_pat = parse_use_bom_counts(
             cells[7] if len(cells) > 7 else None,
             cells[8] if len(cells) > 8 else None,
             cells[9] if len(cells) > 9 else None,
+            section_name=name,
         )
         coating = _num(cells[10] if len(cells) > 10 else None)
         # Prefer shutter naming when under Shutters group
@@ -399,7 +522,11 @@ def parse_sliding_sheet(ws) -> list[dict[str, Any]]:
             rate_unit=rate_unit,
             std_length=std_len,
             coating=coating,
-            use=use,
+            use=str(use_pat.get("use") or ""),
+            pcs_vertical=use_pat.get("pcsVertical"),
+            pcs_horizontal=use_pat.get("pcsHorizontal"),
+            all_sides_same=use_pat.get("allSidesSame"),
+            bom_hint=use_pat.get("bomHint"),
         )
         current["sections"].append(sec)
     return [s for s in series_list if s["sections"]]
@@ -438,11 +565,12 @@ def parse_casement_sheet(ws) -> list[dict[str, Any]]:
         weight = _num(cells[4] if len(cells) > 4 else None)
         rate, rate_unit = _parse_rate(cells[5] if len(cells) > 5 else None)
         std_len = _parse_std_length(cells[6] if len(cells) > 6 else None)
-        use = _clean(cells[7] if len(cells) > 7 else None) or ""
+        use_raw = _clean(cells[7] if len(cells) > 7 else None) or ""
+        use_pat = parse_use_bom_counts(use_raw, section_name=col1)
         coating = _num(cells[8] if len(cells) > 8 else None)
         texture = _clean(cells[9] if len(cells) > 9 else None)
         wooden = _clean(cells[10] if len(cells) > 10 else None)
-        notes = " · ".join(x for x in (use, texture, wooden) if x)
+        notes = " · ".join(x for x in (use_pat.get("use") or use_raw, texture, wooden) if x)
         sec = _section_record(
             current["id"],
             name=col1,
@@ -454,8 +582,12 @@ def parse_casement_sheet(ws) -> list[dict[str, Any]]:
             rate_unit=rate_unit,
             std_length=std_len,
             coating=coating,
-            use=use,
+            use=str(use_pat.get("use") or use_raw),
             notes=notes,
+            pcs_vertical=use_pat.get("pcsVertical"),
+            pcs_horizontal=use_pat.get("pcsHorizontal"),
+            all_sides_same=use_pat.get("allSidesSame"),
+            bom_hint=use_pat.get("bomHint"),
         )
         current["sections"].append(sec)
         for opt in (texture, wooden):
@@ -687,6 +819,10 @@ def _build_sliding_setup(series: Mapping[str, Any], hw_items: Sequence[Mapping[s
     renf = next((s for s in interlocks if "renf" in (s.get("name") or "").lower() or "renfor" in (s.get("name") or "").lower()), None)
     if renf is None and len(interlocks) > 1:
         renf = interlocks[-1]
+    glass_reducer = next(
+        (s for s in sections if "reducer" in (s.get("name") or "").lower()),
+        None,
+    )
 
     shutter_mode = "split" if (handle or slim or renf) else "all_sides_same"
     if all_side_sh and not slim and not renf:
@@ -801,6 +937,7 @@ def _build_sliding_setup(series: Mapping[str, Any], hw_items: Sequence[Mapping[s
                 "bottom": _setup_section_from_row(top_bot) if top_bot else {},
                 "interlockSlim": _setup_section_from_row(slim) if slim else {},
                 "interlockRenf": _setup_section_from_row(renf) if renf else {},
+                "glassReducer": _setup_section_from_row(glass_reducer) if glass_reducer else {},
             },
             "meeting": {
                 "enabled": bool(meeting),

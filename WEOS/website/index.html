@@ -917,6 +917,7 @@ textarea{max-width:100%}
                 <a class="btn ghost sm" id="linkCustXlsx" href="#" title="Download quote as Excel">📊 Quote Excel</a>
                 <a class="btn sec sm" id="linkFact" href="#" title="Factory production sheet: panel schedule, glass sizes, hardware BOM, cut list, weights. No customer pricing.">🏭 Factory Sheet (PDF)</a>
                 <button class="btn ghost sm" type="button" id="btnMaterialsList" title="Materials + hardware list for products on this quote (catalogue names, customer, date, colour)">📋 Materials list</button>
+                <button class="btn ghost sm" type="button" id="btnStockViewer" title="Reusable aluminium remnants / stock (series · section · colour · lengths &gt; ~3 ft)">📦 Stock</button>
                 <a class="btn ghost sm" id="linkQuote" href="#" target="_blank" title="Raw quotation data (JSON) — for integrations.">Quote data</a>
               </div>
             <div id="printCopyPanel" class="hidden" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;padding:.55rem .65rem;background:#fff">
@@ -1897,6 +1898,7 @@ textarea{max-width:100%}
               <span>Profit <strong id="liveProfitAmt">₹ —</strong></span>
               <span class="muted" id="liveWasteHint"></span>
             </div>
+            <div class="row muted" id="liveCostParts" style="display:none;gap:.45rem;flex-wrap:wrap;margin:0 0 .2rem;font-size:.72rem"></div>
             <div class="row2">
               <div class="kpi grow"><label class="l">Sale unit</label>
                 <select id="lineSaleUnit">
@@ -7346,14 +7348,28 @@ async function refreshLivePrice() {
       if ($('livePerWin')) $('livePerWin').textContent = perWin > 0 ? money(perWin) : money(costN / Math.max(draft.qty || 1, 1));
       if ($('liveProfitAmt')) $('liveProfitAmt').textContent = profitAmt > 0 ? money(profitAmt) : '₹ 0';
       const w = (live.cost && live.cost.wastage) || design.wastage || {};
+      const br = (live.cost && live.cost.breakdown) || design.breakdown || {};
       if ($('liveWasteHint')) {
         const eng = (live.cost && live.cost.costEngine) || design.costEngine || '';
         const bits = [];
         if (eng === 'live') bits.push('design cost');
         else if (eng && eng !== 'stub') bits.push('cost ' + eng);
         if (w.wastageMetres > 0) bits.push('waste ' + (w.wastagePercent != null ? w.wastagePercent + '%' : ''));
-        if (live.cost && live.cost.wastageCost > 0) bits.push(money(live.cost.wastageCost));
+        if ((live.cost && live.cost.wastageCost > 0) || br.wastage > 0) bits.push(money((live.cost && live.cost.wastageCost) || br.wastage || 0));
         $('liveWasteHint').textContent = bits.join(' · ');
+      }
+      if ($('liveCostParts')) {
+        const parts = [];
+        const push = (label, v) => { const n = Number(v); if (n > 0) parts.push(label + ' ' + money(n)); };
+        push('Al', (live.cost && live.cost.aluminiumCost) != null ? live.cost.aluminiumCost : br.aluminium);
+        push('Coat', (live.cost && live.cost.coatingCost) != null ? live.cost.coatingCost : br.coating);
+        push('Glass', (live.cost && live.cost.glassCost) != null ? live.cost.glassCost : br.glass);
+        push('HW', (live.cost && live.cost.hardwareCost) != null ? live.cost.hardwareCost : br.hardware);
+        push('Labour', (live.cost && live.cost.labourAmount) != null ? live.cost.labourAmount : br.labour);
+        push('Install', (live.cost && live.cost.installationAmount) != null ? live.cost.installationAmount : br.installation);
+        push('Waste', (live.cost && live.cost.wastageCost) != null ? live.cost.wastageCost : br.wastage);
+        $('liveCostParts').style.display = parts.length ? '' : 'none';
+        $('liveCostParts').textContent = parts.join(' · ');
       }
     }
     const m = live.metrics || {};
@@ -7567,6 +7583,14 @@ function renderCart() {
         '<div class="qlc-name' + (cancelled ? ' cart-strike' : '') + '">' + (cancelled ? '<span class="cart-cancelled-mark">CANCELLED </span>' : '') + cartLineProductLabel(ln) + '</div>' +
         (cardAddonHtml ? ('<div class="qlc-addons">' + cardAddonHtml + '</div>') : '') +
         '<div class="qlc-meta">' + esc(size) + ' · qty ' + (ln.qty != null ? ln.qty : 1) + (loc ? ' · ' + esc(loc) : '') + (ln.colour ? ' · ' + esc(ln.colour) : '') + (ln.glass ? ' · ' + esc(ln.glass) : '') + '</div>' +
+        (function(){
+          const br = ln.costBreakdown || (ln.designCost && ln.designCost.breakdown) || null;
+          if (!br) return '';
+          const bits = [];
+          const push = (k, lab) => { const n = Number(br[k]); if (n > 0) bits.push(lab + ' ' + money(n)); };
+          push('aluminium','Al'); push('coating','Coat'); push('glass','Glass'); push('hardware','HW'); push('labour','Labour'); push('wastage','Waste');
+          return bits.length ? ('<div class="qlc-meta" style="margin-top:.15rem">' + bits.join(' · ') + '</div>') : '';
+        })() +
         '<div class="qlc-pricing" onclick="event.stopPropagation()">' +
           '<div><label class="l">Area</label><div class="qlc-area">' + (area > 0 ? (area + ' sft') : '\u2014') + '</div></div>' +
           '<div><label class="l">Rate ' + esc(curSym) + '/' + esc(unit) + '</label><input data-ql-rate="' + i + '" type="number" min="0" step="0.01" placeholder="e.g. 950" value="' + rateVal + '" ' + (cancelled ? 'disabled' : '') + '/></div>' +
@@ -9837,6 +9861,16 @@ function addDraftLineToCart(overrides, opts) {
     delete draft.sectionSeries;
   }
   stampQuoteGroup(draft, opts.quoteGroup || targetQuoteGroupForAdd());
+  // Snapshot live design-cost breakdown (Al / coat / glass / HW / labour / waste)
+  try {
+    const live = state.livePrice;
+    if (live && live.designCost && live.designCost.ok) {
+      draft.designCost = live.designCost;
+      draft.costBreakdown = live.designCost.breakdown || (live.cost && live.cost.breakdown) || null;
+    } else if (live && live.cost && live.cost.breakdown) {
+      draft.costBreakdown = live.cost.breakdown;
+    }
+  } catch (_) {}
   stampLineAmount(draft);
   stampItemSnapshot(draft, true);
   if (draft.topShape === 'curved') {
@@ -12887,6 +12921,38 @@ if ($('btnMaterialsList')) {
     }
   };
 }
+if ($('btnStockViewer')) {
+  $('btnStockViewer').onclick = async () => {
+    try {
+      const data = await api('/api/stock');
+      const rows = (data.remnants || []).map(r =>
+        '<tr><td>' + esc(r.series) + '</td><td>' + esc(r.section) + '</td><td>' + esc(r.colour) +
+        '</td><td style="text-align:right">' + esc(r.lengthM) + ' m</td><td style="text-align:right">' +
+        esc(r.lengthFt) + ' ft</td><td>' + esc(r.id) + '</td></tr>'
+      ).join('') || '<tr><td colspan="6" class="muted">No reusable remnants yet (leftover &gt; ~3 ft after nesting).</td></tr>';
+      const html = '<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Aluminium stock / remnants</title>' +
+        '<style>body{font-family:Segoe UI,system-ui,sans-serif;margin:1.2rem;font-size:14px}table{border-collapse:collapse;width:100%}' +
+        'th,td{border:1px solid #ddd;padding:.35rem .5rem;text-align:left}th{background:#f4f4f4}.muted{color:#777}' +
+        'h1{font-size:1.25rem;margin:0 0 .4rem}</style></head><body>' +
+        '<button onclick="window.print()" style="float:right;padding:.35rem .7rem;cursor:pointer">Print</button>' +
+        '<h1>Reusable aluminium stock</h1>' +
+        '<p class="muted">Leftover &gt; ~' + esc(data.wastageThresholdFt || 3) +
+        ' ft kept as remnant (series · section · colour). Short scrap ≤3 ft is charged as wastage on the product.</p>' +
+        '<p><strong>Pieces:</strong> ' + esc((data.counts && data.counts.remnantPieces) || 0) +
+        ' · <strong>Total:</strong> ' + esc((data.counts && data.counts.totalRemnantM) || 0) + ' m' +
+        ' · <span class="muted">' + esc(data.path || '') + '</span></p>' +
+        '<table><thead><tr><th>Series</th><th>Section / profile</th><th>Colour</th><th>Length m</th><th>Length ft</th><th>Id</th></tr></thead><tbody>' +
+        rows + '</tbody></table>' +
+        (data.stub && data.stub.detail ? ('<p class="muted" style="margin-top:1rem">' + esc(data.stub.detail) + '</p>') : '') +
+        '</body></html>';
+      const w = window.open('', '_blank');
+      if (w) { w.document.write(html); w.document.close(); }
+      else toast('Pop-up blocked — allow pop-ups for Stock');
+    } catch (e) {
+      toast('Stock viewer failed: ' + (e.message || e));
+    }
+  };
+}
 renderPartChips();
 // Project-setup customer: mobile / optional name identify the customer for this
 // project. The hidden #cartCustomer mirrors the name (or mobile) so rate-memory,
@@ -14151,6 +14217,7 @@ function ensureSetupShape(s, type){
   sl.shutters.allSides = sl.shutters.allSides || blankSection('Shutter','sash');
   sl.shutters.interlockSlim = sl.shutters.interlockSlim || sl.shutters.interlockSide || blankSection('Slim interlock','interlock');
   sl.shutters.interlockRenf = sl.shutters.interlockRenf || blankSection('Reinforcement interlock','interlock');
+  sl.shutters.glassReducer = sl.shutters.glassReducer || blankSection('Glass reducer','glass_reducer');
   sl.meeting = sl.meeting || {enabled:false,section:blankSection('Meeting section','meeting'),notes:'Used when 4 glass shutters (center opening).'};
   sl.meeting.section = sl.meeting.section || blankSection('Meeting section','meeting');
   sl.mesh = sl.mesh || {compatible:false,sameAsShutter:true,sections:[]};
@@ -14324,6 +14391,8 @@ function seedSlidingTracksFromCatalogue(cat){
   if (sash) { fillFrom(sash, sl.shutters.allSides, 'sash'); fillFrom(sash, sl.shutters.handleSide, 'handle'); fillFrom(sash, sl.shutters.top, 'top'); fillFrom(sash, sl.shutters.bottom, 'bottom'); }
   if (slim) fillFrom(slim, sl.shutters.interlockSlim, 'interlock');
   if (renf) fillFrom(renf, sl.shutters.interlockRenf, 'interlock');
+  const reducer = profiles.find(pr => pr && /reducer/i.test(String(pr.name||'')));
+  if (reducer) fillFrom(reducer, sl.shutters.glassReducer, 'glass_reducer');
   if (meet) { sl.meeting.enabled = true; fillFrom(meet, sl.meeting.section, 'meeting'); }
 }
 function listCard(title, rows, tableId, addLabel){
@@ -14395,6 +14464,8 @@ function renderSetup(){
     } else {
       html += `<div class="two">${gallerySectionCard('Handle-side vertical','sliding.shutters.handleSide')}${gallerySectionCard('Slim interlock (1st shutter)','sliding.shutters.interlockSlim')}</div>`;
       html += gallerySectionCard('Reinforcement interlock (2nd shutter)', 'sliding.shutters.interlockRenf');
+      html += gallerySectionCard('Glass reducer (1 pc / interlock)', 'sliding.shutters.glassReducer');
+      html += `<p class="muted" style="font-size:.7rem;margin:.25rem 0">Interlock mix: 2 glass → 1 slim+1 renf · 3 → 1 slim+2 renf · 4 center → 2+2 · 4-track side → 1 slim+3 renf. Mesh shutters = slim only. Glass reducer = 1× every interlock.</p>`;
       html += `<div class="two">${gallerySectionCard('Top horizontal','sliding.shutters.top')}${gallerySectionCard('Bottom horizontal','sliding.shutters.bottom')}</div>`;
     }
     html += `<h4 style="margin:.55rem 0 .2rem">Meeting section <span class="muted" style="font-weight:400;font-size:.72rem">— 4 glass shutters / center opening</span></h4>

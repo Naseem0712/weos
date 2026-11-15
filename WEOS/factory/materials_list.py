@@ -90,6 +90,22 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
     stock_std = waste.get("stdLengthM")
     line_qty = max(_f(line.get("qty") or line.get("quantity"), 1.0), 1.0)
 
+    colour_raw = _str(line.get("colour") or line.get("color") or (line.get("options") or {}).get("colour"))
+    finish_family = _str(design.get("coatingFinishFamily") or "")
+    coat_brand = _str(design.get("coatingBrand") or "")
+    if not finish_family and colour_raw:
+        try:
+            from WEOS.factory.commercial_defaults import finish_family_for_colour, default_coating_brand
+            finish_family = finish_family_for_colour(colour_raw)
+            coat_brand = coat_brand or default_coating_brand()
+        except Exception:
+            finish_family = "plain"
+    colour_detail = _colour_label(line)
+    if finish_family:
+        colour_detail = f"{colour_detail} · {finish_family}"
+        if coat_brand:
+            colour_detail = f"{colour_detail} · {coat_brand}"
+
     for p in design.get("profiles") or []:
         pcs = p.get("pcs")
         if pcs is None:
@@ -101,10 +117,15 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
             "pcs": pcs,
             "unit": p.get("unit") or "RM",
             "lengthM": p.get("lengthM") or p.get("metres"),
+            "cutLengthM": p.get("lengthM"),
             "sides": _str(p.get("sides") or p.get("remarks") or p.get("use") or ""),
+            "use": _str(p.get("use") or ""),
             "stock": _str(p.get("stock")) or (f"{_f(stock_std):g} m stock" if stock_std else ""),
             "weightKg": p.get("weightKg"),
             "weightKgPerM": p.get("weightKgPerM"),
+            "colour": _str(p.get("colour") or colour_raw) or colour_detail,
+            "finishFamily": finish_family or None,
+            "coatingBrand": coat_brand or None,
             "wastageM": waste_m if waste_m > 0 else None,
             "wastagePercent": waste_pct if waste_pct > 0 else None,
             "remarks": p.get("remarks") or p.get("use") or "",
@@ -161,9 +182,10 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
             "qty": h.get("qty"),
             "pcs": h.get("qty"),
             "unit": h.get("unit") or "PC",
+            "unitRate": h.get("unitRate") if h.get("unitRate") is not None else h.get("rate"),
+            "amount": h.get("amount"),
             "remarks": h.get("remarks") or "",
         })
-    # Line hardware from calc result
     for h in line.get("hardware") or []:
         if isinstance(h, Mapping):
             nm, brand = _hw_display(h)
@@ -175,6 +197,8 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
                     "qty": h.get("qty") or h.get("quantity"),
                     "pcs": h.get("qty") or h.get("quantity"),
                     "unit": h.get("unit") or "PC",
+                    "unitRate": h.get("unitRate") if h.get("unitRate") is not None else h.get("rate"),
+                    "amount": h.get("amount"),
                     "remarks": "",
                 })
 
@@ -182,11 +206,23 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
     g = design.get("glass") if isinstance(design.get("glass"), Mapping) else {}
     glass_row = {
         "kind": "glass",
-        "name": _str(g.get("catalogueName") or g.get("name") or glass_name),
-        "qty": 1,
-        "pcs": 1,
+        "name": _str(g.get("catalogueName") or g.get("packName") or g.get("name") or glass_name),
+        "packName": _str(g.get("packName") or g.get("catalogueName") or g.get("name") or glass_name),
+        "qty": g.get("qty") or 1,
+        "pcs": g.get("qty") or 1,
         "unit": "sft",
         "areaSft": g.get("areaSft"),
+        "widthMm": g.get("widthMm") or line.get("width"),
+        "heightMm": g.get("heightMm") or line.get("height"),
+        "sizeLabel": g.get("sizeLabel") or (
+            f"{line.get('width')}×{line.get('height')} mm"
+            if line.get("width") and line.get("height") else ""
+        ),
+        "thicknessMm": g.get("thicknessMm"),
+        "colour": g.get("colour"),
+        "kindGlass": g.get("kind"),
+        "unitRate": g.get("unitRate"),
+        "amount": g.get("amount"),
         "remarks": "",
     }
 
@@ -217,16 +253,21 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
         "width": line.get("width"),
         "height": line.get("height"),
         "qty": line_qty,
-        "colour": _colour_label(line),
+        "colour": colour_detail,
+        "colourId": colour_raw,
+        "finishFamily": finish_family or None,
+        "coatingBrand": coat_brand or None,
         "location": _str(line.get("locationName") or line.get("positionName") or ""),
         "materials": materials,
         "hardware": hardware,
         "glass": glass_row,
+        "interlocks": design.get("interlocks") if isinstance(design.get("interlocks"), Mapping) else None,
         "wastageM": waste_m if waste_m > 0 else None,
         "wastagePercent": waste_pct if waste_pct > 0 else None,
         "stockStdM": stock_std,
         "costEngine": design.get("costEngine"),
         "designCost": design.get("total") if design.get("ok") else None,
+        "costBreakdown": design.get("breakdown") if isinstance(design.get("breakdown"), Mapping) else None,
     }
 
 
@@ -333,6 +374,14 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
             bits.append(f"{esc(round(_f(m.get('lengthM')), 3))} m cut")
         if m.get("sides"):
             bits.append(f"sides: {esc(m.get('sides'))}")
+        if m.get("use"):
+            bits.append(f"use: {esc(m.get('use'))}")
+        if m.get("colour"):
+            bits.append(f"colour: {esc(m.get('colour'))}")
+        if m.get("finishFamily"):
+            bits.append(esc(m.get("finishFamily")))
+        if m.get("coatingBrand"):
+            bits.append(esc(m.get("coatingBrand")))
         if m.get("stock"):
             bits.append(f"stock: {esc(m.get('stock'))}")
         if m.get("weightKg") is not None:
@@ -347,6 +396,19 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
             )
         return " · ".join(bits)
 
+    def _hw_bits(h: Mapping[str, Any]) -> str:
+        bits: list[str] = []
+        if h.get("brand"):
+            bits.append(esc(h.get("brand")))
+        pcs = h.get("pcs") if h.get("pcs") is not None else h.get("qty")
+        if pcs is not None and pcs != "":
+            bits.append(f"{esc(pcs)} {esc(h.get('unit') or 'PC')}")
+        if h.get("unitRate") is not None and _f(h.get("unitRate")) > 0:
+            bits.append(f"₹{esc(round(_f(h.get('unitRate')), 2))}")
+        if h.get("amount") is not None and _f(h.get("amount")) > 0:
+            bits.append(f"= ₹{esc(round(_f(h.get('amount')), 2))}")
+        return " · ".join(bits)
+
     rows_html = []
     for ln in pack.get("lines") or []:
         mats = "".join(
@@ -356,10 +418,36 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
             for m in (ln.get("materials") or [])
         ) or "<li class=muted>—</li>"
         hws = "".join(
-            f"<li>{esc(h.get('name'))} · {esc(h.get('pcs') if h.get('pcs') is not None else h.get('qty'))} {esc(h.get('unit') or 'PC')}</li>"
+            f"<li><strong>{esc(h.get('name'))}</strong>"
+            f"{(' — ' + _hw_bits(h)) if _hw_bits(h) else ''}</li>"
             for h in (ln.get("hardware") or [])
         ) or "<li class=muted>—</li>"
         g = ln.get("glass") or {}
+        g_bits = []
+        if g.get("packName") or g.get("name"):
+            g_bits.append(esc(g.get("packName") or g.get("name")))
+        if g.get("colour"):
+            g_bits.append(f"colour {esc(g.get('colour'))}")
+        if g.get("thicknessMm") is not None:
+            g_bits.append(f"{esc(g.get('thicknessMm'))} mm")
+        if g.get("sizeLabel"):
+            g_bits.append(esc(g.get("sizeLabel")))
+        if g.get("qty") is not None:
+            g_bits.append(f"qty {esc(g.get('qty'))}")
+        if g.get("areaSft") is not None:
+            g_bits.append(f"{esc(g.get('areaSft'))} sft")
+        if g.get("unitRate") is not None and _f(g.get("unitRate")) > 0:
+            g_bits.append(f"₹{esc(round(_f(g.get('unitRate')), 2))}/sft")
+        inter = ln.get("interlocks") if isinstance(ln.get("interlocks"), Mapping) else {}
+        inter_note = ""
+        if inter:
+            inter_note = (
+                f"<p class=muted style=margin:.25rem 0 0>Interlocks: slim {esc(inter.get('slim'))}"
+                f" · renf {esc(inter.get('renf'))}"
+                f" · mesh slim {esc(inter.get('meshSlim'))}"
+                f" · glass reducer {esc(inter.get('glassReducerPcs'))} pcs"
+                f" ({esc(inter.get('rule'))})</p>"
+            )
         waste_note = ""
         if ln.get("wastageM") is not None:
             waste_note = (
@@ -372,10 +460,9 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
     <span class="muted">{esc(ln.get('width'))}×{esc(ln.get('height'))} mm · qty {esc(ln.get('qty'))}
     · {esc(ln.get('colour'))}{(' · ' + esc(ln.get('location'))) if ln.get('location') else ''}{waste_note}</span></h3>
   <div class="cols">
-    <div><h4>Materials</h4><ul>{mats}</ul></div>
+    <div><h4>Sections used</h4><ul>{mats}</ul>{inter_note}</div>
     <div><h4>Hardware</h4><ul>{hws}</ul></div>
-    <div><h4>Glass</h4><p>{esc(g.get('name'))}
-      {(' · ' + esc(g.get('areaSft')) + ' sft') if g.get('areaSft') else ''}</p></div>
+    <div><h4>Glass</h4><p>{' · '.join(g_bits) if g_bits else '—'}</p></div>
   </div>
 </section>"""
         )

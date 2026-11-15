@@ -251,6 +251,7 @@ def normalize_section(raw: Any) -> dict[str, Any]:
         coating_unit = "rmt"
     if coating_unit in ("ft", "feet"):
         coating_unit = "rft"
+    # Excel coating column is always ₹/RFT — keep rft unless explicitly rmt
     if coating_unit not in COATING_UNITS:
         coating_unit = "rft"
     std_len = r.get("stdLength")
@@ -260,9 +261,29 @@ def normalize_section(raw: Any) -> dict[str, Any]:
     std_length_mm = _num(r.get("stdLengthMm") or r.get("standardLengthMm"))
     if std_len is None and std_length_mm is not None:
         std_len = std_length_mm
+    use_txt = _str(r.get("use") or r.get("position"))
+    pcs_v = r.get("pcsVertical")
+    pcs_h = r.get("pcsHorizontal")
+    all_same = r.get("allSidesSame")
+    bom_hint = _str(r.get("bomHint"))
+    if pcs_v is None or pcs_h is None or all_same is None:
+        try:
+            from WEOS.factory.profile_hardware_import import parse_use_bom_counts
+
+            parsed = parse_use_bom_counts(use_txt, section_name=_str(r.get("name")))
+            if pcs_v is None:
+                pcs_v = parsed.get("pcsVertical")
+            if pcs_h is None:
+                pcs_h = parsed.get("pcsHorizontal")
+            if all_same is None:
+                all_same = parsed.get("allSidesSame")
+            if not bom_hint:
+                bom_hint = _str(parsed.get("bomHint"))
+        except Exception:
+            pass
     return {
         "name": _str(r.get("name")),
-        "use": _str(r.get("use") or r.get("position")),
+        "use": use_txt,
         # FACE×DEPTH: wMm = face (elevation), hMm = depth (BOM/3D only)
         "wMm": _num(r.get("wMm") or r.get("widthMm") or r.get("faceMm")),
         "hMm": _num(r.get("hMm") or r.get("heightMm") or r.get("depthMm") or r.get("sectionDepthMm")),
@@ -276,6 +297,10 @@ def normalize_section(raw: Any) -> dict[str, Any]:
         "rateUnit": rate_unit,
         "coatingCost": _num(r.get("coatingCost") or r.get("coatingRate")) or 0.0,
         "coatingUnit": coating_unit,
+        "pcsVertical": int(pcs_v) if pcs_v is not None else None,
+        "pcsHorizontal": int(pcs_h) if pcs_h is not None else None,
+        "allSidesSame": bool(all_same) if all_same is not None else None,
+        "bomHint": bom_hint or None,
         "side": _str(r.get("side")),
         "glassType": _str(r.get("glassType")),  # '', 'sg' or 'dg'
         "notes": _str(r.get("notes")),
@@ -797,6 +822,10 @@ def _norm_sliding(raw: Any) -> dict[str, Any]:
             "interlockSide": normalize_section(sh.get("interlockSide")),  # slim (1st shutter)
             "interlockSlim": normalize_section(sh.get("interlockSlim") or sh.get("interlockSide")),
             "interlockRenf": normalize_section(sh.get("interlockRenf") or sh.get("reinforcement")),
+            # 1 pc per interlock (glass + mesh) — length = shutter height
+            "glassReducer": normalize_section(
+                sh.get("glassReducer") or sh.get("glass_reducer") or sh.get("reducer")
+            ),
             "notes": _str(sh.get("notes")),
         },
         "meeting": {
@@ -1995,6 +2024,262 @@ def active_track_option(setup: Mapping[str, Any] | None) -> dict[str, Any] | Non
     return normalize_track_option(opts[0]) if opts else None
 
 
+def assign_sliding_interlocks(
+    *,
+    glass_count: float | int = 2,
+    mesh_count: float | int = 0,
+    opening: str | None = None,
+    track_count: float | int | None = None,
+    series_has_slim: bool = True,
+) -> dict[str, Any]:
+    """Clear sliding interlock mix — glass shutters + mesh (slim only).
+
+    Glass:
+      - 2 shutters → 1 slim + 1 reinforcement
+      - 4 + center opening → 2 slim + 2 reinforcement
+      - 3 shutters → 2 reinforcement + 1 slim
+      - 4 + 4-track + side opening → 1 slim + 3 reinforcement
+    Mesh: always slim only when series has slim interlock (never renf on mesh).
+    Glass reducer: 1 pc per interlock (glass + mesh).
+    """
+    g = max(int(round(float(glass_count or 0))), 0)
+    m = max(int(round(float(mesh_count or 0))), 0)
+    op = _str(opening).lower().replace("-", "_").replace(" ", "_")
+    if op in ("centre", "center_opening", "centre_opening"):
+        op = "center"
+    if op in ("side", "side_opening", "telescopic", "end"):
+        op = "side"
+    if not op:
+        op = "center" if g == 4 else "side"
+    tc = float(track_count or 0)
+
+    slim = 0
+    renf = 0
+    rule = "none"
+    if g <= 0:
+        rule = "no_glass"
+    elif g == 2:
+        slim, renf, rule = 1, 1, "2_glass_1slim_1renf"
+    elif g == 3:
+        slim, renf, rule = 1, 2, "3_glass_1slim_2renf"
+    elif g == 4 and op == "side" and tc >= 3.99:
+        slim, renf, rule = 1, 3, "4_glass_4track_side_1slim_3renf"
+    elif g == 4:
+        slim, renf, rule = 2, 2, "4_glass_center_2slim_2renf"
+    else:
+        if op == "center":
+            slim = max(g // 2, 1)
+            renf = max(g - slim, 0)
+            rule = f"{g}_glass_center_split"
+        else:
+            slim, renf = 1, max(g - 1, 0)
+            rule = f"{g}_glass_side_1slim_rest_renf"
+
+    mesh_slim = m if m > 0 else 0
+    if m > 0 and not series_has_slim:
+        mesh_slim = m  # still slim-equivalent pcs; never renf on mesh
+
+    total_interlocks = slim + renf + mesh_slim
+    return {
+        "glassCount": g,
+        "meshCount": m,
+        "opening": op,
+        "trackCount": tc if tc > 0 else None,
+        "slim": slim,
+        "renf": renf,
+        "meshSlim": mesh_slim,
+        "glassReducerPcs": total_interlocks,
+        "totalInterlocks": total_interlocks,
+        "rule": rule,
+        "meshRule": "mesh_slim_only",
+        "seriesHasSlim": bool(series_has_slim),
+        "notes": (
+            "Mesh uses slim interlock only. "
+            "Glass reducer = 1 pc per interlock (glass + mesh)."
+        ),
+    }
+
+
+def derive_sliding_shutter_frame_cuts(
+    setup: Mapping[str, Any] | None,
+    *,
+    width_mm: float,
+    height_mm: float,
+    glass_count: float = 2.0,
+    colour: str | None = None,
+) -> dict[str, Any]:
+    """Shutter frame cuts from Excel V/H / V2 H2 on shutter sections.
+
+    - all-sides (V2 H2): 2 vertical @ H + 2 horizontal @ leaf-width, × glass shutters
+    - split: handleSide V @ H; top/bottom H @ leaf-width, × glass shutters
+    Interlocks are handled separately by ``derive_sliding_interlock_cuts``.
+    """
+    if not isinstance(setup, Mapping):
+        return {"lines": [], "cutSpecs": []}
+    sl = setup.get("sliding") if isinstance(setup.get("sliding"), Mapping) else {}
+    sh = sl.get("shutters") if isinstance(sl.get("shutters"), Mapping) else {}
+    g = max(int(round(float(glass_count or 1))), 1)
+    h_m = max(float(height_mm or 0), 0.0) / 1000.0
+    leaf_w_m = max(float(width_mm or 0), 0.0) / 1000.0 / g
+    mode = _str(sh.get("mode") or ("all_sides_same" if sh.get("sameAllSides") else "split"))
+    lines: list[dict[str, Any]] = []
+    cut_specs: list[dict[str, Any]] = []
+
+    def _add(sec: Any, qty: float, length_m: float, *, use: str, label: str) -> None:
+        if qty <= 0 or length_m <= 0:
+            return
+        s = normalize_section(sec) if isinstance(sec, Mapping) else normalize_section({})
+        display = _str(s.get("name")) or label
+        q = float(qty)
+        lines.append({
+            "category": "profile",
+            "name": display,
+            "catalogueName": display,
+            "use": use,
+            "qty": q,
+            "pcs": int(round(q)) if abs(q - round(q)) < 1e-6 else round(q, 4),
+            "lengthM": round(length_m, 4),
+            "metres": round(length_m * q, 4),
+            "unit": "RM",
+            "section": s,
+            "colour": _str(colour),
+            "remarks": f"{label} ×{int(round(q))}",
+            "sides": use.replace("_", " "),
+        })
+        for _ in range(max(int(round(q)), 0)):
+            cut_specs.append({
+                "lengthM": length_m,
+                "section": s,
+                "use": use,
+                "sectionName": display,
+                "colour": _str(colour),
+            })
+
+    if mode == "all_sides_same":
+        sec = sh.get("allSides") or sh.get("handleSide") or {}
+        ns = normalize_section(sec if isinstance(sec, Mapping) else {})
+        v = int(ns.get("pcsVertical") or 2)
+        h = int(ns.get("pcsHorizontal") or 2)
+        _add(sec, v * g, h_m, use="shutter_vertical", label="Shutter vertical")
+        _add(sec, h * g, leaf_w_m, use="shutter_horizontal", label="Shutter top/bottom")
+    else:
+        handle = sh.get("handleSide") or {}
+        top = sh.get("top") or {}
+        bot = sh.get("bottom") or {}
+        hn = normalize_section(handle if isinstance(handle, Mapping) else {})
+        tn = normalize_section(top if isinstance(top, Mapping) else {})
+        bn = normalize_section(bot if isinstance(bot, Mapping) else {})
+        v_pcs = int(hn.get("pcsVertical") or 1)
+        # handle side top,bottom row often has V=1 H=2 on one combined section
+        if _str(hn.get("name")) and ("top" in _str(hn.get("name")).lower() or "bottom" in _str(hn.get("name")).lower()):
+            h_pcs = int(hn.get("pcsHorizontal") or 2)
+            _add(handle, v_pcs * g, h_m, use="shutter_handle", label="Handle-side vertical")
+            _add(handle, h_pcs * g, leaf_w_m, use="shutter_top_bottom", label="Shutter top/bottom")
+        else:
+            _add(handle, v_pcs * g, h_m, use="shutter_handle", label="Handle-side vertical")
+            t_pcs = int(tn.get("pcsHorizontal") or tn.get("pcsVertical") or (1 if _str(tn.get("name")) else 0))
+            b_pcs = int(bn.get("pcsHorizontal") or bn.get("pcsVertical") or (1 if _str(bn.get("name")) else 0))
+            if t_pcs:
+                _add(top, t_pcs * g, leaf_w_m, use="shutter_top", label="Shutter top")
+            if b_pcs:
+                _add(bot, b_pcs * g, leaf_w_m, use="shutter_bottom", label="Shutter bottom")
+            # Combined "handle side, top, bottom" with H=2 already covered above
+            if not t_pcs and not b_pcs and int(hn.get("pcsHorizontal") or 0) > 0:
+                _add(handle, int(hn.get("pcsHorizontal") or 0) * g, leaf_w_m, use="shutter_top_bottom", label="Shutter top/bottom")
+
+    return {"lines": lines, "cutSpecs": cut_specs, "mode": mode, "glassCount": g}
+
+
+def derive_sliding_interlock_cuts(
+    setup: Mapping[str, Any] | None,
+    *,
+    width_mm: float,
+    height_mm: float,
+    glass_count: float = 2.0,
+    mesh_count: float = 0.0,
+    opening: str | None = None,
+    track_count: float | None = None,
+    colour: str | None = None,
+) -> dict[str, Any]:
+    """Profile cut lines for slim/renf/mesh interlocks + glass reducer (1/interlock)."""
+    if not isinstance(setup, Mapping):
+        return {"assignment": {}, "lines": [], "cutSpecs": []}
+    sl = setup.get("sliding") if isinstance(setup.get("sliding"), Mapping) else {}
+    sh = sl.get("shutters") if isinstance(sl.get("shutters"), Mapping) else {}
+    slim_sec = normalize_section(sh.get("interlockSlim") or sh.get("interlockSide") or {})
+    renf_sec = normalize_section(sh.get("interlockRenf") or {})
+    reducer_sec = normalize_section(sh.get("glassReducer") or {})
+    series_has_slim = bool(
+        _str(slim_sec.get("name"))
+        or _num(slim_sec.get("rate"))
+        or _num(slim_sec.get("weightKgPerM"))
+    )
+    assign = assign_sliding_interlocks(
+        glass_count=glass_count,
+        mesh_count=mesh_count,
+        opening=opening,
+        track_count=track_count,
+        series_has_slim=series_has_slim,
+    )
+    h_m = max(float(height_mm or 0), 0.0) / 1000.0
+    lines: list[dict[str, Any]] = []
+    cut_specs: list[dict[str, Any]] = []
+
+    def _add(sec: Mapping[str, Any], qty: float, *, use: str, label: str) -> None:
+        if qty <= 0 or h_m <= 0:
+            return
+        s = normalize_section(sec) if isinstance(sec, Mapping) else {}
+        display = _str(s.get("name")) or label
+        q = float(qty)
+        lines.append({
+            "category": "profile",
+            "name": display,
+            "catalogueName": display,
+            "use": use,
+            "qty": q,
+            "pcs": int(round(q)) if abs(q - round(q)) < 1e-6 else round(q, 4),
+            "lengthM": round(h_m, 4),
+            "metres": round(h_m * q, 4),
+            "unit": "RM",
+            "section": s,
+            "colour": _str(colour),
+            "remarks": f"{label} ×{int(round(q))} @ H",
+            "sides": use.replace("_", " "),
+        })
+        for _ in range(max(int(round(q)), 0)):
+            cut_specs.append({
+                "lengthM": h_m,
+                "section": s,
+                "use": use,
+                "sectionName": display,
+                "colour": _str(colour),
+            })
+
+    _add(slim_sec, assign["slim"], use="interlock_slim", label="Slim interlock")
+    _add(renf_sec or slim_sec, assign["renf"], use="interlock_renf", label="Reinforcement interlock")
+    if assign["meshSlim"] > 0:
+        _add(slim_sec, assign["meshSlim"], use="interlock_mesh_slim", label="Mesh slim interlock")
+
+    reducer_pcs = float(assign.get("glassReducerPcs") or 0)
+    if reducer_pcs > 0:
+        if not _str(reducer_sec.get("name")) and not _num(reducer_sec.get("rate")):
+            try:
+                for sec in flatten_setup_sections(setup):
+                    if "reducer" in _str(sec.get("name")).lower():
+                        reducer_sec = normalize_section(sec)
+                        break
+            except Exception:
+                pass
+        _add(reducer_sec, reducer_pcs, use="glass_reducer", label="Glass reducer")
+
+    return {
+        "assignment": assign,
+        "lines": lines,
+        "cutSpecs": cut_specs,
+        "heightM": round(h_m, 4),
+    }
+
+
 def derive_sliding_track_fill(
     setup: Mapping[str, Any] | None,
     *,
@@ -2036,18 +2321,37 @@ def derive_sliding_track_fill(
 
     if mode == "all_sides_same":
         sec = sides.get("all") or sides.get("vertical")
-        add_line("track_all", pieces.get("all") or 4, sec, 0)
+        ns = normalize_section(sec) if sec is not None else normalize_section({})
+        # Excel V2/H2 → 2 vertical @ H + 2 horizontal @ W (one section, all sides)
+        v_pcs = ns.get("pcsVertical")
+        h_pcs = ns.get("pcsHorizontal")
+        if ns.get("allSidesSame") or (v_pcs and h_pcs) or _str(ns.get("bomHint")) == "all_sides_same_v2h2":
+            add_line("track_vertical", int(v_pcs or 2), sec, h)
+            add_line("track_horizontal", int(h_pcs or 2), sec, w)
+        else:
+            add_line("track_all", pieces.get("all") or 4, sec, 0)
     elif mode == "verticals_same_h_diff":
-        add_line("track_vertical", pieces.get("vertical") or 2, sides.get("vertical"), h)
-        add_line("track_top", pieces.get("top") or 1, sides.get("top"), w)
-        add_line("track_bottom", pieces.get("bottom") or 1, sides.get("bottom"), w)
+        vsec = normalize_section(sides.get("vertical") or {})
+        tsec = normalize_section(sides.get("top") or {})
+        bsec = normalize_section(sides.get("bottom") or {})
+        v_q = vsec.get("pcsVertical") or pieces.get("vertical") or 2
+        # Top/bottom may carry pcsHorizontal (or inverted Excel V count → already corrected)
+        t_q = tsec.get("pcsHorizontal") or pieces.get("top") or 1
+        b_q = bsec.get("pcsHorizontal") or pieces.get("bottom") or 1
+        add_line("track_vertical", int(v_q), sides.get("vertical"), h)
+        add_line("track_top", int(t_q), sides.get("top"), w)
+        add_line("track_bottom", int(b_q), sides.get("bottom"), w)
     else:
-        add_line("track_left", 1, sides.get("leftVertical"), h)
-        add_line("track_right", 1, sides.get("rightVertical"), h)
-        top_q = pieces.get("top") or 1
-        bot_q = pieces.get("bottom") or 1
-        add_line("track_top", top_q, sides.get("top"), w)
-        add_line("track_bottom", bot_q, sides.get("bottom"), w)
+        lv = normalize_section(sides.get("leftVertical") or {})
+        rv = normalize_section(sides.get("rightVertical") or {})
+        tsec = normalize_section(sides.get("top") or {})
+        bsec = normalize_section(sides.get("bottom") or {})
+        add_line("track_left", int(lv.get("pcsVertical") or 1), sides.get("leftVertical"), h)
+        add_line("track_right", int(rv.get("pcsVertical") or 1), sides.get("rightVertical"), h)
+        top_q = tsec.get("pcsHorizontal") or pieces.get("top") or 1
+        bot_q = bsec.get("pcsHorizontal") or pieces.get("bottom") or 1
+        add_line("track_top", int(top_q), sides.get("top"), w)
+        add_line("track_bottom", int(bot_q), sides.get("bottom"), w)
 
     return {
         "pattern": pattern,
@@ -2517,9 +2821,37 @@ def apply_setup_bom(
     quote_hw_notes: list[dict[str, str]] = []
     wastage: dict[str, Any] = {}
     stype = _str(setup.get("type")).lower()
+    interlock_pack: dict[str, Any] = {}
+    shutter_frames: dict[str, Any] = {}
     if stype == "sliding":
         track_fill = derive_sliding_track_fill(
             setup, width_mm=width_mm, height_mm=height_mm
+        )
+        mesh_n = float(
+            context.get("meshCount")
+            or context.get("meshShutters")
+            or context.get("mesh_count")
+            or 0
+        )
+        opening = context.get("opening") or context.get("openingType") or context.get("shutterOpening")
+        track_c = context.get("trackCount") or context.get("track_count")
+        colour_ctx = _str(context.get("colour") or context.get("color") or "")
+        shutter_frames = derive_sliding_shutter_frame_cuts(
+            setup,
+            width_mm=width_mm,
+            height_mm=height_mm,
+            glass_count=shutters,
+            colour=colour_ctx,
+        )
+        interlock_pack = derive_sliding_interlock_cuts(
+            setup,
+            width_mm=width_mm,
+            height_mm=height_mm,
+            glass_count=shutters,
+            mesh_count=mesh_n,
+            opening=_str(opening) or None,
+            track_count=float(track_c) if track_c not in (None, "") else None,
+            colour=colour_ctx,
         )
         pack_hw = derive_sliding_hardware_lines(
             setup,
@@ -2570,6 +2902,8 @@ def apply_setup_bom(
         "usedMembers": bool(members),
         "usedHardwareWeightRules": bool(hw),
         "trackFill": track_fill,
+        "shutterFrames": shutter_frames,
+        "interlocks": interlock_pack,
         "hardwarePackLines": pack_hw,
         "quoteHardwareNotes": quote_hw_notes,
         "wastage": wastage,
