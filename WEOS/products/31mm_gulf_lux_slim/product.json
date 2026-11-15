@@ -5,7 +5,7 @@
   "category": "Windows",
   "units": "mm",
   "version": 1,
-  "status": "stub",
+  "status": "hidden",
   "description": "Imported from section catalogue — 31 MM Gulf Lux Slim Sreis.",
   "tagline": "31 MM Gulf Lux Slim Sreis",
   "warranty": "",
@@ -209,5 +209,7 @@
     },
     "source": "excel_section_catalogue",
     "productId": "29mm_sliding"
-  }
+  },
+  "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
+  "hiddenAt": "2026-11-15T17:51:31.080805+00:00"
 }

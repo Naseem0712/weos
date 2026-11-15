@@ -1,0 +1,27 @@
+{
+  "id": "new_product",
+  "displayName": "New Product",
+  "productType": "windows",
+  "category": "Windows",
+  "units": "mm",
+  "version": 1,
+  "status": "hidden",
+  "description": "",
+  "tagline": "",
+  "warranty": "",
+  "heroImage": "/static/products/placeholder.svg",
+  "gallery": [],
+  "sectionDrawings": [],
+  "specifications": {},
+  "materials": [],
+  "formulas": {},
+  "pdfLayout": {
+    "customer": "woodenmax_customer",
+    "factory": "woodenmax_factory"
+  },
+  "brand": "woodenmax",
+  "catalogue": {},
+  "setup": {},
+  "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
+  "hiddenAt": "2026-11-15T17:51:31.085185+00:00"
+}

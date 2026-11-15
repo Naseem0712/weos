@@ -580,7 +580,21 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
     """Structured per-shutter hardware (connectors, EPDM, wings, brush, lock, wheels)."""
     r = raw if isinstance(raw, Mapping) else {}
 
-    def qty_rate(key: str, default_qty: float = 0.0, max_qty: float | None = None) -> dict[str, Any]:
+    def _brand(block: Mapping[str, Any], *, name: str = "", default_origin: str = "indian") -> str:
+        try:
+            from WEOS.factory.hardware_brands import resolve_hardware_brand
+
+            return resolve_hardware_brand(
+                block,
+                brand=block.get("brand"),
+                origin=block.get("origin"),
+                name=name or block.get("name"),
+                default_origin=default_origin,
+            )
+        except Exception:
+            return _str(block.get("brand")) or "HIVIC"
+
+    def qty_rate(key: str, default_qty: float = 0.0, max_qty: float | None = None, *, name: str = "") -> dict[str, Any]:
         block = r.get(key) if isinstance(r.get(key), Mapping) else {}
         qty = _num(block.get("qty") if block.get("qty") is not None else default_qty)
         if qty is None:
@@ -591,6 +605,8 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
             "qty": float(qty),
             "rate": _num(block.get("rate")) or 0.0,
             "unit": _str(block.get("unit") or "PC").upper(),
+            "brand": _brand(block, name=name),
+            "origin": _str(block.get("origin") or "indian"),
             "notes": _str(block.get("notes")),
         }
 
@@ -607,17 +623,21 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
     if lock_type not in LOCK_TYPES:
         lock_type = "single_point"
     return {
-        "trackConnectors": qty_rate("trackConnectors", 0, 8),
-        "shutterConnectors": qty_rate("shutterConnectors", 0, 4),
+        "trackConnectors": qty_rate("trackConnectors", 0, 8, name="Track connectors"),
+        "shutterConnectors": qty_rate("shutterConnectors", 0, 4, name="Shutter connectors"),
         "epdm": {
             "ratePerM": _num(epdm.get("ratePerM") or epdm.get("rate")) or 0.0,
             # height×4 + width×4 (m) — computed at quote time
             "formula": _str(epdm.get("formula") or "height_m*4 + width_m*4"),
+            "brand": _brand(epdm, name="EPDM"),
+            "origin": _str(epdm.get("origin") or "indian"),
             "notes": _str(epdm.get("notes")),
         },
         "brush": {
             "ratePerM": _num(brush.get("ratePerM") or brush.get("rate")) or 0.0,
             "formula": _str(brush.get("formula") or "height_m*4 + width_m*4"),
+            "brand": _brand(brush, name="Brush"),
+            "origin": _str(brush.get("origin") or "indian"),
             "notes": _str(brush.get("notes")),
         },
         "wings": {
@@ -625,18 +645,26 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
             "rate": _num(wings.get("rate")) or 0.0,
             "qtyAllSidesSame": int(_num(wings.get("qtyAllSidesSame")) or 8),
             "qtySplit": int(_num(wings.get("qtySplit")) or 4),
+            "brand": _brand(wings, name="Wings"),
+            "origin": _str(wings.get("origin") or "indian"),
             "notes": _str(wings.get("notes")),
         },
         "lock": {
             "type": lock_type,
             "rate": _num(lock.get("rate")) or 0.0,
             "unit": _str(lock.get("unit") or "SET").upper(),
+            "brand": _brand(lock, name="Lock"),
+            "origin": _str(lock.get("origin") or "indian"),
             "notes": _str(lock.get("notes")),
         },
         "wheels": {
             "qtyPerShutter": _num(wheels.get("qtyPerShutter") if wheels.get("qtyPerShutter") is not None else 2) or 2.0,
             "rate": _num(wheels.get("rate")) or 0.0,
             "unit": _str(wheels.get("unit") or "PC").upper(),
+            "brand": _brand(wheels, name=_str(wheels.get("name") or "Wheels")),
+            "origin": _str(wheels.get("origin") or "indian"),
+            "name": _str(wheels.get("name")),
+            "weightCapacityKg": _num(wheels.get("weightCapacityKg") or wheels.get("capacityKg")),
             "notes": _str(wheels.get("notes")),
         },
     }
@@ -1323,7 +1351,17 @@ def format_named_capacity_brand(item: Mapping[str, Any] | None) -> str:
     if not isinstance(item, Mapping):
         return ""
     name = _str(item.get("name")) or "Hardware"
-    brand = _str(item.get("brand"))
+    try:
+        from WEOS.factory.hardware_brands import resolve_hardware_brand
+
+        brand = resolve_hardware_brand(
+            item,
+            brand=item.get("brand"),
+            origin=item.get("origin"),
+            name=name,
+        )
+    except Exception:
+        brand = _str(item.get("brand"))
     cap = _num(item.get("weightCapacityKg") or item.get("capacityKg") or item.get("maxKg"))
     bits = [name]
     if cap:
@@ -2033,21 +2071,56 @@ def derive_sliding_hardware_lines(
     same_shutter = _str((sl.get("shutters") or {}).get("mode")) == "all_sides_same"
     lines: list[dict[str, Any]] = []
 
-    def add(name: str, qty: float, rate: float, unit: str = "PC", remarks: str = "") -> None:
+    def add(
+        name: str,
+        qty: float,
+        rate: float,
+        unit: str = "PC",
+        remarks: str = "",
+        *,
+        brand: str = "",
+        origin: str = "indian",
+        capacity: float | None = None,
+    ) -> None:
         if qty <= 0 and rate <= 0:
             return
+        try:
+            from WEOS.factory.hardware_brands import resolve_hardware_brand
+
+            brand_r = resolve_hardware_brand(
+                {"name": name, "brand": brand, "origin": origin},
+                brand=brand,
+                origin=origin,
+                name=name,
+            )
+        except Exception:
+            brand_r = brand or "HIVIC"
+        display = name
+        if brand_r and brand_r.lower() not in name.lower():
+            display = f"{brand_r} {name}"
+        if capacity is not None:
+            display = f"{display} · {float(capacity):g} kg"
         lines.append({
             "category": "hardware",
-            "name": name,
+            "name": display,
             "qty": round(qty, 4),
             "unit": unit,
             "unitRate": float(rate or 0),
+            "brand": brand_r,
+            "origin": origin,
             "remarks": remarks,
             "source": "sliding.hardwarePack",
         })
 
     tc = pack.get("trackConnectors") or {}
-    add("Track connectors", float(tc.get("qty") or 0), float(tc.get("rate") or 0), tc.get("unit") or "PC")
+    add(
+        "Track connectors",
+        float(tc.get("qty") or 0),
+        float(tc.get("rate") or 0),
+        tc.get("unit") or "PC",
+        brand=_str(tc.get("brand")),
+        origin=_str(tc.get("origin") or "indian"),
+    )
     sc = pack.get("shutterConnectors") or {}
     add(
         "Shutter connectors",
@@ -2055,23 +2128,60 @@ def derive_sliding_hardware_lines(
         float(sc.get("rate") or 0),
         sc.get("unit") or "PC",
         "per shutter",
+        brand=_str(sc.get("brand")),
+        origin=_str(sc.get("origin") or "indian"),
     )
     epdm = pack.get("epdm") or {}
-    add("EPDM dual-side", perimeter * shutters, float(epdm.get("ratePerM") or 0), "RM", "height×4 + width×4 × shutters")
+    add(
+        "EPDM dual-side",
+        perimeter * shutters,
+        float(epdm.get("ratePerM") or 0),
+        "RM",
+        "height×4 + width×4 × shutters",
+        brand=_str(epdm.get("brand")),
+        origin=_str(epdm.get("origin") or "indian"),
+    )
     brush = pack.get("brush") or {}
-    add("Brush", perimeter * shutters, float(brush.get("ratePerM") or 0), "RM", "same as EPDM")
+    add(
+        "Brush",
+        perimeter * shutters,
+        float(brush.get("ratePerM") or 0),
+        "RM",
+        "same as EPDM",
+        brand=_str(brush.get("brand")),
+        origin=_str(brush.get("origin") or "indian"),
+    )
     wings = pack.get("wings") or {}
     wqty = float(wings.get("qtyAllSidesSame") or 8) if same_shutter else float(wings.get("qtySplit") or 4)
-    add("Wings / angle", wqty * shutters, float(wings.get("rate") or 0), "PC", "4 split / 8 all-sides per shutter")
-    lock = pack.get("lock") or {}
-    add(f"Lock ({lock.get('type') or 'single_point'})", 1.0, float(lock.get("rate") or 0), lock.get("unit") or "SET")
-    wheels = pack.get("wheels") or {}
     add(
-        "Wheels",
+        "Wings / angle",
+        wqty * shutters,
+        float(wings.get("rate") or 0),
+        "PC",
+        "4 split / 8 all-sides per shutter",
+        brand=_str(wings.get("brand")),
+        origin=_str(wings.get("origin") or "indian"),
+    )
+    lock = pack.get("lock") or {}
+    add(
+        f"Lock ({lock.get('type') or 'single_point'})",
+        1.0,
+        float(lock.get("rate") or 0),
+        lock.get("unit") or "SET",
+        brand=_str(lock.get("brand")),
+        origin=_str(lock.get("origin") or "indian"),
+    )
+    wheels = pack.get("wheels") or {}
+    wname = _str(wheels.get("name") or "Wheels")
+    add(
+        wname,
         float(wheels.get("qtyPerShutter") or 2) * shutters,
         float(wheels.get("rate") or 0),
         wheels.get("unit") or "PC",
         "per shutter",
+        brand=_str(wheels.get("brand")),
+        origin=_str(wheels.get("origin") or "indian"),
+        capacity=_num(wheels.get("weightCapacityKg")),
     )
     return [ln for ln in lines if ln["qty"] > 0 or ln["unitRate"] > 0]
 

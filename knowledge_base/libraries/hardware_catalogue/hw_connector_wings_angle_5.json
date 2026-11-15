@@ -1,0 +1,23 @@
+{
+  "id": "hw_connector_wings_angle_5",
+  "name": "wings angle",
+  "category": "connector",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 5.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: connecters · per shutter/door: 8",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.303812+00:00",
+  "qtyPer": 8.0,
+  "basis": "shutter",
+  "systemGroup": "connecters",
+  "inch": null
+}

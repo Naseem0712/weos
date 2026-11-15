@@ -1,0 +1,23 @@
+{
+  "id": "hw_accessory_ss_12_inch_650",
+  "name": "ss 12 inch",
+  "category": "accessory",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 650.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: nhi lagegi isse badi door hai to hinges me shift · per shutter/door: 1 · 12\"",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.287734+00:00",
+  "qtyPer": 1.0,
+  "basis": "shutter",
+  "systemGroup": "nhi lagegi isse badi door hai to hinges me shift",
+  "inch": 12.0
+}

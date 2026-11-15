@@ -1,0 +1,23 @@
+{
+  "id": "hw_accessory_ss_16_inch_850",
+  "name": "ss 16 inch",
+  "category": "accessory",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 850.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: karna hoga · per shutter/door: 1 · 16\"",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.290675+00:00",
+  "qtyPer": 1.0,
+  "basis": "shutter",
+  "systemGroup": "karna hoga",
+  "inch": 16.0
+}

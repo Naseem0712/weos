@@ -1,0 +1,23 @@
+{
+  "id": "hw_accessory_lamination_arm_8_10_12_inch_every_size_100_badhte_hai_maine_8_inch_ke_rate_diye_hai_350",
+  "name": "lamination arm 8, 10, 12 inch every size 100 badhte hai maine 8 inch ke rate diye hai",
+  "category": "accessory",
+  "origin": "imported",
+  "brand": "CMECH",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 350.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: hinges ke sath lagne wale items · per shutter/door: 2 · 12\"",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.306045+00:00",
+  "qtyPer": 2.0,
+  "basis": "shutter",
+  "systemGroup": "hinges ke sath lagne wale items",
+  "inch": 12.0
+}

@@ -2086,7 +2086,7 @@ textarea{max-width:100%}
               </select>
             </div>
             <div><label class="l">Category</label><input id="adCat" style="width:140px"/></div>
-            <div><label class="l">Status</label><select id="adStatus"><option>active</option><option>stub</option><option>archived</option></select></div>
+            <div><label class="l">Status</label><select id="adStatus"><option>active</option><option>stub</option><option>hidden</option><option>archived</option></select></div>
             <div><label class="l">Brand</label><select id="adBrand"><option value="woodenmax">WoodenMax</option><option value="allkraft">AllKraft</option></select></div>
           </div>
           <div class="row" style="margin-top:.5rem">
@@ -5269,7 +5269,11 @@ async function loadProducts() {
     // products now render a real preview (synthesised geometry) and price via a
     // manual rate, so nothing is hidden. Only truly invalid rows (no id) are
     // skipped. Empty library → clear prompt, no dummy options.
-    const selectable = state.products.filter(p => p && p.id);
+    const selectable = state.products.filter(p => {
+      if (!p || !p.id) return false;
+      const st = String(p.status || '').toLowerCase();
+      return st !== 'hidden' && st !== 'archived' && st !== 'deleted';
+    });
     if (!selectable.some(p => productLooksLikeRailing(p) || String(p.id).toLowerCase() === 'railing')) {
       selectable.push({ id: 'railing', displayName: 'Railing (designer)', category: 'Railings', productType: 'railing', manufacturingReady: true });
     }

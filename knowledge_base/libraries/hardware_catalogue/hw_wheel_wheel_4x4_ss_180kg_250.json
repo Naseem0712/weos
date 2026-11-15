@@ -1,0 +1,23 @@
+{
+  "id": "hw_wheel_wheel_4x4_ss_180kg_250",
+  "name": "wheel 4X4 SS",
+  "category": "wheel",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 250.0,
+  "weightKg": null,
+  "weightCapacityKg": 180.0,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: Sliding System Wheel Options · per shutter/door: 2 · capacity 180 kg",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.261007+00:00",
+  "qtyPer": 2.0,
+  "basis": "shutter",
+  "systemGroup": "Sliding System Wheel Options",
+  "inch": null
+}

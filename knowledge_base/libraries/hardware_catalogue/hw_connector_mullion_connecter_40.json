@@ -1,0 +1,23 @@
+{
+  "id": "hw_connector_mullion_connecter_40",
+  "name": "mullion connecter",
+  "category": "connector",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 40.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: connecters · per shutter/door: 2",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.298795+00:00",
+  "qtyPer": 2.0,
+  "basis": "shutter",
+  "systemGroup": "connecters",
+  "inch": null
+}

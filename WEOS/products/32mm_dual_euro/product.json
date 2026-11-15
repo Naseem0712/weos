@@ -5,7 +5,7 @@
   "category": "Windows",
   "units": "mm",
   "version": 1,
-  "status": "stub",
+  "status": "hidden",
   "description": "Imported from section catalogue — 32 MM dual euro grove Sreies.",
   "tagline": "32 MM dual euro grove Sreies",
   "warranty": "",
@@ -179,5 +179,7 @@
     },
     "source": "excel_section_catalogue",
     "productId": "29mm_sliding"
-  }
+  },
+  "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
+  "hiddenAt": "2026-11-15T17:51:31.081766+00:00"
 }

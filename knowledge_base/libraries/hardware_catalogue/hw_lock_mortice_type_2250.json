@@ -1,0 +1,23 @@
+{
+  "id": "hw_lock_mortice_type_2250",
+  "name": "mortice type",
+  "category": "lock",
+  "origin": "imported",
+  "brand": "CMECH",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 2250.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: Lock, handle options · per shutter/door: 1",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.277646+00:00",
+  "qtyPer": 1.0,
+  "basis": "shutter",
+  "systemGroup": "Lock, handle options",
+  "inch": null
+}

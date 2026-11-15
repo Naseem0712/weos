@@ -1,0 +1,23 @@
+{
+  "id": "hw_hinge_3_wings_hinges_45kg_750",
+  "name": "3 wings Hinges",
+  "category": "hinge",
+  "origin": "imported",
+  "brand": "CMECH",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 750.0,
+  "weightKg": null,
+  "weightCapacityKg": 45.0,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: Hinges · per shutter/door: 2 · capacity 45 kg",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.295288+00:00",
+  "qtyPer": 2.0,
+  "basis": "shutter",
+  "systemGroup": "Hinges",
+  "inch": null
+}

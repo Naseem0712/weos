@@ -1,0 +1,23 @@
+{
+  "id": "hw_accessory_ss_24_inch_1550",
+  "name": "ss 24 inch",
+  "category": "accessory",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 1550.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: karna hoga · per shutter/door: 1 · 24\"",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.293241+00:00",
+  "qtyPer": 1.0,
+  "basis": "shutter",
+  "systemGroup": "karna hoga",
+  "inch": 24.0
+}

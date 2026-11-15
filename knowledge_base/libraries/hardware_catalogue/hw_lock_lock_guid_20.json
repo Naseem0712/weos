@@ -1,0 +1,23 @@
+{
+  "id": "hw_lock_lock_guid_20",
+  "name": "lock guid",
+  "category": "lock",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 20.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: connecters · per shutter/door: 2",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.303812+00:00",
+  "qtyPer": 2.0,
+  "basis": "shutter",
+  "systemGroup": "connecters",
+  "inch": null
+}

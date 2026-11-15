@@ -1,0 +1,23 @@
+{
+  "id": "hw_accessory_track_rail_aluminium_270",
+  "name": "track rail aluminium",
+  "category": "accessory",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "RFT",
+  "rate": 270.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: Track rail Options · per window: 2, 3, 4 nos track count ke according ",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.273935+00:00",
+  "qtyPer": 2.0,
+  "basis": "window",
+  "systemGroup": "Track rail Options",
+  "inch": null
+}

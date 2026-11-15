@@ -1,0 +1,23 @@
+{
+  "id": "hw_gasket_epdm_same_rate_12",
+  "name": "epdm same rate",
+  "category": "gasket",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "RM",
+  "rate": 12.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: connecters · per shutter/door: v4, h4",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.306045+00:00",
+  "qtyPer": 4.0,
+  "basis": "shutter",
+  "systemGroup": "connecters",
+  "inch": null
+}

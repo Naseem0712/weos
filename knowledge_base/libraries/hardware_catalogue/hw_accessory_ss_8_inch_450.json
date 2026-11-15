@@ -1,0 +1,23 @@
+{
+  "id": "hw_accessory_ss_8_inch_450",
+  "name": "ss 8 Inch",
+  "category": "accessory",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 450.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: Side swing & Top Hunk Ke liye same optiosn · per shutter/door: 1 · 8\"",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.282591+00:00",
+  "qtyPer": 1.0,
+  "basis": "shutter",
+  "systemGroup": "Side swing & Top Hunk Ke liye same optiosn",
+  "inch": 8.0
+}

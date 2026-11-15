@@ -1,0 +1,23 @@
+{
+  "id": "hw_accessory_multipoint_metro_type_1350",
+  "name": "Multipoint Metro Type",
+  "category": "accessory",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 1350.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: Lock, handle options · per shutter/door: 1",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.276289+00:00",
+  "qtyPer": 1.0,
+  "basis": "shutter",
+  "systemGroup": "Lock, handle options",
+  "inch": null
+}

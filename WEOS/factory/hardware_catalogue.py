@@ -72,23 +72,30 @@ def catalogue_dir() -> Path:
 # ── Library persistence ──────────────────────────────────────────────────────
 
 def build_hardware_item(spec: Mapping[str, Any]) -> dict[str, Any]:
+    from WEOS.factory.hardware_brands import normalize_origin, resolve_hardware_brand
+
     name = str(spec.get("name") or spec.get("id") or "Hardware")
     category = str(spec.get("category") or "accessory").strip().lower()
     hid = str(spec.get("id") or f"hw_{_slug(category)}_{_slug(name)}")
+    origin = normalize_origin(spec.get("origin") or spec.get("hardwareOrigin"))
+    brand = resolve_hardware_brand(spec, brand=spec.get("brand"), origin=origin, name=name)
     return {
         "id": hid,
         "name": name,
         "category": category,
-        "brand": str(spec.get("brand") or ""),
+        "origin": origin or "",
+        "brand": brand,
         "partNumber": str(spec.get("partNumber") or spec.get("partNo") or ""),
         "unit": str(spec.get("unit") or "PC"),
         "rate": float(spec["rate"]) if spec.get("rate") is not None else None,
         "weightKg": float(spec["weightKg"]) if spec.get("weightKg") is not None else None,
+        "weightCapacityKg": float(spec["weightCapacityKg"]) if spec.get("weightCapacityKg") is not None else None,
         "supplier": str(spec.get("supplier") or ""),
         "compatibleProducts": list(spec.get("compatibleProducts") or []),
         "compatibleSeries": list(spec.get("compatibleSeries") or []),
         "remarks": str(spec.get("remarks") or ""),
         "status": str(spec.get("status") or "active"),
+        "editableRate": bool(spec.get("editableRate", True)),
         "updatedAt": _now(),
     }
 
@@ -258,6 +265,14 @@ def _line_from(
     weight = rule.get("weightKg")
     if weight is None and lib_item:
         weight = lib_item.get("weightKg")
+    from WEOS.factory.hardware_brands import resolve_hardware_brand
+
+    brand = resolve_hardware_brand(
+        lib_item,
+        brand=rule.get("brand") or (lib_item.get("brand") if lib_item else None),
+        origin=rule.get("origin") or (lib_item.get("origin") if lib_item else None),
+        name=name or (lib_item.get("name") if lib_item else None),
+    )
     return {
         "category": "hardware",
         "name": str(name or lib_item.get("name") or rule.get("hardware") or "hardware"),
@@ -266,26 +281,34 @@ def _line_from(
         "unitRate": float(rate) if rate is not None else None,
         "weightKg": float(weight) if weight is not None else None,
         "partNumber": str(rule.get("partNumber") or (lib_item.get("partNumber") if lib_item else "") or ""),
-        "brand": str(rule.get("brand") or (lib_item.get("brand") if lib_item else "") or ""),
+        "brand": brand,
+        "origin": str(rule.get("origin") or (lib_item.get("origin") if lib_item else "") or ""),
         "remarks": remarks,
     }
 
 
 def to_line_items(lines: Sequence[Mapping[str, Any]]) -> list[Any]:
     """Convert rule engine lines into factory LineItem objects for the BOM."""
+    from WEOS.factory.hardware_brands import resolve_hardware_brand
     from WEOS.factory.job_types import LineItem
 
     out: list[LineItem] = []
     for ln in lines or []:
         remarks = ln.get("remarks") or ""
+        brand = resolve_hardware_brand(ln, brand=ln.get("brand"), origin=ln.get("origin"), name=ln.get("name"))
+        if brand:
+            remarks = (f"{brand} · " + remarks).strip(" ·")
         if ln.get("partNumber"):
             remarks = (f"P/N {ln['partNumber']} · " + remarks).strip(" ·")
         if ln.get("weightKg") is not None:
             remarks = (remarks + f" · {float(ln['weightKg']):.3f} kg").strip(" ·")
+        name = str(ln.get("name") or "hardware")
+        if brand and brand.lower() not in name.lower():
+            name = f"{brand} {name}"
         out.append(
             LineItem(
                 category="hardware",
-                description=str(ln.get("name") or "hardware"),
+                description=name,
                 quantity=float(ln.get("qty") or 0),
                 unit=str(ln.get("unit") or "PC"),
                 length_mm=0.0,
@@ -319,13 +342,13 @@ def seed_default_hardware(*, force: bool = False) -> dict[str, Any]:
         except Exception:
             pass
     starters = [
-        {"name": "SS Handle", "category": "handle", "unit": "PC", "rate": 180, "weightKg": 0.3},
-        {"name": "Sliding Roller (twin)", "category": "roller", "unit": "PAIR", "rate": 220, "weightKg": 0.25},
-        {"name": "Touch Lock", "category": "lock", "unit": "PC", "rate": 260, "weightKg": 0.15},
-        {"name": "Hinge 4in", "category": "hinge", "unit": "PC", "rate": 90, "weightKg": 0.2},
-        {"name": "Floor Spring 80kg", "category": "floor_spring", "unit": "PC", "rate": 2200, "weightKg": 3.5, "partNumber": "FS-80"},
-        {"name": "Floor Spring 120kg", "category": "floor_spring", "unit": "PC", "rate": 3200, "weightKg": 4.2, "partNumber": "FS-120"},
-        {"name": "Floor Spring 150kg", "category": "floor_spring", "unit": "PC", "rate": 4200, "weightKg": 5.0, "partNumber": "FS-150"},
+        {"name": "SS Handle", "category": "handle", "unit": "PC", "rate": 180, "weightKg": 0.3, "origin": "indian"},
+        {"name": "Sliding Roller (twin)", "category": "roller", "unit": "PAIR", "rate": 220, "weightKg": 0.25, "origin": "indian"},
+        {"name": "Touch Lock", "category": "lock", "unit": "PC", "rate": 260, "weightKg": 0.15, "origin": "indian"},
+        {"name": "Hinge 4in", "category": "hinge", "unit": "PC", "rate": 90, "weightKg": 0.2, "origin": "indian"},
+        {"name": "Floor Spring 80kg", "category": "floor_spring", "unit": "PC", "rate": 2200, "weightKg": 3.5, "partNumber": "FS-80", "origin": "imported"},
+        {"name": "Floor Spring 120kg", "category": "floor_spring", "unit": "PC", "rate": 3200, "weightKg": 4.2, "partNumber": "FS-120", "origin": "imported"},
+        {"name": "Floor Spring 150kg", "category": "floor_spring", "unit": "PC", "rate": 4200, "weightKg": 5.0, "partNumber": "FS-150", "origin": "imported"},
     ]
     created = []
     for s in starters:

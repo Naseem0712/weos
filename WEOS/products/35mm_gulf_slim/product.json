@@ -5,7 +5,7 @@
   "category": "Windows",
   "units": "mm",
   "version": 1,
-  "status": "stub",
+  "status": "hidden",
   "description": "Imported from section catalogue — 35MM Gulf Slim Series.",
   "tagline": "35MM Gulf Slim Series",
   "warranty": "",
@@ -127,5 +127,7 @@
     },
     "source": "excel_section_catalogue",
     "productId": "35mm_sliding"
-  }
+  },
+  "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
+  "hiddenAt": "2026-11-15T17:51:31.083184+00:00"
 }

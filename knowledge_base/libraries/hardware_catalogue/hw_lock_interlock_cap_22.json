@@ -1,0 +1,23 @@
+{
+  "id": "hw_lock_interlock_cap_22",
+  "name": "Interlock Cap",
+  "category": "lock",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 22.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: Sliding System Wheel Options · per shutter/door: 2",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.270439+00:00",
+  "qtyPer": 2.0,
+  "basis": "shutter",
+  "systemGroup": "Sliding System Wheel Options",
+  "inch": null
+}

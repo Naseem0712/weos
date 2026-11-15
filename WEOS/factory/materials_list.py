@@ -133,10 +133,31 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
         except Exception:
             pass
 
+    def _hw_display(h: Mapping[str, Any]) -> tuple[str, str]:
+        try:
+            from WEOS.factory.hardware_brands import resolve_hardware_brand
+
+            brand = resolve_hardware_brand(
+                h,
+                brand=h.get("brand"),
+                origin=h.get("origin") or h.get("hardwareOrigin"),
+                name=h.get("catalogueName") or h.get("name") or h.get("description"),
+            )
+        except Exception:
+            brand = _str(h.get("brand"))
+        nm = _str(h.get("catalogueName") or h.get("name") or h.get("description"))
+        if brand and brand.lower() not in nm.lower():
+            nm = f"{brand} {nm}".strip()
+        return nm, brand
+
     for h in design.get("hardware") or []:
+        if not isinstance(h, Mapping):
+            continue
+        nm, brand = _hw_display(h)
         hardware.append({
             "kind": "hardware",
-            "name": _str(h.get("catalogueName") or h.get("name")),
+            "name": nm,
+            "brand": brand,
             "qty": h.get("qty"),
             "pcs": h.get("qty"),
             "unit": h.get("unit") or "PC",
@@ -145,11 +166,12 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
     # Line hardware from calc result
     for h in line.get("hardware") or []:
         if isinstance(h, Mapping):
-            nm = _str(h.get("name") or h.get("description"))
+            nm, brand = _hw_display(h)
             if nm and not any(x["name"] == nm for x in hardware):
                 hardware.append({
                     "kind": "hardware",
                     "name": nm,
+                    "brand": brand,
                     "qty": h.get("qty") or h.get("quantity"),
                     "pcs": h.get("qty") or h.get("quantity"),
                     "unit": h.get("unit") or "PC",

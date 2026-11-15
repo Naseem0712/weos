@@ -1,0 +1,23 @@
+{
+  "id": "hw_hinge_heavy_duty_hinges_45kg_600",
+  "name": "Heavy Duty Hinges",
+  "category": "hinge",
+  "origin": "imported",
+  "brand": "CMECH",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 600.0,
+  "weightKg": null,
+  "weightCapacityKg": 45.0,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: Hinges · per shutter/door: 2 · capacity 45 kg",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.297317+00:00",
+  "qtyPer": 2.0,
+  "basis": "shutter",
+  "systemGroup": "Hinges",
+  "inch": null
+}

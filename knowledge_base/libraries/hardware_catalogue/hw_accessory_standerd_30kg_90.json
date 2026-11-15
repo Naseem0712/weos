@@ -1,0 +1,23 @@
+{
+  "id": "hw_accessory_standerd_30kg_90",
+  "name": "Standerd",
+  "category": "accessory",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 90.0,
+  "weightKg": null,
+  "weightCapacityKg": 30.0,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: Hinges · per shutter/door: 2 · capacity 30 kg",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.295288+00:00",
+  "qtyPer": 2.0,
+  "basis": "shutter",
+  "systemGroup": "Hinges",
+  "inch": null
+}

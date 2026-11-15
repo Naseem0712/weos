@@ -1,0 +1,23 @@
+{
+  "id": "hw_brush_brush_4_4_4_8_9",
+  "name": "brush 4.4-4.8",
+  "category": "brush",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "RM",
+  "rate": 9.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: Sliding System Wheel Options",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.267389+00:00",
+  "qtyPer": null,
+  "basis": "shutter",
+  "systemGroup": "Sliding System Wheel Options",
+  "inch": null
+}

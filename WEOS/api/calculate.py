@@ -220,6 +220,10 @@ def products_catalog() -> list[dict[str, Any]]:
     for pid, name in list_products():
         try:
             p = load_product(pid, strict=False)
+            status = str(p.get("status") or "active").lower()
+            # Hidden = superseded dummy/stub series (kept on disk, not selectable)
+            if status in ("hidden", "archived", "deleted"):
+                continue
             pricing = p.get("pricing") or {}
             items.append(
                 {
@@ -242,6 +246,7 @@ def products_catalog() -> list[dict[str, Any]]:
                     "sectionSeries": p.get("sectionSeries"),
                     "productType": p.get("productType"),
                     "manufacturingReady": not (p.get("_stub") or p.get("status") == "stub"),
+                    "ratesEditable": bool(p.get("ratesEditable", True)),
                 }
             )
         except Exception as exc:

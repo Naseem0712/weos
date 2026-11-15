@@ -44,6 +44,15 @@ SERIES_PRODUCT_MAP: dict[str, str] = {
     "27mm_high_end_domal": "29mm_sliding",
     "31mm_gulf_lux_slim": "29mm_sliding",
     "32mm_dual_euro": "29mm_sliding",
+    # profile and hardwares weos.xlsx
+    "25mm_prestige": "29mm_sliding",
+    "27mm_domal": "29mm_sliding",
+    "29mm_premium": "29mm_sliding",
+    "35mm_prestige": "29mm_sliding",
+    "35mm_gulf": "29mm_sliding",
+    "40mm_prestige": "29mm_sliding",
+    "40mm_casement_standard": "casement_stub",
+    "50mm_casement_prestige": "casement_stub",
 }
 
 

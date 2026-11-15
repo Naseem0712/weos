@@ -1,0 +1,23 @@
+{
+  "id": "hw_wheel_wheel_2x2_ss_40kg_70",
+  "name": "Wheel 2x2 SS",
+  "category": "wheel",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 70.0,
+  "weightKg": null,
+  "weightCapacityKg": 40.0,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: Sliding System Wheel Options · per shutter/door: 2 nos · capacity 40 kg",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.259948+00:00",
+  "qtyPer": 2.0,
+  "basis": "shutter",
+  "systemGroup": "Sliding System Wheel Options",
+  "inch": null
+}

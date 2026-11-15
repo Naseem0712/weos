@@ -1,17 +1,19 @@
-﻿{
+{
   "id": "35mm_sliding",
   "displayName": "35mm Sliding Window",
   "productType": "35mm_sliding",
   "category": "Windows",
   "units": "mm",
   "version": 0,
-  "status": "stub",
+  "status": "hidden",
   "linkedProductId": "29mm_sliding",
   "description": "Catalogue entry — manufacturing engines coming soon. Manual rate for quotations.",
   "tagline": "35mm Sliding Window catalogue",
   "warranty": "1 year (demo)",
   "heroImage": "/static/products/placeholder.svg",
-  "gallery": ["/static/products/placeholder.svg"],
+  "gallery": [
+    "/static/products/placeholder.svg"
+  ],
   "specifications": {
     "profileSeries": "35mm Sliding Window",
     "sectionSizeMm": "TBD",
@@ -24,5 +26,7 @@
     "hardwareFinish": "TBD",
     "defaultGlass": "As specified",
     "openingDirection": "TBD"
-  }
+  },
+  "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
+  "hiddenAt": "2026-11-15T17:51:31.085185+00:00"
 }

@@ -730,15 +730,18 @@ class HardwareItemBody(BaseModel):
     name: str
     category: str = "accessory"
     brand: str = ""
+    origin: str = ""  # indian → HIVIC · imported → CMECH · ette → ETTE
     partNumber: str = ""
     unit: str = "PC"
     rate: float | None = None
     weightKg: float | None = None
+    weightCapacityKg: float | None = None
     supplier: str = ""
     compatibleProducts: list[str] = Field(default_factory=list)
     compatibleSeries: list[str] = Field(default_factory=list)
     remarks: str = ""
     status: str = "active"
+    editableRate: bool = True
 
 
 class HardwareRulesApplyBody(BaseModel):
@@ -4209,6 +4212,31 @@ async def api_import_sections(file: UploadFile | None = File(None)) -> dict[str,
         tmp_path = tmp.name
     try:
         return import_excel(tmp_path)
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+@app.post("/api/profiles/import-hardware")
+async def api_import_profile_hardware(file: UploadFile | None = File(None)) -> dict[str, Any]:
+    """Import ``profile and hardwares weos.xlsx`` → series + hardware library + brands.
+
+    Rates load as editable defaults (Series Setup / Hardware Library). Brand
+    defaults: Indian→HIVIC, Imported→CMECH, ETTE→ETTE. Superseded dummy sliding
+    stubs are hidden (not deleted).
+    """
+    from WEOS.factory.profile_hardware_import import import_profile_hardware_excel
+    import tempfile
+    from pathlib import Path
+
+    if file is None:
+        return import_profile_hardware_excel()
+    raw = await file.read()
+    suffix = Path(file.filename or "profiles.xlsx").suffix or ".xlsx"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(raw)
+        tmp_path = tmp.name
+    try:
+        return import_profile_hardware_excel(tmp_path)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 

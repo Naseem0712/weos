@@ -1,0 +1,23 @@
+{
+  "id": "hw_connector_door_connecter_40",
+  "name": "door connecter",
+  "category": "connector",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 40.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: connecters · per shutter/door: 4",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.301822+00:00",
+  "qtyPer": 4.0,
+  "basis": "shutter",
+  "systemGroup": "connecters",
+  "inch": null
+}

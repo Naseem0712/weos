@@ -2,7 +2,7 @@
   "id": "hw_roller_sliding_roller_twin",
   "name": "Sliding Roller (twin)",
   "category": "roller",
-  "brand": "",
+  "brand": "HIVIC",
   "partNumber": "",
   "unit": "PAIR",
   "rate": 220.0,
@@ -12,5 +12,6 @@
   "compatibleSeries": [],
   "remarks": "",
   "status": "active",
-  "updatedAt": "2026-08-21T17:05:17.810537+00:00"
+  "updatedAt": "2026-08-21T17:05:17.810537+00:00",
+  "origin": "indian"
 }

@@ -5,6 +5,8 @@
   "category": "Windows",
   "units": "mm",
   "version": 0,
-  "status": "stub",
-  "description": "Placeholder fixed light — manual rate until geometry engine is wired."
+  "status": "hidden",
+  "description": "Placeholder fixed light — manual rate until geometry engine is wired.",
+  "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
+  "hiddenAt": "2026-11-15T17:51:31.086207+00:00"
 }

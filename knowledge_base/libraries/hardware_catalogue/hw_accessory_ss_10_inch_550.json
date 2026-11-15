@@ -1,0 +1,23 @@
+{
+  "id": "hw_accessory_ss_10_inch_550",
+  "name": "ss 10 inch",
+  "category": "accessory",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "PC",
+  "rate": 550.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: Lekin Side Swing me 5ft height ke baad ye stay · per shutter/door: 1 · 10\"",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.285739+00:00",
+  "qtyPer": 1.0,
+  "basis": "shutter",
+  "systemGroup": "Lekin Side Swing me 5ft height ke baad ye stay",
+  "inch": 10.0
+}

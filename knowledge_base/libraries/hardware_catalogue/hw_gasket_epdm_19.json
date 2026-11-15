@@ -1,0 +1,23 @@
+{
+  "id": "hw_gasket_epdm_19",
+  "name": "EPDM",
+  "category": "gasket",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "RM",
+  "rate": 19.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: Sliding System Wheel Options",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.269384+00:00",
+  "qtyPer": null,
+  "basis": "shutter",
+  "systemGroup": "Sliding System Wheel Options",
+  "inch": null
+}

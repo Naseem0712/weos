@@ -1,0 +1,23 @@
+{
+  "id": "hw_gasket_epdm_gaickets_19",
+  "name": "epdm gaickets",
+  "category": "gasket",
+  "origin": "indian",
+  "brand": "HIVIC",
+  "partNumber": "",
+  "unit": "RM",
+  "rate": 19.0,
+  "weightKg": null,
+  "weightCapacityKg": null,
+  "supplier": "",
+  "compatibleProducts": [],
+  "compatibleSeries": [],
+  "remarks": "system: connecters · per shutter/door: v2, h2",
+  "status": "active",
+  "editableRate": true,
+  "updatedAt": "2026-11-15T17:51:30.305120+00:00",
+  "qtyPer": 2.0,
+  "basis": "shutter",
+  "systemGroup": "connecters",
+  "inch": null
+}

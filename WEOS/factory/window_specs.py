@@ -775,6 +775,22 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
         or line.get("handleBrand")
         or specs_in.get("hardwareBrand")
     )
+    if not handle_brand:
+        try:
+            from WEOS.factory.hardware_brands import resolve_hardware_brand
+
+            handle_brand = resolve_hardware_brand(
+                {
+                    "brand": specs_in.get("hardwareBrand"),
+                    "origin": opts.get("hardwareOrigin")
+                    or line.get("hardwareOrigin")
+                    or specs_in.get("hardwareOrigin")
+                    or "indian",
+                    "name": opts.get("handleName") or line.get("handleName") or "hardware",
+                }
+            )
+        except Exception:
+            handle_brand = "HIVIC"
     hw_type = opts.get("hardwareType") or line.get("hardwareType") or handle_name or (
         str(handle).replace("_", " ").title() if handle else ""
     )

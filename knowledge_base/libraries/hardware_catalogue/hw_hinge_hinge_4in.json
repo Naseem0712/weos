@@ -2,7 +2,7 @@
   "id": "hw_hinge_hinge_4in",
   "name": "Hinge 4in",
   "category": "hinge",
-  "brand": "",
+  "brand": "HIVIC",
   "partNumber": "",
   "unit": "PC",
   "rate": 90.0,
@@ -12,5 +12,6 @@
   "compatibleSeries": [],
   "remarks": "",
   "status": "active",
-  "updatedAt": "2026-08-21T17:05:17.810537+00:00"
+  "updatedAt": "2026-08-21T17:05:17.810537+00:00",
+  "origin": "indian"
 }
