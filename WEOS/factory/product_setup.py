@@ -18,6 +18,21 @@ Sliding Product Gallery (series under Sliding selection):
 * **bomPattern** — v2_tb2 / v2_t1_b1 / all_side_4
 * shutters (all-sides or split + slim/renf), meeting, mesh adapter, hardwarePack, costing stub
 
+Casement Product Gallery (``setup.casement``, Series Setup · Casement series):
+
+* **kind** — normal | stile | slim_profile
+* **normal** — outer frame all-sides same (plain / grills / grills+mesh variants);
+  mullions slim|big; doors slim|big; glass clips SG|DGU; hinges↔stay exclusive
+  (hinges → limitation arm); gasket (no brush); connectors 4+4; wings 8
+* **Stays** — side-swing stay ≠ top-hung stay (separate catalogue rows); quote qty
+  never mixed; **1 set per door** for each kind
+* **stile** — no connectors; gasket top+verticals (no bottom); door sections
+  hinge/top/bottom/lock; door closer 1/door; floor spring set by weight when no hinges
+* **slim_profile** — outer frame all sides except bottom; door all-sides or
+  verticals+top/bottom; floor spring and/or hinges
+* Quote print: hinges / floor spring → name · weight capacity · brand
+* Costing stub: RFT sale for stile/slim (std 2.4/2.8/3 m), wastageReuse flags
+
 Phase 2 also ports WD-series concepts:
 
 * **members** — editable qty-master rows with ``wFactor`` / ``hFactor`` (width /
@@ -165,6 +180,22 @@ WEIGHT_UNITS = ("m", "ft")
 LENGTH_UNITS = ("rft", "rmt")
 RATE_UNITS = ("rft", "rmt", "kg")
 COATING_UNITS = ("rft", "rmt")
+
+# Casement Product Gallery
+CASEMENT_KINDS = ("normal", "stile", "slim_profile")
+CASEMENT_FRAME_VARIANTS = ("plain", "grills", "grills_mesh")
+CASEMENT_SECTION_SIZES = ("slim", "big")
+CASEMENT_DOOR_MODES = (
+    "all_sides_same",           # normal slim/big all-side · slim profile option
+    "verticals_same_tb_same",   # slim profile: verticals same + top/bottom same
+    "stile_sides",              # stile: hinge | top | bottom | lock
+)
+CASEMENT_OPEN_HW = ("hinges", "stay", "floor_spring")  # normal: hinges↔stay; stile: hinges↔floor_spring
+CASEMENT_STAY_KINDS = ("side_swing", "top_hung")  # never mix qty on quote
+CASEMENT_STAY_INCHES = (6, 8, 10, 12, 14, 16)
+CASEMENT_STD_LENGTHS_M = (2.4, 2.8, 3.0)
+CASEMENT_HINGE_QTY_MIN = 2
+CASEMENT_HINGE_QTY_MAX = 8
 
 
 def rail_count_for_track_option(track_id: Any) -> int:
@@ -439,6 +470,14 @@ def normalize_setup(raw: Any) -> dict[str, Any]:
         derived["activeTrackOption"] = (out.get("sliding") or {}).get("activeTrackOption")
         derived["railCount"] = (derived["trackFill"] or {}).get("rails")
         derived["costEngine"] = ((out.get("sliding") or {}).get("costing") or {}).get("costEngine", "stub")
+    elif stype == "casement":
+        cm = out.get("casement") or {}
+        derived["casementKind"] = cm.get("kind")
+        derived["costEngine"] = ((cm.get("costing") or {}) if isinstance(cm.get("costing"), Mapping) else {}).get(
+            "costEngine", "stub"
+        )
+        derived["quoteHardwareNotes"] = casement_quote_hardware_descriptions(out)
+        derived["wastage"] = derive_casement_wastage_flags(out)
     out["derived"] = derived
     return out
 
@@ -743,15 +782,864 @@ def _norm_sliding(raw: Any) -> dict[str, Any]:
     }
 
 
-def _norm_casement(raw: Any) -> dict[str, Any]:
-    r = raw if isinstance(raw, Mapping) else {}
-    glass = r.get("glass") if isinstance(r.get("glass"), Mapping) else {}
-    return {
-        "outerFrame": normalize_section(r.get("outerFrame")),
-        "shutter": normalize_section(r.get("shutter")),
-        "glass": {"sgClip": _num(glass.get("sgClip")), "dgClip": _num(glass.get("dgClip"))},
-        "hardware": _hardware(r.get("hardware")),
+def _norm_casement_kind(value: Any) -> str:
+    k = _str(value).lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "normal_casement": "normal",
+        "standard": "normal",
+        "casement": "normal",
+        "stile_door": "stile",
+        "stile_doors": "stile",
+        "slim": "slim_profile",
+        "slim_profiles": "slim_profile",
+        "slim_door": "slim_profile",
+        "slim_doors": "slim_profile",
     }
+    k = aliases.get(k, k)
+    return k if k in CASEMENT_KINDS else "normal"
+
+
+def _norm_frame_variant(value: Any) -> str:
+    v = _str(value).lower().replace("-", "_").replace(" ", "_").replace("+", "_")
+    aliases = {
+        "none": "plain",
+        "no_grill": "plain",
+        "grill": "grills",
+        "with_grills": "grills",
+        "grills_and_mesh": "grills_mesh",
+        "grill_mesh": "grills_mesh",
+        "mesh": "grills_mesh",
+    }
+    v = aliases.get(v, v)
+    return v if v in CASEMENT_FRAME_VARIANTS else "plain"
+
+
+def _norm_size_pick(value: Any, default: str = "slim") -> str:
+    v = _str(value).lower()
+    if v in ("renf", "reinforced", "heavy", "large"):
+        return "big"
+    if v in CASEMENT_SECTION_SIZES:
+        return v
+    return default if default in CASEMENT_SECTION_SIZES else "slim"
+
+
+def _qty_rate_block(
+    raw: Any,
+    *,
+    default_qty: float = 0.0,
+    min_qty: float | None = None,
+    max_qty: float | None = None,
+    default_unit: str = "PC",
+) -> dict[str, Any]:
+    r = raw if isinstance(raw, Mapping) else {}
+    qty = _num(r.get("qty") if r.get("qty") is not None else default_qty)
+    if qty is None:
+        qty = default_qty
+    if min_qty is not None:
+        qty = max(float(min_qty), float(qty))
+    if max_qty is not None:
+        qty = min(float(max_qty), float(qty))
+    return {
+        "qty": float(qty),
+        "rate": _num(r.get("rate")) or 0.0,
+        "unit": _str(r.get("unit") or default_unit).upper(),
+        "notes": _str(r.get("notes")),
+    }
+
+
+def _named_capacity_hw(raw: Any, *, default_name: str = "", default_qty: float = 1.0) -> dict[str, Any]:
+    """Hardware row that must print name · weight capacity · brand on quotes."""
+    r = raw if isinstance(raw, Mapping) else {}
+    qty = _num(r.get("qty") if r.get("qty") is not None else default_qty)
+    if qty is None:
+        qty = default_qty
+    return {
+        "name": _str(r.get("name") or default_name),
+        "brand": _str(r.get("brand")),
+        "weightCapacityKg": _num(r.get("weightCapacityKg") or r.get("capacityKg") or r.get("maxKg")),
+        "qty": float(qty),
+        "rate": _num(r.get("rate")) or 0.0,
+        "unit": _str(r.get("unit") or "PC").upper(),
+        "sku": _str(r.get("sku")),
+        "notes": _str(r.get("notes")),
+        "enabled": _bool(r.get("enabled"), bool(_str(r.get("name") or default_name) or (_num(r.get("rate")) or 0) > 0)),
+    }
+
+
+def _norm_stay_lengths(raw: Any) -> list[dict[str, Any]]:
+    """Stay catalogue by inch size (+ larger custom)."""
+    rows: list[dict[str, Any]] = []
+    if isinstance(raw, (list, tuple)):
+        for it in raw:
+            if isinstance(it, Mapping):
+                inch = _num(it.get("inch") or it.get("sizeInch") or it.get("size"))
+                rows.append({
+                    "inch": inch,
+                    "rate": _num(it.get("rate")) or 0.0,
+                    "label": _str(it.get("label") or (f"{inch:g}\"" if inch else "")),
+                    "notes": _str(it.get("notes")),
+                })
+            else:
+                inch = _num(it)
+                if inch:
+                    rows.append({"inch": inch, "rate": 0.0, "label": f'{inch:g}"', "notes": ""})
+    # Seed standard sizes when empty
+    if not rows:
+        rows = [{"inch": float(i), "rate": 0.0, "label": f'{i}"', "notes": ""} for i in CASEMENT_STAY_INCHES]
+    else:
+        have = {r["inch"] for r in rows if r.get("inch") is not None}
+        for i in CASEMENT_STAY_INCHES:
+            if float(i) not in have:
+                rows.append({"inch": float(i), "rate": 0.0, "label": f'{i}"', "notes": ""})
+    rows.sort(key=lambda x: (x["inch"] is None, x["inch"] or 0))
+    return rows
+
+
+def _norm_casement_stay_block(raw: Any, *, kind: str, default_name: str) -> dict[str, Any]:
+    """One stay family — side-swing OR top-hung (never mixed on quote).
+
+    Qty rule: **1 set per door** of that opening kind.
+    """
+    r = raw if isinstance(raw, Mapping) else {}
+    sk = _str(kind).lower().replace("-", "_")
+    if sk not in CASEMENT_STAY_KINDS:
+        sk = "side_swing"
+    lengths = _norm_stay_lengths(r.get("lengths") or r.get("sizes"))
+    selected = _num(r.get("selectedInch") or r.get("inch") or r.get("sizeInch"))
+    if selected is None and lengths:
+        selected = lengths[0].get("inch")
+    rate = _num(r.get("rate"))
+    if rate is None or rate == 0:
+        match = next((x for x in lengths if x.get("inch") == selected), None)
+        rate = float((match or {}).get("rate") or 0)
+    return {
+        "kind": sk,
+        "enabled": _bool(r.get("enabled"), False),
+        "name": _str(r.get("name") or default_name),
+        "brand": _str(r.get("brand")),
+        "selectedInch": selected,
+        "lengths": lengths,
+        "rate": float(rate or 0),
+        "unit": _str(r.get("unit") or "SET").upper(),
+        "setsPerDoor": 1,  # always 1 set per door
+        "notes": _str(r.get("notes") or "1 set per door — do not mix with the other stay kind."),
+    }
+
+
+def _norm_casement_gasket(raw: Any, *, kind: str) -> dict[str, Any]:
+    r = raw if isinstance(raw, Mapping) else {}
+    outer = r.get("outerFrame") if isinstance(r.get("outerFrame"), Mapping) else {}
+    interlock = r.get("interlock") if isinstance(r.get("interlock"), Mapping) else {}
+    door = r.get("doorOutside") if isinstance(r.get("doorOutside"), Mapping) else {}
+    glass = r.get("glass") if isinstance(r.get("glass"), Mapping) else {}
+    # Defaults by casement kind
+    if kind == "stile":
+        outer_formula = "height_m*2 + width_m*0"  # top + vertical×2 → encoded as H×2 (verticals) + top handled via notes
+        # Prefer explicit: top (W×1) + verticals (H×2); no bottom
+        outer_formula = _str(outer.get("formula") or "width_m*1 + height_m*2")
+        include_bottom = False
+    elif kind == "slim_profile":
+        outer_formula = _str(outer.get("formula") or "width_m*1 + height_m*2")  # no bottom
+        include_bottom = False
+    else:
+        outer_formula = _str(outer.get("formula") or "height_m*2 + width_m*2")
+        include_bottom = True
+    return {
+        "outerFrame": {
+            "ratePerM": _num(outer.get("ratePerM") or outer.get("rate")) or 0.0,
+            "formula": outer_formula,
+            "includeBottom": _bool(outer.get("includeBottom"), include_bottom),
+            "notes": _str(outer.get("notes")),
+        },
+        "interlock": {
+            "qtyPerPc": _num(interlock.get("qtyPerPc") if interlock.get("qtyPerPc") is not None else 2) or 2.0,
+            "rate": _num(interlock.get("rate")) or 0.0,
+            "unit": _str(interlock.get("unit") or "PC").upper(),
+            "notes": _str(interlock.get("notes") or "2 nos per pc"),
+        },
+        "doorOutside": {
+            "ratePerM": _num(door.get("ratePerM") or door.get("rate")) or 0.0,
+            "formula": _str(door.get("formula") or "height_m*2 + width_m*2"),
+            "notes": _str(door.get("notes")),
+        },
+        "glass": {
+            "ratePerM": _num(glass.get("ratePerM") or glass.get("rate")) or 0.0,
+            "formula": _str(glass.get("formula") or "height_m*4 + width_m*4"),
+            "notes": _str(glass.get("notes") or "H×4 + W×4 per door"),
+        },
+    }
+
+
+def _norm_casement_hardware_pack(raw: Any, *, kind: str) -> dict[str, Any]:
+    r = raw if isinstance(raw, Mapping) else {}
+    open_hw = _str(r.get("openHardware") or r.get("openHw") or "hinges").lower().replace("-", "_")
+    if open_hw in ("friction_stay", "friction", "stays"):
+        open_hw = "stay"
+    if open_hw in ("floorspring", "floor", "pivot"):
+        open_hw = "floor_spring"
+    # Stile: stay not used — map stray "stay" to floor_spring
+    if kind == "stile" and open_hw == "stay":
+        open_hw = "floor_spring"
+    if open_hw not in CASEMENT_OPEN_HW:
+        open_hw = "hinges"
+
+    hinges = r.get("hinges") if isinstance(r.get("hinges"), Mapping) else {}
+    hinge_qty = _num(hinges.get("qty") if hinges.get("qty") is not None else 3)
+    if hinge_qty is None:
+        hinge_qty = 3.0
+    hinge_qty = max(float(CASEMENT_HINGE_QTY_MIN), min(float(CASEMENT_HINGE_QTY_MAX), float(hinge_qty)))
+    use_hinges = open_hw == "hinges" or (
+        kind == "slim_profile" and _bool(hinges.get("enabled"), open_hw == "hinges")
+    )
+    hinge_block = _named_capacity_hw(
+        {**hinges, "qty": hinge_qty, "enabled": use_hinges},
+        default_name="Hinge",
+        default_qty=hinge_qty,
+    )
+    hinge_block["qty"] = hinge_qty
+    hinge_block["qtyEditable"] = True
+    hinge_block["qtyMin"] = CASEMENT_HINGE_QTY_MIN
+    hinge_block["qtyMax"] = CASEMENT_HINGE_QTY_MAX
+    hinge_block["enabled"] = bool(use_hinges)
+
+    lim = r.get("limitationArm") if isinstance(r.get("limitationArm"), Mapping) else {}
+    limitation = _named_capacity_hw(lim, default_name="Limitation arm", default_qty=1.0)
+    # Hinges use limitation arm; stay / floor-spring mode disables it
+    limitation["enabled"] = bool(use_hinges) and _bool(lim.get("enabled"), True)
+
+    # Side-swing stay ≠ top-hung stay — separate catalogue + quote qty (normal only)
+    side_stay = _norm_casement_stay_block(
+        r.get("stay") or r.get("sideSwingStay") or r.get("frictionStay"),
+        kind="side_swing",
+        default_name="Side-swing stay",
+    )
+    top_stay = _norm_casement_stay_block(
+        r.get("topHungStay") or r.get("top_hung_stay") or r.get("topHung"),
+        kind="top_hung",
+        default_name="Top-hung stay",
+    )
+    if open_hw == "stay" and kind == "normal":
+        hinge_block["enabled"] = False
+        limitation["enabled"] = False
+        if not side_stay["enabled"] and not top_stay["enabled"]:
+            side_stay["enabled"] = True
+    else:
+        # Hinges / floor spring → no stay (unless slim explicitly keeps stays off)
+        side_stay["enabled"] = False if open_hw != "stay" else side_stay["enabled"]
+        top_stay["enabled"] = False if open_hw != "stay" else top_stay["enabled"]
+        if open_hw != "stay":
+            side_stay["enabled"] = False
+            top_stay["enabled"] = False
+
+    lock = r.get("lock") if isinstance(r.get("lock"), Mapping) else {}
+    lock_type = _str(lock.get("type") or "single_point").lower().replace("-", "_").replace(" ", "_")
+    if lock_type in ("single", "sp"):
+        lock_type = "single_point"
+    if lock_type in ("multi", "mp"):
+        lock_type = "multipoint"
+    if lock_type not in LOCK_TYPES:
+        lock_type = "single_point"
+
+    # Connectors: normal only (stile/slim → none)
+    use_connectors = kind == "normal"
+    frame_conn = _qty_rate_block(
+        r.get("frameConnectors"), default_qty=4.0 if use_connectors else 0.0, max_qty=8, default_unit="PC"
+    )
+    door_conn = _qty_rate_block(
+        r.get("doorConnectors"), default_qty=4.0 if use_connectors else 0.0, max_qty=8, default_unit="PC"
+    )
+    if not use_connectors:
+        frame_conn["qty"] = 0.0
+        door_conn["qty"] = 0.0
+        frame_conn["notes"] = _str(frame_conn.get("notes") or "Not used on stile / slim profiles")
+        door_conn["notes"] = _str(door_conn.get("notes") or "Not used on stile / slim profiles")
+
+    wings = r.get("wings") if isinstance(r.get("wings"), Mapping) else {}
+    wings_out = {
+        "qty": int(_num(wings.get("qty")) or (8 if kind == "normal" else 0)),
+        "rate": _num(wings.get("rate")) or 0.0,
+        "unit": _str(wings.get("unit") or "PC").upper(),
+        "notes": _str(wings.get("notes") or ("8 nos" if kind == "normal" else "")),
+    }
+
+    handles = r.get("handles") if isinstance(r.get("handles"), Mapping) else {}
+    closer = r.get("doorCloser") if isinstance(r.get("doorCloser"), Mapping) else {}
+    floor = r.get("floorSpring") if isinstance(r.get("floorSpring"), Mapping) else {}
+    top_pivot = floor.get("topPivot") if isinstance(floor.get("topPivot"), Mapping) else floor.get("top")
+    bottom_fs = (
+        floor.get("bottomFloorSpring")
+        if isinstance(floor.get("bottomFloorSpring"), Mapping)
+        else (floor.get("bottom") if isinstance(floor.get("bottom"), Mapping) else floor)
+    )
+    # Stile: no hinges → floor spring. Slim: floor spring and/or hinges.
+    if kind == "stile":
+        use_floor = open_hw == "floor_spring" or (not hinge_block["enabled"])
+        use_floor = _bool(floor.get("enabled"), use_floor)
+        if hinge_block["enabled"]:
+            use_floor = False
+    elif kind == "slim_profile":
+        use_floor = _bool(floor.get("enabled"), open_hw == "floor_spring")
+    else:
+        use_floor = False
+
+    return {
+        "openHardware": open_hw,
+        "hinges": hinge_block,
+        "limitationArm": limitation,
+        "stay": side_stay,  # side-swing friction stay
+        "topHungStay": top_stay,  # perfectly separate from side-swing
+        "lock": {
+            "type": lock_type,
+            "rate": _num(lock.get("rate")) or 0.0,
+            "unit": _str(lock.get("unit") or "SET").upper(),
+            "name": _str(lock.get("name") or f"Lock ({lock_type})"),
+            "brand": _str(lock.get("brand")),
+            "notes": _str(lock.get("notes")),
+        },
+        "frameConnectors": frame_conn,
+        "doorConnectors": door_conn,
+        "wings": wings_out,
+        "gasket": _norm_casement_gasket(r.get("gasket"), kind=kind),
+        "handles": {
+            "enabled": _bool(handles.get("enabled"), False),
+            "name": _str(handles.get("name") or "Handle"),
+            "brand": _str(handles.get("brand")),
+            "qty": _num(handles.get("qty") if handles.get("qty") is not None else 1) or 1.0,
+            "rate": _num(handles.get("rate")) or 0.0,
+            "unit": _str(handles.get("unit") or "SET").upper(),
+            "notes": _str(handles.get("notes")),
+        },
+        "doorCloser": {
+            "enabled": _bool(closer.get("enabled"), kind == "stile"),
+            "name": _str(closer.get("name") or "Door closer"),
+            "brand": _str(closer.get("brand")),
+            "weightCapacityKg": _num(closer.get("weightCapacityKg") or closer.get("capacityKg")),
+            "qtyPerDoor": 1.0,
+            "rate": _num(closer.get("rate")) or 0.0,
+            "unit": _str(closer.get("unit") or "PC").upper(),
+            "notes": _str(closer.get("notes") or "1 per door"),
+        },
+        "floorSpring": {
+            "enabled": use_floor,
+            "topPivot": _named_capacity_hw(
+                top_pivot if isinstance(top_pivot, Mapping) else {},
+                default_name="Top pivot",
+                default_qty=1.0,
+            ),
+            "bottomFloorSpring": _named_capacity_hw(
+                bottom_fs if isinstance(bottom_fs, Mapping) else {},
+                default_name="Floor spring",
+                default_qty=1.0,
+            ),
+            "notes": _str(floor.get("notes") or "By weight capacity — separate rates for pivot + spring"),
+        },
+    }
+
+
+def _norm_casement_costing(raw: Any, *, kind: str) -> dict[str, Any]:
+    r = raw if isinstance(raw, Mapping) else {}
+    sold_rft = _bool(r.get("soldPerRft"), kind in ("stile", "slim_profile"))
+    std_raw = r.get("stdLengthsM") or r.get("standardLengthsM")
+    std_m: list[float] = []
+    if isinstance(std_raw, (list, tuple)):
+        std_m = [float(n) for n in (_num(x) for x in std_raw) if n]
+    if not std_m:
+        std_m = list(CASEMENT_STD_LENGTHS_M)
+    default_m = _num(r.get("defaultStdLengthM") or r.get("defaultStdLength")) or 3.0
+    if default_m not in std_m:
+        std_m = sorted(set(std_m + [float(default_m)]))
+    # Wastage: often off for stile/slim; all-side same may reuse
+    reuse_default = False if kind in ("stile", "slim_profile") else True
+    return {
+        "labourPerSft": _num(r.get("labourPerSft") or r.get("labourRate")),
+        "profitPercent": _num(r.get("profitPercent") or r.get("profit")),
+        "soldPerRft": sold_rft,
+        "coatedDefault": _bool(r.get("coatedDefault"), True),
+        "colorRate": _num(r.get("colorRate") or r.get("coatingRate")),
+        "stdLengthsM": std_m,
+        "defaultStdLengthM": float(default_m),
+        "projectWastageReuse": _bool(r.get("projectWastageReuse"), reuse_default),
+        "allSideSameReuse": _bool(r.get("allSideSameReuse"), True),
+        "chargeFullStdLengthWhenSplit": _bool(r.get("chargeFullStdLengthWhenSplit"), True),
+        "verticalPcsPerDoor": int(_num(r.get("verticalPcsPerDoor")) or 2),
+        "topBottomPcsPerDoor": int(_num(r.get("topBottomPcsPerDoor")) or 1),
+        "costEngine": _str(r.get("costEngine") or "stub"),
+        "notes": _str(
+            r.get("notes")
+            or (
+                "Stile/slim usually per RFT coated; wastage reuse often off. "
+                "If top/bottom ≠ vertical → charge full std length (e.g. 2 pcs std/door verticals)."
+            )
+        ),
+    }
+
+
+def _norm_casement(raw: Any) -> dict[str, Any]:
+    """Casement Product Gallery — normal | stile | slim_profile under setup.casement."""
+    r = raw if isinstance(raw, Mapping) else {}
+    kind = _norm_casement_kind(r.get("kind") or r.get("casementType") or r.get("variant"))
+    glass = r.get("glass") if isinstance(r.get("glass"), Mapping) else {}
+    glass_clips = r.get("glassClips") if isinstance(r.get("glassClips"), Mapping) else glass
+    active_clip = _str(glass_clips.get("active") or glass_clips.get("type") or "sg").lower()
+    if active_clip in ("dg", "dgu", "double"):
+        active_clip = "dgu"
+    if active_clip not in ("sg", "dgu"):
+        active_clip = "sg"
+
+    # Outer frame — always all-sides same for normal/stile; slim excludes bottom
+    of = r.get("outerFrame") if isinstance(r.get("outerFrame"), Mapping) else {}
+    variants_raw = of.get("variants") if isinstance(of.get("variants"), Mapping) else {}
+    variants: dict[str, Any] = {}
+    for vid in CASEMENT_FRAME_VARIANTS:
+        src = variants_raw.get(vid) or (of if vid == "plain" and not variants_raw else None)
+        # Legacy: single outerFrame section → plain
+        if src is None and vid == "plain":
+            src = r.get("outerFrame") if not isinstance(of.get("variants"), Mapping) else of.get("allSides")
+        variants[vid] = normalize_section(src if isinstance(src, Mapping) else {})
+        if not variants[vid].get("use"):
+            variants[vid]["use"] = f"outer_frame_{vid}"
+    active_variant = _norm_frame_variant(
+        of.get("activeVariant") or r.get("activeFrameVariant") or r.get("frameVariant") or "plain"
+    )
+    include_bottom = kind != "slim_profile" and kind != "stile"  # stile: bottom no frame
+    if kind == "stile":
+        include_bottom = False
+    include_bottom = _bool(of.get("includeBottom"), include_bottom)
+
+    mull = r.get("mullions") if isinstance(r.get("mullions"), Mapping) else {}
+    doors = r.get("doors") if isinstance(r.get("doors"), Mapping) else {}
+    # Legacy shutter → doors.slim / allSides
+    legacy_shutter = r.get("shutter") if isinstance(r.get("shutter"), Mapping) else None
+
+    door_mode = _str(doors.get("mode") or "").lower().replace("-", "_").replace(" ", "_")
+    if kind == "stile":
+        door_mode = "stile_sides"
+    elif kind == "slim_profile":
+        if door_mode not in ("all_sides_same", "verticals_same_tb_same"):
+            door_mode = "all_sides_same" if _bool(doors.get("sameAllSides"), True) else "verticals_same_tb_same"
+    else:
+        door_mode = "all_sides_same"
+
+    active_door = _norm_size_pick(doors.get("active") or doors.get("size") or "slim")
+    active_mullion = _norm_size_pick(mull.get("active") or mull.get("size") or "slim")
+
+    hw_list = r.get("hardware")
+    hw_pack_raw = r.get("hardwarePack") if isinstance(r.get("hardwarePack"), Mapping) else None
+    if isinstance(hw_list, Mapping) and not hw_pack_raw:
+        hw_pack_raw = hw_list
+        hw_list = hw_list.get("items") if isinstance(hw_list.get("items"), (list, tuple)) else []
+
+    return {
+        "kind": kind,
+        "activeFrameVariant": active_variant,
+        "outerFrame": {
+            "allSidesSame": True,  # always — variants change section, not side split
+            "includeBottom": include_bottom,
+            "activeVariant": active_variant,
+            "variants": variants,
+            # Legacy single card mirror (active variant)
+            "allSides": normalize_section(
+                of.get("allSides") or variants.get(active_variant) or r.get("outerFrame")
+            ),
+            "notes": _str(of.get("notes") or "Outer frame all sides same (variant changes section)."),
+        },
+        "mullions": {
+            "active": active_mullion,
+            "slim": normalize_section(mull.get("slim") or {"use": "mullion_slim"}),
+            "big": normalize_section(mull.get("big") or {"use": "mullion_big"}),
+            "notes": _str(mull.get("notes")),
+        },
+        "doors": {
+            "mode": door_mode,
+            "active": active_door,
+            "slim": normalize_section(doors.get("slim") or legacy_shutter or {"use": "door_slim"}),
+            "big": normalize_section(doors.get("big") or {"use": "door_big"}),
+            "allSides": normalize_section(
+                doors.get("allSides") or doors.get("slim") or legacy_shutter or {"use": "door"}
+            ),
+            "vertical": normalize_section(doors.get("vertical") or {"use": "door_vertical"}),
+            "top": normalize_section(doors.get("top") or {"use": "door_top"}),
+            "bottom": normalize_section(doors.get("bottom") or {"use": "door_bottom"}),
+            "topBottom": normalize_section(
+                doors.get("topBottom") or doors.get("top") or {"use": "door_tb"}
+            ),
+            # Stile split sections
+            "hingeSide": normalize_section(doors.get("hingeSide") or {"use": "door_hinge"}),
+            "lockSide": normalize_section(doors.get("lockSide") or {"use": "door_lock"}),
+            "notes": _str(doors.get("notes")),
+        },
+        # Legacy mirrors for older UI / derive_section_sizes
+        "shutter": normalize_section(
+            legacy_shutter or doors.get("slim") or doors.get("allSides") or doors.get("hingeSide")
+        ),
+        "glass": {
+            "sgClip": _num(glass.get("sgClip") or glass_clips.get("sgClip") or glass_clips.get("sg")),
+            "dgClip": _num(glass.get("dgClip") or glass_clips.get("dgClip") or glass_clips.get("dgu")),
+        },
+        "glassClips": {
+            "active": active_clip,
+            "sg": {
+                "maxMm": (
+                    _num(
+                        (glass_clips.get("sg") or {}).get("maxMm")
+                        if isinstance(glass_clips.get("sg"), Mapping)
+                        else glass_clips.get("sgMaxMm")
+                    )
+                    or 12.0
+                ),
+                "clipMm": _num(
+                    glass.get("sgClip")
+                    or (
+                        (glass_clips.get("sg") or {}).get("clipMm")
+                        if isinstance(glass_clips.get("sg"), Mapping)
+                        else glass_clips.get("sgClip")
+                    )
+                ),
+                "notes": "Single glass up to 12mm",
+            },
+            "dgu": {
+                "clipMm": _num(
+                    glass.get("dgClip")
+                    or (
+                        (glass_clips.get("dgu") or {}).get("clipMm")
+                        if isinstance(glass_clips.get("dgu"), Mapping)
+                        else glass_clips.get("dgClip")
+                    )
+                ),
+                "notes": "Series-dependent DGU clip",
+            },
+        },
+        "hardware": _hardware(hw_list if isinstance(hw_list, (list, tuple)) else []),
+        "hardwarePack": _norm_casement_hardware_pack(hw_pack_raw or {}, kind=kind),
+        "costing": _norm_casement_costing(r.get("costing"), kind=kind),
+    }
+
+
+def format_named_capacity_brand(item: Mapping[str, Any] | None) -> str:
+    """Quote print: name, weight capacity, brand."""
+    if not isinstance(item, Mapping):
+        return ""
+    name = _str(item.get("name")) or "Hardware"
+    brand = _str(item.get("brand"))
+    cap = _num(item.get("weightCapacityKg") or item.get("capacityKg") or item.get("maxKg"))
+    bits = [name]
+    if cap:
+        bits.append(f"{cap:g} kg")
+    if brand:
+        bits.append(brand)
+    return " · ".join(bits)
+
+
+def casement_quote_hardware_descriptions(setup: Mapping[str, Any] | None) -> list[dict[str, str]]:
+    """Rows for quote product description when hinges / floor spring selected."""
+    if not isinstance(setup, Mapping):
+        return []
+    cm = setup.get("casement") if isinstance(setup.get("casement"), Mapping) else setup
+    if not isinstance(cm, Mapping):
+        return []
+    pack = cm.get("hardwarePack") if isinstance(cm.get("hardwarePack"), Mapping) else {}
+    out: list[dict[str, str]] = []
+    hinges = pack.get("hinges") if isinstance(pack.get("hinges"), Mapping) else {}
+    if hinges.get("enabled") or (_str(pack.get("openHardware")) == "hinges" and hinges.get("name")):
+        text = format_named_capacity_brand(hinges)
+        if text:
+            out.append({"label": "HINGES", "text": text})
+        lim = pack.get("limitationArm") if isinstance(pack.get("limitationArm"), Mapping) else {}
+        if lim.get("enabled") or lim.get("name") or lim.get("rate"):
+            lt = format_named_capacity_brand(lim) or _str(lim.get("name") or "Limitation arm")
+            if lt:
+                out.append({"label": "LIMITATION ARM", "text": lt})
+    fs = pack.get("floorSpring") if isinstance(pack.get("floorSpring"), Mapping) else {}
+    if fs.get("enabled"):
+        top = fs.get("topPivot") if isinstance(fs.get("topPivot"), Mapping) else {}
+        bot = fs.get("bottomFloorSpring") if isinstance(fs.get("bottomFloorSpring"), Mapping) else {}
+        if top.get("name") or top.get("rate") or top.get("weightCapacityKg"):
+            out.append({"label": "TOP PIVOT", "text": format_named_capacity_brand(top)})
+        if bot.get("name") or bot.get("rate") or bot.get("weightCapacityKg"):
+            out.append({"label": "FLOOR SPRING", "text": format_named_capacity_brand(bot)})
+    closer = pack.get("doorCloser") if isinstance(pack.get("doorCloser"), Mapping) else {}
+    if closer.get("enabled") and (closer.get("name") or closer.get("rate")):
+        out.append({"label": "DOOR CLOSER", "text": format_named_capacity_brand(closer)})
+    return [row for row in out if row.get("text")]
+
+
+def derive_casement_wastage_flags(setup: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Cost-engine stub flags for RFT / full-std-length charging."""
+    if not isinstance(setup, Mapping):
+        return {"costEngine": "stub"}
+    cm = setup.get("casement") if isinstance(setup.get("casement"), Mapping) else setup
+    if not isinstance(cm, Mapping):
+        return {"costEngine": "stub"}
+    kind = _str(cm.get("kind") or "normal")
+    doors = cm.get("doors") if isinstance(cm.get("doors"), Mapping) else {}
+    costing = cm.get("costing") if isinstance(cm.get("costing"), Mapping) else {}
+    mode = _str(doors.get("mode") or "all_sides_same")
+    all_same = mode == "all_sides_same"
+    reuse = bool(costing.get("projectWastageReuse"))
+    if all_same and costing.get("allSideSameReuse"):
+        reuse = True
+    if not all_same and costing.get("chargeFullStdLengthWhenSplit"):
+        reuse = False
+    return {
+        "costEngine": costing.get("costEngine") or "stub",
+        "kind": kind,
+        "doorMode": mode,
+        "soldPerRft": bool(costing.get("soldPerRft")),
+        "projectWastageReuse": reuse,
+        "chargeFullStdLength": (not all_same) and bool(costing.get("chargeFullStdLengthWhenSplit")),
+        "verticalPcsPerDoor": int(costing.get("verticalPcsPerDoor") or 2),
+        "topBottomPcsPerDoor": int(costing.get("topBottomPcsPerDoor") or 1),
+        "defaultStdLengthM": costing.get("defaultStdLengthM") or 3.0,
+        "stdLengthsM": list(costing.get("stdLengthsM") or CASEMENT_STD_LENGTHS_M),
+        "notes": (
+            "All-side same may reuse offcuts; split top/bottom≠vertical → typically "
+            "2× std length verticals per door + top/bottom as sized."
+        ),
+    }
+
+
+def derive_casement_hardware_lines(
+    setup: Mapping[str, Any] | None,
+    *,
+    width_mm: float = 0.0,
+    height_mm: float = 0.0,
+    door_count: float = 1.0,
+    side_swing_doors: float | None = None,
+    top_hung_doors: float | None = None,
+) -> list[dict[str, Any]]:
+    """Expand casement hardwarePack into BOM lines.
+
+    Stay qty: **1 set per door**, with side-swing and top-hung counted separately
+    (never mixed). Pass ``side_swing_doors`` / ``top_hung_doors`` from the quote
+    layout; when omitted, enabled stay families use ``door_count`` each only if
+    that family is the sole enabled stay — otherwise 0 until counts are provided.
+    """
+    if not isinstance(setup, Mapping):
+        return []
+    cm = setup.get("casement") if isinstance(setup.get("casement"), Mapping) else None
+    if not isinstance(cm, Mapping):
+        return []
+    pack = cm.get("hardwarePack") if isinstance(cm.get("hardwarePack"), Mapping) else {}
+    if not pack:
+        return []
+    doors = max(float(door_count or 1), 1.0)
+    w_m = max(float(width_mm or 0), 0.0) / 1000.0
+    h_m = max(float(height_mm or 0), 0.0) / 1000.0
+    kind = _str(cm.get("kind") or "normal")
+    lines: list[dict[str, Any]] = []
+
+    def add(
+        name: str,
+        qty: float,
+        rate: float,
+        unit: str = "PC",
+        remarks: str = "",
+        *,
+        brand: str = "",
+        capacity: float | None = None,
+        source: str = "casement.hardwarePack",
+    ) -> None:
+        if qty <= 0 and rate <= 0:
+            return
+        display = name
+        if capacity or brand:
+            display = format_named_capacity_brand(
+                {"name": name, "brand": brand, "weightCapacityKg": capacity}
+            ) or name
+        lines.append({
+            "category": "hardware",
+            "name": display,
+            "qty": round(qty, 4),
+            "unit": unit,
+            "unitRate": float(rate or 0),
+            "brand": brand,
+            "weightCapacityKg": capacity,
+            "remarks": remarks,
+            "source": source,
+        })
+
+    open_hw = _str(pack.get("openHardware") or "hinges")
+    hinges = pack.get("hinges") or {}
+    if open_hw == "hinges" and (hinges.get("enabled") is not False):
+        hq = float(hinges.get("qty") or 3)
+        add(
+            _str(hinges.get("name") or "Hinge"),
+            hq * doors,
+            float(hinges.get("rate") or 0),
+            hinges.get("unit") or "PC",
+            f"{hq:g}/door × {doors:g} doors (editable {CASEMENT_HINGE_QTY_MIN}–{CASEMENT_HINGE_QTY_MAX})",
+            brand=_str(hinges.get("brand")),
+            capacity=_num(hinges.get("weightCapacityKg")),
+        )
+        lim = pack.get("limitationArm") or {}
+        if lim.get("enabled") is not False:
+            add(
+                _str(lim.get("name") or "Limitation arm"),
+                float(lim.get("qty") or 1) * doors,
+                float(lim.get("rate") or 0),
+                lim.get("unit") or "PC",
+                "with hinges — no stay",
+                brand=_str(lim.get("brand")),
+                capacity=_num(lim.get("weightCapacityKg")),
+            )
+
+    # Stays — side-swing ≠ top-hung; 1 set per door of that kind
+    side = pack.get("stay") if isinstance(pack.get("stay"), Mapping) else {}
+    top = pack.get("topHungStay") if isinstance(pack.get("topHungStay"), Mapping) else {}
+    side_on = bool(side.get("enabled")) and open_hw == "stay"
+    top_on = bool(top.get("enabled")) and open_hw == "stay"
+
+    def _stay_door_qty(family_on: bool, explicit: float | None, other_on: bool) -> float:
+        if not family_on:
+            return 0.0
+        if explicit is not None:
+            return max(float(explicit), 0.0)
+        # If only one stay family enabled, assume all doors use it; if both on, require explicit counts
+        if other_on:
+            return 0.0
+        return doors
+
+    side_n = _stay_door_qty(side_on, side_swing_doors, top_on)
+    top_n = _stay_door_qty(top_on, top_hung_doors, side_on)
+
+    if side_on and side_n > 0:
+        inch = side.get("selectedInch")
+        label = _str(side.get("name") or "Side-swing stay")
+        if inch:
+            label = f'{label} ({inch:g}")'
+        add(
+            label,
+            side_n * float(side.get("setsPerDoor") or 1),  # 1 set per door
+            float(side.get("rate") or 0),
+            side.get("unit") or "SET",
+            f"1 set/door · side-swing only · {side_n:g} door(s)",
+            brand=_str(side.get("brand")),
+            source="casement.hardwarePack.stay",
+        )
+    if top_on and top_n > 0:
+        inch = top.get("selectedInch")
+        label = _str(top.get("name") or "Top-hung stay")
+        if inch:
+            label = f'{label} ({inch:g}")'
+        add(
+            label,
+            top_n * float(top.get("setsPerDoor") or 1),
+            float(top.get("rate") or 0),
+            top.get("unit") or "SET",
+            f"1 set/door · top-hung only · {top_n:g} door(s) — not mixed with side-swing",
+            brand=_str(top.get("brand")),
+            source="casement.hardwarePack.topHungStay",
+        )
+
+    lock = pack.get("lock") or {}
+    add(
+        _str(lock.get("name") or f"Lock ({lock.get('type') or 'single_point'})"),
+        doors,
+        float(lock.get("rate") or 0),
+        lock.get("unit") or "SET",
+        "per door",
+        brand=_str(lock.get("brand")),
+    )
+
+    if kind == "normal":
+        fc = pack.get("frameConnectors") or {}
+        add("Frame connectors", float(fc.get("qty") or 4), float(fc.get("rate") or 0), fc.get("unit") or "PC", "4 nos")
+        dc = pack.get("doorConnectors") or {}
+        add(
+            "Door connectors",
+            float(dc.get("qty") or 4) * doors,
+            float(dc.get("rate") or 0),
+            dc.get("unit") or "PC",
+            "4 nos per door",
+        )
+        wings = pack.get("wings") or {}
+        add(
+            "Wings / angle",
+            float(wings.get("qty") or 8) * doors,
+            float(wings.get("rate") or 0),
+            wings.get("unit") or "PC",
+            "8 nos per door",
+        )
+
+    gasket = pack.get("gasket") if isinstance(pack.get("gasket"), Mapping) else {}
+    outer_g = gasket.get("outerFrame") or {}
+    if kind == "stile" or not outer_g.get("includeBottom", True):
+        outer_m = w_m * 1.0 + h_m * 2.0  # top + vertical×2
+        outer_note = "top + vertical×2 (no bottom)"
+    else:
+        outer_m = h_m * 2.0 + w_m * 2.0
+        outer_note = "H×2 + W×2"
+    add("Gasket — outer frame", outer_m, float(outer_g.get("ratePerM") or 0), "RM", outer_note)
+    inter = gasket.get("interlock") or {}
+    add(
+        "Gasket — interlock",
+        float(inter.get("qtyPerPc") or 2) * doors,
+        float(inter.get("rate") or 0),
+        inter.get("unit") or "PC",
+        "2 nos per pc",
+    )
+    door_g = gasket.get("doorOutside") or {}
+    add(
+        "Gasket — door outside",
+        (h_m * 2.0 + w_m * 2.0) * doors,
+        float(door_g.get("ratePerM") or 0),
+        "RM",
+        "H×2 + W×2 per door",
+    )
+    glass_g = gasket.get("glass") or {}
+    add(
+        "Gasket — glass",
+        (h_m * 4.0 + w_m * 4.0) * doors,
+        float(glass_g.get("ratePerM") or 0),
+        "RM",
+        "H×4 + W×4 per door",
+    )
+
+    handles = pack.get("handles") or {}
+    if handles.get("enabled"):
+        add(
+            _str(handles.get("name") or "Handle"),
+            float(handles.get("qty") or 1) * doors,
+            float(handles.get("rate") or 0),
+            handles.get("unit") or "SET",
+            "optional",
+            brand=_str(handles.get("brand")),
+        )
+    closer = pack.get("doorCloser") or {}
+    if closer.get("enabled"):
+        add(
+            _str(closer.get("name") or "Door closer"),
+            float(closer.get("qtyPerDoor") or 1) * doors,
+            float(closer.get("rate") or 0),
+            closer.get("unit") or "PC",
+            "1 per door",
+            brand=_str(closer.get("brand")),
+            capacity=_num(closer.get("weightCapacityKg")),
+        )
+    fs = pack.get("floorSpring") if isinstance(pack.get("floorSpring"), Mapping) else {}
+    if fs.get("enabled"):
+        top_p = fs.get("topPivot") or {}
+        bot = fs.get("bottomFloorSpring") or {}
+        add(
+            _str(top_p.get("name") or "Top pivot"),
+            float(top_p.get("qty") or 1) * doors,
+            float(top_p.get("rate") or 0),
+            top_p.get("unit") or "SET",
+            "floor spring set",
+            brand=_str(top_p.get("brand")),
+            capacity=_num(top_p.get("weightCapacityKg")),
+        )
+        add(
+            _str(bot.get("name") or "Floor spring"),
+            float(bot.get("qty") or 1) * doors,
+            float(bot.get("rate") or 0),
+            bot.get("unit") or "SET",
+            "by weight capacity",
+            brand=_str(bot.get("brand")),
+            capacity=_num(bot.get("weightCapacityKg")),
+        )
+
+    return [ln for ln in lines if ln["qty"] > 0 or ln["unitRate"] > 0]
 
 
 def _norm_telescopic(raw: Any) -> dict[str, Any]:
@@ -856,12 +1744,33 @@ def derive_section_sizes(setup: Mapping[str, Any]) -> dict[str, float]:
             out["trackCount"] = float(opt.get("trackCount") or active or 2)
     elif stype == "casement":
         c = setup.get("casement") or {}
-        fw = _face(c.get("outerFrame"))
+        of = c.get("outerFrame") if isinstance(c.get("outerFrame"), Mapping) else {}
+        variants = of.get("variants") if isinstance(of.get("variants"), Mapping) else {}
+        active_v = _str(of.get("activeVariant") or c.get("activeFrameVariant") or "plain")
+        frame_sec = (
+            variants.get(active_v)
+            or of.get("allSides")
+            or c.get("outerFrame")
+        )
+        fw = _face(frame_sec if isinstance(frame_sec, Mapping) else None)
         put("topRail", fw)
-        put("bottomRail", fw)
         put("leftJamb", fw)
         put("rightJamb", fw)
-        put("leafStile", _face(c.get("shutter")) or fw)
+        if of.get("includeBottom", True):
+            put("bottomRail", fw)
+        doors = c.get("doors") if isinstance(c.get("doors"), Mapping) else {}
+        active_door = _str(doors.get("active") or "slim")
+        put(
+            "leafStile",
+            _face(doors.get(active_door))
+            or _face(doors.get("allSides"))
+            or _face(doors.get("hingeSide"))
+            or _face(doors.get("vertical"))
+            or _face(c.get("shutter"))
+            or fw,
+        )
+        mull = c.get("mullions") if isinstance(c.get("mullions"), Mapping) else {}
+        put("mullion", _face(mull.get(mull.get("active") or "slim")) or _face(mull.get("slim")))
     elif stype == "telescopic":
         t = setup.get("telescopic") or {}
         put("topRail", _face(t.get("verticalTop")) or _face(t.get("topTrack")))
@@ -1461,10 +2370,13 @@ def apply_setup_bom(
         ctx=context,
         system_type=system_type,
     )
-    # Sliding Product Gallery — structured hardwarePack + track fill sketch
+    # Sliding / Casement Product Gallery — structured hardwarePack
     track_fill: dict[str, Any] = {}
     pack_hw: list[dict[str, Any]] = []
-    if _str(setup.get("type")).lower() == "sliding" or isinstance(setup.get("sliding"), Mapping):
+    quote_hw_notes: list[dict[str, str]] = []
+    wastage: dict[str, Any] = {}
+    stype = _str(setup.get("type")).lower()
+    if stype == "sliding":
         track_fill = derive_sliding_track_fill(
             setup, width_mm=width_mm, height_mm=height_mm
         )
@@ -1478,9 +2390,36 @@ def apply_setup_bom(
         if hw:
             pack_hw = [ln for ln in pack_hw if "wheel" not in str(ln.get("name") or "").lower()]
         hw = list(hw) + list(pack_hw)
+    elif stype == "casement":
+        side_n = context.get("sideSwingDoors") or context.get("side_swing_doors")
+        top_n = context.get("topHungDoors") or context.get("top_hung_doors")
+        pack_hw = derive_casement_hardware_lines(
+            setup,
+            width_mm=width_mm,
+            height_mm=height_mm,
+            door_count=shutters,
+            side_swing_doors=float(side_n) if side_n is not None else None,
+            top_hung_doors=float(top_n) if top_n is not None else None,
+        )
+        if hw:
+            # Prefer weight-picked hinges/floor springs when both exist
+            pack_hw = [
+                ln for ln in pack_hw
+                if not any(
+                    k in str(ln.get("name") or "").lower()
+                    for k in ("hinge", "floor spring", "top pivot")
+                )
+            ]
+        hw = list(hw) + list(pack_hw)
+        quote_hw_notes = casement_quote_hardware_descriptions(setup)
+        wastage = derive_casement_wastage_flags(setup)
     alu_kg = sum(float(m["weightKg"]) for m in members if m.get("weightKg") is not None)
     costing = {}
-    if isinstance(setup.get("sliding"), Mapping):
+    if stype == "sliding" and isinstance(setup.get("sliding"), Mapping):
+        costing = (setup.get("sliding") or {}).get("costing") or {}
+    elif stype == "casement" and isinstance(setup.get("casement"), Mapping):
+        costing = (setup.get("casement") or {}).get("costing") or {}
+    elif isinstance(setup.get("sliding"), Mapping):
         costing = (setup.get("sliding") or {}).get("costing") or {}
     return {
         "members": members,
@@ -1491,6 +2430,8 @@ def apply_setup_bom(
         "usedHardwareWeightRules": bool(hw),
         "trackFill": track_fill,
         "hardwarePackLines": pack_hw,
+        "quoteHardwareNotes": quote_hw_notes,
+        "wastage": wastage,
         "costing": costing if isinstance(costing, Mapping) else {},
         "costEngine": (costing.get("costEngine") if isinstance(costing, Mapping) else None) or "stub",
     }

@@ -800,6 +800,45 @@ def short_window_spec_rows(line: Mapping[str, Any], *, audience: str = "customer
     else:
         add("HANDLE", " · ".join(x for x in hbits if x) if not is_louver_fill else "")
 
+    # Casement gallery: hinges / floor spring print name · weight capacity · brand
+    if is_casement and not casement_all_fixed:
+        try:
+            from WEOS.factory.product_setup import casement_quote_hardware_descriptions
+
+            setup_blob = (
+                line.get("setup")
+                if isinstance(line.get("setup"), Mapping)
+                else (
+                    opts.get("setup")
+                    if isinstance(opts.get("setup"), Mapping)
+                    else (
+                        specs_in.get("setup")
+                        if isinstance(specs_in.get("setup"), Mapping)
+                        else None
+                    )
+                )
+            )
+            if setup_blob is None:
+                pid = line.get("productId") or line.get("product") or opts.get("productId")
+                if pid:
+                    from WEOS.factory.product_loader import load_product
+
+                    prod = load_product(str(pid), strict=False)
+                    if isinstance(prod, Mapping) and isinstance(prod.get("setup"), Mapping):
+                        setup_blob = prod["setup"]
+            for row in casement_quote_hardware_descriptions(setup_blob):
+                add(row.get("label") or "HARDWARE", row.get("text") or "")
+            # Explicit stay split notes from line options (never mix top-hung / side-swing)
+            for key, lab in (
+                ("sideSwingStayPrint", "SIDE-SWING STAY"),
+                ("topHungStayPrint", "TOP-HUNG STAY"),
+            ):
+                txt = opts.get(key) or line.get(key)
+                if txt:
+                    add(lab, txt)
+        except Exception:
+            pass
+
     colour = opts.get("powderCoatName") or line.get("powderCoatName") or opts.get("colour") or line.get("colour")
     if mat == "upvc" and not colour:
         colour = "white"

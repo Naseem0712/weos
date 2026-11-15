@@ -1940,7 +1940,7 @@ textarea{max-width:100%}
             <div><label class="l">Series setup form (window systems)</label>
               <select id="setupType" style="width:220px">
                 <option value="sliding">Sliding series</option>
-                <option value="casement">Casement / Openable</option>
+                <option value="casement">Casement series</option>
                 <option value="telescopic">Telescopic sliding</option>
                 <option value="style">Style / Slide doors</option>
                 <option value="fold">Fold &amp; sliding</option>
@@ -1950,7 +1950,7 @@ textarea{max-width:100%}
             <div class="grow"><label class="l">Standard length(s) mm (comma)</label><input id="setupStdLen" placeholder="e.g. 5850 or 2400,3000"/></div>
             <label class="chk" style="display:flex;align-items:center;gap:.35rem;margin-bottom:.35rem"><input type="checkbox" id="setupImported"/> Imported material</label>
           </div>
-          <p class="muted" style="font-size:.78rem;margin:.4rem 0 .2rem">Sliding Product Gallery: tracks (2 / 2.5 / 3 / 4) → shutters → meeting → mesh → hardware → costing. Fill dims · weight · stock length · rate · coating. Optional <strong>member table</strong> (wFactor / hFactor) + <strong>hardware by weight</strong>. Glass types live in Engines → Glass Library. Empty members → legacy path.</p>
+          <p class="muted" style="font-size:.78rem;margin:.4rem 0 .2rem">Sliding Product Gallery: tracks → shutters → hardware. <strong>Casement series</strong>: normal / stile / slim → frame · mullions · doors · glass clips · hardware (side-swing stay ≠ top-hung stay) → costing. Optional member table + hardware by weight. Glass → Engines · Glass Library.</p>
           <div id="setupBody" style="margin-top:.4rem"></div>
           <div class="muted" id="setupDerived" style="font-size:.75rem;margin-top:.6rem"></div>
         </div>
@@ -13383,7 +13383,64 @@ function blankHardwarePack(){ return {
   wheels:{qtyPerShutter:2,rate:0,unit:'PC',notes:''},
 }; }
 function blankSlidingCosting(){ return {labourPerSft:null,profitPercent:null,cutFromOwnStock:true,allSideSameLowWastage:true,projectWastageReuse:true,costEngine:'stub',notes:'Full project cost runs when all products are on the quote.'}; }
+function blankCasementStay(kind,name){
+  const inches=[6,8,10,12,14,16];
+  return {
+    kind:kind||'side_swing', enabled:false, name:name||'Stay', brand:'', selectedInch:10,
+    lengths:inches.map(i=>({inch:i,rate:0,label:i+'"',notes:''})),
+    rate:0, unit:'SET', setsPerDoor:1,
+    notes:'1 set per door — never mix side-swing with top-hung qty on the quote.',
+  };
+}
+function blankCasementHardwarePack(kind){
+  const k=kind||'normal';
+  return {
+    openHardware:'hinges',
+    hinges:{name:'Hinge',brand:'',weightCapacityKg:null,qty:3,rate:0,unit:'PC',enabled:true,qtyEditable:true,qtyMin:2,qtyMax:8,notes:''},
+    limitationArm:{name:'Limitation arm',brand:'',weightCapacityKg:null,qty:1,rate:0,unit:'PC',enabled:true,notes:''},
+    stay:blankCasementStay('side_swing','Side-swing stay'),
+    topHungStay:blankCasementStay('top_hung','Top-hung stay'),
+    lock:{type:'single_point',rate:0,unit:'SET',name:'Lock',brand:'',notes:''},
+    frameConnectors:{qty:k==='normal'?4:0,rate:0,unit:'PC',notes:k==='normal'?'4 nos':''},
+    doorConnectors:{qty:k==='normal'?4:0,rate:0,unit:'PC',notes:k==='normal'?'4 nos':''},
+    wings:{qty:k==='normal'?8:0,rate:0,unit:'PC',notes:k==='normal'?'8 nos':''},
+    gasket:{
+      outerFrame:{ratePerM:0,formula:k==='normal'?'height_m*2 + width_m*2':'width_m*1 + height_m*2',includeBottom:k==='normal',notes:''},
+      interlock:{qtyPerPc:2,rate:0,unit:'PC',notes:'2 nos per pc'},
+      doorOutside:{ratePerM:0,formula:'height_m*2 + width_m*2',notes:''},
+      glass:{ratePerM:0,formula:'height_m*4 + width_m*4',notes:'H×4 + W×4 per door'},
+    },
+    handles:{enabled:false,name:'Handle',brand:'',qty:1,rate:0,unit:'SET',notes:''},
+    doorCloser:{enabled:k==='stile',name:'Door closer',brand:'',weightCapacityKg:null,qtyPerDoor:1,rate:0,unit:'PC',notes:'1 per door'},
+    floorSpring:{
+      enabled:false,
+      topPivot:{name:'Top pivot',brand:'',weightCapacityKg:null,qty:1,rate:0,unit:'SET',enabled:true,notes:''},
+      bottomFloorSpring:{name:'Floor spring',brand:'',weightCapacityKg:null,qty:1,rate:0,unit:'SET',enabled:true,notes:''},
+      notes:'By weight capacity — separate rates',
+    },
+  };
+}
+function blankCasementCosting(kind){
+  const k=kind||'normal';
+  return {
+    labourPerSft:null,profitPercent:null,
+    soldPerRft:k==='stile'||k==='slim_profile',
+    coatedDefault:true,colorRate:null,
+    stdLengthsM:[2.4,2.8,3.0],defaultStdLengthM:3.0,
+    projectWastageReuse:!(k==='stile'||k==='slim_profile'),
+    allSideSameReuse:true,chargeFullStdLengthWhenSplit:true,
+    verticalPcsPerDoor:2,topBottomPcsPerDoor:1,
+    costEngine:'stub',
+    notes:'Stile/slim usually per RFT coated; wastage reuse often off when top/bottom ≠ vertical.',
+  };
+}
 function defaultBomForMode(mode){ return mode==='all_sides_same'?'all_side_4':(mode==='verticals_same_h_diff'?'v2_t1_b1':'v2_tb2'); }
+const CASEMENT_KIND_OPTS = [
+  {v:'normal', t:'Normal casement'},
+  {v:'stile', t:'Stile doors'},
+  {v:'slim_profile', t:'Slim profile doors'},
+];
+const CASEMENT_FRAME_VARIANTS = ['plain','grills','grills_mesh'];
 function ensureSetupShape(s, type){
   s = s && typeof s==='object' ? s : {};
   s.type = type;
@@ -13430,9 +13487,60 @@ function ensureSetupShape(s, type){
     sl.hardwarePack[k] = Object.assign(blankHardwarePack()[k], sl.hardwarePack[k]||{});
   });
   sl.costing = Object.assign(blankSlidingCosting(), sl.costing||{});
-  s.casement = s.casement || {glass:{},hardware:[]};
-  s.casement.glass = s.casement.glass || {};
-  s.casement.hardware = s.casement.hardware || [];
+  s.casement = s.casement || {};
+  const cm = s.casement;
+  cm.kind = cm.kind || 'normal';
+  cm.activeFrameVariant = cm.activeFrameVariant || 'plain';
+  cm.outerFrame = cm.outerFrame || {allSidesSame:true,includeBottom:cm.kind==='normal',activeVariant:'plain',variants:{},allSides:blankSection('Outer frame','outer')};
+  cm.outerFrame.variants = cm.outerFrame.variants || {};
+  CASEMENT_FRAME_VARIANTS.forEach(v => {
+    cm.outerFrame.variants[v] = Object.assign(blankSection(v==='plain'?'Outer frame plain':('Outer frame '+v),'outer_frame_'+v), cm.outerFrame.variants[v]||{});
+  });
+  cm.outerFrame.allSides = Object.assign(blankSection('Outer frame','outer'), cm.outerFrame.allSides||{});
+  cm.outerFrame.includeBottom = cm.kind === 'normal' ? (cm.outerFrame.includeBottom!==false) : false;
+  cm.mullions = cm.mullions || {active:'slim'};
+  cm.mullions.active = cm.mullions.active || 'slim';
+  cm.mullions.slim = Object.assign(blankSection('Mullion slim','mullion_slim'), cm.mullions.slim||{});
+  cm.mullions.big = Object.assign(blankSection('Mullion big','mullion_big'), cm.mullions.big||{});
+  cm.doors = cm.doors || {mode:'all_sides_same',active:'slim'};
+  if (cm.kind==='stile') cm.doors.mode = 'stile_sides';
+  else if (cm.kind==='slim_profile') cm.doors.mode = cm.doors.mode==='verticals_same_tb_same'?'verticals_same_tb_same':'all_sides_same';
+  else cm.doors.mode = 'all_sides_same';
+  cm.doors.active = cm.doors.active || 'slim';
+  ['slim','big','allSides','vertical','top','bottom','topBottom','hingeSide','lockSide'].forEach(k => {
+    cm.doors[k] = Object.assign(blankSection('Door '+k,'door_'+k), cm.doors[k]||{});
+  });
+  cm.shutter = Object.assign(blankSection('Shutter','sash'), cm.shutter||cm.doors.slim||{});
+  cm.glass = cm.glass || {};
+  cm.glassClips = cm.glassClips || {active:'sg',sg:{maxMm:12,clipMm:null},dgu:{clipMm:null}};
+  cm.glassClips.sg = Object.assign({maxMm:12,clipMm:null,notes:'Single up to 12mm'}, cm.glassClips.sg||{});
+  cm.glassClips.dgu = Object.assign({clipMm:null,notes:'Series-dependent'}, cm.glassClips.dgu||{});
+  if (cm.glass.sgClip!=null && cm.glassClips.sg.clipMm==null) cm.glassClips.sg.clipMm = cm.glass.sgClip;
+  if (cm.glass.dgClip!=null && cm.glassClips.dgu.clipMm==null) cm.glassClips.dgu.clipMm = cm.glass.dgClip;
+  cm.hardware = Array.isArray(cm.hardware) ? cm.hardware : [];
+  cm.hardwarePack = Object.assign(blankCasementHardwarePack(cm.kind), cm.hardwarePack||{});
+  const blankHp = blankCasementHardwarePack(cm.kind);
+  Object.keys(blankHp).forEach(k => {
+    if (k==='gasket' || k==='floorSpring' || k==='stay' || k==='topHungStay' || k==='hinges' || k==='limitationArm' || k==='lock' || k==='handles' || k==='doorCloser' || k==='frameConnectors' || k==='doorConnectors' || k==='wings') {
+      cm.hardwarePack[k] = Object.assign(blankHp[k], cm.hardwarePack[k]||{});
+      if (k==='gasket') {
+        ['outerFrame','interlock','doorOutside','glass'].forEach(gk => {
+          cm.hardwarePack.gasket[gk] = Object.assign(blankHp.gasket[gk], (cm.hardwarePack.gasket&&cm.hardwarePack.gasket[gk])||{});
+        });
+      }
+      if (k==='floorSpring') {
+        cm.hardwarePack.floorSpring.topPivot = Object.assign(blankHp.floorSpring.topPivot, (cm.hardwarePack.floorSpring&&cm.hardwarePack.floorSpring.topPivot)||{});
+        cm.hardwarePack.floorSpring.bottomFloorSpring = Object.assign(blankHp.floorSpring.bottomFloorSpring, (cm.hardwarePack.floorSpring&&cm.hardwarePack.floorSpring.bottomFloorSpring)||{});
+      }
+      if (k==='stay' || k==='topHungStay') {
+        const b = blankHp[k];
+        cm.hardwarePack[k].lengths = Array.isArray(cm.hardwarePack[k].lengths) && cm.hardwarePack[k].lengths.length
+          ? cm.hardwarePack[k].lengths : b.lengths;
+        cm.hardwarePack[k].setsPerDoor = 1;
+      }
+    }
+  });
+  cm.costing = Object.assign(blankCasementCosting(cm.kind), cm.costing||{});
   s.telescopic = s.telescopic || {};
   s.telescopic.hardwareSets = s.telescopic.hardwareSets || {};
   ['1+1','1+2','1+3','1+4','1+5'].forEach(c => { s.telescopic.hardwareSets[c] = s.telescopic.hardwareSets[c] || []; });
@@ -13663,14 +13771,223 @@ function renderSetup(){
       <p class="muted" style="font-size:.75rem;margin:0 0 .4rem">Add glass types + rate/sft in <strong>Engines → Glass Library</strong>, then Sync. Quotes only select glass — area × rate apply. Not edited per series here.</p>
       ${setupPhase2Cards(type)}`;
   } else if (type==='casement'){
-    const g = state.setup.casement.glass;
-    html += `<h4 style="margin:.4rem 0 .2rem">Outer frame</h4>${singleSectionCard('Outer frame','casement.outerFrame')}
-      ${singleSectionCard('Shutter section','casement.shutter')}
-      <h4 style="margin:.6rem 0 .2rem">Glass clip (differs sg vs dg)</h4>
-      <div class="row"><div><label class="l">Single (sg) clip mm</label><input data-num="casement.glass.sgClip" type="number" step="0.1" value="${g.sgClip==null?'':g.sgClip}" style="width:120px"/></div>
-      <div><label class="l">DGU (dg) clip mm</label><input data-num="casement.glass.dgClip" type="number" step="0.1" value="${g.dgClip==null?'':g.dgClip}" style="width:120px"/></div></div>
-      <h4 style="margin:.6rem 0 .2rem">Hardware · brand · rate · qty</h4>
-      ${listCard('Interlock/outer connectors, hinges, friction stay (sizes), shutter holder, door closer, stopper', state.setup.casement.hardware, 'casement.hardware','Add hardware')}
+    const cm = state.setup.casement, hp = cm.hardwarePack, cost = cm.costing, doors = cm.doors, mull = cm.mullions;
+    const kind = cm.kind || 'normal';
+    const fv = cm.activeFrameVariant || cm.outerFrame.activeVariant || 'plain';
+    const openHw = hp.openHardware || 'hinges';
+    html += `<div style="padding:.55rem .65rem;border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,#f7faf8,#fff);margin-bottom:.55rem">
+      <strong style="font-size:.88rem">Casement Product Gallery</strong>
+      <p class="muted" style="font-size:.72rem;margin:.2rem 0 0">Normal · stile · slim profile. Outer frame all-sides same (variants). Side-swing stay ≠ top-hung stay — 1 set/door, never mix on quote. Hinges print name · kg · brand.</p>
+    </div>`;
+    html += `<h4 style="margin:.35rem 0 .25rem">A · Kind</h4>
+      <div class="row" style="flex-wrap:wrap;gap:.45rem;align-items:flex-end">
+        <div><label class="l">Casement type</label>
+          <select data-str="casement.kind" style="width:220px">${CASEMENT_KIND_OPTS.map(o=>`<option value="${o.v}" ${kind===o.v?'selected':''}>${o.t}</option>`).join('')}</select>
+        </div>
+        ${kind==='normal' ? `<div><label class="l">Frame variant</label>
+          <select data-str="casement.activeFrameVariant" style="width:180px">
+            <option value="plain" ${fv==='plain'?'selected':''}>Plain</option>
+            <option value="grills" ${fv==='grills'?'selected':''}>With grills</option>
+            <option value="grills_mesh" ${fv==='grills_mesh'?'selected':''}>Grills + mesh</option>
+          </select>
+        </div>` : ''}
+        <div class="muted" style="font-size:.75rem;padding-bottom:.35rem">${kind==='slim_profile'||kind==='stile'?'Outer frame: no bottom':'Outer frame: all sides same'}</div>
+      </div>`;
+    if (kind==='normal') {
+      html += gallerySectionCard('Outer frame — '+fv, 'casement.outerFrame.variants.'+fv);
+      html += `<details style="margin:.25rem 0"><summary class="muted" style="font-size:.72rem;cursor:pointer">Other frame variants</summary>`;
+      CASEMENT_FRAME_VARIANTS.filter(v=>v!==fv).forEach(v => {
+        html += gallerySectionCard('Variant · '+v, 'casement.outerFrame.variants.'+v);
+      });
+      html += `</details>`;
+    } else {
+      html += gallerySectionCard(kind==='slim_profile'?'Outer frame (all sides except bottom)':'Outer frame (top + verticals · no bottom)', 'casement.outerFrame.variants.plain');
+    }
+
+    if (kind==='normal') {
+      html += `<h4 style="margin:.7rem 0 .25rem">B · Mullions</h4>
+        <div class="row" style="gap:.5rem;align-items:center;margin-bottom:.25rem">
+          <label class="chk" style="font-size:.78rem"><input type="radio" name="mullSize" data-mull="slim" ${mull.active==='slim'?'checked':''}/> Slim</label>
+          <label class="chk" style="font-size:.78rem"><input type="radio" name="mullSize" data-mull="big" ${mull.active==='big'?'checked':''}/> Big</label>
+        </div>
+        ${gallerySectionCard('Mullion — '+(mull.active||'slim'), 'casement.mullions.'+(mull.active||'slim'))}
+        <details style="margin:.2rem 0"><summary class="muted" style="font-size:.72rem;cursor:pointer">Other mullion size</summary>
+          ${gallerySectionCard('Mullion — '+(mull.active==='slim'?'big':'slim'), 'casement.mullions.'+(mull.active==='slim'?'big':'slim'))}
+        </details>`;
+      html += `<h4 style="margin:.7rem 0 .25rem">C · Doors / sash</h4>
+        <div class="row" style="gap:.5rem;align-items:center;margin-bottom:.25rem">
+          <label class="chk" style="font-size:.78rem"><input type="radio" name="doorSize" data-door="slim" ${doors.active==='slim'?'checked':''}/> Slim</label>
+          <label class="chk" style="font-size:.78rem"><input type="radio" name="doorSize" data-door="big" ${doors.active==='big'?'checked':''}/> Big</label>
+        </div>
+        ${gallerySectionCard('Door — '+(doors.active||'slim')+' (all sides same)', 'casement.doors.'+(doors.active||'slim'))}`;
+    } else if (kind==='stile') {
+      html += `<h4 style="margin:.7rem 0 .25rem">B · Door sections (stile)</h4>
+        <p class="muted" style="font-size:.72rem">Hinge side · top · bottom · lock side — different sections. No join connectors between doors.</p>
+        <div class="two">${gallerySectionCard('Hinge side','casement.doors.hingeSide')}${gallerySectionCard('Lock side','casement.doors.lockSide')}</div>
+        <div class="two">${gallerySectionCard('Top','casement.doors.top')}${gallerySectionCard('Bottom','casement.doors.bottom')}</div>`;
+    } else {
+      html += `<h4 style="margin:.7rem 0 .25rem">B · Door sections (slim)</h4>
+        <div class="row" style="gap:.5rem;margin-bottom:.25rem">
+          <label class="chk" style="font-size:.78rem"><input type="radio" name="doorMode" data-doormode="all_sides_same" ${doors.mode==='all_sides_same'?'checked':''}/> All sides same</label>
+          <label class="chk" style="font-size:.78rem"><input type="radio" name="doorMode" data-doormode="verticals_same_tb_same" ${doors.mode==='verticals_same_tb_same'?'checked':''}/> Verticals same · top/bottom same</label>
+        </div>`;
+      if (doors.mode==='all_sides_same') {
+        html += gallerySectionCard('Door — all sides', 'casement.doors.allSides');
+      } else {
+        html += `<div class="two">${gallerySectionCard('Verticals','casement.doors.vertical')}${gallerySectionCard('Top / bottom','casement.doors.topBottom')}</div>`;
+      }
+    }
+
+    html += `<h4 style="margin:.7rem 0 .25rem">${kind==='normal'?'D':'C'} · Glass clips</h4>
+      <div class="row" style="flex-wrap:wrap;gap:.4rem">
+        <div><label class="l">Active</label>
+          <select data-str="casement.glassClips.active" style="width:100px">
+            <option value="sg" ${cm.glassClips.active==='sg'?'selected':''}>SG</option>
+            <option value="dgu" ${cm.glassClips.active==='dgu'?'selected':''}>DGU</option>
+          </select>
+        </div>
+        <div><label class="l">SG clip mm (≤12mm glass)</label><input data-num="casement.glassClips.sg.clipMm" type="number" step="0.1" value="${cm.glassClips.sg.clipMm??cm.glass.sgClip??''}" style="width:100px"/></div>
+        <div><label class="l">DGU clip mm</label><input data-num="casement.glassClips.dgu.clipMm" type="number" step="0.1" value="${cm.glassClips.dgu.clipMm??cm.glass.dgClip??''}" style="width:100px"/></div>
+      </div>`;
+
+    html += `<h4 style="margin:.7rem 0 .25rem">${kind==='normal'?'E':'D'} · Hardware</h4>`;
+    if (kind==='normal') {
+      html += `<div class="row" style="gap:.6rem;flex-wrap:wrap;margin-bottom:.35rem">
+        <label class="chk" style="font-size:.78rem"><input type="radio" name="openHw" data-openhw="hinges" ${openHw==='hinges'?'checked':''}/> Hinges (+ limitation arm)</label>
+        <label class="chk" style="font-size:.78rem"><input type="radio" name="openHw" data-openhw="stay" ${openHw==='stay'?'checked':''}/> Stay (no hinges)</label>
+      </div>`;
+    } else if (kind==='stile') {
+      html += `<div class="row" style="gap:.6rem;flex-wrap:wrap;margin-bottom:.35rem">
+        <label class="chk" style="font-size:.78rem"><input type="radio" name="openHw" data-openhw="hinges" ${openHw==='hinges'?'checked':''}/> Hinges</label>
+        <label class="chk" style="font-size:.78rem"><input type="radio" name="openHw" data-openhw="floor_spring" ${openHw==='floor_spring'||openHw!=='hinges'?'checked':''}/> Floor spring set (no hinges)</label>
+      </div>`;
+    } else {
+      html += `<div class="row" style="gap:.6rem;flex-wrap:wrap;margin-bottom:.35rem">
+        <label class="chk" style="font-size:.78rem"><input type="checkbox" data-flag="casement.hardwarePack.hinges.enabled" ${hp.hinges.enabled?'checked':''}/> Hinges</label>
+        <label class="chk" style="font-size:.78rem"><input type="checkbox" data-flag="casement.hardwarePack.floorSpring.enabled" ${hp.floorSpring.enabled?'checked':''}/> Floor spring</label>
+      </div>`;
+    }
+
+    if (openHw==='hinges' || (kind==='slim_profile' && hp.hinges.enabled)) {
+      html += `<div class="row" style="flex-wrap:wrap;gap:.35rem;margin:.3rem 0">
+        <div><label class="l">Hinge name</label><input data-str="casement.hardwarePack.hinges.name" value="${hp.hinges.name||''}" style="width:120px"/></div>
+        <div><label class="l">Brand</label><input data-str="casement.hardwarePack.hinges.brand" value="${hp.hinges.brand||''}" style="width:100px"/></div>
+        <div><label class="l">Capacity kg</label><input data-num="casement.hardwarePack.hinges.weightCapacityKg" type="number" step="1" value="${hp.hinges.weightCapacityKg??''}" style="width:90px"/></div>
+        <div><label class="l">Qty /door (2–8)</label><input data-num="casement.hardwarePack.hinges.qty" type="number" min="2" max="8" step="1" value="${hp.hinges.qty??3}" style="width:90px"/></div>
+        <div><label class="l">Rate</label><input data-num="casement.hardwarePack.hinges.rate" type="number" step="0.01" value="${hp.hinges.rate??0}" style="width:90px"/></div>
+      </div>`;
+      if (kind==='normal') {
+        html += `<div class="row" style="flex-wrap:wrap;gap:.35rem;margin:.2rem 0">
+          <div><label class="l">Limitation arm</label><input data-str="casement.hardwarePack.limitationArm.name" value="${hp.limitationArm.name||''}" style="width:120px"/></div>
+          <div><label class="l">Brand</label><input data-str="casement.hardwarePack.limitationArm.brand" value="${hp.limitationArm.brand||''}" style="width:100px"/></div>
+          <div><label class="l">Rate</label><input data-num="casement.hardwarePack.limitationArm.rate" type="number" step="0.01" value="${hp.limitationArm.rate??0}" style="width:90px"/></div>
+        </div>`;
+      }
+    }
+
+    if (kind==='normal' && openHw==='stay') {
+      html += `<p class="muted" style="font-size:.72rem;margin:.25rem 0"><strong>Side-swing stay</strong> and <strong>Top-hung stay</strong> are separate items. Quote qty never mixes — 1 set per door of that opening kind.</p>
+        <div class="card" style="padding:.45rem .5rem;margin:.25rem 0">
+          <label class="chk" style="font-size:.78rem"><input type="checkbox" data-flag="casement.hardwarePack.stay.enabled" ${hp.stay.enabled?'checked':''}/> Side-swing stay</label>
+          <div class="row" style="flex-wrap:wrap;gap:.35rem;margin-top:.3rem">
+            <div><label class="l">Name</label><input data-str="casement.hardwarePack.stay.name" value="${hp.stay.name||'Side-swing stay'}" style="width:140px"/></div>
+            <div><label class="l">Brand</label><input data-str="casement.hardwarePack.stay.brand" value="${hp.stay.brand||''}" style="width:100px"/></div>
+            <div><label class="l">Size inch</label>
+              <select data-str="casement.hardwarePack.stay.selectedInch" style="width:90px">${(hp.stay.lengths||[]).map(L=>`<option value="${L.inch}" ${Number(hp.stay.selectedInch)===Number(L.inch)?'selected':''}>${L.inch}"</option>`).join('')}<option value="18" ${Number(hp.stay.selectedInch)===18?'selected':''}>18"+</option></select>
+            </div>
+            <div><label class="l">Rate /set</label><input data-num="casement.hardwarePack.stay.rate" type="number" step="0.01" value="${hp.stay.rate??0}" style="width:90px"/></div>
+          </div>
+          <p class="muted" style="font-size:.68rem;margin:.2rem 0 0">1 set per side-swing door</p>
+        </div>
+        <div class="card" style="padding:.45rem .5rem;margin:.25rem 0">
+          <label class="chk" style="font-size:.78rem"><input type="checkbox" data-flag="casement.hardwarePack.topHungStay.enabled" ${hp.topHungStay.enabled?'checked':''}/> Top-hung stay</label>
+          <div class="row" style="flex-wrap:wrap;gap:.35rem;margin-top:.3rem">
+            <div><label class="l">Name</label><input data-str="casement.hardwarePack.topHungStay.name" value="${hp.topHungStay.name||'Top-hung stay'}" style="width:140px"/></div>
+            <div><label class="l">Brand</label><input data-str="casement.hardwarePack.topHungStay.brand" value="${hp.topHungStay.brand||''}" style="width:100px"/></div>
+            <div><label class="l">Size inch</label>
+              <select data-str="casement.hardwarePack.topHungStay.selectedInch" style="width:90px">${(hp.topHungStay.lengths||[]).map(L=>`<option value="${L.inch}" ${Number(hp.topHungStay.selectedInch)===Number(L.inch)?'selected':''}>${L.inch}"</option>`).join('')}<option value="18" ${Number(hp.topHungStay.selectedInch)===18?'selected':''}>18"+</option></select>
+            </div>
+            <div><label class="l">Rate /set</label><input data-num="casement.hardwarePack.topHungStay.rate" type="number" step="0.01" value="${hp.topHungStay.rate??0}" style="width:90px"/></div>
+          </div>
+          <p class="muted" style="font-size:.68rem;margin:.2rem 0 0">1 set per top-hung door — separate quote qty from side-swing</p>
+        </div>`;
+    }
+
+    if ((kind==='stile' && (openHw==='floor_spring'||!hp.hinges.enabled)) || (kind==='slim_profile' && hp.floorSpring.enabled) || (kind==='stile' && openHw!=='hinges')) {
+      html += `<div class="card" style="padding:.45rem .5rem;margin:.3rem 0"><strong style="font-size:.78rem">Floor spring set</strong>
+        <div class="row" style="flex-wrap:wrap;gap:.35rem;margin-top:.3rem">
+          <div><label class="l">Top pivot</label><input data-str="casement.hardwarePack.floorSpring.topPivot.name" value="${hp.floorSpring.topPivot.name||''}" style="width:110px"/></div>
+          <div><label class="l">Brand</label><input data-str="casement.hardwarePack.floorSpring.topPivot.brand" value="${hp.floorSpring.topPivot.brand||''}" style="width:90px"/></div>
+          <div><label class="l">Cap. kg</label><input data-num="casement.hardwarePack.floorSpring.topPivot.weightCapacityKg" type="number" step="1" value="${hp.floorSpring.topPivot.weightCapacityKg??''}" style="width:80px"/></div>
+          <div><label class="l">Rate</label><input data-num="casement.hardwarePack.floorSpring.topPivot.rate" type="number" step="0.01" value="${hp.floorSpring.topPivot.rate??0}" style="width:80px"/></div>
+        </div>
+        <div class="row" style="flex-wrap:wrap;gap:.35rem;margin-top:.25rem">
+          <div><label class="l">Floor spring</label><input data-str="casement.hardwarePack.floorSpring.bottomFloorSpring.name" value="${hp.floorSpring.bottomFloorSpring.name||''}" style="width:110px"/></div>
+          <div><label class="l">Brand</label><input data-str="casement.hardwarePack.floorSpring.bottomFloorSpring.brand" value="${hp.floorSpring.bottomFloorSpring.brand||''}" style="width:90px"/></div>
+          <div><label class="l">Cap. kg</label><input data-num="casement.hardwarePack.floorSpring.bottomFloorSpring.weightCapacityKg" type="number" step="1" value="${hp.floorSpring.bottomFloorSpring.weightCapacityKg??''}" style="width:80px"/></div>
+          <div><label class="l">Rate</label><input data-num="casement.hardwarePack.floorSpring.bottomFloorSpring.rate" type="number" step="0.01" value="${hp.floorSpring.bottomFloorSpring.rate??0}" style="width:80px"/></div>
+        </div>
+      </div>`;
+    }
+
+    html += `<div class="row" style="flex-wrap:wrap;gap:.35rem;margin-top:.35rem">
+      <div><label class="l">Lock</label>
+        <select data-str="casement.hardwarePack.lock.type" style="width:130px">
+          <option value="single_point" ${hp.lock.type==='single_point'?'selected':''}>Single point</option>
+          <option value="multipoint" ${hp.lock.type==='multipoint'?'selected':''}>Multipoint</option>
+          <option value="mortice" ${hp.lock.type==='mortice'?'selected':''}>Mortice</option>
+        </select>
+      </div>
+      <div><label class="l">Lock rate</label><input data-num="casement.hardwarePack.lock.rate" type="number" step="0.01" value="${hp.lock.rate??0}" style="width:90px"/></div>
+    </div>`;
+
+    if (kind==='normal') {
+      html += `<div class="row" style="flex-wrap:wrap;gap:.35rem;margin-top:.3rem">
+        <div><label class="l">Frame connectors</label><input data-num="casement.hardwarePack.frameConnectors.qty" type="number" min="0" max="8" value="${hp.frameConnectors.qty??4}" style="width:70px"/></div>
+        <div><label class="l">Rate</label><input data-num="casement.hardwarePack.frameConnectors.rate" type="number" step="0.01" value="${hp.frameConnectors.rate??0}" style="width:80px"/></div>
+        <div><label class="l">Door connectors</label><input data-num="casement.hardwarePack.doorConnectors.qty" type="number" min="0" max="8" value="${hp.doorConnectors.qty??4}" style="width:70px"/></div>
+        <div><label class="l">Rate</label><input data-num="casement.hardwarePack.doorConnectors.rate" type="number" step="0.01" value="${hp.doorConnectors.rate??0}" style="width:80px"/></div>
+        <div><label class="l">Wings qty</label><input data-num="casement.hardwarePack.wings.qty" type="number" value="${hp.wings.qty??8}" style="width:70px"/></div>
+        <div><label class="l">Wings rate</label><input data-num="casement.hardwarePack.wings.rate" type="number" step="0.01" value="${hp.wings.rate??0}" style="width:80px"/></div>
+      </div>`;
+    }
+
+    if (kind==='stile' || kind==='slim_profile') {
+      html += `<div class="row" style="flex-wrap:wrap;gap:.35rem;margin-top:.3rem">
+        <label class="chk" style="font-size:.78rem;margin-top:1.1rem"><input type="checkbox" data-flag="casement.hardwarePack.handles.enabled" ${hp.handles.enabled?'checked':''}/> Handles</label>
+        <div><label class="l">Handle rate</label><input data-num="casement.hardwarePack.handles.rate" type="number" step="0.01" value="${hp.handles.rate??0}" style="width:90px"/></div>
+        <label class="chk" style="font-size:.78rem;margin-top:1.1rem"><input type="checkbox" data-flag="casement.hardwarePack.doorCloser.enabled" ${hp.doorCloser.enabled?'checked':''}/> Door closer (1/door)</label>
+        <div><label class="l">Closer rate</label><input data-num="casement.hardwarePack.doorCloser.rate" type="number" step="0.01" value="${hp.doorCloser.rate??0}" style="width:90px"/></div>
+        <div><label class="l">Closer brand</label><input data-str="casement.hardwarePack.doorCloser.brand" value="${hp.doorCloser.brand||''}" style="width:100px"/></div>
+        <div><label class="l">Cap. kg</label><input data-num="casement.hardwarePack.doorCloser.weightCapacityKg" type="number" step="1" value="${hp.doorCloser.weightCapacityKg??''}" style="width:80px"/></div>
+      </div>`;
+    }
+
+    html += `<h4 style="margin:.55rem 0 .2rem">Gasket <span class="muted" style="font-weight:400;font-size:.72rem">(no brush)</span></h4>
+      <div class="row" style="flex-wrap:wrap;gap:.35rem">
+        <div><label class="l">Outer frame ₹/m</label><input data-num="casement.hardwarePack.gasket.outerFrame.ratePerM" type="number" step="0.01" value="${hp.gasket.outerFrame.ratePerM??0}" style="width:90px" title="${kind==='normal'?'H×2+W×2':'top + vertical×2'}"/></div>
+        <div><label class="l">Interlock ₹</label><input data-num="casement.hardwarePack.gasket.interlock.rate" type="number" step="0.01" value="${hp.gasket.interlock.rate??0}" style="width:90px" title="2 nos/pc"/></div>
+        <div><label class="l">Door outside ₹/m</label><input data-num="casement.hardwarePack.gasket.doorOutside.ratePerM" type="number" step="0.01" value="${hp.gasket.doorOutside.ratePerM??0}" style="width:90px"/></div>
+        <div><label class="l">Glass ₹/m</label><input data-num="casement.hardwarePack.gasket.glass.ratePerM" type="number" step="0.01" value="${hp.gasket.glass.ratePerM??0}" style="width:90px" title="H×4+W×4 per door"/></div>
+      </div>
+      ${listCard('Extra hardware (optional freeform)', cm.hardware, 'casement.hardware','Add hardware')}`;
+
+    html += `<h4 style="margin:.7rem 0 .25rem">${kind==='normal'?'F':'E'} · Costing hooks <span class="muted" style="font-weight:400;font-size:.72rem">— engine stub</span></h4>
+      <div class="row" style="flex-wrap:wrap;gap:.4rem">
+        <div><label class="l">Labour ₹/sft</label><input data-num="casement.costing.labourPerSft" type="number" step="0.01" value="${cost.labourPerSft??''}" style="width:100px"/></div>
+        <div><label class="l">Profit %</label><input data-num="casement.costing.profitPercent" type="number" step="0.1" value="${cost.profitPercent??''}" style="width:90px"/></div>
+        <div><label class="l">Default std m</label>
+          <select data-num="casement.costing.defaultStdLengthM" style="width:90px">
+            <option value="2.4" ${Number(cost.defaultStdLengthM)===2.4?'selected':''}>2.4</option>
+            <option value="2.8" ${Number(cost.defaultStdLengthM)===2.8?'selected':''}>2.8</option>
+            <option value="3" ${Number(cost.defaultStdLengthM)===3||Number(cost.defaultStdLengthM)===3.0?'selected':''}>3.0</option>
+          </select>
+        </div>
+        <label class="chk" style="font-size:.78rem;margin-top:1.1rem"><input type="checkbox" data-flag="casement.costing.soldPerRft" ${cost.soldPerRft?'checked':''}/> Sold per RFT</label>
+        <label class="chk" style="font-size:.78rem;margin-top:1.1rem"><input type="checkbox" data-flag="casement.costing.projectWastageReuse" ${cost.projectWastageReuse?'checked':''}/> Project wastage reuse</label>
+        <label class="chk" style="font-size:.78rem;margin-top:1.1rem"><input type="checkbox" data-flag="casement.costing.chargeFullStdLengthWhenSplit" ${cost.chargeFullStdLengthWhenSplit?'checked':''}/> Full std length when split</label>
+      </div>
+      <p class="muted" style="font-size:.7rem;margin:.25rem 0">Cost engine: <code>${cost.costEngine||'stub'}</code>. Stile/slim typically RFT coated · std 2.4 / 2.8 / 3 m.</p>
       ${setupPhase2Cards(type)}`;
   } else if (type==='telescopic' || type==='synchron'){
     const t = state.setup.telescopic;
@@ -13716,8 +14033,8 @@ function setByPath(path,val){ const parts=path.split('.'); let o=state.setup; fo
 function wireSetup(box){
   box.querySelectorAll('[data-flag]').forEach(cb=> cb.onchange = () => {
     setByPath(cb.dataset.flag, cb.checked);
-    // Meeting / mesh toggles need a re-render to show/hide section cards
-    if (/sliding\.(meeting\.enabled|mesh\.compatible)/.test(cb.dataset.flag||'')) renderSetup();
+    // Meeting / mesh / stay / slim hinge toggles need a re-render
+    if (/sliding\.(meeting\.enabled|mesh\.compatible)|casement\.hardwarePack\.(stay|topHungStay|hinges|floorSpring|handles|doorCloser)\.enabled/.test(cb.dataset.flag||'')) renderSetup();
     else updateSetupDerived();
   });
   box.querySelectorAll('[data-num]').forEach(inp=> inp.onchange = () => {
@@ -13725,12 +14042,26 @@ function wireSetup(box){
     const path = inp.dataset.num||'';
     if (path.endsWith('trackConnectors.qty') && v!=null) v = Math.max(0, Math.min(8, v));
     if (path.endsWith('shutterConnectors.qty') && v!=null) v = Math.max(0, Math.min(4, v));
+    if (path.endsWith('hinges.qty') && v!=null) v = Math.max(2, Math.min(8, v));
+    if (path.endsWith('frameConnectors.qty') && v!=null) v = Math.max(0, Math.min(8, v));
+    if (path.endsWith('doorConnectors.qty') && v!=null) v = Math.max(0, Math.min(8, v));
+    if (path === 'casement.hardwarePack.stay.selectedInch' || path === 'casement.hardwarePack.topHungStay.selectedInch') {
+      /* handled via data-str for select; keep num path for defaultStdLengthM */
+    }
+    if (path.endsWith('glassClips.sg.clipMm')) setByPath('casement.glass.sgClip', v);
+    if (path.endsWith('glassClips.dgu.clipMm')) setByPath('casement.glass.dgClip', v);
     setByPath(path, v);
     updateSetupDerived();
   });
   box.querySelectorAll('[data-str]').forEach(inp=> inp.onchange = () => {
     const path = inp.dataset.str;
-    setByPath(path, inp.value);
+    let val = inp.value;
+    if (path === 'casement.hardwarePack.stay.selectedInch' || path === 'casement.hardwarePack.topHungStay.selectedInch') {
+      val = inp.value === '' ? null : +inp.value;
+      setByPath(path, val);
+      updateSetupDerived(); return;
+    }
+    setByPath(path, val);
     if (path === 'sliding.trackMode') {
       state.setup.sliding.outerTrack = state.setup.sliding.outerTrack || {};
       state.setup.sliding.outerTrack.sameAllSides = inp.value === 'all_sides_same';
@@ -13744,12 +14075,69 @@ function wireSetup(box){
       }
       renderSetup(); return;
     }
+    if (path === 'casement.kind') {
+      state.setup = ensureSetupShape(state.setup, 'casement');
+      const cm = state.setup.casement;
+      cm.kind = inp.value;
+      cm.outerFrame.includeBottom = inp.value === 'normal';
+      cm.costing = Object.assign(blankCasementCosting(inp.value), {labourPerSft:cm.costing.labourPerSft,profitPercent:cm.costing.profitPercent});
+      if (inp.value === 'stile') cm.doors.mode = 'stile_sides';
+      else if (inp.value === 'slim_profile') cm.doors.mode = cm.doors.mode === 'verticals_same_tb_same' ? 'verticals_same_tb_same' : 'all_sides_same';
+      else cm.doors.mode = 'all_sides_same';
+      renderSetup(); return;
+    }
+    if (path === 'casement.activeFrameVariant') {
+      state.setup.casement.outerFrame.activeVariant = inp.value;
+      renderSetup(); return;
+    }
+    if (path === 'casement.hardwarePack.lock.type' || path === 'casement.glassClips.active') {
+      renderSetup(); return;
+    }
     updateSetupDerived();
   });
   box.querySelectorAll('[data-shmode]').forEach(rb => rb.onchange = () => {
     if (!rb.checked) return;
     state.setup.sliding.shutters.mode = rb.dataset.shmode;
     state.setup.sliding.shutters.sameAllSides = rb.dataset.shmode === 'all_sides_same';
+    renderSetup();
+  });
+  box.querySelectorAll('[data-mull]').forEach(rb => rb.onchange = () => {
+    if (!rb.checked) return;
+    state.setup.casement.mullions.active = rb.dataset.mull;
+    renderSetup();
+  });
+  box.querySelectorAll('[data-door]').forEach(rb => rb.onchange = () => {
+    if (!rb.checked) return;
+    state.setup.casement.doors.active = rb.dataset.door;
+    renderSetup();
+  });
+  box.querySelectorAll('[data-doormode]').forEach(rb => rb.onchange = () => {
+    if (!rb.checked) return;
+    state.setup.casement.doors.mode = rb.dataset.doormode;
+    renderSetup();
+  });
+  box.querySelectorAll('[data-openhw]').forEach(rb => rb.onchange = () => {
+    if (!rb.checked) return;
+    const cm = state.setup.casement, hp = cm.hardwarePack;
+    hp.openHardware = rb.dataset.openhw;
+    if (hp.openHardware === 'hinges') {
+      hp.hinges.enabled = true;
+      hp.limitationArm.enabled = cm.kind === 'normal';
+      hp.stay.enabled = false;
+      hp.topHungStay.enabled = false;
+      hp.floorSpring.enabled = false;
+    } else if (hp.openHardware === 'stay') {
+      hp.hinges.enabled = false;
+      hp.limitationArm.enabled = false;
+      hp.floorSpring.enabled = false;
+      if (!hp.stay.enabled && !hp.topHungStay.enabled) hp.stay.enabled = true;
+    } else if (hp.openHardware === 'floor_spring') {
+      hp.hinges.enabled = false;
+      hp.limitationArm.enabled = false;
+      hp.stay.enabled = false;
+      hp.topHungStay.enabled = false;
+      hp.floorSpring.enabled = true;
+    }
     renderSetup();
   });
   // single-section cards (legacy SEC_COLS)
@@ -13795,7 +14183,15 @@ function updateSetupDerived(){
     sizes.rails = railCountForTrack(sl.activeTrackOption||'2');
     sizes.trackOpt = sl.activeTrackOption||'2';
   }
-  else if(t==='casement'){const c=state.setup.casement;const fw=face(c.outerFrame);sizes={frame:fw,leafStile:face(c.shutter)||fw};}
+  else if(t==='casement'){
+    const c=state.setup.casement, of=c.outerFrame||{}, variants=(of.variants)||{};
+    const fv=c.activeFrameVariant||of.activeVariant||'plain';
+    const fw=face(variants[fv])||face(of.allSides)||face(c.outerFrame);
+    const d=c.doors||{};
+    const leaf=face(d[d.active||'slim'])||face(d.allSides)||face(d.hingeSide)||face(c.shutter)||fw;
+    sizes={frame:fw,leafStile:leaf,kind:c.kind||'normal'};
+    if (c.hardwarePack&&c.hardwarePack.openHardware) sizes.openHw=c.hardwarePack.openHardware;
+  }
   else if(t==='telescopic'){const x=state.setup.telescopic;sizes={topRail:face(x.verticalTop)||face(x.topTrack),bottomRail:face(x.verticalBottom),jamb:face(x.vertical)};}
   else if(t==='style'){const x=state.setup.style;sizes={topRail:face(x.top),bottomRail:face(x.bottom),jamb:face(x.outerFrame),leafStile:face(x.innerDoorVertical)};}
   const parts=Object.entries(sizes).filter(([,v])=>v!=null&&v!==''&&v!==0).map(([k,v])=>`${k} ${typeof v==='number'?v+'mm':v}`);
@@ -13809,6 +14205,19 @@ function updateSetupDerived(){
     extra.push('mode '+ (sl.trackMode||'all_sides_same'));
     extra.push('BOM '+(sl.bomPattern||''));
     if (sl.costing && sl.costing.costEngine) extra.push('cost '+sl.costing.costEngine);
+  }
+  if (t==='casement') {
+    const cm=state.setup.casement;
+    extra.push(cm.kind||'normal');
+    if (cm.hardwarePack) {
+      const oh=cm.hardwarePack.openHardware||'hinges';
+      extra.push(oh);
+      if (oh==='stay') {
+        if (cm.hardwarePack.stay&&cm.hardwarePack.stay.enabled) extra.push('side-swing stay');
+        if (cm.hardwarePack.topHungStay&&cm.hardwarePack.topHungStay.enabled) extra.push('top-hung stay');
+      }
+    }
+    if (cm.costing&&cm.costing.costEngine) extra.push('cost '+cm.costing.costEngine);
   }
   const base = parts.length ? ('Derived → '+parts.join(' · ')) : 'Fill section W (mm) to derive geometry frame sizes.';
   el.textContent = extra.length ? (base+' · '+extra.join(' · ')) : base;
