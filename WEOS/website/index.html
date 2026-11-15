@@ -253,9 +253,9 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
   background:var(--stage-frame);box-shadow:inset 0 0 0 1px rgba(255,255,255,.65)
 }
 #view-cart .cart-preview .preview,#view-cart .cart-preview #livePreview.preview{
-  flex:1 1 auto;min-height:0;height:auto;
+  flex:1 1 auto;min-height:0;height:auto;width:100%;
   overflow:hidden;display:flex;align-items:center;justify-content:center;
-  padding:14px;overscroll-behavior:contain;cursor:grab;touch-action:none;
+  padding:14px;box-sizing:border-box;overscroll-behavior:contain;cursor:grab;touch-action:none;
   border:0;border-radius:0;background:var(--stage-paper)
 }
 #view-cart .cart-preview .preview.is-panning{cursor:grabbing;user-select:none}
@@ -264,26 +264,14 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
 }
 #view-cart .cart-preview .preview.dims-hidden svg [stroke="#8b1e1a"],
 #view-cart .cart-preview .preview.dims-hidden svg [fill="#8b1e1a"]{display:none!important}
+/* Explicit JS fit owns size — never let attribute mm/px or max-* fight the stage */
 #view-cart .cart-preview .preview svg,#view-cart .cart-preview .preview img{
-  max-width:none;max-height:none;width:auto;height:auto;display:block;flex-shrink:0
+  max-width:none!important;max-height:none!important;width:auto;height:auto;display:block;flex-shrink:0;
+  overflow:visible
 }
 #view-cart .cart-preview #wrapDesignPhoto,#view-cart .cart-preview #lineSpecs,
 #view-cart .cart-preview #lineAddonsPanel{flex:0 0 auto}
-/* One stage contract for all productWorldOf worlds — roomy only frees vertical scroll */
-#view-cart.preview-roomy.grid{height:auto;min-height:calc(100vh - 5.75rem);overflow:visible}
-#view-cart.preview-roomy > .two.cart-split{
-  height:auto;min-height:calc(100vh - 8rem);overflow:visible;
-  grid-template-columns:minmax(260px,var(--cart-inspector)) minmax(0,1fr)
-}
-#view-cart.preview-roomy .cart-tools{
-  height:auto;max-height:calc(100vh - 6.75rem);
-  overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch
-}
-#view-cart.preview-roomy .cart-preview{overflow:visible}
-#view-cart.preview-roomy .cart-preview .design-canvas-frame{min-height:clamp(560px,72vh,980px)}
-#view-cart.preview-roomy .cart-preview .preview{
-  flex:1 1 auto;min-height:520px;height:auto;max-height:none
-}
+/* preview-roomy must not alter DesignCanvas frame size (uniform stage for every world). */
 .admin-split{align-items:stretch}
 .admin-split > div:first-child{min-height:0;display:flex;flex-direction:column}
 .admin-split .canvas-wrap{flex:1 1 auto;min-height:280px;max-height:calc(100vh - 12rem);overscroll-behavior:contain}
@@ -483,7 +471,7 @@ textarea{max-width:100%}
   .preview{min-height:220px;border-radius:10px;padding:.4rem}
   #view-cart.grid{height:auto;overflow:visible;grid-template-rows:none}
   #view-cart > .two.cart-split{height:auto;overflow:visible}
-  #view-cart .cart-tools,#view-cart.preview-roomy .cart-tools{
+  #view-cart .cart-tools{
     height:auto;max-height:calc(100vh - 8.25rem);
     overflow-x:auto;overflow-y:scroll;-webkit-overflow-scrolling:touch;
     scrollbar-gutter:stable
@@ -495,10 +483,6 @@ textarea{max-width:100%}
   #view-cart .cart-preview .preview-zoom{overflow-x:auto;justify-content:flex-start;padding-bottom:.15rem;-webkit-overflow-scrolling:touch}
   #view-cart .cart-preview .design-canvas-frame{min-height:min(58vh,440px)}
   #view-cart .cart-preview .preview{height:min(58vh,440px);min-height:260px;padding:8px}
-  #view-cart.preview-roomy.grid{height:auto;overflow:visible}
-  #view-cart.preview-roomy > .two.cart-split{grid-template-columns:1fr;min-height:0}
-  #view-cart.preview-roomy .cart-preview .design-canvas-frame{min-height:min(74vh,620px)}
-  #view-cart.preview-roomy .cart-preview .preview{min-height:420px;height:min(74vh,620px)}
   .canvas-wrap{height:min(62vh,520px);border-radius:10px}
   .canvas-page{margin:8px auto}
   .rail-tools,.rail-run,.livebox,.agent,.memory-banner,.safe-banner{border-radius:10px;padding:.62rem}
@@ -3409,11 +3393,35 @@ function previewZoomValue() {
   const z = Number(state.previewZoom);
   return Number.isFinite(z) && z > 0 ? z : 1;
 }
+/** Uniform stage inset — same visual padding % for every product world. */
+const PREVIEW_FIT_INSET = 0.06;
+function resetPreviewCamera() {
+  state.previewZoom = 1;
+  state.previewPanX = 0;
+  state.previewPanY = 0;
+}
+function _previewContentBox(box) {
+  if (!box) return { w: 0, h: 0 };
+  let pl = 0, pr = 0, pt = 0, pb = 0;
+  try {
+    const cs = window.getComputedStyle(box);
+    pl = parseFloat(cs.paddingLeft) || 0;
+    pr = parseFloat(cs.paddingRight) || 0;
+    pt = parseFloat(cs.paddingTop) || 0;
+    pb = parseFloat(cs.paddingBottom) || 0;
+  } catch (_) {}
+  return {
+    w: Math.max(0, (box.clientWidth || 0) - pl - pr),
+    h: Math.max(0, (box.clientHeight || 0) - pt - pb),
+  };
+}
 function _previewIntrinsicSize(el) {
   if (!el) return { w: 0, h: 0 };
   if (el.tagName && el.tagName.toLowerCase() === 'svg') {
     const vb = el.viewBox && el.viewBox.baseVal;
     if (vb && vb.width > 0 && vb.height > 0) return { w: vb.width, h: vb.height };
+    const attr = String(el.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+    if (attr.length >= 4 && attr[2] > 0 && attr[3] > 0) return { w: attr[2], h: attr[3] };
     const aw = parseFloat(el.getAttribute('width'));
     const ah = parseFloat(el.getAttribute('height'));
     if (aw > 0 && ah > 0) return { w: aw, h: ah };
@@ -3422,9 +3430,10 @@ function _previewIntrinsicSize(el) {
       if (b && b.width > 0 && b.height > 0) return { w: b.width, h: b.height };
     } catch (_) {}
   }
-  const nw = Number(el.naturalWidth || el.width || 0);
-  const nh = Number(el.naturalHeight || el.height || 0);
-  return { w: nw, h: nh };
+  const nw = Number(el.naturalWidth || 0);
+  const nh = Number(el.naturalHeight || 0);
+  if (nw > 0 && nh > 0) return { w: nw, h: nh };
+  return { w: 0, h: 0 };
 }
 function _previewElementSignature(el) {
   if (!el) return '';
@@ -3434,57 +3443,46 @@ function _previewElementSignature(el) {
     return [
       'svg',
       el.getAttribute('data-model-system') || '',
+      el.getAttribute('data-product-type') || '',
       el.getAttribute('viewBox') || '',
-      el.getAttribute('width') || '',
-      el.getAttribute('height') || '',
       title ? title.textContent || '' : '',
     ].join('|');
   }
   return ['img', el.getAttribute('src') || '', el.naturalWidth || '', el.naturalHeight || ''].join('|');
 }
+/**
+ * One viewport contract for every series/world: keep authored viewBox, strip
+ * presentation width/height (mm vs px worlds), meet+center.
+ */
 function normalizePreviewSvgViewport(svg) {
   if (!svg || !svg.tagName || svg.tagName.toLowerCase() !== 'svg') return;
-  if (svg.dataset.previewViewport === 'normalized') return;
-  const sys = String(svg.getAttribute('data-model-system') || '').toLowerCase();
-  if (['ventilator', 'shower', 'railing', 'louver', 'pergola', 'surface'].includes(sys)) {
-    svg.removeAttribute('width');
-    svg.removeAttribute('height');
-    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-    svg.dataset.previewViewport = 'authored';
-    return;
-  }
-  try {
-    const box = svg.getBBox();
-    if (!(box && box.width > 0 && box.height > 0)) return;
-    const vb = svg.viewBox && svg.viewBox.baseVal;
-    const old = (vb && vb.width > 0 && vb.height > 0)
-      ? { x: vb.x, y: vb.y, w: vb.width, h: vb.height }
-      : null;
-    const pad = Math.max(box.width, box.height) * 0.035;
-    let nx = box.x - pad;
-    let ny = box.y - pad;
-    let nw = box.width + pad * 2;
-    let nh = box.height + pad * 2;
-    if (old) {
-      const shrink = (nw * nh) / Math.max(old.w * old.h, 1);
-      const aspectOld = old.w / Math.max(old.h, 1);
-      const aspectNew = nw / Math.max(nh, 1);
-      // Only crop dead whitespace. Keep deliberately authored catalogue viewBoxes.
-      if (shrink > 0.96 || Math.abs(Math.log(aspectNew / Math.max(aspectOld, 0.01))) > 0.75) {
-        nx = old.x; ny = old.y; nw = old.w; nh = old.h;
+  if (svg.dataset.previewViewport === 'stage') return;
+  const vb = svg.getAttribute('viewBox');
+  if (!vb) {
+    try {
+      const box = svg.getBBox();
+      if (box && box.width > 0 && box.height > 0) {
+        const pad = Math.max(box.width, box.height) * 0.04;
+        svg.setAttribute('viewBox', `${box.x - pad} ${box.y - pad} ${box.width + pad * 2} ${box.height + pad * 2}`);
       }
-      svg.dataset.previewOriginalViewBox = `${old.x} ${old.y} ${old.w} ${old.h}`;
-    }
-    svg.setAttribute('viewBox', `${nx} ${ny} ${nw} ${nh}`);
-    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-    svg.dataset.previewViewport = 'normalized';
-  } catch (_) {}
+    } catch (_) {}
+  }
+  svg.removeAttribute('width');
+  svg.removeAttribute('height');
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  svg.dataset.previewViewport = 'stage';
 }
-function applyPreviewFit() {
+/**
+ * Contain-fit the drawing into #livePreview with a consistent inset.
+ * @param {{reset?: boolean}} opts reset=true clears zoom/pan (product / Fit / refresh).
+ */
+function fitPreviewToStage(opts) {
+  opts = opts || {};
   const box = $('livePreview');
   if (!box) return;
+  if (opts.reset) resetPreviewCamera();
   if (box._fitRaf) cancelAnimationFrame(box._fitRaf);
-  box._fitRaf = requestAnimationFrame(() => {
+  const run = () => {
     const el = box.querySelector('svg') || box.querySelector('img');
     if (el && el.tagName && el.tagName.toLowerCase() === 'svg') {
       normalizePreviewSvgViewport(el);
@@ -3495,21 +3493,25 @@ function applyPreviewFit() {
     const sig = _previewElementSignature(el);
     if (sig && sig !== box._previewSig) {
       box._previewSig = sig;
-      state.previewZoom = 1;
-      state.previewPanX = 0;
-      state.previewPanY = 0;
+      if (!opts.reset) resetPreviewCamera();
     }
     const zoom = previewZoomValue();
     const label = $('prevZoomLabel');
     if (label) label.textContent = Math.abs(zoom - 1) < 0.02 ? 'Fit' : Math.round(zoom * 100) + '%';
-    const zoomed = zoom > 1.02;
-    box.classList.toggle('zoomed', zoomed);
+    box.classList.toggle('zoomed', zoom > 1.02);
     if (!el) return;
-    const pad = 8;
-    const cw = Math.max(80, box.clientWidth - pad);
-    const ch = Math.max(80, box.clientHeight - pad);
+    const content = _previewContentBox(box);
+    const inset = PREVIEW_FIT_INSET;
+    const cw = Math.max(80, content.w * (1 - inset * 2));
+    const ch = Math.max(80, content.h * (1 - inset * 2));
     const size = _previewIntrinsicSize(el);
-    if (!(size.w > 0 && size.h > 0 && cw > 0 && ch > 0)) return;
+    if (!(size.w > 0 && size.h > 0 && content.w > 40 && content.h > 40)) {
+      if (!box._fitRetry) {
+        box._fitRetry = true;
+        requestAnimationFrame(() => { box._fitRetry = false; fitPreviewToStage(opts); });
+      }
+      return;
+    }
     const fit = Math.min(cw / size.w, ch / size.h);
     const s = fit * zoom;
     const pw = Math.max(1, size.w * s);
@@ -3519,7 +3521,14 @@ function applyPreviewFit() {
     el.style.width = pw + 'px';
     el.style.height = ph + 'px';
     applyPreviewPan(box);
+  };
+  box._fitRaf = requestAnimationFrame(() => {
+    // Second frame so flex stage size is settled after product-world swaps.
+    box._fitRaf = requestAnimationFrame(run);
   });
+}
+function applyPreviewFit() {
+  fitPreviewToStage({ reset: false });
 }
 function applyPreviewPan(box) {
   const host = box || $('livePreview');
@@ -3533,7 +3542,7 @@ function applyPreviewPan(box) {
 function setPreviewZoom(next) {
   const z = Math.max(0.5, Math.min(3, Math.round(Number(next) * 100) / 100));
   state.previewZoom = z;
-  applyPreviewFit();
+  fitPreviewToStage({ reset: false });
 }
 function syncPreviewDimsUi() {
   const box = $('livePreview');
@@ -3553,11 +3562,7 @@ function initPreviewZoom() {
   if (state.previewPanX == null) state.previewPanX = 0;
   if (state.previewPanY == null) state.previewPanY = 0;
   if (state.previewDims == null) state.previewDims = true;
-  if ($('btnPrevFit')) $('btnPrevFit').onclick = () => {
-    state.previewPanX = 0;
-    state.previewPanY = 0;
-    setPreviewZoom(1);
-  };
+  if ($('btnPrevFit')) $('btnPrevFit').onclick = () => fitPreviewToStage({ reset: true });
   if ($('btnPrevZoomIn')) $('btnPrevZoomIn').onclick = () => setPreviewZoom(previewZoomValue() * 1.25);
   if ($('btnPrevZoomOut')) $('btnPrevZoomOut').onclick = () => {
     const z = previewZoomValue() / 1.25;
@@ -3619,11 +3624,17 @@ function initPreviewZoom() {
       state.previewPanY = (Number(state.previewPanY) || 0) - ev.deltaY * unit;
       applyPreviewPan(box);
     }, { passive: false });
-    const obs = new MutationObserver(() => applyPreviewFit());
-    obs.observe(box, { childList: true, subtree: true });
+    const obs = new MutationObserver(() => fitPreviewToStage({ reset: true }));
+    obs.observe(box, { childList: true, subtree: false });
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => fitPreviewToStage({ reset: false }));
+      ro.observe(box);
+      const frame = box.closest('.design-canvas-frame');
+      if (frame) ro.observe(frame);
+    }
   }
-  applyPreviewFit();
-  window.addEventListener('resize', () => applyPreviewFit());
+  fitPreviewToStage({ reset: true });
+  window.addEventListener('resize', () => fitPreviewToStage({ reset: false }));
 }
 function lineIdentityKey(ln) {
   if (!ln || typeof ln !== 'object') return '';
@@ -3668,7 +3679,7 @@ function linePreviewIsValid(ln) {
 function markLivePreviewLine(ln, key) {
   state._previewLineId = (ln && (ln.lineId || ln.id)) || null;
   state._previewKey = key || (ln ? lineIdentityKey(ln) : null);
-  if (typeof applyPreviewFit === 'function') applyPreviewFit();
+  if (typeof fitPreviewToStage === 'function') fitPreviewToStage({ reset: true });
 }
 function invalidatePdfCache() {
   if (state._custPdfCache && state._custPdfCache.url) {
@@ -5818,16 +5829,12 @@ function setSpecialProductToolMode(world) {
     if (title) title.textContent = world === 'louver' ? 'Louver design' : 'Add feature';
   }
 }
-function syncPreviewRoomy(world) {
-  // Same DesignCanvas column contract for every productWorldOf world.
-  // Roomy only unlocks vertical scroll for tall shower/vent/fold drawings.
+function syncPreviewRoomy(_world) {
+  // Uniform DesignCanvas: never resize the stage per product world.
+  // Keep class off so legacy preview-roomy CSS cannot diverge vent/shower/window.
   const view = document.getElementById('view-cart');
-  if (!view) return;
-  const sys = String(($('lineSystem') && $('lineSystem').value) || '').toLowerCase();
-  const w = String(world || '').toLowerCase();
-  const roomy = w === 'shower' || w === 'ventilator' || sys === 'bifold' || sys.indexOf('fold') >= 0;
-  view.classList.toggle('preview-roomy', roomy);
-  if (typeof applyPreviewFit === 'function') applyPreviewFit();
+  if (view) view.classList.remove('preview-roomy');
+  if (typeof fitPreviewToStage === 'function') fitPreviewToStage({ reset: false });
 }
 function applyProductWorld(opts) {
   opts = opts || {};
@@ -6988,7 +6995,7 @@ let _previewGen = 0;
 let _specialPreviewAt = 0;
 function markSpecialPreview() {
   _specialPreviewAt = Date.now();
-  if (typeof applyPreviewFit === 'function') applyPreviewFit();
+  if (typeof fitPreviewToStage === 'function') fitPreviewToStage({ reset: true });
 }
 function specialPreviewFresh() {
   const box = $('livePreview');
@@ -7135,6 +7142,7 @@ async function refreshPreview() {
     }
     else if (prev.heroImage) $('livePreview').innerHTML = `<img src="${prev.heroImage}" alt=""/>`;
     else $('livePreview').innerHTML = '<span class="muted">No preview</span>';
+    if (typeof fitPreviewToStage === 'function') fitPreviewToStage({ reset: true });
     refreshDesignPhotoUi();
     const specs = prev.specifications || {};
     const layout = prev.layout || {};
