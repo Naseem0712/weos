@@ -9,7 +9,7 @@
   --bg:#e8e3d8; --ink:#141410; --muted:#5c584f; --panel:rgba(255,252,247,.94);
   --line:rgba(20,20,16,.12); --green:#0a5a48; --green2:#147a62; --copper:#b45324;
   --card:#fffdf9; --shadow:0 10px 40px rgba(20,20,16,.06); --radius:14px;
-  --nav:72px; --logo-w:168px; --side:200px; --cart-inspector:340px;
+  --nav:72px; --logo-w:168px; --side:200px; --cart-inspector:300px;
   --stage-paper:#eef1f4; --stage-frame:#ffffff; --stage-ink:#1b2a25;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --serif: Georgia, "Palatino Linotype", Palatino, "Times New Roman", Times, serif;
@@ -211,107 +211,155 @@ button.pill:active{transform:scale(.96);box-shadow:inset 0 1px 4px rgba(0,0,0,.1
 .chip button{border:0;background:transparent;cursor:pointer;font-size:.85rem;line-height:1;padding:0;color:#666}
 .two{display:grid;grid-template-columns:1.1fr .9fr;gap:1rem}
 @media(max-width:1000px){.two{grid-template-columns:1fr}}
-#view-cart.grid{height:calc(100vh - 5.75rem);grid-template-rows:minmax(0,1fr);overflow:hidden;align-content:stretch}
-#view-cart.grid:has(#memoryBanner.show){grid-template-rows:auto minmax(0,1fr)}
-/* Bath Studio–style cart: narrow inspector | majority DesignCanvas */
-#view-cart > .two.cart-split{
-  align-items:stretch;height:100%;min-height:0;overflow:hidden;gap:.75rem;
-  grid-template-columns:minmax(260px,var(--cart-inspector)) minmax(0,1fr)
+#view-cart.grid{
+  height:calc(100vh - 4.25rem);grid-template-rows:auto minmax(0,1fr);overflow:hidden;align-content:stretch;gap:.45rem
 }
-#view-cart .cart-tools,#view-cart .cart-preview{min-height:0;overscroll-behavior:contain}
-#view-cart .cart-tools{
-  height:100%;max-height:100%;min-height:0;
-  overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch;
-  overscroll-behavior:contain;touch-action:pan-x pan-y
+#view-cart.grid:has(#memoryBanner.show){grid-template-rows:auto auto minmax(0,1fr)}
+body:has(#view-cart:not(.hidden)) .main{padding-top:.55rem;padding-bottom:.55rem}
+body:has(#view-cart:not(.hidden)) .top{margin-bottom:.35rem}
+body:has(#view-cart:not(.hidden)) .top h1{font-size:1.35rem}
+body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
+.cart-shell{
+  display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;height:100%;gap:.4rem;position:relative
 }
-#view-cart .cart-preview.design-stage{
-  display:flex;flex-direction:column;overflow:auto;padding:.7rem .75rem .75rem;
-  background:linear-gradient(180deg,#fbfcfa 0%,#f4f6f8 100%);
-  border:1px solid rgba(20,40,36,.12);box-shadow:var(--shadow)
+.cart-topbar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .55rem;padding:.35rem .5rem;
+  background:rgba(255,252,247,.96);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);flex:0 0 auto;position:relative
 }
-#view-cart .cart-preview .stage-chrome{
-  display:flex;align-items:flex-end;justify-content:space-between;gap:.55rem;flex-wrap:wrap;
-  flex:0 0 auto;margin:0 0 .5rem;padding:0 0 .45rem;border-bottom:1px solid rgba(20,40,36,.08)
-}
-#view-cart .cart-preview .stage-chrome .stage-title{margin:0;font-size:.95rem;font-weight:700;color:var(--stage-ink);letter-spacing:-.01em}
-#view-cart .cart-preview .stage-chrome .eyebrow{margin:0 0 .1rem;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
-#view-cart .cart-preview .preview-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.55rem;flex-wrap:wrap;flex:0 0 auto;margin-bottom:.45rem}
-#view-cart .cart-preview .stage-tools,#view-cart .cart-preview .preview-zoom{
-  display:flex;align-items:center;flex-wrap:wrap;gap:.28rem
-}
-#view-cart .cart-preview .stage-tools .btn,
-#view-cart .cart-preview .preview-zoom .btn{
+.cart-topbar .cart-tb-group{display:flex;align-items:center;flex-wrap:wrap;gap:.28rem;min-width:0}
+.cart-topbar .cart-tb-export{flex:1 1 18rem;justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.cart-topbar .cart-tb-stage{flex:0 1 auto;justify-content:center;flex-wrap:nowrap}
+.cart-topbar .cart-tb-quote{flex:1 1 14rem;justify-content:flex-end;flex-wrap:nowrap;overflow-x:auto}
+.cart-topbar .actions-inline{flex-wrap:nowrap}
+.cart-topbar .btn,.cart-topbar a.btn,.cart-topbar label.btn{
   padding:.28rem .5rem;font-size:.74rem;border-radius:8px;min-height:30px;line-height:1.1
 }
-#view-cart .cart-preview .stage-tools .btn[aria-pressed="true"],
-#view-cart .cart-preview .preview-zoom .btn[aria-pressed="true"]{
-  background:var(--green);color:#f4faf7;border-color:var(--green)
+.cart-topbar select{padding:.28rem .4rem;font-size:.74rem;border-radius:8px;min-height:30px;width:auto;max-width:11rem}
+.cart-topbar #previewLabel{font-size:.74rem;margin:0;max-width:16rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cart-topbar #exportSetupSelect{max-width:10.5rem;min-width:7rem}
+.cart-topbar #cartVersionPick{max-width:11rem;min-width:7rem;flex:1 1 7rem}
+.cart-topbar #printCopyPanel{
+  position:absolute;z-index:45;right:max(.75rem,2%);top:calc(100% + .25rem);width:min(420px,94vw);
+  box-shadow:0 16px 40px rgba(20,20,16,.18)
 }
-/* Fixed square DesignCanvas: width = 100% of cart-preview column; height = width.
-   flex-shrink:0 + aspect-ratio — never crushed by specs or product-world swaps. */
+.cart-workspace{
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,var(--cart-inspector));
+  gap:.55rem;min-height:0;height:100%;align-items:stretch
+}
+#view-cart.inspector-collapsed .cart-workspace{grid-template-columns:minmax(0,1fr) 0}
+#view-cart.inspector-collapsed .cart-inspector{
+  width:0;min-width:0;padding:0;margin:0;border:0;overflow:hidden;opacity:0;pointer-events:none
+}
+#view-cart .cart-inspector.cart-tools{
+  height:100%;max-height:100%;min-height:0;overflow-x:hidden;overflow-y:auto;
+  -webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:.55rem .6rem;
+  scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:#5c6b74 #e4e0d6
+}
+#view-cart .cart-inspector.cart-tools::-webkit-scrollbar{width:10px}
+#view-cart .cart-inspector.cart-tools::-webkit-scrollbar-track{background:#e4e0d6}
+#view-cart .cart-inspector.cart-tools::-webkit-scrollbar-thumb{background:#5c6b74;border-radius:8px;border:2px solid #e4e0d6}
+#view-cart .cart-inspector .setup-summary{
+  margin-bottom:.45rem;padding:.35rem .45rem;font-size:.78rem;gap:.35rem .5rem
+}
+#view-cart .cart-inspector .livebox{padding:.55rem .65rem;margin-top:.45rem}
+#view-cart .cart-inspector .livebox .big{font-size:1.2rem}
+#view-cart .cart-preview.design-stage{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  overflow:hidden;min-height:0;height:100%;padding:.4rem;container-type:size;container-name:cartstage;
+  background:linear-gradient(180deg,#fbfcfa 0%,#f4f6f8 100%);
+  border:1px solid rgba(20,40,36,.12);box-shadow:var(--shadow);border-radius:var(--radius)
+}
 #view-cart .cart-preview .design-canvas-frame,
 #view-cart.preview-roomy .cart-preview .design-canvas-frame{
-  flex:0 0 auto;align-self:stretch;width:100%;max-width:100%;box-sizing:border-box;
-  aspect-ratio:1 / 1;height:auto;min-height:0;max-height:none;
+  flex:0 0 auto;box-sizing:border-box;
+  width:min(100cqw,100cqh,min(72vh,calc(100vh - 9.5rem)));
+  height:min(100cqw,100cqh,min(72vh,calc(100vh - 9.5rem)));
+  max-width:100%;max-height:100%;aspect-ratio:1 / 1;
   display:flex;flex-direction:column;
   border:1px solid rgba(20,40,36,.14);border-radius:12px;overflow:hidden;
   background:var(--stage-frame);box-shadow:inset 0 0 0 1px rgba(255,255,255,.65)
 }
-/* Fallback when aspect-ratio is unavailable — keep a usable square-ish stage */
-@supports not (aspect-ratio:1 / 1){
+@supports not (width:1cqw){
   #view-cart .cart-preview .design-canvas-frame,
   #view-cart.preview-roomy .cart-preview .design-canvas-frame{
-    min-height:clamp(420px,52vw,560px);height:clamp(420px,52vw,560px)
+    width:min(100%,min(72vh,calc(100vh - 9.5rem)));
+    height:min(100%,min(72vh,calc(100vh - 9.5rem)))
   }
 }
 #view-cart .cart-preview .preview,#view-cart .cart-preview #livePreview.preview,
 #view-cart.preview-roomy .cart-preview .preview,#view-cart.preview-roomy .cart-preview #livePreview.preview{
   flex:1 1 auto;min-height:0;width:100%;height:100%;
   overflow:hidden;display:flex;align-items:center;justify-content:center;
-  padding:14px;box-sizing:border-box;overscroll-behavior:contain;cursor:grab;touch-action:none;
+  padding:12px;box-sizing:border-box;overscroll-behavior:contain;cursor:grab;touch-action:none;
   border:0;border-radius:0;background:var(--stage-paper)
 }
 #view-cart .cart-preview .preview.is-panning{cursor:grabbing;user-select:none}
-#view-cart .cart-preview .preview.zoomed{
-  overflow:hidden;align-items:center;justify-content:center
-}
+#view-cart .cart-preview .preview.zoomed{overflow:hidden;align-items:center;justify-content:center}
 #view-cart .cart-preview .preview.dims-hidden svg [stroke="#8b1e1a"],
 #view-cart .cart-preview .preview.dims-hidden svg [fill="#8b1e1a"]{display:none!important}
-/* Explicit JS fit owns size — never let attribute mm/px or max-* fight the stage */
 #view-cart .cart-preview .preview svg,#view-cart .cart-preview .preview img{
-  max-width:none!important;max-height:none!important;width:auto;height:auto;display:block;flex-shrink:0;
-  overflow:visible
+  max-width:none!important;max-height:none!important;width:auto;height:auto;display:block;flex-shrink:0;overflow:visible
 }
-#view-cart .cart-preview #wrapDesignPhoto,#view-cart .cart-preview #lineSpecs,
-#view-cart .cart-preview #lineAddonsPanel{flex:0 0 auto}
-/* preview-roomy must not alter DesignCanvas frame size (uniform stage for every world). */
+.cart-lines-panel{
+  position:absolute;z-index:40;top:.35rem;right:.35rem;bottom:.35rem;width:min(340px,92vw);
+  display:flex;flex-direction:column;gap:.4rem;padding:.55rem .6rem;
+  background:rgba(255,252,247,.98);border:1px solid var(--line);border-radius:14px;
+  box-shadow:0 18px 48px rgba(20,20,16,.16);transform:translateX(110%);opacity:0;pointer-events:none;
+  transition:transform .22s ease,opacity .18s ease
+}
+#view-cart.lines-open .cart-lines-panel{transform:none;opacity:1;pointer-events:auto}
+.cart-lines-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.4rem;flex:0 0 auto}
+.cart-lines-head strong{font-size:.9rem}
+.cart-lines-cards{
+  flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:.45rem;-webkit-overflow-scrolling:touch
+}
+.quote-line-card{
+  border:1px solid var(--line);border-radius:12px;padding:.55rem .6rem;background:#fff;cursor:pointer;
+  transition:border-color .15s,box-shadow .15s,background .15s
+}
+.quote-line-card:hover{border-color:var(--green);box-shadow:0 4px 14px rgba(10,90,72,.1)}
+.quote-line-card.active{border-color:var(--green);background:#f3faf6;box-shadow:0 0 0 1px rgba(10,90,72,.2)}
+.quote-line-card.cancelled{background:#fdecec;opacity:.92}
+.quote-line-card .qlc-top{display:flex;justify-content:space-between;gap:.35rem;align-items:baseline}
+.quote-line-card .qlc-serial{font-weight:700;font-size:.78rem;color:var(--green)}
+.quote-line-card .qlc-amt{font-weight:700;font-size:.84rem;white-space:nowrap}
+.quote-line-card .qlc-name{font-size:.84rem;font-weight:600;margin:.15rem 0}
+.quote-line-card .qlc-meta{font-size:.72rem;color:var(--muted);line-height:1.35}
+.quote-line-card .qlc-actions{display:flex;flex-wrap:wrap;gap:.25rem;margin-top:.4rem}
+.quote-line-card .qlc-actions .btn{padding:.22rem .4rem;font-size:.7rem;min-height:26px}
+.cart-lines-foot{flex:0 0 auto;border-top:1px solid var(--line);padding-top:.4rem}
+.cart-lines-table-fold{flex:0 0 auto;max-height:40%;overflow:auto;border-top:1px dashed var(--line);padding-top:.35rem}
+.cart-lines-table-fold summary{cursor:pointer;font-size:.75rem;color:var(--muted);margin-bottom:.3rem}
+.cart-lines-table-fold table{font-size:.78rem}
+.cart-lines-table-fold input{padding:.25rem .3rem;font-size:.75rem;border-radius:6px}
+@media(max-width:1000px){
+  #view-cart.grid{height:auto;overflow:visible;grid-template-rows:none;min-height:calc(100vh - 4.5rem)}
+  .cart-shell{height:auto;min-height:70vh}
+  .cart-workspace{grid-template-columns:1fr;grid-template-rows:minmax(320px,min(72vh,560px)) auto;height:auto}
+  #view-cart.inspector-collapsed .cart-workspace{grid-template-columns:1fr;grid-template-rows:minmax(320px,min(72vh,560px))}
+  #view-cart .cart-inspector.cart-tools{height:auto;max-height:min(48vh,420px);order:2}
+  #view-cart .cart-preview.design-stage{order:1;min-height:320px;height:min(72vh,560px)}
+  #view-cart .cart-preview .design-canvas-frame,
+  #view-cart.preview-roomy .cart-preview .design-canvas-frame{
+    width:min(100%,100%);height:min(100%,min(68vh,520px));max-height:100%
+  }
+  .cart-lines-panel{position:fixed;top:auto;left:.5rem;right:.5rem;bottom:.5rem;width:auto;max-height:55vh}
+}
+@media(max-width:700px){
+  .cart-topbar{gap:.3rem}
+  .cart-topbar .cart-tb-export,.cart-topbar .cart-tb-quote,.cart-topbar .cart-tb-stage{flex:1 1 100%;justify-content:flex-start}
+  #view-cart .cart-preview .design-canvas-frame,
+  #view-cart.preview-roomy .cart-preview .design-canvas-frame{
+    width:min(100%,min(70vh,calc(100vw - 1.5rem)));
+    height:min(100%,min(70vh,calc(100vw - 1.5rem)))
+  }
+}
 .admin-split{align-items:stretch}
+
 .admin-split > div:first-child{min-height:0;display:flex;flex-direction:column}
 .admin-split .canvas-wrap{flex:1 1 auto;min-height:280px;max-height:calc(100vh - 12rem);overscroll-behavior:contain}
 @media(max-width:1000px){
-  #view-cart.grid{height:auto;overflow:visible;grid-template-rows:none}
-  #view-cart > .two.cart-split{height:auto;overflow:visible;min-height:0;grid-template-columns:1fr}
-  #view-cart .cart-tools{
-    height:auto;max-height:calc(100vh - 8.25rem);
-    overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch
   }
-  #view-cart .cart-preview{max-height:none;overflow:visible}
-  #view-cart .cart-preview .design-canvas-frame,
-  #view-cart.preview-roomy .cart-preview .design-canvas-frame{
-    flex:0 0 auto;width:100%;aspect-ratio:1 / 1;height:auto;min-height:0;max-height:none
-  }
-  #view-cart .cart-preview .preview{width:100%;height:100%;min-height:0}
-}
-/* Tool column always shows a vertical scrollbar so shower layout settings stay reachable. */
-#view-cart .cart-tools{
-  overflow-y:scroll;
-  scrollbar-gutter:stable;
-  scrollbar-width:auto;
-  scrollbar-color:#5c6b74 #e4e0d6;
-}
-#view-cart .cart-tools::-webkit-scrollbar{width:12px;height:12px}
-#view-cart .cart-tools::-webkit-scrollbar-track{background:#e4e0d6}
-#view-cart .cart-tools::-webkit-scrollbar-thumb{background:#5c6b74;border-radius:8px;border:2px solid #e4e0d6}
 .prodgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.85rem}
 .prod{cursor:pointer;overflow:hidden;transition:transform .2s,box-shadow .2s}
 .prod:hover{transform:translateY(-3px);box-shadow:0 14px 36px rgba(20,20,16,.1)}
@@ -431,12 +479,7 @@ textarea{max-width:100%}
   .main{padding:.85rem .85rem 2rem}
   .prodgrid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
   .cards{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-  #view-cart .cart-preview .design-canvas-frame,
-  #view-cart.preview-roomy .cart-preview .design-canvas-frame{
-    flex:0 0 auto;width:100%;aspect-ratio:1 / 1;height:auto;min-height:0;max-height:none
   }
-  #view-cart .cart-preview .preview{width:100%;height:100%;min-height:0}
-}
 @media(max-width:700px){
   :root{--logo-w:min(160px,58vw);--side:min(220px,86vw);--cart-inspector:100%;--radius:10px}
   body{background:var(--bg)}
@@ -488,23 +531,6 @@ textarea{max-width:100%}
   .pkg-item{grid-template-columns:1fr!important;gap:.42rem}
   .pkg-gst{gap:.35rem}
   .preview{min-height:220px;border-radius:10px;padding:.4rem}
-  #view-cart.grid{height:auto;overflow:visible;grid-template-rows:none}
-  #view-cart > .two.cart-split{height:auto;overflow:visible}
-  #view-cart .cart-tools{
-    height:auto;max-height:calc(100vh - 8.25rem);
-    overflow-x:auto;overflow-y:scroll;-webkit-overflow-scrolling:touch;
-    scrollbar-gutter:stable
-  }
-  #view-cart .cart-preview{overflow:visible}
-  #view-cart .cart-preview .stage-chrome,
-  #view-cart .cart-preview .preview-head{display:grid;grid-template-columns:1fr;gap:.4rem}
-  #view-cart .cart-preview .stage-tools,
-  #view-cart .cart-preview .preview-zoom{overflow-x:auto;justify-content:flex-start;padding-bottom:.15rem;-webkit-overflow-scrolling:touch}
-  #view-cart .cart-preview .design-canvas-frame,
-  #view-cart.preview-roomy .cart-preview .design-canvas-frame{
-    flex:0 0 auto;width:100%;aspect-ratio:1 / 1;height:auto;min-height:0;max-height:none
-  }
-  #view-cart .cart-preview .preview{width:100%;height:100%;min-height:0;padding:8px}
   .canvas-wrap{height:min(62vh,520px);border-radius:10px}
   .canvas-page{margin:8px auto}
   .rail-tools,.rail-run,.livebox,.agent,.memory-banner,.safe-banner{border-radius:10px;padding:.62rem}
@@ -520,12 +546,7 @@ textarea{max-width:100%}
   .card,.panel{padding:.62rem .55rem}
   .main{padding-left:.45rem;padding-right:.45rem}
   table{min-width:560px}
-  #view-cart .cart-preview .design-canvas-frame,
-  #view-cart.preview-roomy .cart-preview .design-canvas-frame{
-    flex:0 0 auto;width:100%;aspect-ratio:1 / 1;height:auto;min-height:0;max-height:none
   }
-  #view-cart .cart-preview .preview{width:100%;height:100%;min-height:0}
-}
 @page{size:A4 portrait;margin:12mm}
 @media print{
   html,body{background:#fff!important}
@@ -732,18 +753,66 @@ textarea{max-width:100%}
           <button class="btn ghost sm" id="btnMemoryDismiss" type="button" style="color:#cfe9dc;border-color:#2a6b55">No, start fresh</button>
         </div>
       </div>
-      <div class="two cart-split">
-        <div class="panel cart-tools">
-          <div class="setup-summary" id="setupSummaryBar">
-            <span class="muted">Active setup</span>
-            <strong id="setupSummaryText">No setup yet</strong>
-            <select id="cartVersionPick" style="max-width:100%;min-width:14rem;flex:1 1 12rem" title="Select a saved quote / project to load"></select>
+      <div class="cart-shell">
+        <div class="cart-topbar">
+          <div class="cart-tb-group cart-tb-export">
+            <button class="btn" id="btnCalc" title="Price the cart, save the quote, then download PDFs below">Calculate price</button>
+            <label class="l" style="margin:0;font-size:.62rem">Print setup</label>
+            <select id="exportSetupSelect" title="Choose which customer account’s bill-to / terms print on the quote"></select>
+            <button class="btn ghost sm" id="btnPrintCopyToggle" type="button" title="See what description and terms will print, then edit if needed">View / edit description &amp; terms</button>
+            <div class="actions-inline">
+                <a class="btn sm" id="linkCust" href="#" title="Customer quotation: branding, sizes, specs, pricing, GST, terms.">📄 Quote PDF</a>
+                <a class="btn ghost sm" id="linkCustPrint" href="#" title="Open quote PDF for printing">🖨 Print quote</a>
+                <a class="btn ghost sm" id="linkCustXlsx" href="#" title="Download quote as Excel">📊 Quote Excel</a>
+                <a class="btn sec sm" id="linkFact" href="#" title="Factory production sheet: panel schedule, glass sizes, hardware BOM, cut list, weights. No customer pricing.">🏭 Factory Sheet (PDF)</a>
+                <a class="btn ghost sm" id="linkQuote" href="#" target="_blank" title="Raw quotation data (JSON) — for integrations.">Quote data</a>
+              </div>
+            <div id="printCopyPanel" class="hidden" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;padding:.55rem .65rem;background:#fff">
+                <p class="muted" style="margin:0 0 .45rem;font-size:.75rem">This is what the Quote PDF will print. Read it, edit if needed, then generate the PDF. <code>**bold**</code> becomes real bold below.</p>
+                <div id="quoteCopyPreview" class="quote-copy-preview" style="margin:0 0 .55rem;padding:.45rem .55rem;border:1px dashed var(--line);border-radius:8px;background:#faf8f4;font-size:.84rem;min-height:2.2rem"></div>
+                <label class="l">Description</label>
+                <textarea id="printDescription" class="quote-copy-textarea" rows="4" placeholder="Optional note that prints on the customer quotation"></textarea>
+                <div class="chip-row" id="printDescChips"></div>
+                <label class="l" style="margin-top:.45rem">Terms</label>
+                <textarea id="printTerms" class="quote-copy-textarea" rows="6" placeholder="Leave blank to use company default terms"></textarea>
+                <div class="chip-row" id="printTermsChips"></div>
+              </div>
+              
+          </div>
+          <div class="cart-tb-group cart-tb-stage" role="toolbar" aria-label="Design canvas tools">
+            <p class="muted" id="previewLabel" style="margin:.25rem 0 0">Select or add a line</p>
+            <div class="stage-tools preview-zoom" role="toolbar" aria-label="Design canvas tools">
+              <button class="btn ghost sm" type="button" id="btnPrevUndo" title="Undo (coming soon)" disabled>Undo</button>
+              <button class="btn ghost sm" type="button" id="btnPrevFit" title="Fit the whole drawing in the canvas">Fit</button>
+              <button class="btn ghost sm" type="button" id="btnPrevZoomOut" title="Zoom out">−</button>
+              <span id="prevZoomLabel" class="muted" style="min-width:3.1rem;text-align:center;font-size:.78rem">Fit</span>
+              <button class="btn ghost sm" type="button" id="btnPrevZoomIn" title="Zoom in">+</button>
+              <button class="btn ghost sm" type="button" id="btnPrevDims" title="Show or hide dimension annotations" aria-pressed="true">Dims</button>
+            </div>
+          </div>
+          <div class="cart-tb-group cart-tb-quote">
+            <select id="cartVersionPick" title="Select a saved quote / project to load"></select>
             <button class="btn ghost sm" id="btnLoadQuote" type="button" title="Load the selected saved quote">Load</button>
             <button class="btn sm" id="btnSaveQuote" type="button" title="Save this cart + setup as a named quote on the server">Save Quote</button>
-            <button class="btn ghost sm" id="btnEditSetup" type="button">Edit Project Setup</button>
-            <button class="btn ghost sm" id="btnCartOutsideQuote" type="button">Add outside quote</button>
+            <button class="btn ghost sm" id="btnAutosave" title="Save this cart as a named quote on the server">Save Quote</button>
+            <button class="btn ghost sm" id="btnToggleInspector" type="button" title="Hide / show product inspector">Specs</button>
+            <button class="btn ghost sm" id="btnToggleQuoteLines" type="button" title="Open quote line cards">Lines</button>
           </div>
-          <div class="row">
+        </div>
+        <div class="cart-workspace">
+          <div class="panel cart-preview design-stage">
+            <div class="design-canvas-frame">
+            <div class="preview" id="livePreview"><span class="muted">SVG / hero</span></div>
+          </div>
+          </div>
+          <div class="panel cart-tools cart-inspector">
+            <div class="setup-summary" id="setupSummaryBar">
+              <span class="muted">Active setup</span>
+              <strong id="setupSummaryText">No setup yet</strong>
+              <button class="btn ghost sm" id="btnEditSetup" type="button">Edit Project Setup</button>
+              <button class="btn ghost sm" id="btnCartOutsideQuote" type="button">Add outside quote</button>
+            </div>
+<div class="row">
             <div class="grow"><label class="l">Product</label><select id="lineProduct"></select></div>
             <div class="grow"><label class="l">Location / Position</label>
               <input id="lineLocation" placeholder="e.g. Master Bedroom, Kitchen" style="width:100%" title="Optional. Prints with serial on quote PDF, e.g. W8 · Master Bedroom"/>
@@ -1679,88 +1748,23 @@ textarea{max-width:100%}
             </div>
             <div class="muted" id="bulkSizesHint" style="font-size:.7rem;margin-top:.3rem">Uses glass, colour, hardware, series design and notes from the form. Empty rate → form selling rate.</div>
           </div>
-          <div class="row" style="margin-top:.75rem">
-            <button class="btn" id="btnCalc" title="Price the cart, save the quote, then download PDFs below">Calculate price</button>
-            <button class="btn ghost sm" id="btnAutosave" title="Save this cart as a named quote on the server">Save Quote</button>
-            <button class="btn ghost sm" id="btnUndo" title="Undo last change">Undo</button>
-            <button class="btn ghost sm" id="btnRedo" title="Redo">Redo</button>
-            <label class="btn ghost sm" style="margin:0" title="Import lines from CSV/Excel">Import<input id="importFile" type="file" accept=".csv,.xlsx" hidden/></label>
-            <label class="btn ghost sm" style="margin:0" title="Import DETA windows section catalogue">Sections Excel<input id="sectionsFile" type="file" accept=".xlsx" hidden/></label>
-          </div>
-          <div class="quote-group-bar" id="quoteGroupBar">
+<div class="quote-group-bar" id="quoteGroupBar">
             <span class="muted" style="font-size:.75rem">Quote sections</span>
             <div class="pkg-tabs" id="quoteGroupTabs" role="tablist" aria-label="Quote sections"></div>
-            <button class="btn ghost sm" type="button" id="btnQuoteGroupAdd" title="Add Premium / Budget / UPVC / Grills style section">+ section</button>
-            <button class="btn ghost sm" type="button" id="btnQuoteGroupRename" title="Rename the active section">Rename</button>
-            <span class="muted" id="quoteGroupHint" style="font-size:.72rem;flex:1;min-width:12rem">New cart lines go into the active section. PDF prints section headers.</span>
-          </div>
-          <div style="overflow:auto;margin-top:.8rem">
-            <table>
-              <thead><tr><th>#</th><th>Product</th><th>Size</th><th>Qty</th><th>Options</th><th>Amount</th><th></th></tr></thead>
-              <tbody id="cartBody"></tbody>
-            </table>
-          </div>
-          <div class="row" style="margin-top:.8rem;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:.6rem">
-            <div>
-              <div class="muted" id="cartMeta">0 lines</div>
-              <div class="total" id="cartTotal">₹ —</div>
-              <div id="cartCommercialTotals" class="cart-commercial-totals"></div>
+            <div class="row" style="margin-top:.55rem;gap:.35rem">
+              <button class="btn ghost sm" id="btnUndo" title="Undo last change">Undo</button>
+              <button class="btn ghost sm" id="btnRedo" title="Redo">Redo</button>
+              <label class="btn ghost sm" style="margin:0" title="Import lines from CSV/Excel">Import<input id="importFile" type="file" accept=".csv,.xlsx" hidden/></label><label class="btn ghost sm" style="margin:0" title="Import DETA windows section catalogue">Sections Excel<input id="sectionsFile" type="file" accept=".xlsx" hidden/></label>
             </div>
-            <div style="display:flex;flex-direction:column;gap:.4rem;align-items:flex-end;min-width:min(100%,280px)">
-              <div style="width:100%"><label class="l">Quote print setup (customer details on PDF)</label>
-                <select id="exportSetupSelect" title="Choose which customer account’s bill-to / terms print on the quote"></select>
-              </div>
-              <button class="btn ghost sm" id="btnPrintCopyToggle" type="button" title="See what description and terms will print, then edit if needed">View / edit description &amp; terms</button>
-              <div id="printCopyPanel" class="hidden" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;padding:.55rem .65rem;background:#fff">
-                <p class="muted" style="margin:0 0 .45rem;font-size:.75rem">This is what the Quote PDF will print. Read it, edit if needed, then generate the PDF. <code>**bold**</code> becomes real bold below.</p>
-                <div id="quoteCopyPreview" class="quote-copy-preview" style="margin:0 0 .55rem;padding:.45rem .55rem;border:1px dashed var(--line);border-radius:8px;background:#faf8f4;font-size:.84rem;min-height:2.2rem"></div>
-                <label class="l">Description</label>
-                <textarea id="printDescription" class="quote-copy-textarea" rows="4" placeholder="Optional note that prints on the customer quotation"></textarea>
-                <div class="chip-row" id="printDescChips"></div>
-                <label class="l" style="margin-top:.45rem">Terms</label>
-                <textarea id="printTerms" class="quote-copy-textarea" rows="6" placeholder="Leave blank to use company default terms"></textarea>
-                <div class="chip-row" id="printTermsChips"></div>
-              </div>
-              <div class="actions-inline">
-                <a class="btn sm" id="linkCust" href="#" title="Customer quotation: branding, sizes, specs, pricing, GST, terms.">📄 Quote PDF</a>
-                <a class="btn ghost sm" id="linkCustPrint" href="#" title="Open quote PDF for printing">🖨 Print quote</a>
-                <a class="btn ghost sm" id="linkCustXlsx" href="#" title="Download quote as Excel">📊 Quote Excel</a>
-                <a class="btn sec sm" id="linkFact" href="#" title="Factory production sheet: panel schedule, glass sizes, hardware BOM, cut list, weights. No customer pricing.">🏭 Factory Sheet (PDF)</a>
-                <a class="btn ghost sm" id="linkQuote" href="#" target="_blank" title="Raw quotation data (JSON) — for integrations.">Quote data</a>
-              </div>
-            </div>
-          </div>
-          <pre class="optbox" id="optBox">Optimization after Calculate</pre>
-          <div class="err" id="cartErr"></div>
-        </div>
-        <div class="panel cart-preview design-stage">
-          <div class="stage-chrome preview-head">
-            <div>
-              <p class="eyebrow">Shared design stage</p>
-              <strong class="stage-title">DesignCanvas</strong>
-              <p class="muted" id="previewLabel" style="margin:.25rem 0 0">Select or add a line</p>
-            </div>
-            <div class="stage-tools preview-zoom" role="toolbar" aria-label="Design canvas tools">
-              <button class="btn ghost sm" type="button" id="btnPrevUndo" title="Undo (coming soon)" disabled>Undo</button>
-              <button class="btn ghost sm" type="button" id="btnPrevFit" title="Fit the whole drawing in the canvas">Fit</button>
-              <button class="btn ghost sm" type="button" id="btnPrevZoomOut" title="Zoom out">−</button>
-              <span id="prevZoomLabel" class="muted" style="min-width:3.1rem;text-align:center;font-size:.78rem">Fit</span>
-              <button class="btn ghost sm" type="button" id="btnPrevZoomIn" title="Zoom in">+</button>
-              <button class="btn ghost sm" type="button" id="btnPrevDims" title="Show or hide dimension annotations" aria-pressed="true">Dims</button>
-            </div>
-          </div>
-          <div class="design-canvas-frame">
-            <div class="preview" id="livePreview"><span class="muted">SVG / hero</span></div>
-          </div>
-          <div class="row" id="wrapDesignPhoto" style="margin:.45rem 0 .2rem;gap:.5rem;align-items:center;flex-wrap:wrap">
+            <div class="row" id="wrapDesignPhoto" style="margin:.45rem 0 .2rem;gap:.5rem;align-items:center;flex-wrap:wrap">
             <label class="btn ghost sm" style="cursor:pointer">Upload design photo
               <input id="lineDesignPhoto" type="file" accept="image/*" hidden/>
             </label>
             <button class="btn ghost sm" id="btnClearDesignPhoto" type="button" style="display:none">Remove photo</button>
             <span class="muted" id="lineDesignPhotoName" style="font-size:.75rem"></span>
           </div>
-          <div class="specs" id="lineSpecs" style="margin-top:.8rem"></div>
-          <div id="lineAddonsPanel" class="line-addons-panel" style="margin-top:.65rem;display:none">
+            <div class="specs" id="lineSpecs" style="margin-top:.8rem"></div>
+            <div id="lineAddonsPanel" class="line-addons-panel" style="margin-top:.65rem;display:none">
             <div class="row" style="align-items:center;justify-content:space-between;gap:.4rem;flex-wrap:wrap">
               <strong style="font-size:.82rem">Add-ons for this window / door</strong>
               <button class="btn ghost sm" type="button" id="btnAddLineAddon">+ add-on</button>
@@ -1768,7 +1772,35 @@ textarea{max-width:100%}
             <div class="muted" style="font-size:.7rem;margin:.2rem 0 .35rem">Name, optional note, qty × rate → amount. Shows under this line in preview + quote PDF.</div>
             <div id="lineAddonsList"></div>
           </div>
+            <pre class="optbox" id="optBox">Optimization after Calculate</pre>
+          <div class="err" id="cartErr"></div>
+          </div>
         </div>
+        <aside class="cart-lines-panel" id="cartLinesPanel" aria-label="Quote lines">
+          <div class="cart-lines-head">
+            <div>
+              <strong>Quote lines</strong>
+              <div class="muted" id="cartMeta">0 lines</div>
+            </div>
+            <button class="btn ghost sm" type="button" id="btnCloseQuoteLines" title="Close">✕</button>
+          </div>
+          <div class="cart-lines-cards" id="cartLinesCards"></div>
+          <div class="cart-lines-table-fold">
+            <details>
+              <summary>Table edit (W × H × Qty)</summary>
+              <div style="overflow:auto;margin-top:.8rem">
+            <table>
+              <thead><tr><th>#</th><th>Product</th><th>Size</th><th>Qty</th><th>Options</th><th>Amount</th><th></th></tr></thead>
+              <tbody id="cartBody"></tbody>
+            </table>
+          </div>
+            </details>
+          </div>
+          <div class="cart-lines-foot">
+            <div class="total" id="cartTotal">₹ —</div>
+            <div id="cartCommercialTotals" class="cart-commercial-totals"></div>
+          </div>
+        </aside>
       </div>
     </section>
 
@@ -3298,11 +3330,44 @@ function toggleSideNav() {
   if (!app || !side) return;
   if (window.matchMedia('(max-width:900px)').matches) {
     side.classList.toggle('open');
-    return;
+  } else {
+    const collapsed = app.classList.toggle('side-collapsed');
+    try { localStorage.setItem('weos.sideCollapsed', collapsed ? '1' : '0'); } catch (_) {}
   }
-  const collapsed = app.classList.toggle('side-collapsed');
-  try { localStorage.setItem('weos.sideCollapsed', collapsed ? '1' : '0'); } catch (_) {}
+  if (typeof fitPreviewToStage === 'function') {
+    requestAnimationFrame(() => fitPreviewToStage({ reset: false }));
+    setTimeout(() => fitPreviewToStage({ reset: false }), 220);
+  }
 }
+function setCartLinesOpen(open) {
+  const view = $('view-cart');
+  if (!view) return;
+  view.classList.toggle('lines-open', !!open);
+  const btn = $('btnToggleQuoteLines');
+  if (btn) btn.setAttribute('aria-pressed', open ? 'true' : 'false');
+}
+function setCartInspectorCollapsed(collapsed) {
+  const view = $('view-cart');
+  if (!view) return;
+  view.classList.toggle('inspector-collapsed', !!collapsed);
+  try { localStorage.setItem('weos.cartInspectorCollapsed', collapsed ? '1' : '0'); } catch (_) {}
+  if (typeof fitPreviewToStage === 'function') {
+    requestAnimationFrame(() => fitPreviewToStage({ reset: false }));
+    setTimeout(() => fitPreviewToStage({ reset: false }), 220);
+  }
+}
+function initCartLayoutChrome() {
+  const view = $('view-cart');
+  if (!view || view._cartChromeBound) return;
+  view._cartChromeBound = true;
+  try {
+    if (localStorage.getItem('weos.cartInspectorCollapsed') === '1') view.classList.add('inspector-collapsed');
+  } catch (_) {}
+  if ($('btnToggleQuoteLines')) $('btnToggleQuoteLines').onclick = () => setCartLinesOpen(!view.classList.contains('lines-open'));
+  if ($('btnCloseQuoteLines')) $('btnCloseQuoteLines').onclick = () => setCartLinesOpen(false);
+  if ($('btnToggleInspector')) $('btnToggleInspector').onclick = () => setCartInspectorCollapsed(!view.classList.contains('inspector-collapsed'));
+}
+
 function restoreSideNav() {
   try {
     if (localStorage.getItem('weos.sideCollapsed') === '1') {
@@ -3350,7 +3415,7 @@ function setView(v) {
   if (v==='master') initMasterLedger();
   if (v==='projects') loadProjects();
   if (v==='library') initAdmin();
-  if (v==='cart') { renderCart(); refreshPreview(); refreshSetupSummary(); refreshExportSetupSelect(); refreshCartProjectPick(); }
+  if (v==='cart') { renderCart(); refreshPreview(); refreshSetupSummary(); refreshExportSetupSelect(); refreshCartProjectPick(); initCartLayoutChrome(); if (typeof fitPreviewToStage==='function') { requestAnimationFrame(()=>fitPreviewToStage({reset:true})); setTimeout(()=>fitPreviewToStage({reset:false}), 200); } }
   if (typeof syncProjectHeader === 'function') syncProjectHeader();
   if (v==='customers') initCustomers();
   if (v==='company') initCompany();
@@ -3364,6 +3429,7 @@ window.setView = setView;
 
 document.querySelectorAll('.navbtn').forEach(b => b.onclick = () => setView(b.dataset.view));
 if ($('burger')) $('burger').onclick = toggleSideNav;
+initCartLayoutChrome();
 restoreSideNav();
 bindFolds();
 
@@ -3656,10 +3722,18 @@ function initPreviewZoom() {
       ro.observe(box);
       const frame = box.closest('.design-canvas-frame');
       if (frame) ro.observe(frame);
+      const stage = box.closest('.cart-preview');
+      if (stage) ro.observe(stage);
     }
   }
   fitPreviewToStage({ reset: true });
   window.addEventListener('resize', () => fitPreviewToStage({ reset: false }));
+  const appRoot = $('appRoot') || document.querySelector('.app');
+  if (appRoot && typeof ResizeObserver !== 'undefined' && !appRoot._cartFitRo) {
+    appRoot._cartFitRo = new ResizeObserver(() => fitPreviewToStage({ reset: false }));
+    appRoot._cartFitRo.observe(appRoot);
+  }
+
 }
 function lineIdentityKey(ln) {
   if (!ln || typeof ln !== 'object') return '';
@@ -6787,6 +6861,42 @@ function renderCart() {
     </tr>`;
   });
   $('cartBody').innerHTML = html;
+  // Quote line cards panel — click card to load line onto canvas
+  const cardsHost = $('cartLinesCards');
+  if (cardsHost) {
+    let cards = '';
+    if (removed.length) {
+      removed.forEach(ln => {
+        const name = (ln && (ln.locationName || ln.positionName || ln.displayName || ln.product)) || 'Item';
+        cards += '<div class="quote-line-card cancelled"><div class="qlc-name">REMOVED · ' + esc(name) + '</div><div class="qlc-meta">since previous version</div></div>';
+      });
+    }
+    if (!visible.length && !importedRows.length) {
+      cards += '<div class="quote-line-card"><div class="qlc-meta">No lines yet — add a product from Specs.</div></div>';
+    }
+    visible.forEach(({ ln, i }) => {
+      const serialCode = designSerialLabel(i, ln).split(' · ')[0];
+      const cancelled = isLineCancelled(ln);
+      const active = i === state.selectedLine;
+      const loc = ln.locationName || ln.positionName || '';
+      const size = (ln.width != null && ln.height != null) ? (ln.width + '\u00d7' + ln.height) : '\u2014';
+      const cls = 'quote-line-card' + (cancelled ? ' cancelled' : '') + (active ? ' active' : '');
+      cards += '<div class="' + cls + '" data-card-sel="' + i + '" role="button" tabindex="0">' +
+        '<div class="qlc-top"><span class="qlc-serial">' + esc(serialCode) + '</span><span class="qlc-amt' + (cancelled ? ' cart-strike' : '') + '">' + money(lineLiveAmount(ln)) + '</span></div>' +
+        '<div class="qlc-name' + (cancelled ? ' cart-strike' : '') + '">' + (cancelled ? '<span class="cart-cancelled-mark">CANCELLED </span>' : '') + cartLineProductLabel(ln) + '</div>' +
+        '<div class="qlc-meta">' + esc(size) + ' · qty ' + (ln.qty != null ? ln.qty : 1) + (loc ? ' · ' + esc(loc) : '') + (ln.colour ? ' · ' + esc(ln.colour) : '') + '</div>' +
+        '<div class="qlc-actions">' +
+          '<button class="btn ghost sm" type="button" data-sel="' + i + '">Edit</button>' +
+          '<button class="btn ghost sm" type="button" data-dup="' + i + '">Dup</button>' +
+          '<button class="btn ghost sm" type="button" data-cancel="' + i + '">' + (cancelled ? 'Uncancel' : 'Cancel') + '</button>' +
+          '<button class="btn ghost sm" type="button" data-del="' + i + '">Del</button>' +
+        '</div></div>';
+    });
+    importedRows.forEach((row) => {
+      cards += '<div class="quote-line-card"><div class="qlc-serial">Excel</div><div class="qlc-name">' + esc(row.name) + '</div><div class="qlc-meta">' + esc(row.size || '\u2014') + ' · ' + esc(row.qty || '\u2014') + ' · ' + (row.amount ? money(row.amount) : '\u2014') + '</div></div>';
+    });
+    cardsHost.innerHTML = cards;
+  }
   $('cartBody').querySelectorAll('input[data-f]').forEach(inp => {
     inp.onchange = () => {
       const i = +inp.dataset.i; const f = inp.dataset.f;
@@ -6885,6 +6995,34 @@ function renderCart() {
     refreshPreview();
     updateLiveCartTotal();
   });
+  const cardRoot = $('cartLinesCards');
+  if (cardRoot) {
+    const triggerCartBtn = (attr, value) => {
+      const btn = $('cartBody') && $('cartBody').querySelector('[' + attr + '="' + value + '"]');
+      if (btn) btn.click();
+    };
+    cardRoot.querySelectorAll('[data-sel]').forEach(b => {
+      b.onclick = (ev) => { ev.stopPropagation(); triggerCartBtn('data-sel', b.dataset.sel); };
+    });
+    cardRoot.querySelectorAll('[data-dup]').forEach(b => {
+      b.onclick = (ev) => { ev.stopPropagation(); triggerCartBtn('data-dup', b.dataset.dup); };
+    });
+    cardRoot.querySelectorAll('[data-del]').forEach(b => {
+      b.onclick = (ev) => { ev.stopPropagation(); triggerCartBtn('data-del', b.dataset.del); };
+    });
+    cardRoot.querySelectorAll('[data-cancel]').forEach(b => {
+      b.onclick = (ev) => { ev.stopPropagation(); triggerCartBtn('data-cancel', b.dataset.cancel); };
+    });
+    cardRoot.querySelectorAll('[data-card-sel]').forEach(card => {
+      card.onclick = (ev) => {
+        if (ev.target.closest('button')) return;
+        triggerCartBtn('data-sel', card.getAttribute('data-card-sel'));
+      };
+      card.onkeydown = (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); card.click(); }
+      };
+    });
+  }
   const filtEntries = visible;
   const items = filtEntries.reduce((s,e)=>s+(+e.ln.qty||0),0);
   const groups = quoteQtyBreakdown(filtEntries.map(e => e.ln));
