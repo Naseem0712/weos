@@ -10,7 +10,9 @@
   "tagline": "Shower partitions · slim 16×45 · gallery defaults overridable",
   "warranty": "1 year",
   "heroImage": "/static/products/placeholder.svg",
-  "gallery": ["/static/products/placeholder.svg"],
+  "gallery": [
+    "/static/products/placeholder.svg"
+  ],
   "specifications": {
     "saleUnit": "sqft",
     "verticalProfile": "16×45 mm slim",
@@ -20,8 +22,22 @@
     "handleDefault": "D-type",
     "hingeType": "butterfly",
     "hingesPerDoor": 3,
-    "colours": ["matt_black", "brush_gold", "gold", "grey", "rose_gold"],
-    "glass": ["fluted 5/8 tuff", "tinted 5/6/8/10 tuff"]
+    "colours": [
+      "matt_black",
+      "brush_gold",
+      "gold",
+      "grey",
+      "rose_gold"
+    ],
+    "glass": [
+      "fluted 5/8 tuff",
+      "tinted 5/6/8/10 tuff"
+    ],
+    "powderCoatingBrand": "AkzoNobel",
+    "powderCoatingBrands": [
+      "AkzoNobel",
+      "Jotun"
+    ]
   },
   "setup": {
     "type": "shower",
@@ -40,7 +56,13 @@
       "hingeMin": 2,
       "hingeMax": 6
     },
-    "colours": ["matt_black", "brush_gold", "gold", "grey", "rose_gold"],
+    "colours": [
+      "matt_black",
+      "brush_gold",
+      "gold",
+      "grey",
+      "rose_gold"
+    ],
     "slidingFormat": "1+1"
   },
   "formulas": {

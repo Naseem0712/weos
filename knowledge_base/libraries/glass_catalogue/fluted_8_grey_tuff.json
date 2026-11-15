@@ -6,6 +6,7 @@
   "overallMm": 8.0,
   "glass1Mm": null,
   "glass2Mm": null,
+  "glass3Mm": null,
   "airGapMm": null,
   "pvbMm": null,
   "layersMm": [
@@ -15,12 +16,12 @@
   "brand": "",
   "toughened": true,
   "toughenedLabel": "Toughened",
-  "rate": null,
+  "rate": 120.0,
   "rateUnit": "sqft",
   "densityKgPerM3": 2500.0,
   "makeupLabel": "8mm",
   "display_label": "8 mm Toughened",
-  "specLine": "8mm · Grey · Toughened",
+  "specLine": "8mm · Grey · Toughened · @ ₹120/sqft",
   "status": "active",
-  "updatedAt": "2026-08-21T17:05:17.599100+00:00"
+  "updatedAt": "2026-11-15T18:09:29.993046+00:00"
 }

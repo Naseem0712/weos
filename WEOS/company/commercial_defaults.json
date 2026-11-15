@@ -1,0 +1,30 @@
+{
+  "labourPerSft": 120.0,
+  "installationPerSft": 40.0,
+  "coatingBrands": [
+    "AkzoNobel",
+    "Jotun"
+  ],
+  "defaultCoatingBrand": "AkzoNobel",
+  "coatingFamilyMultiplier": {
+    "plain": 1.0,
+    "texture": 1.2,
+    "wooden": 1.5
+  },
+  "coatingColourFamily": {
+    "white": "plain",
+    "black": "plain",
+    "brown": "plain",
+    "bronze": "plain",
+    "grey": "plain",
+    "matt_black": "plain",
+    "black_texture": "texture",
+    "texture": "texture",
+    "wood_oak": "wooden",
+    "wooden": "wooden",
+    "wood_finish": "wooden",
+    "wood": "wooden"
+  },
+  "notes": "Labour ₹120/sft + installation ₹40/sft for windows. Coating: plain = section coatingCost; texture +20%; wooden +50%. Brands: AkzoNobel / Jotun (exterior). Editable in Series Setup.",
+  "updatedAt": "2026-11-15T18:07:43.899304+00:00"
+}

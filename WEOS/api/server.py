@@ -1312,9 +1312,22 @@ def api_shower_quote(body: dict[str, Any]) -> dict[str, Any]:
 
 @app.get("/api/finishes")
 def api_finishes(kind: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.commercial_defaults import coating_brands, default_coating_brand
     from WEOS.factory.finish_catalogue import cart_colour_options, list_finishes
 
-    return {"finishes": list_finishes(kind=kind), "options": cart_colour_options(), "count": len(list_finishes(kind=kind))}
+    finishes = list_finishes(kind=kind)
+    return {
+        "finishes": finishes,
+        "options": cart_colour_options(),
+        "count": len(finishes),
+        "coatingBrands": coating_brands(),
+        "defaultCoatingBrand": default_coating_brand(),
+        "coatingFamilies": {
+            "plain": {"multiplier": 1.0, "note": "Base coating rate on sections"},
+            "texture": {"multiplier": 1.2, "note": "+20% on coating"},
+            "wooden": {"multiplier": 1.5, "note": "+50% on base coating rate"},
+        },
+    }
 
 
 @app.post("/api/finishes")
@@ -5213,6 +5226,28 @@ def api_glass_seed(force: bool = False) -> dict[str, Any]:
     from WEOS.factory.glass_catalogue import seed_default_glass
 
     return seed_default_glass(force=force, sync_products=True)
+
+
+@app.get("/api/commercial/defaults")
+def api_commercial_defaults() -> dict[str, Any]:
+    from WEOS.factory.commercial_defaults import load_commercial_defaults
+
+    return load_commercial_defaults()
+
+
+@app.post("/api/commercial/defaults")
+def api_commercial_defaults_save(body: dict[str, Any]) -> dict[str, Any]:
+    from WEOS.factory.commercial_defaults import save_commercial_defaults
+
+    return {"ok": True, "defaults": save_commercial_defaults(body or {})}
+
+
+@app.post("/api/commercial/apply-glass-defaults")
+def api_commercial_apply_glass_defaults() -> dict[str, Any]:
+    """Force-seed commercial glass packs + rates and sync to products."""
+    from WEOS.factory.glass_catalogue import apply_commercial_glass_defaults
+
+    return apply_commercial_glass_defaults(sync_products=True)
 
 
 @app.get("/api/glass/cart-options")

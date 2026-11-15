@@ -6,6 +6,7 @@
   "overallMm": 5.0,
   "glass1Mm": null,
   "glass2Mm": null,
+  "glass3Mm": null,
   "airGapMm": null,
   "pvbMm": null,
   "layersMm": [
@@ -19,7 +20,8 @@
   "rateUnit": "sqft",
   "densityKgPerM3": 2500.0,
   "makeupLabel": "5mm",
+  "display_label": "5 mm",
   "specLine": "5mm · Clear · Non-toughened",
   "status": "active",
-  "updatedAt": "2026-08-12T15:46:21.684495+00:00"
+  "updatedAt": "2026-11-15T18:09:29.983871+00:00"
 }

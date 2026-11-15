@@ -16,7 +16,12 @@
     "profileSeries": "35MM Gulf Slim Series",
     "sectionSizeMm": 95.3,
     "track": "2 track top/bottom horizontle track 95.3×31.2 mm",
-    "trackOptions": "2 track, 3 track"
+    "trackOptions": "2 track, 3 track",
+    "powderCoatingBrand": "AkzoNobel",
+    "powderCoatingBrands": [
+      "AkzoNobel",
+      "Jotun"
+    ]
   },
   "materials": [],
   "formulas": {},
@@ -129,5 +134,5 @@
     "productId": "35mm_sliding"
   },
   "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
-  "hiddenAt": "2026-11-15T17:51:31.083184+00:00"
+  "hiddenAt": "2026-11-15T18:08:55.624673+00:00"
 }

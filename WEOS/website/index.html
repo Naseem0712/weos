@@ -14006,7 +14006,7 @@ function blankHardwarePack(){ return {
   lock:{type:'single_point',rate:0,unit:'SET',notes:''},
   wheels:{qtyPerShutter:2,rate:0,unit:'PC',notes:''},
 }; }
-function blankSlidingCosting(){ return {labourPerSft:null,profitPercent:null,cutFromOwnStock:true,allSideSameLowWastage:true,projectWastageReuse:true,costEngine:'stub',notes:'Full project cost runs when all products are on the quote.'}; }
+function blankSlidingCosting(){ return {labourPerSft:120,installationPerSft:40,profitPercent:null,cutFromOwnStock:true,allSideSameLowWastage:true,projectWastageReuse:true,costEngine:'stub',notes:'Full project cost runs when all products are on the quote.'}; }
 function blankCasementStay(kind,name){
   const inches=[6,8,10,12,14,16];
   return {
@@ -14047,7 +14047,7 @@ function blankCasementHardwarePack(kind){
 function blankCasementCosting(kind){
   const k=kind||'normal';
   return {
-    labourPerSft:null,profitPercent:null,
+    labourPerSft:120,installationPerSft:40,profitPercent:null,
     soldPerRft:k==='stile'||k==='slim_profile',
     coatedDefault:true,colorRate:null,
     stdLengthsM:[2.4,2.8,3.0],defaultStdLengthM:3.0,
@@ -14385,14 +14385,15 @@ function renderSetup(){
 
     html += `<h4 style="margin:.7rem 0 .25rem">D · Costing hooks <span class="muted" style="font-weight:400;font-size:.72rem">— engine stub until full quote</span></h4>
       <div class="row" style="flex-wrap:wrap;gap:.4rem">
-        <div><label class="l">Labour ₹/sft</label><input data-num="sliding.costing.labourPerSft" type="number" step="0.01" value="${cost.labourPerSft??''}" style="width:100px"/></div>
+        <div><label class="l">Labour ₹/sft</label><input data-num="sliding.costing.labourPerSft" type="number" step="0.01" value="${cost.labourPerSft??120}" style="width:100px"/></div>
+        <div><label class="l">Install ₹/sft</label><input data-num="sliding.costing.installationPerSft" type="number" step="0.01" value="${cost.installationPerSft??40}" style="width:100px"/></div>
         <div><label class="l">Profit %</label><input data-num="sliding.costing.profitPercent" type="number" step="0.1" value="${cost.profitPercent??''}" style="width:90px"/></div>
         <label class="chk" style="font-size:.78rem;margin-top:1.1rem"><input type="checkbox" data-flag="sliding.costing.cutFromOwnStock" ${cost.cutFromOwnStock?'checked':''}/> Cut from own section stock</label>
         <label class="chk" style="font-size:.78rem;margin-top:1.1rem"><input type="checkbox" data-flag="sliding.costing.projectWastageReuse" ${cost.projectWastageReuse?'checked':''}/> Project wastage reuse</label>
       </div>
-      <p class="muted" style="font-size:.7rem;margin:.25rem 0">All-side same track dims → lower wastage. Full project cost when all products are on the quote. Cost engine: <code>${cost.costEngine||'stub'}</code>.</p>
+      <p class="muted" style="font-size:.7rem;margin:.25rem 0">Defaults labour ₹120 + install ₹40 /sft (editable). Coating: plain = section coat rate; texture +20%; wooden +50%. Brands AkzoNobel / Jotun. Cost engine: <code>${cost.costEngine||'stub'}</code>.</p>
       <h4 style="margin:.7rem 0 .2rem">E · Glass panel</h4>
-      <p class="muted" style="font-size:.75rem;margin:0 0 .4rem">Add glass types + rate/sft in <strong>Engines → Glass Library</strong>, then Sync. Quotes only select glass — area × rate apply. Not edited per series here.</p>
+      <p class="muted" style="font-size:.75rem;margin:0 0 .4rem">Select packs from <strong>Engines → Glass Library</strong> (single / DGU ≤28 mm / laminated ≤13.52 mm). Quotes apply area × pack rate. Sync after edits.</p>
       ${setupPhase2Cards(type)}`;
   } else if (type==='casement'){
     const cm = state.setup.casement, hp = cm.hardwarePack, cost = cm.costing, doors = cm.doors, mull = cm.mullions;
@@ -14598,7 +14599,8 @@ function renderSetup(){
 
     html += `<h4 style="margin:.7rem 0 .25rem">${kind==='normal'?'F':'E'} · Costing <span class="muted" style="font-weight:400;font-size:.72rem">— design cost uses canvas profiles · wastage reuse off charges leftover</span></h4>
       <div class="row" style="flex-wrap:wrap;gap:.4rem">
-        <div><label class="l">Labour ₹/sft</label><input data-num="casement.costing.labourPerSft" type="number" step="0.01" value="${cost.labourPerSft??''}" style="width:100px"/></div>
+        <div><label class="l">Labour ₹/sft</label><input data-num="casement.costing.labourPerSft" type="number" step="0.01" value="${cost.labourPerSft??120}" style="width:100px"/></div>
+        <div><label class="l">Install ₹/sft</label><input data-num="casement.costing.installationPerSft" type="number" step="0.01" value="${cost.installationPerSft??40}" style="width:100px"/></div>
         <div><label class="l">Profit %</label><input data-num="casement.costing.profitPercent" type="number" step="0.1" value="${cost.profitPercent??''}" style="width:90px"/></div>
         <div><label class="l">Default std m</label>
           <select data-num="casement.costing.defaultStdLengthM" style="width:90px">
@@ -14611,7 +14613,7 @@ function renderSetup(){
         <label class="chk" style="font-size:.78rem;margin-top:1.1rem"><input type="checkbox" data-flag="casement.costing.projectWastageReuse" ${cost.projectWastageReuse?'checked':''}/> Project wastage reuse</label>
         <label class="chk" style="font-size:.78rem;margin-top:1.1rem"><input type="checkbox" data-flag="casement.costing.chargeFullStdLengthWhenSplit" ${cost.chargeFullStdLengthWhenSplit?'checked':''}/> Full std length when split</label>
       </div>
-      <p class="muted" style="font-size:.7rem;margin:.25rem 0">Live cart cost uses frame · mullion · door lengths from the design + hardware pack + glass + labour/profit. Cost engine flag: <code>${cost.costEngine||'stub'}</code> (becomes <code>live</code> when rates exist). Std 2.4 / 2.8 / 3 m · wastage 0–2.5% band / leftover charged when reuse off.</p>
+      <p class="muted" style="font-size:.7rem;margin:.25rem 0">Defaults labour ₹120 + install ₹40 /sft. Coating plain / texture (+20%) / wooden (+50%) on coat rate only · brands AkzoNobel / Jotun. Cost engine: <code>${cost.costEngine||'stub'}</code>. Std 2.4 / 2.8 / 3 m.</p>
       ${setupPhase2Cards(type)}`;
   } else if (type==='telescopic' || type==='synchron'){
     const t = state.setup.telescopic;

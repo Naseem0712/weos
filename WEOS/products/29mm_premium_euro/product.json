@@ -21,7 +21,12 @@
     "sash": "shutter 3 side SG, DG 65×29 mm",
     "interlock": "Slim interlock SG, Dg 34.63×18 mm",
     "trackOptions": "2 track, 3 track",
-    "glassTypes": "Single glass, DGU"
+    "glassTypes": "Single glass, DGU",
+    "powderCoatingBrand": "AkzoNobel",
+    "powderCoatingBrands": [
+      "AkzoNobel",
+      "Jotun"
+    ]
   },
   "materials": [],
   "formulas": {},
@@ -205,5 +210,5 @@
     "productId": "29mm_sliding"
   },
   "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
-  "hiddenAt": "2026-11-15T17:51:31.078825+00:00"
+  "hiddenAt": "2026-11-15T18:08:55.621735+00:00"
 }

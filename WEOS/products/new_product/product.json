@@ -12,7 +12,13 @@
   "heroImage": "/static/products/placeholder.svg",
   "gallery": [],
   "sectionDrawings": [],
-  "specifications": {},
+  "specifications": {
+    "powderCoatingBrand": "AkzoNobel",
+    "powderCoatingBrands": [
+      "AkzoNobel",
+      "Jotun"
+    ]
+  },
   "materials": [],
   "formulas": {},
   "pdfLayout": {
@@ -23,5 +29,5 @@
   "catalogue": {},
   "setup": {},
   "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
-  "hiddenAt": "2026-11-15T17:51:31.085185+00:00"
+  "hiddenAt": "2026-11-15T18:08:55.625668+00:00"
 }

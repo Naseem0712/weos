@@ -19,7 +19,12 @@
     "track": "2 track all side track 74×47 mm",
     "sash": "3 side shutter 65×32 mm",
     "interlock": "slim int 39.3×30.2 mm",
-    "trackOptions": "2 track, 3 track"
+    "trackOptions": "2 track, 3 track",
+    "powderCoatingBrand": "AkzoNobel",
+    "powderCoatingBrands": [
+      "AkzoNobel",
+      "Jotun"
+    ]
   },
   "materials": [],
   "formulas": {},
@@ -181,5 +186,5 @@
     "productId": "29mm_sliding"
   },
   "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
-  "hiddenAt": "2026-11-15T17:51:31.081766+00:00"
+  "hiddenAt": "2026-11-15T18:08:55.623684+00:00"
 }

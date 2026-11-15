@@ -20,13 +20,17 @@
     "wallThicknessMm": null,
     "alloy": "6063",
     "temper": "T5",
-    "powderCoatingBrand": "TBD",
+    "powderCoatingBrand": "AkzoNobel",
     "powderCoatingGrade": "TBD",
     "hardwareBrand": "TBD",
     "hardwareFinish": "TBD",
     "defaultGlass": "As specified",
-    "openingDirection": "TBD"
+    "openingDirection": "TBD",
+    "powderCoatingBrands": [
+      "AkzoNobel",
+      "Jotun"
+    ]
   },
   "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
-  "hiddenAt": "2026-11-15T17:51:31.085185+00:00"
+  "hiddenAt": "2026-11-15T18:08:55.624673+00:00"
 }

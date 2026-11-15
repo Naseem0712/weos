@@ -6,6 +6,7 @@
   "overallMm": 12.0,
   "glass1Mm": null,
   "glass2Mm": null,
+  "glass3Mm": null,
   "airGapMm": null,
   "pvbMm": null,
   "layersMm": [
@@ -15,11 +16,16 @@
   "brand": "",
   "toughened": true,
   "toughenedLabel": "Toughened",
-  "rate": null,
+  "rate": 190.0,
   "rateUnit": "sqft",
   "densityKgPerM3": 2500.0,
   "makeupLabel": "12mm",
-  "specLine": "12mm · Clear · Toughened",
+  "display_label": "12 mm Toughened",
+  "specLine": "12mm · Clear · Toughened · @ ₹190/sqft",
   "status": "active",
-  "updatedAt": "2026-08-12T15:46:21.688170+00:00"
+  "updatedAt": "2026-11-15T18:09:29.985871+00:00",
+  "rateBreakdown": {
+    "leafRate": 190.0,
+    "formula": "clear tuff leaf ₹/sft"
+  }
 }

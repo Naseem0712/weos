@@ -1,14 +1,7 @@
 {
   "ok": true,
-  "seeded": [
-    "fluted_5_clear_tuff",
-    "fluted_8_clear_tuff",
-    "fluted_5_grey_tuff",
-    "fluted_8_grey_tuff",
-    "fluted_5_brown_tuff",
-    "fluted_8_brown_tuff"
-  ],
-  "skipped": [
+  "seeded": [],
+  "updated": [
     "5mm_clear",
     "5mm_clear_toughened",
     "6mm_toughened",
@@ -30,34 +23,82 @@
     "8mm_brown_toughened",
     "10mm_brown_toughened",
     "12mm_brown_toughened",
+    "fluted_5_clear_tuff",
+    "fluted_8_clear_tuff",
+    "fluted_5_grey_tuff",
+    "fluted_8_grey_tuff",
+    "fluted_5_brown_tuff",
+    "fluted_8_brown_tuff",
     "lam_5_152_5",
+    "lam_5_152_6",
     "lam_6_152_5",
     "lam_6_152_6",
-    "lam_8_152_6",
-    "lam_8_152_8",
+    "dgu_5_8_5",
+    "dgu_5_8_5_argon",
     "dgu_5_12_5",
+    "dgu_5_12_5_argon",
+    "dgu_5_12_6",
+    "dgu_5_12_6_argon",
+    "dgu_5_12_8",
+    "dgu_5_12_8_argon",
+    "dgu_6_8_6",
+    "dgu_6_8_6_argon",
     "dgu_6_12_6",
+    "dgu_6_12_6_argon",
+    "dgu_6_12_8",
+    "dgu_6_12_8_argon",
+    "dgu_6_12_10",
+    "dgu_6_12_10_argon",
+    "dgu_8_8_8",
+    "dgu_8_8_8_argon",
+    "dgu_8_10_8",
+    "dgu_8_10_8_argon",
     "dgu_8_12_8",
-    "dgu_10_12_10",
-    "dgu_5_8_5"
+    "dgu_8_12_8_argon",
+    "dgu_10_8_10",
+    "dgu_10_8_10_argon"
   ],
-  "count": 6,
-  "libraryCount": 37,
+  "skipped": [],
+  "count": 0,
+  "libraryCount": 55,
+  "commercial": {
+    "clearTuffRates": {
+      "5.0": 80.0,
+      "6.0": 90.0,
+      "8.0": 120.0,
+      "10.0": 165.0,
+      "12.0": 190.0
+    },
+    "dguChargePerSft": 150.0,
+    "argonChargePerSft": 50.0,
+    "laminationChargePerSft": 250.0,
+    "dguMaxMm": 28.0,
+    "laminatedMaxMm": 13.52
+  },
   "productSync": {
     "ok": true,
     "updated": [
       "25mm_eco_gulf",
+      "25mm_prestige",
+      "27mm_domal",
       "27mm_high_end_domal",
+      "29mm_premium",
       "29mm_premium_euro",
       "29mm_sliding",
       "31mm_gulf_lux_slim",
       "32mm_dual_euro",
+      "35mm_gulf",
       "35mm_gulf_slim",
+      "35mm_prestige",
       "35mm_sliding",
+      "40mm_casement_standard",
+      "40mm_prestige",
+      "50mm_casement_prestige",
       "bathroom_ventilator",
       "casement_stub",
       "fixed_stub",
       "folding_stub",
+      "new_product",
       "shower_partition"
     ],
     "skipped": [
@@ -68,6 +109,6 @@
       "pergola_stub",
       "railings_stub"
     ],
-    "optionCount": 37
+    "optionCount": 55
   }
 }

@@ -1,11 +1,12 @@
 {
   "id": "dgu_5_12_5",
-  "name": "DGU 5+12A+5 Clear Toughened",
+  "name": "DGU 5+12A+5 Clear Tuff · Air",
   "makeup": "dgu",
   "thicknessMm": 22.0,
   "overallMm": 22.0,
   "glass1Mm": 5.0,
   "glass2Mm": 5.0,
+  "glass3Mm": null,
   "airGapMm": 12.0,
   "pvbMm": null,
   "layersMm": [
@@ -16,11 +17,21 @@
   "brand": "",
   "toughened": true,
   "toughenedLabel": "Toughened",
-  "rate": null,
+  "rate": 310.0,
   "rateUnit": "sqft",
   "densityKgPerM3": 2500.0,
   "makeupLabel": "5+12A+5",
-  "specLine": "5+12A+5 · Clear · Toughened",
+  "display_label": "5+12A+5 mm DGU",
+  "specLine": "5+12A+5 · Clear · Toughened · @ ₹310/sqft",
   "status": "active",
-  "updatedAt": "2026-08-12T15:46:21.710541+00:00"
+  "updatedAt": "2026-11-15T18:09:30.000295+00:00",
+  "argon": false,
+  "fillGas": "air",
+  "rateBreakdown": {
+    "leaf1Rate": 80.0,
+    "leaf2Rate": 80.0,
+    "dguCharge": 150.0,
+    "argonCharge": 0.0,
+    "formula": "leaf1 + leaf2 + DGU ₹150"
+  }
 }

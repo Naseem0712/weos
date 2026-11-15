@@ -24,26 +24,40 @@ from WEOS.paths import knowledge_base_dir
 # ── Catalogue of available glass makeups ─────────────────────────────────────
 SINGLE_THICKNESSES_MM = [4.0, 5.0, 6.0, 8.0, 10.0, 12.0]
 
+# Commercial leaf rates (₹/sft) — single clear toughened.
+CLEAR_TUFF_RATE_PER_SFT: dict[float, float] = {
+    5.0: 80.0,
+    6.0: 90.0,
+    8.0: 120.0,
+    10.0: 165.0,
+    12.0: 190.0,
+}
+DGU_CHARGE_PER_SFT = 150.0
+ARGON_CHARGE_PER_SFT = 50.0
+LAMINATION_CHARGE_PER_SFT = 250.0
+DGU_MAX_OVERALL_MM = 28.0
+LAMINATED_MAX_OVERALL_MM = 13.52
+
 # DGU overall thickness → default layer makeup (glass / air gap / glass) in mm.
 # Keys are overall mm; makeupLabel uses glass+air+glass (e.g. 5+12A+5).
+# Window profiles currently admit ≤28 mm overall — thicker keys kept only as legacy.
 DGU_MAKEUPS_MM: dict[float, dict[str, float]] = {
     18.0: {"glass1Mm": 5.0, "airGapMm": 8.0, "glass2Mm": 5.0},
     20.0: {"glass1Mm": 6.0, "airGapMm": 8.0, "glass2Mm": 6.0},
     22.0: {"glass1Mm": 5.0, "airGapMm": 12.0, "glass2Mm": 5.0},  # 5+12A+5
+    23.0: {"glass1Mm": 5.0, "airGapMm": 12.0, "glass2Mm": 6.0},  # 5+12A+6
     24.0: {"glass1Mm": 6.0, "airGapMm": 12.0, "glass2Mm": 6.0},  # 6+12A+6
-    26.0: {"glass1Mm": 6.0, "airGapMm": 14.0, "glass2Mm": 6.0},
+    25.0: {"glass1Mm": 5.0, "airGapMm": 12.0, "glass2Mm": 8.0},  # 5+12A+8
+    26.0: {"glass1Mm": 6.0, "airGapMm": 12.0, "glass2Mm": 8.0},  # 6+12A+8
     28.0: {"glass1Mm": 8.0, "airGapMm": 12.0, "glass2Mm": 8.0},  # 8+12A+8
-    30.0: {"glass1Mm": 8.0, "airGapMm": 14.0, "glass2Mm": 8.0},
-    32.0: {"glass1Mm": 10.0, "airGapMm": 12.0, "glass2Mm": 10.0},  # 10+12A+10
 }
 
 # Laminated overall thickness → default makeup (glass + PVB + glass) in mm.
+# Max 13.52 mm for current window packs.
 LAMINATED_MAKEUPS_MM: dict[float, dict[str, float]] = {
     11.52: {"glass1Mm": 5.0, "pvbMm": 1.52, "glass2Mm": 5.0},   # 5+1.52+5
-    12.52: {"glass1Mm": 6.0, "pvbMm": 1.52, "glass2Mm": 5.0},   # 6+1.52+5
+    12.52: {"glass1Mm": 5.0, "pvbMm": 1.52, "glass2Mm": 6.0},   # 5+1.52+6
     13.52: {"glass1Mm": 6.0, "pvbMm": 1.52, "glass2Mm": 6.0},   # 6+1.52+6
-    15.52: {"glass1Mm": 8.0, "pvbMm": 1.52, "glass2Mm": 6.0},   # 8+1.52+6
-    17.52: {"glass1Mm": 8.0, "pvbMm": 1.52, "glass2Mm": 8.0},   # 8+1.52+8
 }
 
 # Laminated + DGU overall thickness → laminated pane (glass1 + PVB + glass2),
@@ -60,6 +74,90 @@ LAM_DGU_KINDS = ("lam_dgu", "laminated_dgu", "lamdgu", "lam+dgu", "dgu_laminated
 
 # Tinted colours commonly offered on single toughened panes (cart + railing).
 TINTED_COLOURS = ("clear", "black", "grey", "brown")
+
+# Selectable commercial DGU packs (≤28 mm). Rate = leaf rates + DGU ₹150 (+ Argon ₹50).
+COMMERCIAL_DGU_PACKS: tuple[dict[str, Any], ...] = (
+    {"g1": 5.0, "gap": 8.0, "g2": 5.0},
+    {"g1": 5.0, "gap": 12.0, "g2": 5.0},
+    {"g1": 5.0, "gap": 12.0, "g2": 6.0},
+    {"g1": 5.0, "gap": 12.0, "g2": 8.0},
+    {"g1": 6.0, "gap": 8.0, "g2": 6.0},
+    {"g1": 6.0, "gap": 12.0, "g2": 6.0},
+    {"g1": 6.0, "gap": 12.0, "g2": 8.0},
+    {"g1": 6.0, "gap": 12.0, "g2": 10.0},
+    {"g1": 8.0, "gap": 8.0, "g2": 8.0},
+    {"g1": 8.0, "gap": 10.0, "g2": 8.0},
+    {"g1": 8.0, "gap": 12.0, "g2": 8.0},
+    {"g1": 10.0, "gap": 8.0, "g2": 10.0},
+)
+
+# Laminated packs within 13.52 mm max (5+1.52+8 = 14.52 excluded).
+COMMERCIAL_LAM_PACKS: tuple[dict[str, Any], ...] = (
+    {"g1": 5.0, "pvb": 1.52, "g2": 5.0},
+    {"g1": 5.0, "pvb": 1.52, "g2": 6.0},
+    {"g1": 6.0, "pvb": 1.52, "g2": 5.0},
+    {"g1": 6.0, "pvb": 1.52, "g2": 6.0},
+)
+
+
+def clear_tuff_rate(thickness_mm: Any) -> float | None:
+    try:
+        key = float(thickness_mm)
+    except (TypeError, ValueError):
+        return None
+    if key in CLEAR_TUFF_RATE_PER_SFT:
+        return CLEAR_TUFF_RATE_PER_SFT[key]
+    # tolerate int-like 5 vs 5.0
+    for k, v in CLEAR_TUFF_RATE_PER_SFT.items():
+        if abs(k - key) < 1e-6:
+            return v
+    return None
+
+
+def dgu_pack_rate(g1: float, g2: float, *, argon: bool = False) -> dict[str, Any]:
+    r1 = clear_tuff_rate(g1) or 0.0
+    r2 = clear_tuff_rate(g2) or 0.0
+    dgu = DGU_CHARGE_PER_SFT
+    argon_amt = ARGON_CHARGE_PER_SFT if argon else 0.0
+    total = r1 + r2 + dgu + argon_amt
+    return {
+        "rate": total,
+        "rateUnit": "sqft",
+        "rateBreakdown": {
+            "leaf1Rate": r1,
+            "leaf2Rate": r2,
+            "dguCharge": dgu,
+            "argonCharge": argon_amt,
+            "formula": "leaf1 + leaf2 + DGU ₹150" + (" + Argon ₹50" if argon else ""),
+        },
+    }
+
+
+def laminated_pack_rate(g1: float, g2: float) -> dict[str, Any]:
+    r1 = clear_tuff_rate(g1) or 0.0
+    r2 = clear_tuff_rate(g2) or 0.0
+    lam = LAMINATION_CHARGE_PER_SFT
+    total = r1 + r2 + lam
+    return {
+        "rate": total,
+        "rateUnit": "sqft",
+        "rateBreakdown": {
+            "leaf1Rate": r1,
+            "leaf2Rate": r2,
+            "laminationCharge": lam,
+            "formula": "leaf1 + leaf2 + lamination ₹250",
+        },
+    }
+
+
+def dgu_pack_id(g1: float, gap: float, g2: float, *, argon: bool = False) -> str:
+    base = f"dgu_{int(g1)}_{int(gap)}_{int(g2)}"
+    return f"{base}_argon" if argon else base
+
+
+def lam_pack_id(g1: float, pvb: float, g2: float) -> str:
+    pvb_key = str(pvb).replace(".", "")
+    return f"lam_{int(g1)}_{pvb_key}_{int(g2)}"
 
 
 def normalize_makeup_kind(makeup: Any) -> str:
@@ -97,16 +195,29 @@ def makeup_options() -> dict[str, Any]:
             "label": "Single glass",
         },
         "dgu": {
-            "overallMm": sorted(DGU_MAKEUPS_MM.keys()),
-            "makeups": {str(k): v for k, v in DGU_MAKEUPS_MM.items()},
+            "overallMm": sorted(k for k in DGU_MAKEUPS_MM.keys() if k <= DGU_MAX_OVERALL_MM),
+            "makeups": {str(k): v for k, v in DGU_MAKEUPS_MM.items() if k <= DGU_MAX_OVERALL_MM},
             "label": "DGU (double glazed unit)",
-            "note": "Choose which glass on each side + air gap; layers configurable.",
+            "note": (
+                f"Selectable packs ≤{DGU_MAX_OVERALL_MM:g} mm. "
+                f"Rate = leaf glass + DGU ₹{DGU_CHARGE_PER_SFT:g}/sft (+ Argon ₹{ARGON_CHARGE_PER_SFT:g}/sft optional)."
+            ),
+            "dguChargePerSft": DGU_CHARGE_PER_SFT,
+            "argonChargePerSft": ARGON_CHARGE_PER_SFT,
+            "maxOverallMm": DGU_MAX_OVERALL_MM,
         },
         "laminated": {
-            "overallMm": sorted(LAMINATED_MAKEUPS_MM.keys()),
-            "makeups": {str(k): v for k, v in LAMINATED_MAKEUPS_MM.items()},
+            "overallMm": sorted(k for k in LAMINATED_MAKEUPS_MM.keys() if k <= LAMINATED_MAX_OVERALL_MM),
+            "makeups": {
+                str(k): v for k, v in LAMINATED_MAKEUPS_MM.items() if k <= LAMINATED_MAX_OVERALL_MM
+            },
             "label": "Laminated (PVB)",
-            "note": "Two glass leaves + PVB interlayer thickness.",
+            "note": (
+                f"Packs ≤{LAMINATED_MAX_OVERALL_MM:g} mm. "
+                f"Rate = leaf glass + lamination ₹{LAMINATION_CHARGE_PER_SFT:g}/sft."
+            ),
+            "laminationChargePerSft": LAMINATION_CHARGE_PER_SFT,
+            "maxOverallMm": LAMINATED_MAX_OVERALL_MM,
         },
         "lam_dgu": {
             "overallMm": sorted(LAM_DGU_MAKEUPS_MM.keys()),
@@ -154,6 +265,9 @@ def build_glass_spec(
     name: str | None = None,
     glass_id: str | None = None,
     status: str = "draft",
+    argon: bool = False,
+    fill_gas: str | None = None,
+    rate_breakdown: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Normalize a full glass spec (single / DGU / laminated / laminated+DGU) for reuse + printing."""
     kind = normalize_makeup_kind(makeup)
@@ -213,7 +327,8 @@ def build_glass_spec(
     ).strip()
 
     gid = glass_id or f"glass_{_slug(kind)}_{_slug(colour)}_{int(round((thickness_mm or 0) * 100))}"
-    return {
+    fill = str(fill_gas or ("argon" if argon else ("air" if kind == "dgu" else "")) or "").strip().lower()
+    out: dict[str, Any] = {
         "id": gid,
         "name": display,
         "makeup": kind,
@@ -238,6 +353,12 @@ def build_glass_spec(
         "status": status,
         "updatedAt": _now(),
     }
+    if kind == "dgu":
+        out["argon"] = bool(argon) or fill == "argon"
+        out["fillGas"] = "argon" if out["argon"] else (fill or "air")
+    if isinstance(rate_breakdown, Mapping) and rate_breakdown:
+        out["rateBreakdown"] = dict(rate_breakdown)
+    return out
 
 
 def _spec_line(
@@ -342,6 +463,8 @@ def get_glass(glass_id: str) -> dict[str, Any]:
 
 def save_glass(spec: Mapping[str, Any]) -> dict[str, Any]:
     """Persist a glass spec to the library (normalizes via build_glass_spec)."""
+    argon = bool(spec.get("argon") or str(spec.get("fillGas") or "").lower() == "argon")
+    breakdown = spec.get("rateBreakdown") if isinstance(spec.get("rateBreakdown"), Mapping) else None
     normalized = build_glass_spec(
         makeup=str(spec.get("makeup") or "single"),
         thickness_mm=spec.get("thicknessMm"),
@@ -360,6 +483,9 @@ def save_glass(spec: Mapping[str, Any]) -> dict[str, Any]:
         name=(str(spec.get("name") or "").strip() or None),
         glass_id=spec.get("id") or f"glass_{uuid.uuid4().hex[:8]}",
         status=str(spec.get("status") or "active"),
+        argon=argon,
+        fill_gas=str(spec.get("fillGas") or ("argon" if argon else "")),
+        rate_breakdown=breakdown,
     )
     path = catalogue_dir() / f"{normalized['id']}.json"
     path.write_text(json.dumps(normalized, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -375,7 +501,11 @@ def delete_glass(glass_id: str) -> dict[str, Any]:
 
 
 def _starter_glass_specs() -> list[dict[str, Any]]:
-    """Full default catalogue: single clear/tinted, laminated safety, DGU/IGU."""
+    """Full default catalogue: single clear/tinted, laminated safety, DGU/IGU.
+
+    Commercial rates (₹/sft): clear tuff leaves from ``CLEAR_TUFF_RATE_PER_SFT``;
+    DGU = leaves + ₹150 (+ Argon ₹50); laminated = leaves + ₹250.
+    """
     starters: list[dict[str, Any]] = []
     # Single clear (annealed 5) + toughened clear at common thicknesses
     starters.append({
@@ -383,55 +513,73 @@ def _starter_glass_specs() -> list[dict[str, Any]]:
         "name": "5mm Clear", "id": "5mm_clear",
     })
     for thk in (5.0, 6.0, 8.0, 10.0, 12.0):
+        rate = clear_tuff_rate(thk)
         starters.append({
             "makeup": "single", "thicknessMm": thk, "colour": "clear", "toughened": True,
             "name": f"{thk:g}mm Clear Toughened",
             "id": f"{int(thk)}mm_toughened" if thk != 5 else "5mm_clear_toughened",
+            "rate": rate, "rateUnit": "sqft",
+            "rateBreakdown": {"leafRate": rate, "formula": "clear tuff leaf ₹/sft"},
         })
-    # Single tinted toughened (black / grey / brown) at 5–12 mm
+    # Single tinted toughened (black / grey / brown) at 5–12 mm — same leaf rates
     for colour in ("black", "grey", "brown"):
         for thk in (5.0, 6.0, 8.0, 10.0, 12.0):
+            rate = clear_tuff_rate(thk)
             starters.append({
                 "makeup": "single", "thicknessMm": thk, "colour": colour, "toughened": True,
                 "name": f"{thk:g}mm {colour.title()} Toughened",
                 "id": f"{int(thk)}mm_{colour}_toughened",
+                "rate": rate, "rateUnit": "sqft",
             })
     # Fluted toughened (shower + custom)
     for colour in ("clear", "grey", "brown"):
         for thk in (5.0, 8.0):
+            rate = clear_tuff_rate(thk)
             starters.append({
                 "makeup": "single", "thicknessMm": thk, "colour": colour, "toughened": True,
                 "name": f"{thk:g}mm Fluted {colour.title()} Toughened",
                 "id": f"fluted_{int(thk)}_{colour}_tuff",
+                "rate": rate, "rateUnit": "sqft",
             })
-    # Laminated safety
-    for overall, g1, pvb, g2, oid, label in (
-        (11.52, 5.0, 1.52, 5.0, "lam_5_152_5", "Laminated 5+1.52+5"),
-        (12.52, 6.0, 1.52, 5.0, "lam_6_152_5", "Laminated 6+1.52+5"),
-        (13.52, 6.0, 1.52, 6.0, "lam_6_152_6", "Laminated 6+1.52+6"),
-        (15.52, 8.0, 1.52, 6.0, "lam_8_152_6", "Laminated 8+1.52+6"),
-        (17.52, 8.0, 1.52, 8.0, "lam_8_152_8", "Laminated 8+1.52+8"),
-    ):
+    # Laminated safety packs ≤13.52 mm
+    for pack in COMMERCIAL_LAM_PACKS:
+        g1, pvb, g2 = float(pack["g1"]), float(pack["pvb"]), float(pack["g2"])
+        overall = round(g1 + pvb + g2, 2)
+        if overall > LAMINATED_MAX_OVERALL_MM + 1e-6:
+            continue
+        priced = laminated_pack_rate(g1, g2)
+        oid = lam_pack_id(g1, pvb, g2)
         starters.append({
             "makeup": "laminated", "overallMm": overall,
             "glass1Mm": g1, "pvbMm": pvb, "glass2Mm": g2,
-            "colour": "clear", "toughened": False,
-            "name": label, "id": oid,
-        })
-    # DGU / IGU typical build-ups
-    for overall, g1, gap, g2, oid, label in (
-        (22.0, 5.0, 12.0, 5.0, "dgu_5_12_5", "DGU 5+12A+5"),
-        (24.0, 6.0, 12.0, 6.0, "dgu_6_12_6", "DGU 6+12A+6"),
-        (28.0, 8.0, 12.0, 8.0, "dgu_8_12_8", "DGU 8+12A+8"),
-        (32.0, 10.0, 12.0, 10.0, "dgu_10_12_10", "DGU 10+12A+10"),
-        (18.0, 5.0, 8.0, 5.0, "dgu_5_8_5", "DGU 5+8A+5"),
-    ):
-        starters.append({
-            "makeup": "dgu", "overallMm": overall,
-            "glass1Mm": g1, "airGapMm": gap, "glass2Mm": g2,
             "colour": "clear", "toughened": True,
-            "name": f"{label} Clear Toughened", "id": oid,
+            "name": f"Laminated {g1:g}+{pvb:g}+{g2:g} Clear Tuff",
+            "id": oid,
+            "rate": priced["rate"], "rateUnit": "sqft",
+            "rateBreakdown": priced["rateBreakdown"],
         })
+    # DGU packs ≤28 mm (air + argon variants for each)
+    for pack in COMMERCIAL_DGU_PACKS:
+        g1, gap, g2 = float(pack["g1"]), float(pack["gap"]), float(pack["g2"])
+        overall = round(g1 + gap + g2, 2)
+        if overall > DGU_MAX_OVERALL_MM + 1e-6:
+            continue
+        if clear_tuff_rate(g1) is None or clear_tuff_rate(g2) is None:
+            continue
+        for argon in (False, True):
+            priced = dgu_pack_rate(g1, g2, argon=argon)
+            fill = "Argon" if argon else "Air"
+            oid = dgu_pack_id(g1, gap, g2, argon=argon)
+            starters.append({
+                "makeup": "dgu", "overallMm": overall,
+                "glass1Mm": g1, "airGapMm": gap, "glass2Mm": g2,
+                "colour": "clear", "toughened": True,
+                "name": f"DGU {g1:g}+{gap:g}A+{g2:g} Clear Tuff · {fill}",
+                "id": oid,
+                "argon": argon, "fillGas": "argon" if argon else "air",
+                "rate": priced["rate"], "rateUnit": "sqft",
+                "rateBreakdown": priced["rateBreakdown"],
+            })
     return starters
 
 
@@ -439,7 +587,8 @@ def default_product_glass_options() -> list[dict[str, Any]]:
     """Cart / product ``rules/glass.json`` options — shared across window products.
 
     Includes legacy ids (``5mm_clear``, ``8mm_toughened``, ``10mm_toughened``) so
-    existing quotes keep resolving, plus the expanded single / laminated / DGU set.
+    existing quotes keep resolving, plus commercial single / laminated / DGU packs
+    with absolute ₹/sft rates.
     """
     options: list[dict[str, Any]] = []
     # Legacy-compatible singles first
@@ -447,54 +596,68 @@ def default_product_glass_options() -> list[dict[str, Any]]:
         "id": "5mm_clear", "label": "5mm Clear", "thicknessMm": 5,
         "makeup": "single", "colour": "clear", "toughened": False, "rateMultiplier": 1.0,
     })
-    for thk, mult in ((5, 1.15), (6, 1.25), (8, 1.45), (10, 1.75), (12, 2.1)):
-        oid = f"{thk}mm_toughened" if thk != 5 else "5mm_clear_toughened"
-        # Keep classic 8mm_toughened / 10mm_toughened ids
+    for thk in (5.0, 6.0, 8.0, 10.0, 12.0):
+        oid = f"{int(thk)}mm_toughened" if thk != 5 else "5mm_clear_toughened"
         if thk == 8:
             oid = "8mm_toughened"
         elif thk == 10:
             oid = "10mm_toughened"
+        rate = clear_tuff_rate(thk)
         options.append({
-            "id": oid, "label": f"{thk}mm Clear Toughened", "thicknessMm": thk,
+            "id": oid, "label": f"{thk:g}mm Clear Toughened", "thicknessMm": thk,
             "makeup": "single", "colour": "clear", "toughened": True,
-            "rateMultiplier": mult, "densityKgPerM3": 2500,
+            "rate": rate, "rateUnit": "sqft", "rateMultiplier": 1.0,
+            "densityKgPerM3": 2500,
         })
-    for colour, base in (("black", 1.2), ("grey", 1.18), ("brown", 1.18)):
-        for thk, bump in ((5, 0.0), (6, 0.1), (8, 0.3), (10, 0.55), (12, 0.9)):
+    for colour in ("black", "grey", "brown"):
+        for thk in (5.0, 6.0, 8.0, 10.0, 12.0):
+            rate = clear_tuff_rate(thk)
             options.append({
-                "id": f"{thk}mm_{colour}_toughened",
-                "label": f"{thk}mm {colour.title()} Toughened",
+                "id": f"{int(thk)}mm_{colour}_toughened",
+                "label": f"{thk:g}mm {colour.title()} Toughened",
                 "thicknessMm": thk, "makeup": "single", "colour": colour,
-                "toughened": True, "rateMultiplier": round(base + bump, 2),
-                "densityKgPerM3": 2500,
+                "toughened": True, "rate": rate, "rateUnit": "sqft",
+                "rateMultiplier": 1.0, "densityKgPerM3": 2500,
             })
-    for oid, label, g1, pvb, g2, overall, mult in (
-        ("lam_5_152_5", "Laminated 5+1.52+5", 5, 1.52, 5, 11.52, 2.2),
-        ("lam_6_152_5", "Laminated 6+1.52+5", 6, 1.52, 5, 12.52, 2.4),
-        ("lam_6_152_6", "Laminated 6+1.52+6", 6, 1.52, 6, 13.52, 2.55),
-        ("lam_8_152_6", "Laminated 8+1.52+6", 8, 1.52, 6, 15.52, 2.8),
-        ("lam_8_152_8", "Laminated 8+1.52+8", 8, 1.52, 8, 17.52, 3.0),
-    ):
+    for pack in COMMERCIAL_LAM_PACKS:
+        g1, pvb, g2 = float(pack["g1"]), float(pack["pvb"]), float(pack["g2"])
+        overall = round(g1 + pvb + g2, 2)
+        if overall > LAMINATED_MAX_OVERALL_MM + 1e-6:
+            continue
+        priced = laminated_pack_rate(g1, g2)
+        oid = lam_pack_id(g1, pvb, g2)
         options.append({
-            "id": oid, "label": label, "thicknessMm": overall, "overallMm": overall,
+            "id": oid,
+            "label": f"Laminated {g1:g}+{pvb:g}+{g2:g} Clear Tuff",
+            "thicknessMm": overall, "overallMm": overall,
             "makeup": "laminated", "glass1Mm": g1, "pvbMm": pvb, "glass2Mm": g2,
-            "colour": "clear", "toughened": False, "rateMultiplier": mult,
-            "densityKgPerM3": 2500,
+            "colour": "clear", "toughened": True,
+            "rate": priced["rate"], "rateUnit": "sqft",
+            "rateBreakdown": priced["rateBreakdown"],
+            "rateMultiplier": 1.0, "densityKgPerM3": 2500,
         })
-    for oid, label, g1, gap, g2, overall, mult in (
-        ("dgu_5_12_5", "DGU 5+12A+5", 5, 12, 5, 22, 2.6),
-        ("dgu_6_12_6", "DGU 6+12A+6", 6, 12, 6, 24, 2.9),
-        ("dgu_8_12_8", "DGU 8+12A+8", 8, 12, 8, 28, 3.4),
-        ("dgu_10_12_10", "DGU 10+12A+10", 10, 12, 10, 32, 3.9),
-        ("dgu_5_8_5", "DGU 5+8A+5", 5, 8, 5, 18, 2.35),
-    ):
-        options.append({
-            "id": oid, "label": f"{label} Clear Toughened", "thicknessMm": overall,
-            "overallMm": overall, "makeup": "dgu",
-            "glass1Mm": g1, "airGapMm": gap, "glass2Mm": g2,
-            "colour": "clear", "toughened": True, "rateMultiplier": mult,
-            "densityKgPerM3": 2500,
-        })
+    for pack in COMMERCIAL_DGU_PACKS:
+        g1, gap, g2 = float(pack["g1"]), float(pack["gap"]), float(pack["g2"])
+        overall = round(g1 + gap + g2, 2)
+        if overall > DGU_MAX_OVERALL_MM + 1e-6:
+            continue
+        if clear_tuff_rate(g1) is None or clear_tuff_rate(g2) is None:
+            continue
+        for argon in (False, True):
+            priced = dgu_pack_rate(g1, g2, argon=argon)
+            fill = "Argon" if argon else "Air"
+            oid = dgu_pack_id(g1, gap, g2, argon=argon)
+            options.append({
+                "id": oid,
+                "label": f"DGU {g1:g}+{gap:g}A+{g2:g} Clear Tuff · {fill}",
+                "thicknessMm": overall, "overallMm": overall, "makeup": "dgu",
+                "glass1Mm": g1, "airGapMm": gap, "glass2Mm": g2,
+                "colour": "clear", "toughened": True,
+                "argon": argon, "fillGas": "argon" if argon else "air",
+                "rate": priced["rate"], "rateUnit": "sqft",
+                "rateBreakdown": priced["rateBreakdown"],
+                "rateMultiplier": 1.0, "densityKgPerM3": 2500,
+            })
     return options
 
 
@@ -523,8 +686,11 @@ def library_as_cart_options() -> list[dict[str, Any]]:
             "colour": g.get("colour") or "clear",
             "toughened": bool(g.get("toughened")),
             "brand": g.get("brand") or "",
+            "argon": bool(g.get("argon")),
+            "fillGas": g.get("fillGas") or "",
             "rate": g.get("rate"),
             "rateUnit": g.get("rateUnit") or "sqft",
+            "rateBreakdown": g.get("rateBreakdown"),
             "densityKgPerM3": g.get("densityKgPerM3") or 2500,
             "rateMultiplier": 1.0,
         })
@@ -542,9 +708,13 @@ def cart_glass_options(*, merge_library: bool = True) -> list[dict[str, Any]]:
             if oid not in by_id:
                 by_id[oid] = opt
             else:
-                # Library rate / brand wins when present
+                # Library rate / brand / pack metadata wins when present
                 merged = dict(by_id[oid])
-                for k in ("rate", "rateUnit", "brand", "label", "name"):
+                for k in (
+                    "rate", "rateUnit", "brand", "label", "name", "rateBreakdown",
+                    "argon", "fillGas", "glass1Mm", "glass2Mm", "airGapMm", "pvbMm",
+                    "overallMm", "thicknessMm", "makeup", "toughened",
+                ):
                     if opt.get(k) not in (None, ""):
                         merged[k if k != "name" else "label"] = opt[k]
                 by_id[oid] = merged
@@ -623,15 +793,65 @@ def seed_default_glass(*, force: bool = False, sync_products: bool = True) -> di
     """Preload the full glass catalogue into the library (and sync product options).
 
     When the library was previously seeded with a small starter set, missing
-    entries are still added (unless ``force`` rewrites every starter id).
+    entries are still added. Commercial rates / pack metadata are always
+    refreshed on matching starter ids (unless the user cleared the rate and
+    ``force`` is False — then only blank rates get filled). Pass ``force=True``
+    to rewrite every starter id.
     """
-    existing_ids = {str(g.get("id")) for g in list_glass()}
+    existing_by_id = {str(g.get("id")): g for g in list_glass() if g.get("id")}
     created: list[str] = []
+    updated: list[str] = []
     skipped: list[str] = []
     for s in _starter_glass_specs():
         sid = str(s.get("id") or "")
-        if sid and sid in existing_ids and not force:
-            skipped.append(sid)
+        if not sid:
+            continue
+        existing = existing_by_id.get(sid)
+        if existing is not None and not force:
+            # Refresh commercial rate / pack fields; keep user name if customised.
+            merged = dict(existing)
+            for k in (
+                "rate", "rateUnit", "rateBreakdown", "argon", "fillGas",
+                "glass1Mm", "glass2Mm", "glass3Mm", "airGapMm", "pvbMm",
+                "overallMm", "thicknessMm", "makeup", "toughened", "colour",
+            ):
+                if s.get(k) is not None:
+                    # Don't overwrite a user-edited rate unless force
+                    if k == "rate" and existing.get("rate") not in (None, "") and not force:
+                        # Still upgrade when prior seed left rate null
+                        if existing.get("rate") is not None:
+                            continue
+                    merged[k] = s[k]
+            if s.get("name") and (
+                not existing.get("name")
+                or str(existing.get("name")).startswith(("DGU ", "Laminated ", f"{int(float(s.get('thicknessMm') or 0))}mm"))
+            ):
+                merged["name"] = s["name"]
+            # Always apply computed commercial rate when seed has one and existing is blank
+            if s.get("rate") is not None and (force or existing.get("rate") in (None, "")):
+                merged["rate"] = s["rate"]
+                merged["rateUnit"] = s.get("rateUnit") or "sqft"
+                if s.get("rateBreakdown"):
+                    merged["rateBreakdown"] = s["rateBreakdown"]
+            # Also apply when force or when rates look like pre-commercial (null)
+            if force or existing.get("rate") in (None, ""):
+                try:
+                    updated.append(save_glass(merged)["id"])
+                except Exception:
+                    skipped.append(sid)
+            else:
+                # Even with an existing rate, refresh pack metadata + commercial formula rates
+                merged["rate"] = s.get("rate", existing.get("rate"))
+                if s.get("rateBreakdown"):
+                    merged["rateBreakdown"] = s["rateBreakdown"]
+                if s.get("argon") is not None:
+                    merged["argon"] = s["argon"]
+                if s.get("fillGas"):
+                    merged["fillGas"] = s["fillGas"]
+                try:
+                    updated.append(save_glass(merged)["id"])
+                except Exception:
+                    skipped.append(sid)
             continue
         try:
             created.append(save_glass(s)["id"])
@@ -640,9 +860,18 @@ def seed_default_glass(*, force: bool = False, sync_products: bool = True) -> di
     result: dict[str, Any] = {
         "ok": True,
         "seeded": created,
+        "updated": updated,
         "skipped": skipped,
         "count": len(created),
         "libraryCount": len(list_glass()),
+        "commercial": {
+            "clearTuffRates": CLEAR_TUFF_RATE_PER_SFT,
+            "dguChargePerSft": DGU_CHARGE_PER_SFT,
+            "argonChargePerSft": ARGON_CHARGE_PER_SFT,
+            "laminationChargePerSft": LAMINATION_CHARGE_PER_SFT,
+            "dguMaxMm": DGU_MAX_OVERALL_MM,
+            "laminatedMaxMm": LAMINATED_MAX_OVERALL_MM,
+        },
     }
     if sync_products:
         result["productSync"] = sync_glass_options_to_products(merge_library=True)
@@ -652,3 +881,8 @@ def seed_default_glass(*, force: bool = False, sync_products: bool = True) -> di
     except Exception:
         pass
     return result
+
+
+def apply_commercial_glass_defaults(*, sync_products: bool = True) -> dict[str, Any]:
+    """Force-write commercial single / DGU / laminated pack rates into the library."""
+    return seed_default_glass(force=True, sync_products=sync_products)

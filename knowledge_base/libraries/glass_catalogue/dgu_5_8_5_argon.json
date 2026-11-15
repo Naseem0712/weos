@@ -1,0 +1,37 @@
+{
+  "id": "dgu_5_8_5_argon",
+  "name": "DGU 5+8A+5 Clear Tuff · Argon",
+  "makeup": "dgu",
+  "thicknessMm": 18.0,
+  "overallMm": 18.0,
+  "glass1Mm": 5.0,
+  "glass2Mm": 5.0,
+  "glass3Mm": null,
+  "airGapMm": 8.0,
+  "pvbMm": null,
+  "layersMm": [
+    5.0,
+    5.0
+  ],
+  "colour": "clear",
+  "brand": "",
+  "toughened": true,
+  "toughenedLabel": "Toughened",
+  "rate": 360.0,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "5+8A+5",
+  "display_label": "5+8A+5 mm DGU",
+  "specLine": "5+8A+5 · Clear · Toughened · @ ₹360/sqft",
+  "status": "active",
+  "updatedAt": "2026-11-15T18:09:29.999295+00:00",
+  "argon": true,
+  "fillGas": "argon",
+  "rateBreakdown": {
+    "leaf1Rate": 80.0,
+    "leaf2Rate": 80.0,
+    "dguCharge": 150.0,
+    "argonCharge": 50.0,
+    "formula": "leaf1 + leaf2 + DGU ₹150 + Argon ₹50"
+  }
+}

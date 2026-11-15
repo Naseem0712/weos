@@ -6,6 +6,7 @@
   "overallMm": 5.0,
   "glass1Mm": null,
   "glass2Mm": null,
+  "glass3Mm": null,
   "airGapMm": null,
   "pvbMm": null,
   "layersMm": [
@@ -15,12 +16,12 @@
   "brand": "",
   "toughened": true,
   "toughenedLabel": "Toughened",
-  "rate": null,
+  "rate": 80.0,
   "rateUnit": "sqft",
   "densityKgPerM3": 2500.0,
   "makeupLabel": "5mm",
   "display_label": "5 mm Toughened",
-  "specLine": "5mm · Brown · Toughened",
+  "specLine": "5mm · Brown · Toughened · @ ₹80/sqft",
   "status": "active",
-  "updatedAt": "2026-08-21T17:05:17.607462+00:00"
+  "updatedAt": "2026-11-15T18:09:29.994046+00:00"
 }

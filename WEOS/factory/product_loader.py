@@ -432,13 +432,32 @@ def apply_customer_options(
             if "densityKgPerM3" in match:
                 glass_rules["densityKgPerM3"] = match["densityKgPerM3"]
             for k in (
-                "makeup", "overallMm", "glass1Mm", "glass2Mm", "airGapMm", "pvbMm",
-                "layersMm", "colour", "toughened", "brand",
+                "makeup", "overallMm", "glass1Mm", "glass2Mm", "glass3Mm", "airGapMm", "pvbMm",
+                "layersMm", "colour", "toughened", "brand", "argon", "fillGas", "rateBreakdown",
             ):
                 if match.get(k) is not None:
                     glass_rules[k] = match[k]
             glass_rules["_selectedOption"] = match.get("id", glass)
             glass_rules["_rateMultiplier"] = float(match.get("rateMultiplier", 1.0))
+            # Absolute ₹/sft from glass pack selection (commercial defaults)
+            if match.get("rate") is not None:
+                try:
+                    glass_rules["rate"] = float(match["rate"])
+                    glass_rules["rateUnit"] = str(match.get("rateUnit") or "sqft")
+                except (TypeError, ValueError):
+                    pass
+            # Library rate wins when product option has no absolute rate yet
+            if glass_rules.get("rate") is None:
+                try:
+                    from WEOS.factory.glass_catalogue import get_glass
+                    lib = get_glass(str(match.get("id") or glass))
+                    if lib.get("rate") is not None:
+                        glass_rules["rate"] = float(lib["rate"])
+                        glass_rules["rateUnit"] = str(lib.get("rateUnit") or "sqft")
+                        if isinstance(lib.get("rateBreakdown"), dict):
+                            glass_rules["rateBreakdown"] = lib["rateBreakdown"]
+                except Exception:
+                    pass
     # keep options list for API meta (not used by glass_engine numeric keys)
     glass_rules["options"] = options
     doc["glass"] = glass_rules
@@ -458,10 +477,34 @@ def apply_customer_options(
     surcharges = pricing.get("colourSurchargePercent") or quote.get("colourSurchargePercent") or {}
     colour_id = (colour or "white").lower().replace(" ", "_")
     quote["_colour"] = colour_id
+    # Coating finish family drives design_cost coating mult; keep legacy % at 0 for plain
+    # unless product pricing still declares an explicit surcharge.
+    try:
+        from WEOS.factory.commercial_defaults import coating_multiplier_for_colour, finish_family_for_colour
+        quote["_coatingMultiplier"] = coating_multiplier_for_colour(colour_id)
+        quote["_coatingFamily"] = finish_family_for_colour(colour_id)
+    except Exception:
+        quote["_coatingMultiplier"] = 1.0
+        quote["_coatingFamily"] = "plain"
     quote["_colourSurchargePercent"] = float(surcharges.get(colour_id, 0))
     mult = float(glass_rules.get("_rateMultiplier", 1.0))
     rates = dict(quote.get("rates") or {})
-    if "glassPerM2" in rates:
+    # Prefer absolute glass ₹/sft from selected pack; convert to m² for legacy engine
+    pack_rate = glass_rules.get("rate")
+    pack_unit = str(glass_rules.get("rateUnit") or "sqft").lower()
+    if pack_rate is not None:
+        try:
+            pr = float(pack_rate)
+            if pack_unit in ("sqft", "sft", "sq.ft"):
+                rates["glassPerSft"] = pr
+                rates["glassPerM2"] = round(pr * 10.7639, 4)
+            else:
+                rates["glassPerM2"] = pr
+                rates["glassPerSft"] = round(pr / 10.7639, 4)
+        except (TypeError, ValueError):
+            if "glassPerM2" in rates:
+                rates["glassPerM2"] = float(rates["glassPerM2"]) * mult
+    elif "glassPerM2" in rates:
         rates["glassPerM2"] = float(rates["glassPerM2"]) * mult
     quote["rates"] = rates
     # merge colour surcharge into quotation file if present in pricing

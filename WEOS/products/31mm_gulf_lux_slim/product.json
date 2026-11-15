@@ -20,7 +20,12 @@
     "track": "horizontle tp bottom 2 track only 80.75×47.5 mm",
     "sash": "top bottom horizontel shutter 65.55×28 mm",
     "interlock": "slim interlock 38.03×26 mm",
-    "trackOptions": "2 track, 3 track"
+    "trackOptions": "2 track, 3 track",
+    "powderCoatingBrand": "AkzoNobel",
+    "powderCoatingBrands": [
+      "AkzoNobel",
+      "Jotun"
+    ]
   },
   "materials": [],
   "formulas": {},
@@ -211,5 +216,5 @@
     "productId": "29mm_sliding"
   },
   "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
-  "hiddenAt": "2026-11-15T17:51:31.080805+00:00"
+  "hiddenAt": "2026-11-15T18:08:55.622659+00:00"
 }

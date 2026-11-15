@@ -1,0 +1,37 @@
+{
+  "id": "dgu_6_12_10_argon",
+  "name": "DGU 6+12A+10 Clear Tuff · Argon",
+  "makeup": "dgu",
+  "thicknessMm": 28.0,
+  "overallMm": 28.0,
+  "glass1Mm": 6.0,
+  "glass2Mm": 10.0,
+  "glass3Mm": null,
+  "airGapMm": 12.0,
+  "pvbMm": null,
+  "layersMm": [
+    6.0,
+    10.0
+  ],
+  "colour": "clear",
+  "brand": "",
+  "toughened": true,
+  "toughenedLabel": "Toughened",
+  "rate": 455.0,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "6+12A+10",
+  "display_label": "6+12A+10 mm DGU",
+  "specLine": "6+12A+10 · Clear · Toughened · @ ₹455/sqft",
+  "status": "active",
+  "updatedAt": "2026-11-15T18:09:30.012485+00:00",
+  "argon": true,
+  "fillGas": "argon",
+  "rateBreakdown": {
+    "leaf1Rate": 90.0,
+    "leaf2Rate": 165.0,
+    "dguCharge": 150.0,
+    "argonCharge": 50.0,
+    "formula": "leaf1 + leaf2 + DGU ₹150 + Argon ₹50"
+  }
+}

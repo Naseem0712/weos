@@ -1,0 +1,34 @@
+{
+  "id": "lam_5_152_6",
+  "name": "Laminated 5+1.52+6 Clear Tuff",
+  "makeup": "laminated",
+  "thicknessMm": 12.52,
+  "overallMm": 12.52,
+  "glass1Mm": 5.0,
+  "glass2Mm": 6.0,
+  "glass3Mm": null,
+  "airGapMm": null,
+  "pvbMm": 1.52,
+  "layersMm": [
+    5.0,
+    6.0
+  ],
+  "colour": "clear",
+  "brand": "",
+  "toughened": true,
+  "toughenedLabel": "Toughened",
+  "rate": 420.0,
+  "rateUnit": "sqft",
+  "densityKgPerM3": 2500.0,
+  "makeupLabel": "5+1.52PVB+6",
+  "display_label": "5+1.52+6 mm Laminated",
+  "specLine": "5+1.52PVB+6 · Clear · Toughened · @ ₹420/sqft",
+  "status": "active",
+  "updatedAt": "2026-11-15T18:09:29.997295+00:00",
+  "rateBreakdown": {
+    "leaf1Rate": 80.0,
+    "leaf2Rate": 90.0,
+    "laminationCharge": 250.0,
+    "formula": "leaf1 + leaf2 + lamination ₹250"
+  }
+}

@@ -15,16 +15,19 @@ from typing import Any, Mapping
 
 from WEOS.paths import knowledge_base_dir
 
-DEFAULT_FINISHES: tuple[dict[str, str], ...] = (
-    {"id": "white", "name": "White", "kind": "powder_coat"},
-    {"id": "black_texture", "name": "Black Texture", "kind": "powder_coat"},
-    {"id": "wood_oak", "name": "Wood Oak", "kind": "powder_coat"},
-    {"id": "bronze", "name": "Bronze", "kind": "powder_coat"},
-    {"id": "matt_black", "name": "Matt black", "kind": "shower"},
-    {"id": "brush_gold", "name": "Brush gold", "kind": "shower"},
-    {"id": "gold", "name": "Gold", "kind": "shower"},
-    {"id": "grey", "name": "Grey", "kind": "shower"},
-    {"id": "rose_gold", "name": "Rose gold", "kind": "shower"},
+# family: plain (base coating) | texture (+20% coating) | wooden (+50% coating)
+DEFAULT_FINISHES: tuple[dict[str, Any], ...] = (
+    {"id": "white", "name": "White (plain)", "kind": "powder_coat", "family": "plain"},
+    {"id": "black", "name": "Black (plain)", "kind": "powder_coat", "family": "plain"},
+    {"id": "brown", "name": "Brown (plain)", "kind": "powder_coat", "family": "plain"},
+    {"id": "black_texture", "name": "Black Texture", "kind": "powder_coat", "family": "texture"},
+    {"id": "wood_oak", "name": "Wood Oak", "kind": "powder_coat", "family": "wooden"},
+    {"id": "bronze", "name": "Bronze (plain)", "kind": "powder_coat", "family": "plain"},
+    {"id": "matt_black", "name": "Matt black", "kind": "shower", "family": "plain"},
+    {"id": "brush_gold", "name": "Brush gold", "kind": "shower", "family": "plain"},
+    {"id": "gold", "name": "Gold", "kind": "shower", "family": "plain"},
+    {"id": "grey", "name": "Grey", "kind": "shower", "family": "plain"},
+    {"id": "rose_gold", "name": "Rose gold", "kind": "shower", "family": "plain"},
 )
 
 
@@ -88,17 +91,39 @@ def list_finishes(*, kind: str | None = None) -> list[dict[str, Any]]:
                 # still include powder coats — fabricator may reuse them
                 pass
         seen.add(fid)
+        family = str(src.get("family") or "").strip().lower()
+        if not family:
+            try:
+                from WEOS.factory.commercial_defaults import finish_family_for_colour
+                family = finish_family_for_colour(fid)
+            except Exception:
+                family = "plain"
+        try:
+            from WEOS.factory.commercial_defaults import coating_multiplier_for_colour
+            coat_mult = coating_multiplier_for_colour(fid)
+        except Exception:
+            coat_mult = 1.0
         out.append({
             "id": fid,
             "name": str(src.get("name") or fid.replace("_", " ").title()),
             "kind": k,
+            "family": family,
+            "coatingMultiplier": coat_mult,
             "custom": bool(src.get("custom")),
         })
     return out
 
 
-def cart_colour_options() -> list[dict[str, str]]:
-    return [{"id": f["id"], "label": f["name"]} for f in list_finishes()]
+def cart_colour_options() -> list[dict[str, Any]]:
+    return [
+        {
+            "id": f["id"],
+            "label": f["name"],
+            "family": f.get("family") or "plain",
+            "coatingMultiplier": f.get("coatingMultiplier") or 1.0,
+        }
+        for f in list_finishes()
+    ]
 
 
 def save_finish(name: str, *, kind: str = "powder_coat", finish_id: str | None = None) -> dict[str, Any]:

@@ -70,7 +70,13 @@ def _section_rate_per_m(sec: Mapping[str, Any] | None) -> float:
     return rate  # pc / unknown — treat as per metre if length billed
 
 
-def _coating_per_m(sec: Mapping[str, Any] | None) -> float:
+def _coating_per_m(
+    sec: Mapping[str, Any] | None,
+    *,
+    colour: Any = None,
+    coating_multiplier: float | None = None,
+) -> float:
+    """Section coating ₹/m, with finish-family multiplier (plain / texture / wooden)."""
     if not isinstance(sec, Mapping):
         return 0.0
     s = normalize_section(sec)
@@ -79,10 +85,23 @@ def _coating_per_m(sec: Mapping[str, Any] | None) -> float:
     if c <= 0:
         return 0.0
     if unit in ("rmt", "rm", "m"):
-        return c
-    if unit in ("rft", "ft"):
-        return c / 0.3048
-    return c
+        base = c
+    elif unit in ("rft", "ft"):
+        base = c / 0.3048
+    else:
+        base = c
+    mult = coating_multiplier
+    if mult is None:
+        try:
+            from WEOS.factory.commercial_defaults import coating_multiplier_for_colour
+            mult = coating_multiplier_for_colour(colour)
+        except Exception:
+            mult = 1.0
+    try:
+        mult_f = float(mult)
+    except (TypeError, ValueError):
+        mult_f = 1.0
+    return base * max(mult_f, 0.0)
 
 
 def _section_weight_kg_per_m(sec: Mapping[str, Any] | None) -> float:
@@ -307,6 +326,8 @@ def derive_casement_profile_cuts(
     casement_layout: Mapping[str, Any] | None = None,
     mullion_size: str | None = None,
     door_size: str | None = None,
+    colour: Any = None,
+    coating_multiplier: float | None = None,
 ) -> dict[str, Any]:
     """Cut list from what is on the canvas — only profiles actually used."""
     if not isinstance(setup, Mapping):
@@ -345,6 +366,7 @@ def derive_casement_profile_cuts(
 
     lines: list[dict[str, Any]] = []
     cuts_m: list[float] = []
+    coat_mult = coating_multiplier
 
     def add_profile(
         name: str,
@@ -358,7 +380,7 @@ def derive_casement_profile_cuts(
         if qty <= 0 or length_m <= 0:
             return
         rate_m = _section_rate_per_m(sec)
-        coat_m = _coating_per_m(sec)
+        coat_m = _coating_per_m(sec, colour=colour, coating_multiplier=coat_mult)
         total_m = length_m * qty
         for _ in range(int(max(round(qty), 1))):
             cuts_m.append(length_m)
@@ -474,27 +496,42 @@ def _glass_cost(line: Mapping[str, Any], *, width_mm: float, height_mm: float, q
     area_sft = (max(width_mm, 0) * max(height_mm, 0) / 1_000_000.0) * 10.7639
     rate = 0.0
     name = _str(line.get("glass") or line.get("glassName") or "Glass")
+    breakdown = None
+    gid = _str(line.get("glass"))
     try:
-        from WEOS.factory.glass_catalogue import get_glass
-        from WEOS.factory.quote_item_snapshot import product_id_of  # noqa: F401
+        from WEOS.factory.glass_catalogue import cart_glass_options, get_glass
 
-        gid = _str(line.get("glass"))
         g = get_glass(gid) if gid else None
         if isinstance(g, Mapping):
             name = _str(g.get("name") or g.get("label") or name)
             rate = _f(g.get("rate") or g.get("ratePerSft") or g.get("ratePerSqft"))
+            if isinstance(g.get("rateBreakdown"), Mapping):
+                breakdown = dict(g["rateBreakdown"])
+        if rate <= 0 and gid:
+            # Fall back to synced cart / product option rate
+            for opt in cart_glass_options(merge_library=True):
+                if str(opt.get("id") or "") == gid:
+                    rate = _f(opt.get("rate") or opt.get("ratePerSft"))
+                    name = _str(opt.get("label") or opt.get("name") or name)
+                    if isinstance(opt.get("rateBreakdown"), Mapping):
+                        breakdown = dict(opt["rateBreakdown"])
+                    break
     except Exception:
         pass
     # Line-level override
     rate = _f(line.get("glassRate") or (line.get("options") or {}).get("glassRate"), rate)
     amt = area_sft * rate * max(qty, 1.0)
-    return {
+    out = {
         "name": name,
         "areaSft": round(area_sft * max(qty, 1.0), 3),
         "unitRate": rate,
         "amount": round(amt, 2),
         "catalogueName": name,
+        "glassId": gid or None,
     }
+    if breakdown:
+        out["rateBreakdown"] = breakdown
+    return out
 
 
 def compute_casement_design_cost(
@@ -519,6 +556,7 @@ def compute_casement_design_cost(
     H = _f(line.get("height"))
     qty = max(_f(line.get("qty") or line.get("quantity"), 1.0), 1.0)
     opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    colour = _str(line.get("colour") or opts.get("colour") or "white")
     layout = (
         line.get("casementLayout")
         or opts.get("casementLayout")
@@ -534,6 +572,7 @@ def compute_casement_design_cost(
         casement_layout=layout if isinstance(layout, Mapping) else None,
         mullion_size=mull_ov or None,
         door_size=door_ov or None,
+        colour=colour,
     )
     counts = cuts.get("counts") or {}
     cm = norm.get("casement") or {}
@@ -606,10 +645,14 @@ def compute_casement_design_cost(
     glass_amt = _f(glass.get("amount"))
 
     area_sft = (W * H / 1_000_000.0) * 10.7639
-    labour_rate = _f(costing.get("labourPerSft"))
+    from WEOS.factory.commercial_defaults import installation_per_sft, labour_per_sft
+
+    labour_rate = labour_per_sft(costing.get("labourPerSft"))
     labour_amt = area_sft * labour_rate
+    install_rate = installation_per_sft(costing.get("installationPerSft") or costing.get("installPerSft"))
+    install_amt = area_sft * install_rate
     material_sub = profile_purchased + hw_amt + glass_amt
-    cost_before_profit = material_sub + labour_amt
+    cost_before_profit = material_sub + labour_amt + install_amt
     profit_pct = _f(costing.get("profitPercent"))
     profit_amt = cost_before_profit * (profit_pct / 100.0) if profit_pct else 0.0
     unit_total = cost_before_profit + profit_amt
@@ -624,10 +667,16 @@ def compute_casement_design_cost(
     elif area_sft > 0:
         suggested_rate = round(unit_total / area_sft, 2)
 
-    engine = "live" if (profile_net > 0 or hw_amt > 0 or glass_amt > 0 or labour_amt > 0) else "stub"
+    engine = "live" if (profile_net > 0 or hw_amt > 0 or glass_amt > 0 or labour_amt > 0 or install_amt > 0) else "stub"
     # Flip costing flag for future loads
     if engine == "live" and isinstance(costing, dict):
         pass
+
+    try:
+        from WEOS.factory.commercial_defaults import coating_multiplier_for_colour
+        coat_mult = coating_multiplier_for_colour(colour)
+    except Exception:
+        coat_mult = 1.0
 
     return {
         "ok": True,
@@ -642,6 +691,10 @@ def compute_casement_design_cost(
         "profitPercent": profit_pct,
         "labourAmount": round(labour_amt * qty, 2),
         "labourPerSft": labour_rate,
+        "installationAmount": round(install_amt * qty, 2),
+        "installationPerSft": install_rate,
+        "coatingMultiplier": coat_mult,
+        "colour": colour,
         "materialCost": round(material_sub * qty, 2),
         "profileCost": round(profile_purchased * qty, 2),
         "profileNetCost": round(profile_net * qty, 2),
@@ -662,6 +715,7 @@ def compute_casement_design_cost(
             "hardware": round(hw_amt, 2),
             "glass": round(glass_amt, 2),
             "labour": round(labour_amt, 2),
+            "installation": round(install_amt, 2),
             "profit": round(profit_amt, 2),
         },
     }
@@ -685,7 +739,9 @@ def compute_sliding_design_cost(
     W = _f(line.get("width"))
     H = _f(line.get("height"))
     qty = max(_f(line.get("qty") or line.get("quantity"), 1.0), 1.0)
-    shutters = max(_f(line.get("glassShutters") or (line.get("options") or {}).get("glassCount"), 2), 1)
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    colour = _str(line.get("colour") or opts.get("colour") or "white")
+    shutters = max(_f(line.get("glassShutters") or opts.get("glassCount"), 2), 1)
     bom = apply_setup_bom(
         norm,
         width_mm=W,
@@ -713,7 +769,7 @@ def compute_sliding_design_cost(
                 length_mm = (2 * W + 2 * H) / max(_f(tf.get("qty"), 4), 1)
         q = _f(tf.get("qty"), 1)
         Lm = length_mm / 1000.0
-        rate_m = _section_rate_per_m(sec) + _coating_per_m(sec)
+        rate_m = _section_rate_per_m(sec) + _coating_per_m(sec, colour=colour)
         amt = Lm * q * rate_m
         profile_amt += amt
         kg_m = _section_weight_kg_per_m(sec)
@@ -792,8 +848,16 @@ def compute_sliding_design_cost(
     glass = _glass_cost(line, width_mm=W, height_mm=H, qty=1.0)
     glass_amt = _f(glass.get("amount"))
     area_sft = (W * H / 1_000_000.0) * 10.7639
-    labour_rate = _f(costing.get("labourPerSft"))
+    from WEOS.factory.commercial_defaults import (
+        coating_multiplier_for_colour,
+        installation_per_sft,
+        labour_per_sft,
+    )
+
+    labour_rate = labour_per_sft(costing.get("labourPerSft"))
     labour_amt = area_sft * labour_rate
+    install_rate = installation_per_sft(costing.get("installationPerSft") or costing.get("installPerSft"))
+    install_amt = area_sft * install_rate
     reuse = bool(costing.get("projectWastageReuse", True))
     waste = pack_std_length_wastage(
         [ _f(ln.get("lengthM")) for ln in profile_lines for _ in range(max(int(_f(ln.get("qty"), 1)), 1)) ],
@@ -807,12 +871,16 @@ def compute_sliding_design_cost(
         profile_amt = profile_amt + wastage_cost
 
     material_sub = profile_amt + hw_amt + glass_amt
-    cost_before = material_sub + labour_amt
+    cost_before = material_sub + labour_amt + install_amt
     profit_pct = _f(costing.get("profitPercent"))
     profit_amt = cost_before * (profit_pct / 100.0) if profit_pct else 0.0
     unit_total = cost_before + profit_amt
-    engine = "live" if (profile_amt > 0 or hw_amt > 0 or labour_amt > 0) else "stub"
+    engine = "live" if (profile_amt > 0 or hw_amt > 0 or labour_amt > 0 or install_amt > 0) else "stub"
     suggested = round(unit_total / area_sft, 2) if area_sft > 0 else None
+    try:
+        coat_mult = coating_multiplier_for_colour(colour)
+    except Exception:
+        coat_mult = 1.0
     return {
         "ok": True,
         "costEngine": engine,
@@ -826,6 +894,10 @@ def compute_sliding_design_cost(
         "profitPercent": profit_pct,
         "labourAmount": round(labour_amt * qty, 2),
         "labourPerSft": labour_rate,
+        "installationAmount": round(install_amt * qty, 2),
+        "installationPerSft": install_rate,
+        "coatingMultiplier": coat_mult,
+        "colour": colour,
         "materialCost": round(material_sub * qty, 2),
         "profileCost": round(profile_amt * qty, 2),
         "wastageCost": round(wastage_cost * qty, 2),
@@ -844,6 +916,7 @@ def compute_sliding_design_cost(
             "hardware": round(hw_amt, 2),
             "glass": round(glass_amt, 2),
             "labour": round(labour_amt, 2),
+            "installation": round(install_amt, 2),
             "profit": round(profit_amt, 2),
         },
     }

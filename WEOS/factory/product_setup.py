@@ -674,8 +674,17 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
 def _norm_sliding_costing(raw: Any) -> dict[str, Any]:
     """Labour / profit / wastage hooks — full project cost may stub until all products quoted."""
     r = raw if isinstance(raw, Mapping) else {}
+    try:
+        from WEOS.factory.commercial_defaults import installation_per_sft, labour_per_sft
+
+        labour = labour_per_sft(r.get("labourPerSft") or r.get("labourRate"))
+        install = installation_per_sft(r.get("installationPerSft") or r.get("installPerSft"))
+    except Exception:
+        labour = _num(r.get("labourPerSft") or r.get("labourRate"))
+        install = _num(r.get("installationPerSft") or r.get("installPerSft"))
     return {
-        "labourPerSft": _num(r.get("labourPerSft") or r.get("labourRate")),
+        "labourPerSft": labour,
+        "installationPerSft": install,
         "profitPercent": _num(r.get("profitPercent") or r.get("profit")),
         "cutFromOwnStock": _bool(r.get("cutFromOwnStock"), True),
         "allSideSameLowWastage": _bool(r.get("allSideSameLowWastage"), True),
@@ -1179,8 +1188,17 @@ def _norm_casement_costing(raw: Any, *, kind: str) -> dict[str, Any]:
         std_m = sorted(set(std_m + [float(default_m)]))
     # Wastage: often off for stile/slim; all-side same may reuse
     reuse_default = False if kind in ("stile", "slim_profile") else True
+    try:
+        from WEOS.factory.commercial_defaults import installation_per_sft, labour_per_sft
+
+        labour = labour_per_sft(r.get("labourPerSft") or r.get("labourRate"))
+        install = installation_per_sft(r.get("installationPerSft") or r.get("installPerSft"))
+    except Exception:
+        labour = _num(r.get("labourPerSft") or r.get("labourRate"))
+        install = _num(r.get("installationPerSft") or r.get("installPerSft"))
     return {
-        "labourPerSft": _num(r.get("labourPerSft") or r.get("labourRate")),
+        "labourPerSft": labour,
+        "installationPerSft": install,
         "profitPercent": _num(r.get("profitPercent") or r.get("profit")),
         "soldPerRft": sold_rft,
         "coatedDefault": _bool(r.get("coatedDefault"), True),
