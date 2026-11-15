@@ -207,9 +207,10 @@ def format_active_track_print(
     dim = None
     extra_name = ""
     if isinstance(track_sec, Mapping):
-        d, w = track_sec.get("sectionDepthMm"), track_sec.get("widthMm")
-        if d is not None and w is not None:
-            dim = f"{float(d):g}×{float(w):g} mm"
+        # Labels: FACE×DEPTH (widthMm × sectionDepthMm)
+        face, depth = track_sec.get("widthMm"), track_sec.get("sectionDepthMm")
+        if face is not None and depth is not None:
+            dim = f"{float(face):g}×{float(depth):g} mm"
         extra_name = clean_series_print_name(track_sec.get("name") or "")
         extra_name = _TRACK_ORIENT_FLUFF.sub(" ", extra_name)
         extra_name = re.sub(r"[\s,;]+", " ", extra_name).strip(" ,;/-")
@@ -264,15 +265,16 @@ def section_glass_family_rank(sec: Mapping[str, Any] | None, family: str | None)
 def _print_dim(sec: Mapping[str, Any] | None, *, clean_names: bool = True) -> str | None:
     if not isinstance(sec, Mapping):
         return None
-    d, w = sec.get("sectionDepthMm"), sec.get("widthMm")
-    if d is None or w is None:
+    # Written size format is always FACE×DEPTH
+    face, depth = sec.get("widthMm"), sec.get("sectionDepthMm")
+    if face is None or depth is None:
         return None
     name = clean_profile_print_name(sec.get("name")) if clean_names else str(sec.get("name") or "")
     wall = sec.get("wallThicknessMm")
     bits = []
     if name:
         bits.append(name)
-    bits.append(f"{d:g}×{w:g} mm")
+    bits.append(f"{face:g}×{depth:g} mm")
     if wall not in (None, ""):
         bits.append(f"wall {wall:g} mm")
     return " · ".join(bits)
@@ -415,13 +417,15 @@ def parse_excel(path: str | Path | None = None) -> dict[str, Any]:
             usage = infer_usage(name)
             weight_raw = cells[4] if len(cells) > 4 else None
             design_opt = _clean_text(cells[6]) if len(cells) > 6 else None
+            # DETA sheet columns align with written FACE×DEPTH order (col0=face, col1=depth)
+            # even when the header text says "section depth" / "width".
             section = {
                 "id": f"{current['id']}__{_slug(name or 'section')}",
                 "name": name or "Unnamed",
                 "usage": usage,
                 "usageLabel": _usage_label(usage),
-                "sectionDepthMm": float(cells[0]),
-                "widthMm": float(cells[1]),
+                "widthMm": float(cells[0]),
+                "sectionDepthMm": float(cells[1]),
                 "standardLength": _clean_text(cells[3]) if len(cells) > 3 else None,
                 "weightKgPerMtrRaw": _clean_text(weight_raw),
                 "weightKgPerMtr": _parse_weight_kg_m(weight_raw),

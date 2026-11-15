@@ -263,8 +263,9 @@ def normalize_section(raw: Any) -> dict[str, Any]:
     return {
         "name": _str(r.get("name")),
         "use": _str(r.get("use") or r.get("position")),
-        "wMm": _num(r.get("wMm") or r.get("widthMm")),
-        "hMm": _num(r.get("hMm") or r.get("heightMm") or r.get("depthMm")),
+        # FACE×DEPTH: wMm = face (elevation), hMm = depth (BOM/3D only)
+        "wMm": _num(r.get("wMm") or r.get("widthMm") or r.get("faceMm")),
+        "hMm": _num(r.get("hMm") or r.get("heightMm") or r.get("depthMm") or r.get("sectionDepthMm")),
         "wallMm": _num(r.get("wallMm") or r.get("thicknessMm")),
         "weightKgPerM": _num(r.get("weightKgPerM") or r.get("weightKgPerMtr")),
         "weightUnit": weight_unit,
@@ -1718,11 +1719,20 @@ def _norm_style(raw: Any) -> dict[str, Any]:
 # ── derivations (engine-friendly) ────────────────────────────────────────────
 
 def _face(section: Mapping[str, Any] | None) -> float | None:
-    """Visible frame face width (mm) of a section — used as the geometry
-    frame-width contribution. Prefer wMm (face), fall back to wallMm."""
+    """Visible elevation face (mm) — geometry frame thickness on 2D preview.
+
+    Written size is FACE×DEPTH: ``wMm`` / ``widthMm`` = face (before X);
+    ``hMm`` / ``sectionDepthMm`` = depth into the opening and must NOT be used
+    as elevation member width. Prefer face fields; never fall back to hMm.
+    """
     if not isinstance(section, Mapping):
         return None
-    return _num(section.get("wMm")) or _num(section.get("wallMm"))
+    return (
+        _num(section.get("wMm"))
+        or _num(section.get("widthMm"))
+        or _num(section.get("faceMm"))
+        or _num(section.get("wallMm"))
+    )
 
 
 def derive_section_sizes(setup: Mapping[str, Any]) -> dict[str, float]:

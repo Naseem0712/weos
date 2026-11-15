@@ -14,7 +14,7 @@
   "sectionDrawings": [],
   "specifications": {
     "profileSeries": "40MM Standerd",
-    "sectionSizeMm": 38.6,
+    "sectionSizeMm": 40.0,
     "standardLength": "12, 16",
     "wallThicknessMm": 1.2,
     "track": "Outer Frame · 38.6×40 mm · wall 1.2 mm",
@@ -36,7 +36,7 @@
     "sectionSeries": "40mm_casement_standard",
     "saleUnit": "sqft",
     "ratePerUnit": 0,
-    "sizeMm": 38.6,
+    "sizeMm": 40.0,
     "standardLength": "12, 16",
     "weightKgPerMtr": 0.6,
     "profiles": [
@@ -44,8 +44,8 @@
         "name": "Outer Frame",
         "usage": "frame",
         "usageLabel": "Frame",
-        "sectionDepthMm": 38.6,
-        "widthMm": 40.0,
+        "sectionDepthMm": 40.0,
+        "widthMm": 38.6,
         "weightKgPerMtr": 0.6,
         "standardLength": "12, 16",
         "wallThicknessMm": 1.2,
@@ -57,8 +57,8 @@
         "name": "Mullion",
         "usage": "other",
         "usageLabel": "Section",
-        "sectionDepthMm": 53.5,
-        "widthMm": 40.0,
+        "sectionDepthMm": 40.0,
+        "widthMm": 53.5,
         "weightKgPerMtr": 0.7,
         "standardLength": "12, 16",
         "wallThicknessMm": 1.2,
@@ -70,8 +70,8 @@
         "name": "Shutter SG (no Need Clip)",
         "usage": "other",
         "usageLabel": "Section",
-        "sectionDepthMm": 40.0,
-        "widthMm": 50.8,
+        "sectionDepthMm": 50.8,
+        "widthMm": 40.0,
         "weightKgPerMtr": 0.72,
         "standardLength": "12, 16",
         "wallThicknessMm": 1.2,
@@ -85,8 +85,8 @@
         "name": "Mullion Big",
         "usage": "other",
         "usageLabel": "Section",
-        "sectionDepthMm": 70.0,
-        "widthMm": 40.0,
+        "sectionDepthMm": 40.0,
+        "widthMm": 70.0,
         "weightKgPerMtr": 0.9,
         "standardLength": "12,16",
         "wallThicknessMm": 1.5,
@@ -98,8 +98,8 @@
         "name": "Shutter",
         "usage": "sash",
         "usageLabel": "Sash / Shutter",
-        "sectionDepthMm": 70.1,
-        "widthMm": 40.0,
+        "sectionDepthMm": 40.0,
+        "widthMm": 70.1,
         "weightKgPerMtr": 1.0,
         "standardLength": "12, 16",
         "wallThicknessMm": 1.5,
@@ -111,8 +111,8 @@
         "name": "Clip SG",
         "usage": "other",
         "usageLabel": "Section",
-        "sectionDepthMm": 18.5,
-        "widthMm": 32.5,
+        "sectionDepthMm": 32.5,
+        "widthMm": 18.5,
         "weightKgPerMtr": 0.3,
         "standardLength": "12, 16",
         "wallThicknessMm": 1.2,
@@ -132,8 +132,8 @@
     "trackCount": null,
     "sharedSash": {
       "name": "Shutter",
-      "widthMm": 40.0,
-      "sectionDepthMm": 70.1,
+      "widthMm": 70.1,
+      "sectionDepthMm": 40.0,
       "glassOptions": []
     },
     "glassTypes": [
@@ -1069,8 +1069,8 @@
           "plain": {
             "name": "Outer Frame",
             "use": "v2, h2",
-            "wMm": 40.0,
-            "hMm": 38.6,
+            "wMm": 38.6,
+            "hMm": 40.0,
             "wallMm": 1.2,
             "weightKgPerM": 0.6,
             "weightUnit": "m",
@@ -1088,8 +1088,8 @@
           "grills": {
             "name": "Outer Frame",
             "use": "v2, h2",
-            "wMm": 40.0,
-            "hMm": 38.6,
+            "wMm": 38.6,
+            "hMm": 40.0,
             "wallMm": 1.2,
             "weightKgPerM": 0.6,
             "weightUnit": "m",
@@ -1127,8 +1127,8 @@
         "allSides": {
           "name": "Outer Frame",
           "use": "v2, h2",
-          "wMm": 40.0,
-          "hMm": 38.6,
+          "wMm": 38.6,
+          "hMm": 40.0,
           "wallMm": 1.2,
           "weightKgPerM": 0.6,
           "weightUnit": "m",
@@ -1150,8 +1150,8 @@
         "slim": {
           "name": "Mullion",
           "use": "free",
-          "wMm": 40.0,
-          "hMm": 53.5,
+          "wMm": 53.5,
+          "hMm": 40.0,
           "wallMm": 1.2,
           "weightKgPerM": 0.7,
           "weightUnit": "m",
@@ -1169,8 +1169,8 @@
         "big": {
           "name": "Mullion Big",
           "use": "free",
-          "wMm": 40.0,
-          "hMm": 70.0,
+          "wMm": 70.0,
+          "hMm": 40.0,
           "wallMm": 1.5,
           "weightKgPerM": 0.9,
           "weightUnit": "m",
@@ -1193,8 +1193,8 @@
         "slim": {
           "name": "Shutter SG (no Need Clip)",
           "use": "v2, h2,",
-          "wMm": 50.8,
-          "hMm": 40.0,
+          "wMm": 40.0,
+          "hMm": 50.8,
           "wallMm": 1.2,
           "weightKgPerM": 0.72,
           "weightUnit": "m",
@@ -1212,8 +1212,8 @@
         "big": {
           "name": "Shutter SG (no Need Clip)",
           "use": "v2, h2,",
-          "wMm": 50.8,
-          "hMm": 40.0,
+          "wMm": 40.0,
+          "hMm": 50.8,
           "wallMm": 1.2,
           "weightKgPerM": 0.72,
           "weightUnit": "m",
@@ -1231,8 +1231,8 @@
         "allSides": {
           "name": "Shutter SG (no Need Clip)",
           "use": "v2, h2,",
-          "wMm": 50.8,
-          "hMm": 40.0,
+          "wMm": 40.0,
+          "hMm": 50.8,
           "wallMm": 1.2,
           "weightKgPerM": 0.72,
           "weightUnit": "m",
@@ -1366,8 +1366,8 @@
       "shutter": {
         "name": "Shutter SG (no Need Clip)",
         "use": "v2, h2,",
-        "wMm": 50.8,
-        "hMm": 40.0,
+        "wMm": 40.0,
+        "hMm": 50.8,
         "wallMm": 1.2,
         "weightKgPerM": 0.72,
         "weightUnit": "m",
@@ -1905,12 +1905,12 @@
     },
     "derived": {
       "sectionSizes": {
-        "topRail": 40.0,
-        "leftJamb": 40.0,
-        "rightJamb": 40.0,
-        "bottomRail": 40.0,
-        "leafStile": 50.8,
-        "mullion": 40.0
+        "topRail": 38.6,
+        "leftJamb": 38.6,
+        "rightJamb": 38.6,
+        "bottomRail": 38.6,
+        "leafStile": 40.0,
+        "mullion": 53.5
       },
       "hardware": [],
       "weights": {
@@ -1930,7 +1930,7 @@
         },
         {
           "label": "LIMITATION ARM",
-          "text": "Limitation arm"
+          "text": "Limitation arm · CMECH"
         }
       ],
       "wastage": {

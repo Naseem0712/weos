@@ -116,7 +116,11 @@
     "openingDirection": "Horizontal sliding — L / R",
     "trackCount": 2,
     "shutterCount": 2,
-    "hardwareOrigin": "indian"
+    "hardwareOrigin": "indian",
+    "powderCoatingBrands": [
+      "AkzoNobel",
+      "Jotun"
+    ]
   },
   "setup": {
     "type": "sliding",
@@ -142,8 +146,8 @@
             "all": {
               "name": "2 track",
               "use": "v2, h2",
-              "wMm": 39.69,
-              "hMm": 51.21,
+              "wMm": 51.21,
+              "hMm": 39.69,
               "wallMm": 1.25,
               "weightKgPerM": 0.95,
               "weightUnit": "m",
@@ -161,8 +165,8 @@
             "vertical": {
               "name": "2 track",
               "use": "v2, h2",
-              "wMm": 39.69,
-              "hMm": 51.21,
+              "wMm": 51.21,
+              "hMm": 39.69,
               "wallMm": 1.25,
               "weightKgPerM": 0.95,
               "weightUnit": "m",
@@ -180,8 +184,8 @@
             "top": {
               "name": "2 track",
               "use": "v2, h2",
-              "wMm": 39.69,
-              "hMm": 51.21,
+              "wMm": 51.21,
+              "hMm": 39.69,
               "wallMm": 1.25,
               "weightKgPerM": 0.95,
               "weightUnit": "m",
@@ -199,8 +203,8 @@
             "bottom": {
               "name": "2 track",
               "use": "v2, h2",
-              "wMm": 39.69,
-              "hMm": 51.21,
+              "wMm": 51.21,
+              "hMm": 39.69,
               "wallMm": 1.25,
               "weightKgPerM": 0.95,
               "weightUnit": "m",
@@ -266,8 +270,8 @@
             "all": {
               "name": "3 track",
               "use": "v2, h2",
-              "wMm": 88.94,
-              "hMm": 39.69,
+              "wMm": 39.69,
+              "hMm": 88.94,
               "wallMm": 1.52,
               "weightKgPerM": 1.6,
               "weightUnit": "m",
@@ -285,8 +289,8 @@
             "vertical": {
               "name": "3 track",
               "use": "v2, h2",
-              "wMm": 88.94,
-              "hMm": 39.69,
+              "wMm": 39.69,
+              "hMm": 88.94,
               "wallMm": 1.52,
               "weightKgPerM": 1.6,
               "weightUnit": "m",
@@ -304,8 +308,8 @@
             "top": {
               "name": "3 track",
               "use": "v2, h2",
-              "wMm": 88.94,
-              "hMm": 39.69,
+              "wMm": 39.69,
+              "hMm": 88.94,
               "wallMm": 1.52,
               "weightKgPerM": 1.6,
               "weightUnit": "m",
@@ -323,8 +327,8 @@
             "bottom": {
               "name": "3 track",
               "use": "v2, h2",
-              "wMm": 88.94,
-              "hMm": 39.69,
+              "wMm": 39.69,
+              "hMm": 88.94,
               "wallMm": 1.52,
               "weightKgPerM": 1.6,
               "weightUnit": "m",
@@ -811,8 +815,8 @@
         "handleSide": {
           "name": "Shutter",
           "use": "V1 H2",
-          "wMm": 29.0,
-          "hMm": 63.07,
+          "wMm": 63.07,
+          "hMm": 29.0,
           "wallMm": 1.3,
           "weightKgPerM": 0.95,
           "weightUnit": "m",
@@ -849,8 +853,8 @@
         "interlockSlim": {
           "name": "Slim Interlock",
           "use": "V1 H0",
-          "wMm": 34.4,
-          "hMm": 28.0,
+          "wMm": 28.0,
+          "hMm": 34.4,
           "wallMm": 1.3,
           "weightKgPerM": 0.6,
           "weightUnit": "m",
@@ -868,8 +872,8 @@
         "interlockRenf": {
           "name": "renforsments interlock",
           "use": "V1 H0",
-          "wMm": 81.41,
-          "hMm": 28.0,
+          "wMm": 28.0,
+          "hMm": 81.41,
           "wallMm": 1.2,
           "weightKgPerM": 1.0,
           "weightUnit": "m",
@@ -2076,11 +2080,11 @@
     },
     "derived": {
       "sectionSizes": {
-        "topRail": 39.69,
-        "bottomRail": 39.69,
-        "leftJamb": 39.69,
-        "rightJamb": 39.69,
-        "leafStile": 34.4,
+        "topRail": 51.21,
+        "bottomRail": 51.21,
+        "leftJamb": 51.21,
+        "rightJamb": 51.21,
+        "leafStile": 28.0,
         "trackRailCount": 2.0,
         "trackCount": 2.0
       },
@@ -2377,8 +2381,8 @@
             "section": {
               "name": "2 track",
               "use": "v2, h2",
-              "wMm": 39.69,
-              "hMm": 51.21,
+              "wMm": 51.21,
+              "hMm": 39.69,
               "wallMm": 1.25,
               "weightKgPerM": 0.95,
               "weightUnit": "m",

@@ -104,7 +104,13 @@ def _num(val: Any) -> float | None:
 
 
 def _parse_dims(val: Any) -> tuple[float | None, float | None]:
-    """Return (depth/hMm, width/wMm) from ``40X50.99`` / ``26.X125.1`` / single number."""
+    """Return (face/wMm, depth/hMm) from written ``FACE×DEPTH``.
+
+    Convention (all profile sections): number before X = face (elevation
+    visible thickness); number after X = depth (into the opening — BOM/3D
+    only). Examples: ``40X50.99`` → face=40, depth=50.99; ``26.X125.1`` same.
+    A single number is treated as face only.
+    """
     if val is None or val == "":
         return None, None
     if isinstance(val, (int, float)):
@@ -114,9 +120,9 @@ def _parse_dims(val: Any) -> tuple[float | None, float | None]:
     # Allow trailing/leading dots: 26.X125.1
     m = re.match(r"(\d+(?:\.\d*)?)\s*X\s*(\d+(?:\.\d*)?)", s)
     if m:
-        a = float(m.group(1).rstrip("."))
-        b = float(m.group(2).rstrip("."))
-        return a, b
+        face = float(m.group(1).rstrip("."))
+        depth = float(m.group(2).rstrip("."))
+        return face, depth
     n = _num(val)
     return n, None
 
@@ -236,8 +242,8 @@ def _section_record(
     series_id: str,
     *,
     name: str,
+    face: float | None,
     depth: float | None,
-    width: float | None,
     wall: float | None,
     weight: float | None,
     rate: float | None,
@@ -270,8 +276,9 @@ def _section_record(
         "name": name,
         "usage": usage,
         "usageLabel": _usage_label(usage),
+        # FACE×DEPTH: widthMm/wMm = face (elevation); sectionDepthMm/hMm = depth
+        "widthMm": face,
         "sectionDepthMm": depth,
-        "widthMm": width,
         "standardLength": std_length,
         "weightKgPerMtrRaw": f"{weight} kg/m" if weight is not None else None,
         "weightKgPerMtr": weight,
@@ -291,8 +298,8 @@ def _section_record(
 
 
 def _setup_section_from_row(sec: Mapping[str, Any]) -> dict[str, Any]:
+    face = sec.get("widthMm")
     depth = sec.get("sectionDepthMm")
-    width = sec.get("widthMm")
     rate = sec.get("rate")
     rate_unit = str(sec.get("rateUnit") or "kg").lower()
     if rate_unit not in ("kg", "rft", "rmt"):
@@ -300,8 +307,8 @@ def _setup_section_from_row(sec: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "name": sec.get("name") or "",
         "use": sec.get("use") or sec.get("usageLabel") or "",
-        "wMm": width,
-        "hMm": depth,
+        "wMm": face,   # elevation face
+        "hMm": depth,  # into opening (not drawn as face width)
         "wallMm": sec.get("wallThicknessMm"),
         "weightKgPerM": sec.get("weightKgPerMtr"),
         "weightUnit": "m",
@@ -353,7 +360,7 @@ def parse_sliding_sheet(ws) -> list[dict[str, Any]]:
         name = col1
         if not name:
             continue
-        depth, width = _parse_dims(cells[2] if len(cells) > 2 else None)
+        face, depth = _parse_dims(cells[2] if len(cells) > 2 else None)
         wall = _num(cells[3] if len(cells) > 3 else None)
         weight = _num(cells[4] if len(cells) > 4 else None)
         rate, rate_unit = _parse_rate(cells[5] if len(cells) > 5 else None)
@@ -372,8 +379,8 @@ def parse_sliding_sheet(ws) -> list[dict[str, Any]]:
         sec = _section_record(
             current["id"],
             name=display_name,
+            face=face,
             depth=depth,
-            width=width,
             wall=wall,
             weight=weight,
             rate=rate,
@@ -414,7 +421,7 @@ def parse_casement_sheet(ws) -> list[dict[str, Any]]:
                 continue
         if current is None or not col1:
             continue
-        depth, width = _parse_dims(cells[2] if len(cells) > 2 else None)
+        face, depth = _parse_dims(cells[2] if len(cells) > 2 else None)
         wall = _num(cells[3] if len(cells) > 3 else None)
         weight = _num(cells[4] if len(cells) > 4 else None)
         rate, rate_unit = _parse_rate(cells[5] if len(cells) > 5 else None)
@@ -427,8 +434,8 @@ def parse_casement_sheet(ws) -> list[dict[str, Any]]:
         sec = _section_record(
             current["id"],
             name=col1,
+            face=face,
             depth=depth,
-            width=width,
             wall=wall,
             weight=weight,
             rate=rate,

@@ -13,7 +13,12 @@
     "saleUnit": "sqft",
     "hardwareBrand": "HIVIC",
     "hardwareOrigin": "indian",
-    "profileSeries": "40MM Standerd"
+    "profileSeries": "40MM Standerd",
+    "powderCoatingBrand": "AkzoNobel",
+    "powderCoatingBrands": [
+      "AkzoNobel",
+      "Jotun"
+    ]
   },
   "setup": {
     "type": "casement",
@@ -932,8 +937,8 @@
           "plain": {
             "name": "Outer Frame",
             "use": "v2, h2",
-            "wMm": 40.0,
-            "hMm": 38.6,
+            "wMm": 38.6,
+            "hMm": 40.0,
             "wallMm": 1.2,
             "weightKgPerM": 0.6,
             "weightUnit": "m",
@@ -951,8 +956,8 @@
           "grills": {
             "name": "Outer Frame",
             "use": "v2, h2",
-            "wMm": 40.0,
-            "hMm": 38.6,
+            "wMm": 38.6,
+            "hMm": 40.0,
             "wallMm": 1.2,
             "weightKgPerM": 0.6,
             "weightUnit": "m",
@@ -990,8 +995,8 @@
         "allSides": {
           "name": "Outer Frame",
           "use": "v2, h2",
-          "wMm": 40.0,
-          "hMm": 38.6,
+          "wMm": 38.6,
+          "hMm": 40.0,
           "wallMm": 1.2,
           "weightKgPerM": 0.6,
           "weightUnit": "m",
@@ -1013,8 +1018,8 @@
         "slim": {
           "name": "Mullion",
           "use": "free",
-          "wMm": 40.0,
-          "hMm": 53.5,
+          "wMm": 53.5,
+          "hMm": 40.0,
           "wallMm": 1.2,
           "weightKgPerM": 0.7,
           "weightUnit": "m",
@@ -1032,8 +1037,8 @@
         "big": {
           "name": "Mullion Big",
           "use": "free",
-          "wMm": 40.0,
-          "hMm": 70.0,
+          "wMm": 70.0,
+          "hMm": 40.0,
           "wallMm": 1.5,
           "weightKgPerM": 0.9,
           "weightUnit": "m",
@@ -1056,8 +1061,8 @@
         "slim": {
           "name": "Shutter SG (no Need Clip)",
           "use": "v2, h2,",
-          "wMm": 50.8,
-          "hMm": 40.0,
+          "wMm": 40.0,
+          "hMm": 50.8,
           "wallMm": 1.2,
           "weightKgPerM": 0.72,
           "weightUnit": "m",
@@ -1075,8 +1080,8 @@
         "big": {
           "name": "Shutter SG (no Need Clip)",
           "use": "v2, h2,",
-          "wMm": 50.8,
-          "hMm": 40.0,
+          "wMm": 40.0,
+          "hMm": 50.8,
           "wallMm": 1.2,
           "weightKgPerM": 0.72,
           "weightUnit": "m",
@@ -1094,8 +1099,8 @@
         "allSides": {
           "name": "Shutter SG (no Need Clip)",
           "use": "v2, h2,",
-          "wMm": 50.8,
-          "hMm": 40.0,
+          "wMm": 40.0,
+          "hMm": 50.8,
           "wallMm": 1.2,
           "weightKgPerM": 0.72,
           "weightUnit": "m",
@@ -1229,8 +1234,8 @@
       "shutter": {
         "name": "Shutter SG (no Need Clip)",
         "use": "v2, h2,",
-        "wMm": 50.8,
-        "hMm": 40.0,
+        "wMm": 40.0,
+        "hMm": 50.8,
         "wallMm": 1.2,
         "weightKgPerM": 0.72,
         "weightUnit": "m",
@@ -1768,12 +1773,12 @@
     },
     "derived": {
       "sectionSizes": {
-        "topRail": 40.0,
-        "leftJamb": 40.0,
-        "rightJamb": 40.0,
-        "bottomRail": 40.0,
-        "leafStile": 50.8,
-        "mullion": 40.0
+        "topRail": 38.6,
+        "leftJamb": 38.6,
+        "rightJamb": 38.6,
+        "bottomRail": 38.6,
+        "leafStile": 40.0,
+        "mullion": 53.5
       },
       "hardware": [],
       "weights": {
@@ -1793,7 +1798,7 @@
         },
         {
           "label": "LIMITATION ARM",
-          "text": "Limitation arm"
+          "text": "Limitation arm · CMECH"
         }
       ],
       "wastage": {
