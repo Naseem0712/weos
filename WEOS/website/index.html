@@ -10,7 +10,7 @@
   --line:rgba(20,20,16,.12); --green:#0a5a48; --green2:#147a62; --copper:#b45324;
   --card:#fffdf9; --shadow:0 10px 40px rgba(20,20,16,.06); --radius:14px;
   --nav:72px; --logo-w:168px; --side:200px; --cart-inspector:300px;
-  --stage-paper:#eef1f4; --stage-frame:#ffffff; --stage-ink:#1b2a25;
+  --stage-paper:#f3f5f7; --stage-frame:#f3f5f7; --stage-ink:#1b2a25;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --serif: Georgia, "Palatino Linotype", Palatino, "Times New Roman", Times, serif;
 }
@@ -223,21 +223,29 @@ body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
   display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;height:100%;gap:.4rem;position:relative
 }
 .cart-topbar{
-  display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .55rem;padding:.35rem .5rem;
-  background:rgba(255,252,247,.96);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);flex:0 0 auto;position:relative
+  display:flex;flex-wrap:nowrap;align-items:center;gap:.22rem .32rem;padding:.22rem .4rem;
+  background:rgba(255,252,247,.96);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);flex:0 0 auto;position:relative;min-width:0
 }
-.cart-topbar .cart-tb-group{display:flex;align-items:center;flex-wrap:wrap;gap:.28rem;min-width:0}
-.cart-topbar .cart-tb-export{flex:1 1 18rem;justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
-.cart-topbar .cart-tb-stage{flex:0 1 auto;justify-content:center;flex-wrap:nowrap}
-.cart-topbar .cart-tb-quote{flex:1 1 14rem;justify-content:flex-end;flex-wrap:nowrap;overflow-x:auto}
-.cart-topbar .actions-inline{flex-wrap:nowrap}
+.cart-topbar .cart-tb-group{display:flex;align-items:center;flex-wrap:nowrap;gap:.2rem;min-width:0}
+.cart-topbar .cart-tb-export{flex:1 1 auto;justify-content:flex-start;min-width:0;overflow:hidden}
+.cart-topbar .cart-tb-stage{flex:0 1 auto;justify-content:center;max-width:42%;min-width:0}
+.cart-topbar .cart-tb-quote{flex:0 1 auto;justify-content:flex-end;margin-left:auto}
+.cart-topbar .actions-inline{flex-wrap:nowrap;gap:.18rem}
+.cart-topbar .actions-inline #linkCustPrint,
+.cart-topbar .actions-inline #linkCustXlsx,
+.cart-topbar .actions-inline #linkFact,
+.cart-topbar .actions-inline #linkQuote{display:none}
 .cart-topbar .btn,.cart-topbar a.btn,.cart-topbar label.btn{
-  padding:.28rem .5rem;font-size:.74rem;border-radius:8px;min-height:30px;line-height:1.1
+  padding:.18rem .38rem;font-size:.68rem;border-radius:7px;min-height:26px;line-height:1.05;white-space:nowrap
 }
-.cart-topbar select{padding:.28rem .4rem;font-size:.74rem;border-radius:8px;min-height:30px;width:auto;max-width:11rem}
-.cart-topbar #previewLabel{font-size:.74rem;margin:0;max-width:16rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cart-topbar #exportSetupSelect{max-width:10.5rem;min-width:7rem}
-.cart-topbar #cartVersionPick{max-width:11rem;min-width:7rem;flex:1 1 7rem}
+.cart-topbar select{padding:.16rem .3rem;font-size:.68rem;border-radius:7px;min-height:26px;width:auto;max-width:9.5rem}
+.cart-topbar #previewLabel{font-size:.68rem;margin:0;max-width:11rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
+.cart-topbar .stage-tools{display:inline-flex;align-items:center;gap:.12rem;flex:0 0 auto}
+.cart-topbar #prevZoomLabel{min-width:2.4rem;font-size:.66rem}
+.cart-topbar #exportSetupSelect{max-width:8.5rem;min-width:5.5rem}
+.cart-topbar #cartVersionPick{max-width:8.5rem;min-width:5.5rem;flex:0 1 7rem}
+.cart-topbar .cart-tb-export > .l{display:none}
+.cart-topbar #btnAutosave{display:none}
 .cart-topbar #printCopyPanel{
   position:absolute;z-index:45;right:max(.75rem,2%);top:calc(100% + .25rem);width:min(420px,94vw);
   box-shadow:0 16px 40px rgba(20,20,16,.18)
@@ -265,33 +273,33 @@ body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
 #view-cart .cart-inspector .livebox .big{font-size:1.2rem}
 #view-cart .cart-preview.design-stage{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
-  overflow:hidden;min-height:0;height:100%;padding:.4rem;container-type:size;container-name:cartstage;
-  background:linear-gradient(180deg,#fbfcfa 0%,#f4f6f8 100%);
-  border:1px solid rgba(20,40,36,.12);box-shadow:var(--shadow);border-radius:var(--radius)
+  overflow:hidden;min-height:0;height:100%;padding:.12rem;container-type:size;container-name:cartstage;
+  background:var(--stage-paper);
+  border:1px solid rgba(20,40,36,.1);box-shadow:var(--shadow);border-radius:var(--radius)
 }
 #view-cart .cart-preview .design-canvas-frame,
 #view-cart.preview-roomy .cart-preview .design-canvas-frame{
   flex:0 0 auto;box-sizing:border-box;
-  width:min(100cqw,100cqh,min(72vh,calc(100vh - 9.5rem)));
-  height:min(100cqw,100cqh,min(72vh,calc(100vh - 9.5rem)));
+  width:min(100cqw,100cqh);
+  height:min(100cqw,100cqh);
   max-width:100%;max-height:100%;aspect-ratio:1 / 1;
   display:flex;flex-direction:column;
-  border:1px solid rgba(20,40,36,.14);border-radius:12px;overflow:hidden;
-  background:var(--stage-frame);box-shadow:inset 0 0 0 1px rgba(255,255,255,.65)
+  border:0;border-radius:10px;overflow:hidden;
+  background:transparent;box-shadow:none
 }
 @supports not (width:1cqw){
   #view-cart .cart-preview .design-canvas-frame,
   #view-cart.preview-roomy .cart-preview .design-canvas-frame{
-    width:min(100%,min(72vh,calc(100vh - 9.5rem)));
-    height:min(100%,min(72vh,calc(100vh - 9.5rem)))
+    width:min(100%,min(78vh,calc(100vh - 7.5rem)));
+    height:min(100%,min(78vh,calc(100vh - 7.5rem)))
   }
 }
 #view-cart .cart-preview .preview,#view-cart .cart-preview #livePreview.preview,
 #view-cart.preview-roomy .cart-preview .preview,#view-cart.preview-roomy .cart-preview #livePreview.preview{
   flex:1 1 auto;min-height:0;width:100%;height:100%;
   overflow:hidden;display:flex;align-items:center;justify-content:center;
-  padding:12px;box-sizing:border-box;overscroll-behavior:contain;cursor:grab;touch-action:none;
-  border:0;border-radius:0;background:var(--stage-paper)
+  padding:4px;box-sizing:border-box;overscroll-behavior:contain;cursor:grab;touch-action:none;
+  border:0;border-radius:0;background:transparent
 }
 #view-cart .cart-preview .preview.is-panning{cursor:grabbing;user-select:none}
 #view-cart .cart-preview .preview.zoomed{overflow:hidden;align-items:center;justify-content:center}
@@ -341,13 +349,15 @@ body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
   #view-cart .cart-preview.design-stage{order:1;min-height:320px;height:min(72vh,560px)}
   #view-cart .cart-preview .design-canvas-frame,
   #view-cart.preview-roomy .cart-preview .design-canvas-frame{
-    width:min(100%,100%);height:min(100%,min(68vh,520px));max-height:100%
+    width:min(100cqw,100cqh,100%);height:min(100cqw,100cqh,100%);max-height:100%
   }
   .cart-lines-panel{position:fixed;top:auto;left:.5rem;right:.5rem;bottom:.5rem;width:auto;max-height:55vh}
 }
 @media(max-width:700px){
-  .cart-topbar{gap:.3rem}
-  .cart-topbar .cart-tb-export,.cart-topbar .cart-tb-quote,.cart-topbar .cart-tb-stage{flex:1 1 100%;justify-content:flex-start}
+  .cart-topbar{flex-wrap:wrap;gap:.22rem;padding:.2rem .3rem}
+  .cart-topbar .cart-tb-export,.cart-topbar .cart-tb-quote,.cart-topbar .cart-tb-stage{flex:1 1 100%;justify-content:flex-start;max-width:none;overflow-x:auto}
+  .cart-topbar .actions-inline #linkCustPrint,
+  .cart-topbar .actions-inline #linkCustXlsx{display:inline-block}
   #view-cart .cart-preview .design-canvas-frame,
   #view-cart.preview-roomy .cart-preview .design-canvas-frame{
     width:min(100%,min(70vh,calc(100vw - 1.5rem)));
@@ -759,7 +769,7 @@ textarea{max-width:100%}
             <button class="btn" id="btnCalc" title="Price the cart, save the quote, then download PDFs below">Calculate price</button>
             <label class="l" style="margin:0;font-size:.62rem">Print setup</label>
             <select id="exportSetupSelect" title="Choose which customer account’s bill-to / terms print on the quote"></select>
-            <button class="btn ghost sm" id="btnPrintCopyToggle" type="button" title="See what description and terms will print, then edit if needed">View / edit description &amp; terms</button>
+            <button class="btn ghost sm" id="btnPrintCopyToggle" type="button" title="See what description and terms will print, then edit if needed">Desc &amp; terms</button>
             <div class="actions-inline">
                 <a class="btn sm" id="linkCust" href="#" title="Customer quotation: branding, sizes, specs, pricing, GST, terms.">📄 Quote PDF</a>
                 <a class="btn ghost sm" id="linkCustPrint" href="#" title="Open quote PDF for printing">🖨 Print quote</a>
@@ -780,12 +790,12 @@ textarea{max-width:100%}
               
           </div>
           <div class="cart-tb-group cart-tb-stage" role="toolbar" aria-label="Design canvas tools">
-            <p class="muted" id="previewLabel" style="margin:.25rem 0 0">Select or add a line</p>
+            <p class="muted" id="previewLabel" title="">Select or add a line</p>
             <div class="stage-tools preview-zoom" role="toolbar" aria-label="Design canvas tools">
               <button class="btn ghost sm" type="button" id="btnPrevUndo" title="Undo (coming soon)" disabled>Undo</button>
               <button class="btn ghost sm" type="button" id="btnPrevFit" title="Fit the whole drawing in the canvas">Fit</button>
               <button class="btn ghost sm" type="button" id="btnPrevZoomOut" title="Zoom out">−</button>
-              <span id="prevZoomLabel" class="muted" style="min-width:3.1rem;text-align:center;font-size:.78rem">Fit</span>
+              <span id="prevZoomLabel" class="muted" style="text-align:center" aria-live="polite"></span>
               <button class="btn ghost sm" type="button" id="btnPrevZoomIn" title="Zoom in">+</button>
               <button class="btn ghost sm" type="button" id="btnPrevDims" title="Show or hide dimension annotations" aria-pressed="true">Dims</button>
             </div>
@@ -3485,7 +3495,7 @@ function previewZoomValue() {
   return Number.isFinite(z) && z > 0 ? z : 1;
 }
 /** Uniform stage inset — same visual padding % for every product world. */
-const PREVIEW_FIT_INSET = 0.06;
+const PREVIEW_FIT_INSET = 0.02;
 function resetPreviewCamera() {
   state.previewZoom = 1;
   state.previewPanX = 0;
@@ -3588,7 +3598,7 @@ function fitPreviewToStage(opts) {
     }
     const zoom = previewZoomValue();
     const label = $('prevZoomLabel');
-    if (label) label.textContent = Math.abs(zoom - 1) < 0.02 ? 'Fit' : Math.round(zoom * 100) + '%';
+    if (label) label.textContent = Math.abs(zoom - 1) < 0.02 ? '' : Math.round(zoom * 100) + '%';
     box.classList.toggle('zoomed', zoom > 1.02);
     if (!el) return;
     const content = _previewContentBox(box);
@@ -7227,7 +7237,11 @@ async function refreshPreview() {
   if (ln.mesh) bits.push('mesh');
   if ((ln.partitions||[]).length) bits.push(`${ln.partitions.length} fix`);
   bits.push(ln.colour||'');
-  $('previewLabel').textContent = bits.filter(Boolean).join(' · ');
+  if ($('previewLabel')) {
+    const lbl = bits.filter(Boolean).join(' · ');
+    $('previewLabel').textContent = lbl;
+    $('previewLabel').title = lbl;
+  }
   try {
     const prev = await api('/api/preview', {method:'POST', body:{
       product: ln.product, width:+ln.width, height:+ln.height,
@@ -7293,7 +7307,9 @@ async function refreshPreview() {
       if (prev.mesh || ln.mesh) hdr.push('mesh');
       if ((ln.partitions||[]).length) hdr.push(`${ln.partitions.length} fix`);
       if (ln.colour) hdr.push(ln.colour);
-      $('previewLabel').textContent = hdr.filter(Boolean).join(' · ');
+      const lbl = hdr.filter(Boolean).join(' · ');
+      $('previewLabel').textContent = lbl;
+      $('previewLabel').title = lbl;
     }
     if (gen !== _previewGen) return;
     const target = (state.lines || []).find((x) => x && previewTargetId && (x.lineId === previewTargetId || x.id === previewTargetId)) || null;
