@@ -223,7 +223,9 @@ def quote_commercial_breakdown(
 
 
 def format_commercial_totals_rows(breakdown: Mapping[str, Any] | None) -> list[tuple[str, str]]:
-    """Label / value rows for PDF TOTALS block."""
+    """Label / value rows for PDF TOTALS block (safe currency — never tofu)."""
+    from WEOS.factory.pdf_fonts import money_text
+
     b = breakdown if isinstance(breakdown, Mapping) else {}
     rows: list[tuple[str, str]] = []
 
@@ -234,11 +236,11 @@ def format_commercial_totals_rows(breakdown: Mapping[str, Any] | None) -> list[t
         avg = bucket.get("avgRate")
         if qty <= 0 and amt <= 0 and area <= 0:
             return
-        avg_s = f" · avg ₹{float(avg):,.2f}/sft" if avg is not None else ""
+        avg_s = f" · avg {money_text(avg)}/sft" if avg is not None else ""
         rows.append(
             (
                 lab,
-                f"{qty} Nos · {area:g} sft · ₹{amt:,.2f}{avg_s}",
+                f"{qty} Nos · {area:g} sft · {money_text(amt)}{avg_s}",
             )
         )
 
@@ -246,15 +248,15 @@ def format_commercial_totals_rows(breakdown: Mapping[str, Any] | None) -> list[t
     _bucket_line("Casements", b.get("casement") or {})
     _bucket_line("Other", b.get("other") or {})
     rows.append(("Total area", f"{float(b.get('totalAreaSqft') or 0):g} Sq.Ft."))
-    rows.append(("Add services", f"₹{float(b.get('addServices') or 0):,.2f}"))
-    rows.append(("Total before GST", f"₹{float(b.get('beforeGst') or 0):,.2f}"))
+    rows.append(("Add services", money_text(b.get("addServices") or 0)))
+    rows.append(("Total before GST", money_text(b.get("beforeGst") or 0)))
     disc_amt = float(b.get("discountAmount") or 0)
     disc_pct = float(b.get("discountPercent") or 0)
     if disc_amt > 0 or str(b.get("discountMode") or "off") != "off":
         pct_bit = f" ({disc_pct:g}% of quote)" if disc_pct else ""
-        rows.append(("Discount", f"₹{disc_amt:,.2f}{pct_bit}"))
-        rows.append(("Total after discount", f"₹{float(b.get('afterDiscount') or 0):,.2f}"))
+        rows.append(("Discount", money_text(disc_amt) + pct_bit))
+        rows.append(("Total after discount", money_text(b.get("afterDiscount") or 0)))
     gst_pct = float(b.get("gstPercent") or 18)
-    rows.append((f"GST {gst_pct:g}%", f"₹{float(b.get('gstAmount') or 0):,.2f}"))
-    rows.append(("Grand total", f"₹{float(b.get('grandTotal') or 0):,.2f}"))
+    rows.append((f"GST {gst_pct:g}%", money_text(b.get("gstAmount") or 0)))
+    rows.append(("Grand total", money_text(b.get("grandTotal") or 0)))
     return rows

@@ -536,6 +536,8 @@ body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
 .line-addons-panel{border:1px dashed var(--line);border-radius:10px;padding:.5rem .55rem;background:rgba(0,0,0,.015)}
 .line-addon-row{display:grid;grid-template-columns:1.4fr 1.2fr 56px 72px 72px 28px;gap:.3rem;align-items:end;margin-bottom:.35rem}
 @media (max-width:720px){.line-addon-row{grid-template-columns:1fr 1fr}}
+.qlc-addons{margin:.2rem 0 .15rem}
+.qlc-addon{font-size:.7rem;color:var(--muted);line-height:1.35}
 .quote-copy-preview strong,.quote-copy-preview b{font-weight:700;color:inherit}
 .quote-copy-preview .qcp-body{margin-bottom:.35rem}
 .quote-copy-preview .qcp-terms{font-size:.8rem}
@@ -2393,6 +2395,37 @@ textarea{max-width:100%}
           <div class="row" style="margin-top:.5rem">
             <div class="grow"><label class="l">Tagline</label><input id="coTagline"/></div>
             <div><label class="l">State code</label><input id="coStateCode" style="width:100px"/></div>
+            <div><label class="l">Currency</label>
+              <select id="coCurrency" style="width:130px" title="Prints before every amount on quotes / PDF">
+                <option value="INR">INR (₹)</option>
+                <option value="USD">USD ($)</option>
+                <option value="AED">AED</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="GBP">GBP (£)</option>
+                <option value="SAR">SAR</option>
+                <option value="QAR">QAR</option>
+                <option value="KWD">KWD</option>
+                <option value="OMR">OMR</option>
+                <option value="BHD">BHD</option>
+                <option value="AUD">AUD (A$)</option>
+                <option value="CAD">CAD (C$)</option>
+                <option value="SGD">SGD (S$)</option>
+                <option value="JPY">JPY (¥)</option>
+                <option value="CNY">CNY (¥)</option>
+                <option value="HKD">HKD</option>
+                <option value="CHF">CHF</option>
+                <option value="THB">THB</option>
+                <option value="MYR">MYR</option>
+                <option value="IDR">IDR</option>
+                <option value="PHP">PHP</option>
+                <option value="PKR">PKR</option>
+                <option value="BDT">BDT</option>
+                <option value="LKR">LKR</option>
+                <option value="ZAR">ZAR</option>
+                <option value="BRL">BRL</option>
+                <option value="TRY">TRY</option>
+              </select>
+            </div>
           </div>
           <div class="row" style="margin-top:.5rem">
             <div class="grow"><label class="l">PAN</label><input id="coPan"/></div>
@@ -4334,15 +4367,78 @@ function deselectCartIfSeriesChanged(prevBucket) {
   }
 }
 function setSellDisplay(text) {
-  const t = text == null || text === '' ? '₹ —' : String(text);
+  const t = text == null || text === '' ? (currencyPrefix() + ' —') : String(text);
   if ($('liveSell')) $('liveSell').textContent = t;
   if ($('stickySell')) $('stickySell').textContent = t;
 }
-function money(n){
+/** Company / project currency — never emit tofu / replacement glyphs. */
+const CURRENCY_META = {
+  INR: { symbol: '\u20B9', iso: 'INR', locale: 'en-IN' },
+  USD: { symbol: '$', iso: 'USD', locale: 'en-US' },
+  EUR: { symbol: '\u20AC', iso: 'EUR', locale: 'de-DE' },
+  GBP: { symbol: '\u00A3', iso: 'GBP', locale: 'en-GB' },
+  AED: { symbol: 'AED', iso: 'AED', locale: 'en-AE' },
+  SAR: { symbol: 'SAR', iso: 'SAR', locale: 'en-SA' },
+  QAR: { symbol: 'QAR', iso: 'QAR', locale: 'en-US' },
+  KWD: { symbol: 'KWD', iso: 'KWD', locale: 'en-US' },
+  OMR: { symbol: 'OMR', iso: 'OMR', locale: 'en-US' },
+  BHD: { symbol: 'BHD', iso: 'BHD', locale: 'en-US' },
+  AUD: { symbol: 'A$', iso: 'AUD', locale: 'en-AU' },
+  CAD: { symbol: 'C$', iso: 'CAD', locale: 'en-CA' },
+  SGD: { symbol: 'S$', iso: 'SGD', locale: 'en-SG' },
+  JPY: { symbol: '\u00A5', iso: 'JPY', locale: 'ja-JP' },
+  CNY: { symbol: '\u00A5', iso: 'CNY', locale: 'zh-CN' },
+  HKD: { symbol: 'HK$', iso: 'HKD', locale: 'en-HK' },
+  CHF: { symbol: 'CHF', iso: 'CHF', locale: 'de-CH' },
+  THB: { symbol: 'THB', iso: 'THB', locale: 'en-US' },
+  MYR: { symbol: 'RM', iso: 'MYR', locale: 'en-MY' },
+  IDR: { symbol: 'Rp', iso: 'IDR', locale: 'id-ID' },
+  PHP: { symbol: 'PHP', iso: 'PHP', locale: 'en-PH' },
+  PKR: { symbol: 'Rs', iso: 'PKR', locale: 'en-PK' },
+  BDT: { symbol: 'Tk', iso: 'BDT', locale: 'en-US' },
+  LKR: { symbol: 'Rs', iso: 'LKR', locale: 'en-US' },
+  ZAR: { symbol: 'R', iso: 'ZAR', locale: 'en-ZA' },
+  BRL: { symbol: 'R$', iso: 'BRL', locale: 'pt-BR' },
+  TRY: { symbol: 'TRY', iso: 'TRY', locale: 'tr-TR' },
+};
+function normalizeCurrencyCode(raw) {
+  let c = String(raw || '').trim().toUpperCase().replace(/\s+/g, '');
+  if (!c) return 'INR';
+  const aliases = { 'RS': 'INR', 'RS.': 'INR', 'RUPEE': 'INR', 'RUPEES': 'INR', '\u20B9': 'INR', 'DOLLAR': 'USD', 'EURO': 'EUR', 'DIRHAM': 'AED' };
+  if (aliases[c]) c = aliases[c];
+  return CURRENCY_META[c] ? c : (/^[A-Z]{3}$/.test(c) ? c : 'INR');
+}
+function activeCurrencyCode() {
+  const co = state.company || (state.workspace && state.workspace.company) || {};
+  const proj = (state.project && (state.project.currency || (state.project.price && state.project.price.currency))) || '';
+  const sel = ($('coCurrency') && $('coCurrency').value) || '';
+  return normalizeCurrencyCode(sel || proj || co.currency || co.currencyCode || 'INR');
+}
+function currencyMeta(code) {
+  const c = normalizeCurrencyCode(code || activeCurrencyCode());
+  return CURRENCY_META[c] || { symbol: c, iso: c, locale: 'en-US' };
+}
+/** Prefer symbol; fall back to ISO when glyph would box (private-use / replacement). */
+function currencyPrefix(code) {
+  const meta = currencyMeta(code);
+  let sym = String(meta.symbol || meta.iso || 'INR');
+  if (!sym || /\uFFFD/.test(sym) || /[\uE000-\uF8FF]/.test(sym)) sym = meta.iso || 'INR';
+  // Browser: ₹ usually renders; if canvas/measure fails we still show ISO.
+  try {
+    if (typeof document !== 'undefined' && meta.iso === 'INR' && sym === '\u20B9') {
+      // Keep ₹ for UI — PDF path uses server-side glyph check.
+    }
+  } catch (_) {}
+  return sym;
+}
+function money(n, code) {
   if (n == null || n === '') return '—';
   const v = Number(n);
   if (!Number.isFinite(v)) return '—';
-  return '₹ ' + v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const meta = currencyMeta(code);
+  const locale = meta.locale || 'en-IN';
+  const body = v.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return currencyPrefix(meta.iso || code) + ' ' + body;
 }
 function isRailCartLine(ln) {
   const w = productWorldOf(null, ln);
@@ -4370,14 +4466,22 @@ function normalizeLineAddons(ln) {
   if (!Array.isArray(raw)) return [];
   return raw.map((a, i) => {
     if (!a || typeof a !== 'object') return null;
-    const name = String(a.name || a.label || a.title || '').trim() || 'Add-on';
+    const typedName = String(a.name != null ? a.name : (a.label || a.title || ''));
+    const name = typedName; // keep empty while typing — display uses name.trim()||'Add-on'
     const note = String(a.note || a.spec || a.specification || a.description || '').trim();
     const qty = Math.max(0, Number(a.qty != null ? a.qty : (a.quantity != null ? a.quantity : 1)) || 0);
     const rate = Math.max(0, Number(a.rate != null ? a.rate : (a.unitAmount != null ? a.unitAmount : 0)) || 0);
     const amount = Math.round(qty * rate * 100) / 100;
+    // Stable id — never Date.now() on every normalize (that remounts inputs / kills focus).
+    const id = String(a.id || a.addonId || ('ad' + i)).slice(0, 16);
     return {
-      id: String(a.id || a.addonId || ('ad' + i + '_' + Date.now().toString(36))).slice(0, 16),
-      name, note, spec: note || null, qty, rate, amount,
+      id,
+      name,
+      note,
+      spec: note || null,
+      qty,
+      rate,
+      amount,
     };
   }).filter(Boolean);
 }
@@ -4386,8 +4490,25 @@ function lineAddonsTotal(ln) {
 }
 function persistLineAddons(ln) {
   if (!ln || typeof ln !== 'object') return ln;
-  const rows = normalizeLineAddons(ln);
-  ln.addons = rows;
+  const rows = normalizeLineAddons(ln).map((a) => ({
+    id: a.id,
+    name: String(a.name || '').trim() || 'Add-on',
+    note: a.note || null,
+    spec: a.spec || null,
+    qty: a.qty,
+    rate: a.rate,
+    amount: a.amount,
+  }));
+  // Keep in-progress empty drafts in the live array; stamped options use display names.
+  ln.addons = normalizeLineAddons(ln).map((a) => ({
+    id: a.id,
+    name: a.name,
+    note: a.note || null,
+    spec: a.spec || null,
+    qty: a.qty,
+    rate: a.rate,
+    amount: a.amount,
+  }));
   ln.options = Object.assign({}, ln.options || {}, { addons: rows });
   if (isLineCancelled(ln)) {
     ln.cancelled = true;
@@ -4706,6 +4827,43 @@ function refreshQuoteCopyPreview() {
     + (th ? `<div class="qcp-terms muted">${th}</div>` : '');
 }
 
+function syncLineAddonsIntoSpecs(ln) {
+  const specs = $('lineSpecs');
+  if (!specs) return;
+  const rows = normalizeLineAddons(ln);
+  const block = rows.length
+    ? rows.map(a => {
+        const note = a.note ? (' — ' + a.note) : '';
+        const label = String(a.name || '').trim() || 'Add-on';
+        return `<div><span class="muted">Add-on</span><div>+ ${esc(label)}${esc(note)} · ${a.qty}×${money(a.rate)} = ${money(a.amount)}</div></div>`;
+      }).join('')
+    : '';
+  let host = $('lineSpecsAddons');
+  if (!block) {
+    if (host) host.innerHTML = '';
+    return;
+  }
+  if (!host) {
+    specs.insertAdjacentHTML('beforeend', '<div id="lineSpecsAddons"></div>');
+    host = $('lineSpecsAddons');
+    specs.dataset.addonsMounted = '1';
+  }
+  if (host) host.innerHTML = block;
+}
+function applyLineAddonField(ln, ai, field, value) {
+  const cur = normalizeLineAddons(ln).map(a => ({
+    id: a.id, name: a.name, note: a.note || '', qty: a.qty, rate: a.rate, amount: a.amount,
+  }));
+  if (!cur[ai]) return null;
+  if (field === 'qty' || field === 'rate') cur[ai][field] = Number(value || 0);
+  else cur[ai][field] = value;
+  cur[ai].amount = Math.round((Number(cur[ai].qty) || 0) * (Number(cur[ai].rate) || 0) * 100) / 100;
+  ln.addons = cur;
+  persistLineAddons(ln);
+  stampLineAmount(ln);
+  invalidatePdfCache();
+  return cur[ai];
+}
 function renderLineAddonsPanel() {
   const panel = $('lineAddonsPanel');
   const list = $('lineAddonsList');
@@ -4720,54 +4878,60 @@ function renderLineAddonsPanel() {
   panel.style.display = '';
   persistLineAddons(ln);
   const rows = normalizeLineAddons(ln);
+  // Preserve focus across rebuilds (e.g. after +add / delete).
+  const active = document.activeElement;
+  const keepAi = active && active.closest && active.closest('#lineAddonsList [data-ai]');
+  const keepAf = keepAi && active.dataset ? active.dataset.af : null;
+  const keepAiIdx = keepAi ? keepAi.dataset.ai : null;
+  const keepSel = (active && typeof active.selectionStart === 'number')
+    ? [active.selectionStart, active.selectionEnd] : null;
+
   if (!rows.length) {
     list.innerHTML = '<div class="muted" style="font-size:.75rem">No add-ons yet — click + add-on (e.g. Automatic system).</div>';
   } else {
-    list.innerHTML = rows.map((a, ai) => `
-      <div class="line-addon-row" data-ai="${ai}">
+    list.innerHTML = rows.map((a, ai) => {
+      return `
+      <div class="line-addon-row" data-ai="${ai}" data-addon-id="${esc(a.id)}">
         <div><label class="l">Name</label><input data-af="name" value="${esc(a.name || '')}"/></div>
         <div><label class="l">Spec / note</label><input data-af="note" value="${esc(a.note || '')}"/></div>
         <div><label class="l">Qty</label><input data-af="qty" type="number" min="0" step="1" value="${a.qty != null ? a.qty : 1}"/></div>
         <div><label class="l">Rate</label><input data-af="rate" type="number" min="0" step="0.01" value="${a.rate != null ? a.rate : ''}"/></div>
-        <div><label class="l">Amount</label><div style="font-weight:600;padding:.35rem 0">${money(a.amount)}</div></div>
+        <div><label class="l">Amount</label><div class="line-addon-amt" style="font-weight:600;padding:.35rem 0">${money(a.amount)}</div></div>
         <div><button class="btn ghost sm" type="button" data-adel="${ai}" title="Remove">×</button></div>
-      </div>`).join('');
-  }
-  // Also mirror under lineSpecs
-  const specs = $('lineSpecs');
-  if (specs && rows.length) {
-    const block = rows.map(a => {
-      const note = a.note ? (' — ' + a.note) : '';
-      return `<div><span class="muted">Add-on</span><div>+ ${esc(a.name)}${esc(note)} · ${a.qty}×${money(a.rate)} = ${money(a.amount)}</div></div>`;
+      </div>`;
     }).join('');
-    if (!specs.dataset.addonsMounted) {
-      specs.insertAdjacentHTML('beforeend', '<div id="lineSpecsAddons">' + block + '</div>');
-      specs.dataset.addonsMounted = '1';
-    } else {
-      const host = $('lineSpecsAddons');
-      if (host) host.innerHTML = block;
-      else specs.insertAdjacentHTML('beforeend', '<div id="lineSpecsAddons">' + block + '</div>');
-    }
-  } else if ($('lineSpecsAddons')) {
-    $('lineSpecsAddons').innerHTML = '';
   }
+  syncLineAddonsIntoSpecs(ln);
+
+  const commitLive = () => { updateLiveCartTotal(); };
+  const commitFull = () => {
+    updateLiveCartTotal();
+    // Full cart/cards rebuild only after blur — never while the field is focused.
+    if (typeof renderCart === 'function') renderCart();
+  };
+
   list.querySelectorAll('input[data-af]').forEach(inp => {
-    inp.onchange = inp.oninput = () => {
+    const onEdit = () => {
       const row = inp.closest('[data-ai]');
       const ai = row ? +row.dataset.ai : -1;
-      const cur = normalizeLineAddons(ln);
-      if (!cur[ai]) return;
       const f = inp.dataset.af;
-      if (f === 'qty' || f === 'rate') cur[ai][f] = Number(inp.value || 0);
-      else cur[ai][f] = inp.value;
-      cur[ai].amount = Math.round((Number(cur[ai].qty) || 0) * (Number(cur[ai].rate) || 0) * 100) / 100;
-      ln.addons = cur;
-      persistLineAddons(ln);
-      stampLineAmount(ln);
-      invalidatePdfCache();
-      renderCart();
-      updateLiveCartTotal();
-      renderLineAddonsPanel();
+      const updated = applyLineAddonField(ln, ai, f, inp.value);
+      if (!updated) return;
+      const amtEl = row && row.querySelector('.line-addon-amt');
+      if (amtEl) amtEl.textContent = money(updated.amount);
+      syncLineAddonsIntoSpecs(ln);
+      clearTimeout(state._addonEditTimer);
+      state._addonEditTimer = setTimeout(commitLive, 120);
+    };
+    inp.oninput = onEdit;
+    inp.onchange = () => {
+      onEdit();
+      clearTimeout(state._addonEditTimer);
+      commitLive();
+    };
+    inp.onblur = () => {
+      clearTimeout(state._addonEditTimer);
+      commitFull();
     };
   });
   list.querySelectorAll('[data-adel]').forEach(btn => {
@@ -4783,6 +4947,16 @@ function renderLineAddonsPanel() {
       renderLineAddonsPanel();
     };
   });
+
+  if (keepAf != null && keepAiIdx != null) {
+    const restore = list.querySelector(`[data-ai="${keepAiIdx}"] input[data-af="${keepAf}"]`);
+    if (restore) {
+      restore.focus();
+      if (keepSel && typeof restore.setSelectionRange === 'function') {
+        try { restore.setSelectionRange(keepSel[0], keepSel[1]); } catch (_) {}
+      }
+    }
+  }
 }
 
 
@@ -7273,7 +7447,8 @@ function renderCart() {
       const rateVal = ln.sellingRate != null && ln.sellingRate !== '' ? ln.sellingRate : '';
       const addonBits = addons.map(a => {
         const note = a.note ? (' — ' + esc(a.note)) : '';
-        return '<div class="muted" style="font-size:.7rem">+ ' + esc(a.name) + note + ' · ' + a.qty + '×' + money(a.rate) + ' = ' + money(a.amount) + '</div>';
+        const label = String(a.name || '').trim() || 'Add-on';
+        return '<div class="muted" style="font-size:.7rem">+ ' + esc(label) + note + ' · ' + a.qty + '×' + money(a.rate) + ' = ' + money(a.amount) + '</div>';
       }).join('');
       html += `
     <tr class="${cancelled?'cart-row-cancelled':''}" style="${rowBg?'background:'+rowBg:''}">
@@ -7330,15 +7505,23 @@ function renderCart() {
       const rateVal = ln.sellingRate != null && ln.sellingRate !== '' ? ln.sellingRate : '';
       const prodAmt = lineProductAmount(ln);
       const amtVal = (prodAmt != null && prodAmt > 0) ? prodAmt : '';
+      const cardAddons = normalizeLineAddons(ln);
+      const cardAddonHtml = cardAddons.map(a => {
+        const note = a.note ? (' — ' + esc(a.note)) : '';
+        const label = String(a.name || '').trim() || 'Add-on';
+        return '<div class="qlc-addon">+ ' + esc(label) + note + ' · ' + a.qty + '×' + money(a.rate) + ' = ' + money(a.amount) + '</div>';
+      }).join('');
+      const curSym = currencyPrefix();
       const cls = 'quote-line-card' + (cancelled ? ' cancelled' : '') + (active ? ' active' : '');
       cards += '<div class="' + cls + '" data-card-sel="' + i + '" role="button" tabindex="0">' +
         '<div class="qlc-top"><span class="qlc-serial">' + esc(serialCode) + '</span><span class="qlc-amt' + (cancelled ? ' cart-strike' : '') + '">' + money(lineLiveAmount(ln)) + '</span></div>' +
         '<div class="qlc-name' + (cancelled ? ' cart-strike' : '') + '">' + (cancelled ? '<span class="cart-cancelled-mark">CANCELLED </span>' : '') + cartLineProductLabel(ln) + '</div>' +
+        (cardAddonHtml ? ('<div class="qlc-addons">' + cardAddonHtml + '</div>') : '') +
         '<div class="qlc-meta">' + esc(size) + ' · qty ' + (ln.qty != null ? ln.qty : 1) + (loc ? ' · ' + esc(loc) : '') + (ln.colour ? ' · ' + esc(ln.colour) : '') + (ln.glass ? ' · ' + esc(ln.glass) : '') + '</div>' +
         '<div class="qlc-pricing" onclick="event.stopPropagation()">' +
           '<div><label class="l">Area</label><div class="qlc-area">' + (area > 0 ? (area + ' sft') : '\u2014') + '</div></div>' +
-          '<div><label class="l">Rate \u20b9/' + esc(unit) + '</label><input data-ql-rate="' + i + '" type="number" min="0" step="0.01" placeholder="e.g. 950" value="' + rateVal + '" ' + (cancelled ? 'disabled' : '') + '/></div>' +
-          '<div><label class="l">Line amount \u20b9</label><input data-ql-amt="' + i + '" type="number" min="0" step="0.01" placeholder="auto" value="' + amtVal + '" ' + (cancelled ? 'disabled' : '') + '/></div>' +
+          '<div><label class="l">Rate ' + esc(curSym) + '/' + esc(unit) + '</label><input data-ql-rate="' + i + '" type="number" min="0" step="0.01" placeholder="e.g. 950" value="' + rateVal + '" ' + (cancelled ? 'disabled' : '') + '/></div>' +
+          '<div><label class="l">Line amount ' + esc(curSym) + '</label><input data-ql-amt="' + i + '" type="number" min="0" step="0.01" placeholder="auto" value="' + amtVal + '" ' + (cancelled ? 'disabled' : '') + '/></div>' +
           '<div><label class="l">Sale unit</label><select data-ql-unit="' + i + '" ' + (cancelled ? 'disabled' : '') + '>' +
             ['sqft','sqm','opening','rft'].map(u => '<option value="' + u + '"' + (unit === u ? ' selected' : '') + '>' + (u === 'sqft' ? 'Per Sq.Ft.' : u === 'sqm' ? 'Per Sq.M.' : u === 'opening' ? 'Per Opening' : 'Per RFT') + '</option>').join('') +
           '</select></div>' +
@@ -7904,11 +8087,14 @@ async function refreshPreview() {
     const rows = [...specEntries, ...extra];
     const addonRows = normalizeLineAddons(ln).map(a => {
       const note = a.note ? (' — ' + a.note) : '';
-      return ['Add-on', `+ ${a.name}${note} · ${a.qty}×${money(a.rate)} = ${money(a.amount)}`];
+      const label = String(a.name || '').trim() || 'Add-on';
+      return ['Add-on', `+ ${label}${note} · ${a.qty}×${money(a.rate)} = ${money(a.amount)}`];
     });
     if (isLineCancelled(ln)) rows.unshift(['Status', 'CANCELLED']);
     $('lineSpecs').innerHTML = [...rows, ...addonRows].map(([k,v])=>`<div><span class="muted">${k}</span><div>${v??'—'}</div></div>`).join('');
-    if (typeof renderLineAddonsPanel === 'function') renderLineAddonsPanel();
+    // Remount add-on editor only when focus is not already inside it (avoids 1-char focus loss).
+    const addonFocus = document.activeElement && document.activeElement.closest && document.activeElement.closest('#lineAddonsList');
+    if (!addonFocus && typeof renderLineAddonsPanel === 'function') renderLineAddonsPanel();
   } catch(e) {
     $('livePreview').innerHTML = `<span class="muted">${e.message}</span>`;
   }
@@ -15841,6 +16027,7 @@ function fillCompanyForm(c) {
   if ($('coEmail')) $('coEmail').value = c.email || '';
   if ($('coTagline')) $('coTagline').value = c.tagline || '';
   if ($('coStateCode')) $('coStateCode').value = c.stateCode || '';
+  if ($('coCurrency')) $('coCurrency').value = normalizeCurrencyCode(c.currency || 'INR');
   if ($('coPan')) $('coPan').value = c.pan || '';
   fillBankFields(c.bankDetails || '');
   if ($('coTerms')) $('coTerms').value = c.terms || '';
@@ -15891,6 +16078,7 @@ function clearCompanySetupFields() {
   ['coName','coGst','coAddress','coWebsite','coPhone','coEmail','coTagline','coStateCode','coPan','coBankAcName','coBankName','coBankAcNo','coBankIfsc','coBankBranch','coTerms','coDeletePin'].forEach(id => {
     if ($(id)) $(id).value = '';
   });
+  if ($('coCurrency')) $('coCurrency').value = 'INR';
   renderCompanyPreview();
 }
 function renderCompanyPreview() {
@@ -15919,6 +16107,7 @@ if ($('btnCoSave')) $('btnCoSave').onclick = async () => {
       companyName: $('coName').value, gstNo: $('coGst').value, address: $('coAddress').value,
       website: $('coWebsite').value, phone: $('coPhone').value, email: $('coEmail').value,
       tagline: $('coTagline').value, stateCode: $('coStateCode').value, pan: $('coPan').value,
+      currency: normalizeCurrencyCode(($('coCurrency') && $('coCurrency').value) || 'INR'),
       bankDetails: composeBankDetails(),
       terms: ($('coTerms') && $('coTerms').value) || '',
       pdfBrand: (typeof companyPdfBrand === 'function' ? companyPdfBrand() : '') || '',

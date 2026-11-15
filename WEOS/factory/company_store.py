@@ -167,6 +167,7 @@ _FIELDS = (
     "cin",
     "terms",
     "pdfBrand",
+    "currency",
 )
 
 
@@ -196,6 +197,7 @@ def _empty() -> dict[str, Any]:
         "cin": "",
         "terms": "",
         "pdfBrand": "",
+        "currency": "INR",
         "logoPath": None,
         "logoUrl": None,
         "hasDeletePin": False,
@@ -302,6 +304,13 @@ def save_company_by_gst(gst: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     for key in _FIELDS:
         if key in payload and payload[key] is not None:
             doc[key] = str(payload[key])
+    if "currency" in doc:
+        try:
+            from WEOS.factory.currency import normalize_currency_code
+
+            doc["currency"] = normalize_currency_code(doc.get("currency"))
+        except Exception:
+            doc["currency"] = str(doc.get("currency") or "INR").strip().upper() or "INR"
     doc["gstNo"] = g
     if payload.get("logoPath") is not None:
         doc["logoPath"] = str(payload["logoPath"]) or None
@@ -607,6 +616,12 @@ def company_branding(gst: str | None = None) -> dict[str, Any]:
         val = (doc.get(key) or "").strip()
         if val:
             branding[key] = val
+    try:
+        from WEOS.factory.currency import normalize_currency_code
+
+        branding["currency"] = normalize_currency_code(doc.get("currency") or "INR")
+    except Exception:
+        branding["currency"] = str(doc.get("currency") or "INR").strip().upper() or "INR"
     branding["pdfBrand"] = resolve_pdf_brand(doc, gst=gst)
     lf = logo_file()
     if lf:

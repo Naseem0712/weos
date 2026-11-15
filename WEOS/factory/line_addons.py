@@ -81,8 +81,11 @@ def normalize_addon(raw: Any) -> dict[str, Any] | None:
     if rate < 0:
         rate = 0.0
     amount = round(qty * rate, 2)
-    if not name and amount <= 0 and not note:
-        return None
+    # Keep priced / noted rows even with a blank name (UI draft → "Add-on").
+    if not name and amount <= 0 and not note and rate <= 0:
+        # Still keep explicit draft rows that the UI is editing (have an id).
+        if not str(raw.get("id") or raw.get("addonId") or "").strip():
+            return None
     aid = str(raw.get("id") or raw.get("addonId") or "").strip() or uuid4().hex[:10]
     return {
         "id": aid,
@@ -159,6 +162,15 @@ def persist_cancelled(options: MutableMapping[str, Any], line: Mapping[str, Any]
 def addon_label(addon: Mapping[str, Any] | None) -> str:
     if not isinstance(addon, Mapping):
         return ""
+    try:
+        from WEOS.factory.pdf_fonts import money_text
+    except Exception:
+        def money_text(v):  # type: ignore
+            try:
+                return f"{float(v):,.2f}"
+            except (TypeError, ValueError):
+                return "—"
+
     name = str(addon.get("name") or "Add-on").strip()
     note = str(addon.get("note") or addon.get("spec") or "").strip()
     qty = addon.get("qty")
@@ -171,13 +183,13 @@ def addon_label(addon: Mapping[str, Any] | None) -> str:
         q = float(qty or 0)
         r = float(rate or 0)
         if q and r:
-            bits.append(f"{q:g} × ₹{r:,.2f}")
+            bits.append(f"{q:g} × {money_text(r)}")
     except (TypeError, ValueError):
         pass
     try:
         a = float(amount or 0)
         if a:
-            bits.append(f"₹{a:,.2f}")
+            bits.append(money_text(a))
     except (TypeError, ValueError):
         pass
     return " · ".join(bits)

@@ -24,12 +24,23 @@ def _txt(v: Any) -> str:
 
 def _inr(n: Any) -> str:
     try:
-        v = float(n or 0)
-    except (TypeError, ValueError):
-        v = 0.0
-    neg = v < 0
-    v = abs(v)
-    return ("-Rs." if neg else "Rs.") + f"{v:,.2f}"
+        from WEOS.factory.pdf_fonts import money_text
+
+        try:
+            v = float(n or 0)
+        except (TypeError, ValueError):
+            v = 0.0
+        if v < 0:
+            return "-" + money_text(abs(v)).lstrip()
+        return money_text(v)
+    except Exception:
+        try:
+            v = float(n or 0)
+        except (TypeError, ValueError):
+            v = 0.0
+        neg = v < 0
+        v = abs(v)
+        return ("-INR " if neg else "INR ") + f"{v:,.2f}"
 
 
 def _company_from_payload(payload: Mapping[str, Any]) -> dict[str, Any]:

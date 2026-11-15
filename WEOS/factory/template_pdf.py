@@ -46,6 +46,18 @@ def render_template_pdf(
                 branding["logoText"] = overlay["companyName"]
                 branding["footerName"] = overlay["companyName"]
             template["branding"] = branding
+            # Propagate company currency onto the payload for PDF money helpers.
+            if overlay.get("currency"):
+                payload = dict(payload)
+                payload["currency"] = overlay["currency"]
+                if isinstance(payload.get("company"), dict):
+                    payload["company"] = {**payload["company"], "currency": overlay["currency"]}
+                elif overlay.get("companyName") or overlay.get("gstNo"):
+                    payload["company"] = {
+                        "companyName": overlay.get("companyName"),
+                        "gstNo": overlay.get("gstNo"),
+                        "currency": overlay["currency"],
+                    }
     except Exception:
         pass
 

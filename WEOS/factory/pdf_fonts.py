@@ -1,4 +1,4 @@
-"""ReportLab fonts that can draw the Indian Rupee (₹) — Helvetica cannot.
+"""ReportLab fonts + safe currency prefixes (no tofu boxes).
 
 Cross-platform + defensive: this module MUST never raise. PDF export runs on
 Windows (dev) *and* Linux (Railway). Windows fonts (Nirmala / Segoe UI) do not
@@ -7,12 +7,12 @@ exist on the Linux server, so we search, in order:
   1. ``WEOS_RUPEE_FONT`` env var (explicit override — absolute path to a .ttf)
   2. a repo-bundled font under ``WEOS/assets/fonts/`` (ships with the app)
   3. common Linux system fonts (DejaVu / Liberation / Noto)
-  4. common Windows system fonts (Nirmala / Segoe / Arial Unicode)
+  4. common Windows system fonts (Nirmala / Arial / Segoe)
   5. reportlab's own bundled Vera TTF (always present wherever reportlab is)
 
-Whatever we register is used for *all* text. If the chosen face lacks the ₹
-glyph we still use it for text but print ``Rs.`` for currency instead of a
-tofu box. If nothing at all can be registered we fall back to Helvetica.
+Prefer a face that actually contains the active currency glyph (₹ for INR).
+If the chosen face lacks that glyph we still use it for text but print the ISO
+code (``INR`` / ``USD`` / …) for currency instead of a tofu box.
 """
 
 from __future__ import annotations
@@ -29,6 +29,8 @@ _REGISTERED = False
 _FACE = "Helvetica"  # fallback until register
 _FACE_BOLD = "Helvetica-Bold"
 _HAS_RUPEE = False
+_GLYPH_OK: set[int] = set()
+_ACTIVE_CURRENCY = "INR"
 
 
 def _bundled_font_dir() -> Path | None:
@@ -53,7 +55,6 @@ def _candidate_fonts() -> list[Path]:
     """Ordered, de-duplicated list of .ttf candidates that exist on this box."""
     out: list[Path] = []
 
-    # 1) Explicit override
     import os
 
     override = (os.environ.get("WEOS_RUPEE_FONT") or "").strip()
@@ -62,10 +63,8 @@ def _candidate_fonts() -> list[Path]:
         if p.is_file():
             out.append(p)
 
-    # 2) Repo-bundled fonts (cross-platform — ships with the app)
     bundled = _bundled_font_dir()
     if bundled and bundled.is_dir():
-        # Prefer files that clearly support ₹ / unicode first.
         preferred = (
             "DejaVuSans.ttf",
             "NotoSans-Regular.ttf",
@@ -82,7 +81,6 @@ def _candidate_fonts() -> list[Path]:
         except Exception:
             pass
 
-    # 3) System font roots (Linux first, then Windows, then mac)
     roots = [
         Path("/usr/share/fonts"),
         Path("/usr/local/share/fonts"),
@@ -95,23 +93,25 @@ def _candidate_fonts() -> list[Path]:
         Path.home() / "Library" / "Fonts",
         Path("/Library/Fonts"),
     ]
+    # Prefer faces known to include ₹ / wide Unicode before symbol-only fonts.
     names = (
-        # ₹-capable, cross-platform first
         "DejaVuSans.ttf",
         "dejavu-sans.ttf",
         "NotoSans-Regular.ttf",
         "NotoSansDevanagari-Regular.ttf",
         "LiberationSans-Regular.ttf",
-        # Windows
         "Nirmala.ttf",
         "NirmalaUI.ttf",
         "nirmala.ttf",
-        "seguisym.ttf",
-        "SegoeUISymbol.ttf",
-        "segoeui.ttf",
+        "arial.ttf",
+        "ARIAL.TTF",
         "arialuni.ttf",
         "ARIALUNI.TTF",
-        "arial.ttf",
+        "segoeui.ttf",
+        "SegoeUI.ttf",
+        # Symbol fonts last — often lack ₹ even when present on Windows
+        "seguisym.ttf",
+        "SegoeUISymbol.ttf",
     )
     for root in roots:
         try:
@@ -126,23 +126,22 @@ def _candidate_fonts() -> list[Path]:
                     out.append(p)
             except OSError:
                 continue
-        # Light recursive scan for the ₹-capable families
         for pat in (
             "**/DejaVuSans.ttf",
             "**/NotoSans-Regular.ttf",
             "**/NotoSansDevanagari-Regular.ttf",
             "**/LiberationSans-Regular.ttf",
             "**/Nirmala*.ttf",
+            "**/arial.ttf",
         ):
             try:
                 out.extend(root.glob(pat))
             except Exception:
                 pass
 
-    # 5) reportlab's own bundled TTF (Vera) — guaranteed to exist, but old (no ₹)
     rl_dir = _reportlab_font_dir()
     if rl_dir and rl_dir.is_dir():
-        for name in ("Vera.ttf", "DejaVuSans.ttf"):
+        for name in ("DejaVuSans.ttf", "Vera.ttf"):
             p = rl_dir / name
             try:
                 if p.is_file():
@@ -150,7 +149,6 @@ def _candidate_fonts() -> list[Path]:
             except OSError:
                 continue
 
-    # De-dupe, preserve order
     seen: set[str] = set()
     uniq: list[Path] = []
     for p in out:
@@ -165,107 +163,215 @@ def _candidate_fonts() -> list[Path]:
     return uniq
 
 
-def _font_has_rupee(font_name: str) -> bool:
-    """True when the registered TTF actually contains the ₹ glyph (U+20B9)."""
+def _font_codepoints(font_name: str) -> set[int]:
     try:
         from reportlab.pdfbase import pdfmetrics
 
         face = pdfmetrics.getFont(font_name).face
         char_map = getattr(face, "charToGlyph", None)
         if isinstance(char_map, dict):
-            return 0x20B9 in char_map
+            return {int(k) for k in char_map.keys() if isinstance(k, int)}
     except Exception:
         pass
-    # Unknown → assume no, so we safely print "Rs." instead of a tofu box.
-    return False
+    return set()
+
+
+def _font_has_codepoints(font_name: str, codepoints: tuple[int, ...]) -> bool:
+    if not codepoints:
+        return True
+    glyphs = _font_codepoints(font_name)
+    if not glyphs:
+        return False
+    return all(cp in glyphs for cp in codepoints)
+
+
+def _font_has_rupee(font_name: str) -> bool:
+    return _font_has_codepoints(font_name, (0x20B9,))
+
+
+def _try_register_bold(path: Path) -> str:
+    global _FACE_BOLD
+    try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        stem = path.name
+        bold_names: list[str] = []
+        low = stem.lower()
+        if "dejavusans" in low:
+            bold_names = ["DejaVuSans-Bold.ttf"]
+        elif "notosans" in low:
+            bold_names = ["NotoSans-Bold.ttf"]
+        elif "liberationsans" in low:
+            bold_names = ["LiberationSans-Bold.ttf"]
+        elif "nirmala" in low:
+            bold_names = ["Nirmala Bold.ttf", "NirmalaB.ttf"]
+        elif "segoeui" in low and "sym" not in low:
+            bold_names = ["segoeuib.ttf"]
+        elif "arial" in low and "uni" not in low:
+            bold_names = ["arialbd.ttf"]
+        elif "vera" in low:
+            bold_names = ["VeraBd.ttf"]
+        for bn in bold_names:
+            bp = path.with_name(bn)
+            if bp.is_file():
+                pdfmetrics.registerFont(TTFont("WEOSRupee-Bold", str(bp)))
+                _FACE_BOLD = "WEOSRupee-Bold"
+                return _FACE_BOLD
+    except Exception as exc:
+        _log.debug("bold font register skipped: %s", exc)
+    _FACE_BOLD = _FACE
+    return _FACE_BOLD
 
 
 @lru_cache(maxsize=1)
 def ensure_rupee_font() -> tuple[str, bool]:
     """Register a Unicode TTF if available. Returns (fontName, supports_rupee).
 
-    Never raises — always returns a usable ReportLab font name.
+    Prefer a face that contains ₹. Never raises — always returns a usable font.
     """
-    global _REGISTERED, _FACE, _FACE_BOLD, _HAS_RUPEE
+    global _REGISTERED, _FACE, _FACE_BOLD, _HAS_RUPEE, _GLYPH_OK
     if _REGISTERED:
         return _FACE, _HAS_RUPEE
     _REGISTERED = True
     try:
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
-    except Exception as exc:  # reportlab missing/broken — Helvetica still draws text
+    except Exception as exc:
         _log.warning("reportlab TTF support unavailable (%s); using Helvetica", exc)
         _FACE, _FACE_BOLD, _HAS_RUPEE = "Helvetica", "Helvetica-Bold", False
+        _GLYPH_OK = set()
         return _FACE, _HAS_RUPEE
+
+    fallback_face: str | None = None
+    fallback_path: Path | None = None
+    fallback_glyphs: set[int] = set()
 
     for path in _candidate_fonts():
         try:
-            pdfmetrics.registerFont(TTFont("WEOSRupee", str(path)))
+            # Unique temp name per attempt so a failed ₹ face can be skipped
+            tmp_name = "WEOSRupeeTry"
+            if "WEOSRupeeTry" in pdfmetrics.getRegisteredFontNames():
+                # overwrite by re-registering same name
+                pass
+            pdfmetrics.registerFont(TTFont(tmp_name, str(path)))
         except Exception as exc:
             _log.debug("font register failed for %s: %s", path, exc)
             continue
-        _FACE = "WEOSRupee"
-        _HAS_RUPEE = _font_has_rupee("WEOSRupee")
-        # Try to register a matching bold variant for nicer headers.
-        _FACE_BOLD = _FACE
+        glyphs = _font_codepoints(tmp_name)
+        has_r = 0x20B9 in glyphs
+        if has_r:
+            # Promote to canonical name
+            try:
+                pdfmetrics.registerFont(TTFont("WEOSRupee", str(path)))
+            except Exception:
+                _FACE = tmp_name
+            else:
+                _FACE = "WEOSRupee"
+            _HAS_RUPEE = True
+            _GLYPH_OK = glyphs
+            _try_register_bold(path)
+            _log.info(
+                "PDF font registered: %s (rupee_glyph=%s, bold=%s)",
+                path.name,
+                True,
+                _FACE_BOLD,
+            )
+            return _FACE, _HAS_RUPEE
+        if fallback_face is None:
+            fallback_face = tmp_name
+            fallback_path = path
+            fallback_glyphs = glyphs
+
+    if fallback_path is not None:
         try:
-            stem = path.name
-            bold_names = []
-            low = stem.lower()
-            if "dejavusans" in low:
-                bold_names = ["DejaVuSans-Bold.ttf"]
-            elif "notosans" in low:
-                bold_names = ["NotoSans-Bold.ttf"]
-            elif "liberationsans" in low:
-                bold_names = ["LiberationSans-Bold.ttf"]
-            elif "nirmala" in low:
-                bold_names = ["Nirmala Bold.ttf", "NirmalaB.ttf"]
-            elif "segoeui" in low:
-                bold_names = ["segoeuib.ttf"]
-            elif "arial" in low:
-                bold_names = ["arialbd.ttf"]
-            elif "vera" in low:
-                bold_names = ["VeraBd.ttf"]
-            for bn in bold_names:
-                bp = path.with_name(bn)
-                if bp.is_file():
-                    pdfmetrics.registerFont(TTFont("WEOSRupee-Bold", str(bp)))
-                    _FACE_BOLD = "WEOSRupee-Bold"
-                    break
-        except Exception as exc:
-            _log.debug("bold font register skipped: %s", exc)
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+
+            pdfmetrics.registerFont(TTFont("WEOSRupee", str(fallback_path)))
+            _FACE = "WEOSRupee"
+        except Exception:
+            _FACE = fallback_face or "Helvetica"
+        _HAS_RUPEE = False
+        _GLYPH_OK = fallback_glyphs
+        if fallback_path:
+            _try_register_bold(fallback_path)
         _log.info(
-            "PDF font registered: %s (rupee_glyph=%s, bold=%s)", path.name, _HAS_RUPEE, _FACE_BOLD
+            "PDF font registered: %s (rupee_glyph=%s, bold=%s) — currency uses ISO fallback",
+            fallback_path.name if fallback_path else "?",
+            False,
+            _FACE_BOLD,
         )
         return _FACE, _HAS_RUPEE
 
-    _log.warning("No unicode TTF found on this host; using Helvetica + 'Rs.' currency prefix")
+    _log.warning("No unicode TTF found on this host; using Helvetica + ISO currency prefix")
     _FACE, _FACE_BOLD, _HAS_RUPEE = "Helvetica", "Helvetica-Bold", False
+    _GLYPH_OK = set()
     return _FACE, _HAS_RUPEE
+
+
+def set_active_currency(code: Any = None) -> str:
+    """Remember currency for this PDF render (company / project setting)."""
+    global _ACTIVE_CURRENCY
+    from WEOS.factory.currency import normalize_currency_code
+
+    _ACTIVE_CURRENCY = normalize_currency_code(code)
+    return _ACTIVE_CURRENCY
+
+
+def active_currency() -> str:
+    return _ACTIVE_CURRENCY or "INR"
+
+
+def _glyph_ok_for_currency(code: Any = None) -> bool:
+    from WEOS.factory.currency import currency_meta
+
+    ensure_rupee_font()
+    _c, _sym, _iso, cps = currency_meta(code or active_currency())
+    if not cps:
+        return True
+    if not _GLYPH_OK:
+        # Helvetica / unknown — only ASCII-safe codepoints
+        return all(cp < 0x100 for cp in cps)
+    return all(cp in _GLYPH_OK for cp in cps)
 
 
 def rupee_prefix() -> str:
     """Currency prefix that will not render as a tofu box in the active PDF font."""
+    return currency_prefix_safe(active_currency())
+
+
+def currency_prefix_safe(code: Any = None) -> str:
     try:
-        _, ok = ensure_rupee_font()
-        return _RUPEE if ok else "Rs."
+        from WEOS.factory.currency import currency_prefix
+
+        ensure_rupee_font()
+        c = code or active_currency()
+        return currency_prefix(c, glyph_ok=_glyph_ok_for_currency(c))
     except Exception:
-        return "Rs."
+        return "INR"
 
 
-def money_text(v: Any, *, decimals: int = 2) -> str:
-    """Always exactly 2 decimal places for rupee amounts (decimals arg kept for API)."""
-    prefix = rupee_prefix()
+def money_text(v: Any, *, decimals: int = 2, currency: Any = None) -> str:
+    """Always exactly 2 decimal places; safe currency prefix (never tofu)."""
     try:
-        from WEOS.factory.fmt import money_n
+        from WEOS.factory.currency import format_money
 
-        n = money_n(v)
-        places = 2 if decimals is None else max(int(decimals), 0)
-        if places != 2:
-            return f"{prefix} {n:,.{places}f}"
-        return f"{prefix} {n:,.2f}"
-    except (TypeError, ValueError):
-        return f"{prefix} \u2014"
+        ensure_rupee_font()
+        c = currency if currency not in (None, "") else active_currency()
+        return format_money(
+            v,
+            c,
+            glyph_ok=_glyph_ok_for_currency(c),
+            decimals=decimals,
+        )
+    except Exception:
+        try:
+            from WEOS.factory.fmt import money_n
+
+            return f"INR {money_n(v):,.2f}"
+        except Exception:
+            return "INR \u2014"
 
 
 def set_font(c, size: float, *, bold: bool = False) -> str:
@@ -286,14 +392,13 @@ def set_font(c, size: float, *, bold: bool = False) -> str:
     try:
         c.setFont(name, size)
     except Exception:
-        # Any registration mismatch → guaranteed built-in font.
         name = "Helvetica-Bold" if bold else "Helvetica"
         c.setFont(name, size)
     return name
 
 
-def rate_text(rate: Any, unit: str = "sqft") -> str:
-    prefix = rupee_prefix()
+def rate_text(rate: Any, unit: str = "sqft", *, currency: Any = None) -> str:
+    prefix = currency_prefix_safe(currency)
     try:
         from WEOS.factory.fmt import money_n
 

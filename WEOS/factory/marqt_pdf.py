@@ -1072,9 +1072,19 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     from reportlab.pdfgen import canvas
 
     from WEOS.factory.line_kind import is_railing_cart_line, line_quote_group, sort_lines_by_quote_group
-    from WEOS.factory.pdf_fonts import ensure_rupee_font, money_text, rupee_prefix, set_font
+    from WEOS.factory.currency import resolve_currency
+    from WEOS.factory.pdf_fonts import ensure_rupee_font, money_text, rupee_prefix, set_active_currency, set_font
 
-    ensure_rupee_font()  # register before any drawString with ₹
+    ensure_rupee_font()  # register before any drawString with currency glyphs
+    set_active_currency(
+        resolve_currency(
+            payload,
+            payload.get("company"),
+            payload.get("branding") or template.get("branding"),
+            (payload.get("price") or {}),
+            default="INR",
+        )
+    )
 
     buf = io.BytesIO()
     page = A4

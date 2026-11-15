@@ -393,6 +393,7 @@ class ProductAdminBody(BaseModel):
 
 
 class CompanyBody(BaseModel):
+    model_config = {"extra": "allow"}
     companyName: str | None = None
     address: str | None = None
     website: str | None = None
@@ -406,6 +407,8 @@ class CompanyBody(BaseModel):
     bankDetails: str | None = None
     cin: str | None = None
     terms: str | None = None
+    pdfBrand: str | None = None
+    currency: str | None = None
     deletePin: str | None = None
     loginPin: str | None = None
     clearDeletePin: bool = False

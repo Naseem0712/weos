@@ -867,9 +867,14 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
 
     def inr(n: Any) -> str:
         try:
-            return f"₹{float(n or 0):,.2f}"
-        except (TypeError, ValueError):
-            return "₹—"
+            from WEOS.factory.pdf_fonts import money_text
+
+            return money_text(n)
+        except Exception:
+            try:
+                return f"INR {float(n or 0):,.2f}"
+            except (TypeError, ValueError):
+                return "INR —"
 
     def esc(x: Any) -> str:
         return html.escape("" if x is None else str(x))
