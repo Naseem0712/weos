@@ -85,6 +85,41 @@ def _coating_per_m(sec: Mapping[str, Any] | None) -> float:
     return c
 
 
+def _section_weight_kg_per_m(sec: Mapping[str, Any] | None) -> float:
+    if not isinstance(sec, Mapping):
+        return 0.0
+    s = normalize_section(sec)
+    kg_m = _f(s.get("weightKgPerM"))
+    if kg_m > 0:
+        return kg_m
+    # Some catalogues store kg/ft
+    unit = _str(s.get("weightUnit") or "m").lower()
+    raw = _f(s.get("weight") or s.get("kgPerFt") or s.get("weightKgPerFt"))
+    if raw <= 0:
+        return 0.0
+    if unit in ("ft", "rft"):
+        return raw / 0.3048
+    return raw
+
+
+def _section_stock_label(sec: Mapping[str, Any] | None, *, fallback_std_m: float | None = None) -> str:
+    if not isinstance(sec, Mapping):
+        return f"{fallback_std_m:g} m stock" if fallback_std_m else "—"
+    s = normalize_section(sec)
+    mm = _f(s.get("stdLengthMm"))
+    if mm > 0:
+        return f"{mm:g} mm stock"
+    std = s.get("stdLength")
+    unit = _str(s.get("stdLengthUnit") or "rft").lower()
+    if isinstance(std, (int, float)) and float(std) > 0:
+        return f"{float(std):g} {unit} stock"
+    if _str(std):
+        return f"{_str(std)} {unit} stock".strip()
+    if fallback_std_m and fallback_std_m > 0:
+        return f"{fallback_std_m:g} m stock"
+    return "—"
+
+
 def _pick_std_m(costing: Mapping[str, Any] | None) -> float:
     c = costing if isinstance(costing, Mapping) else {}
     stds = c.get("stdLengthsM") or CASEMENT_STD_LENGTHS_M
@@ -332,11 +367,14 @@ def derive_casement_profile_cuts(
             cuts_m.append(length_m * (qty - int(qty)))
         amount = total_m * (rate_m + coat_m)
         display = _str(sec.get("name")) or name
+        kg_m = _section_weight_kg_per_m(sec)
+        pcs = int(round(qty)) if abs(qty - round(qty)) < 1e-6 else round(qty, 4)
         lines.append({
             "category": "profile",
             "name": display,
             "use": use,
             "qty": round(qty, 4),
+            "pcs": pcs,
             "lengthM": round(length_m, 4),
             "metres": round(total_m, 4),
             "unit": "RM",
@@ -344,6 +382,10 @@ def derive_casement_profile_cuts(
             "amount": round(amount, 2),
             "catalogueName": display,
             "remarks": remarks,
+            "sides": _str(remarks) or use.replace("_", " "),
+            "stock": _section_stock_label(sec),
+            "weightKgPerM": round(kg_m, 4) if kg_m else None,
+            "weightKg": round(kg_m * total_m, 3) if kg_m else None,
         })
 
     # Outer frame — always used
@@ -674,16 +716,25 @@ def compute_sliding_design_cost(
         rate_m = _section_rate_per_m(sec) + _coating_per_m(sec)
         amt = Lm * q * rate_m
         profile_amt += amt
+        kg_m = _section_weight_kg_per_m(sec)
+        role = _str(tf.get("role"))
         profile_lines.append({
             "category": "profile",
-            "name": _str(sec.get("name")) or _str(tf.get("role")) or "Track",
-            "catalogueName": _str(sec.get("name")) or _str(tf.get("role")),
+            "name": _str(sec.get("name")) or role or "Track",
+            "catalogueName": _str(sec.get("name")) or role,
             "qty": q,
+            "pcs": int(round(q)) if abs(q - round(q)) < 1e-6 else round(q, 4),
             "lengthM": round(Lm, 4),
             "metres": round(Lm * q, 4),
+            "unit": "RM",
             "unitRate": round(rate_m, 4),
             "amount": round(amt, 2),
             "use": "track",
+            "sides": role.replace("_", " ") or "track",
+            "stock": _section_stock_label(sec, fallback_std_m=5.85),
+            "weightKgPerM": round(kg_m, 4) if kg_m else None,
+            "weightKg": round(kg_m * Lm * q, 3) if kg_m else None,
+            "remarks": role,
         })
 
     # Member cuts

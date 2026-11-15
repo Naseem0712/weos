@@ -84,13 +84,29 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
     materials: list[dict[str, Any]] = []
     hardware: list[dict[str, Any]] = []
 
+    waste = design.get("wastage") if isinstance(design.get("wastage"), Mapping) else {}
+    waste_m = _f(waste.get("wastageMetres"))
+    waste_pct = _f(waste.get("wastagePercent"))
+    stock_std = waste.get("stdLengthM")
+    line_qty = max(_f(line.get("qty") or line.get("quantity"), 1.0), 1.0)
+
     for p in design.get("profiles") or []:
+        pcs = p.get("pcs")
+        if pcs is None:
+            pcs = p.get("qty")
         materials.append({
             "kind": "profile",
             "name": _str(p.get("catalogueName") or p.get("name")),
             "qty": p.get("qty"),
+            "pcs": pcs,
             "unit": p.get("unit") or "RM",
             "lengthM": p.get("lengthM") or p.get("metres"),
+            "sides": _str(p.get("sides") or p.get("remarks") or p.get("use") or ""),
+            "stock": _str(p.get("stock")) or (f"{_f(stock_std):g} m stock" if stock_std else ""),
+            "weightKg": p.get("weightKg"),
+            "weightKgPerM": p.get("weightKgPerM"),
+            "wastageM": waste_m if waste_m > 0 else None,
+            "wastagePercent": waste_pct if waste_pct > 0 else None,
             "remarks": p.get("remarks") or p.get("use") or "",
         })
     # Also surface setup section names when design engine stubbed
@@ -101,11 +117,17 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
             for sec in flatten_setup_sections(product["setup"]):
                 nm = _str(sec.get("name"))
                 if nm:
+                    std_mm = _f(sec.get("stdLengthMm"))
+                    stock = f"{std_mm:g} mm stock" if std_mm else _str(sec.get("stdLength") or "")
                     materials.append({
                         "kind": "profile",
                         "name": nm,
                         "qty": 1,
+                        "pcs": 1,
                         "unit": "section",
+                        "sides": _str(sec.get("use")),
+                        "stock": stock or "—",
+                        "weightKgPerM": sec.get("weightKgPerM"),
                         "remarks": _str(sec.get("use")),
                     })
         except Exception:
@@ -116,6 +138,7 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
             "kind": "hardware",
             "name": _str(h.get("catalogueName") or h.get("name")),
             "qty": h.get("qty"),
+            "pcs": h.get("qty"),
             "unit": h.get("unit") or "PC",
             "remarks": h.get("remarks") or "",
         })
@@ -128,6 +151,7 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
                     "kind": "hardware",
                     "name": nm,
                     "qty": h.get("qty") or h.get("quantity"),
+                    "pcs": h.get("qty") or h.get("quantity"),
                     "unit": h.get("unit") or "PC",
                     "remarks": "",
                 })
@@ -138,6 +162,7 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
         "kind": "glass",
         "name": _str(g.get("catalogueName") or g.get("name") or glass_name),
         "qty": 1,
+        "pcs": 1,
         "unit": "sft",
         "areaSft": g.get("areaSft"),
         "remarks": "",
@@ -150,12 +175,16 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
             continue
         series = _str(p.get("profileSeries") or p.get("sectionSeries") or p.get("fixedSeries"))
         if series:
+            side = _str(p.get("side"))
             materials.append({
                 "kind": "profile",
                 "name": series,
                 "qty": 1,
+                "pcs": 1,
                 "unit": "fix",
-                "remarks": f"{_str(p.get('side'))} fix {_f(p.get('sizeMm'))} mm",
+                "sides": f"{side} fix" if side else "fix",
+                "stock": "—",
+                "remarks": f"{side} fix {_f(p.get('sizeMm'))} mm",
             })
 
     return {
@@ -165,12 +194,15 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
         "productId": pid,
         "width": line.get("width"),
         "height": line.get("height"),
-        "qty": line.get("qty") or 1,
+        "qty": line_qty,
         "colour": _colour_label(line),
         "location": _str(line.get("locationName") or line.get("positionName") or ""),
         "materials": materials,
         "hardware": hardware,
         "glass": glass_row,
+        "wastageM": waste_m if waste_m > 0 else None,
+        "wastagePercent": waste_pct if waste_pct > 0 else None,
+        "stockStdM": stock_std,
         "costEngine": design.get("costEngine"),
         "designCost": design.get("total") if design.get("ok") else None,
     }
@@ -191,12 +223,36 @@ def build_quote_materials_list(
     hw_roll: dict[str, dict[str, Any]] = {}
     glass_roll: dict[str, dict[str, Any]] = {}
     for row in rows:
+        lq = _f(row.get("qty"), 1)
         for m in row.get("materials") or []:
             key = _str(m.get("name")).lower()
             if not key:
                 continue
-            slot = mat_roll.setdefault(key, {"name": m["name"], "qty": 0.0, "unit": m.get("unit"), "remarks": []})
-            slot["qty"] = _f(slot["qty"]) + _f(m.get("qty") or m.get("lengthM") or 1) * _f(row.get("qty"), 1)
+            slot = mat_roll.setdefault(
+                key,
+                {
+                    "name": m["name"],
+                    "qty": 0.0,
+                    "unit": m.get("unit"),
+                    "sides": set(),
+                    "stock": _str(m.get("stock")),
+                    "weightKg": 0.0,
+                    "wastageM": 0.0,
+                    "remarks": [],
+                },
+            )
+            pcs = m.get("pcs")
+            if pcs is None:
+                pcs = m.get("qty") or m.get("lengthM") or 1
+            slot["qty"] = _f(slot["qty"]) + _f(pcs) * lq
+            if m.get("sides"):
+                slot["sides"].add(_str(m.get("sides")))
+            if m.get("stock") and not slot.get("stock"):
+                slot["stock"] = _str(m.get("stock"))
+            if m.get("weightKg") is not None:
+                slot["weightKg"] = _f(slot.get("weightKg")) + _f(m.get("weightKg")) * lq
+            if m.get("wastageM") is not None:
+                slot["wastageM"] = _f(slot.get("wastageM")) + _f(m.get("wastageM")) * lq
             if m.get("remarks"):
                 slot["remarks"].append(str(m["remarks"]))
         for h in row.get("hardware") or []:
@@ -204,12 +260,21 @@ def build_quote_materials_list(
             if not key:
                 continue
             slot = hw_roll.setdefault(key, {"name": h["name"], "qty": 0.0, "unit": h.get("unit") or "PC"})
-            slot["qty"] = _f(slot["qty"]) + _f(h.get("qty")) * _f(row.get("qty"), 1)
+            slot["qty"] = _f(slot["qty"]) + _f(h.get("qty")) * lq
         g = row.get("glass") or {}
         gname = _str(g.get("name"))
         if gname and gname != "—":
             slot = glass_roll.setdefault(gname.lower(), {"name": gname, "areaSft": 0.0, "unit": "sft"})
-            slot["areaSft"] = _f(slot["areaSft"]) + _f(g.get("areaSft")) * _f(row.get("qty"), 1)
+            slot["areaSft"] = _f(slot["areaSft"]) + _f(g.get("areaSft")) * lq
+
+    for slot in mat_roll.values():
+        sides = slot.get("sides")
+        if isinstance(sides, set):
+            slot["sides"] = ", ".join(sorted(sides)) if sides else ""
+        if not slot.get("weightKg"):
+            slot["weightKg"] = None
+        if not slot.get("wastageM"):
+            slot["wastageM"] = None
 
     # Dominant colour from lines if not provided
     colours = sorted({_str(r.get("colour")) for r in rows if r.get("colour") and r.get("colour") != "—"})
@@ -235,25 +300,55 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
         .replace(">", "&gt;")
         .replace('"', "&quot;")
     )
+    def _mat_bits(m: Mapping[str, Any]) -> str:
+        bits: list[str] = []
+        pcs = m.get("pcs")
+        if pcs is None:
+            pcs = m.get("qty")
+        if pcs is not None and pcs != "":
+            bits.append(f"{esc(pcs)} pcs")
+        if m.get("lengthM") is not None:
+            bits.append(f"{esc(round(_f(m.get('lengthM')), 3))} m cut")
+        if m.get("sides"):
+            bits.append(f"sides: {esc(m.get('sides'))}")
+        if m.get("stock"):
+            bits.append(f"stock: {esc(m.get('stock'))}")
+        if m.get("weightKg") is not None:
+            bits.append(f"{esc(round(_f(m.get('weightKg')), 3))} kg")
+        elif m.get("weightKgPerM") is not None:
+            bits.append(f"{esc(round(_f(m.get('weightKgPerM')), 3))} kg/m")
+        if m.get("wastageM") is not None:
+            wp = m.get("wastagePercent")
+            bits.append(
+                f"wastage {esc(round(_f(m.get('wastageM')), 3))} m"
+                + (f" ({esc(wp)}%)" if wp is not None else "")
+            )
+        return " · ".join(bits)
+
     rows_html = []
     for ln in pack.get("lines") or []:
         mats = "".join(
-            f"<li>{esc(m.get('name'))}"
-            f"{(' · ' + esc(m.get('qty')) + ' ' + esc(m.get('unit'))) if m.get('qty') is not None else ''}"
-            f"{(' <span class=muted>(' + esc(m.get('remarks')) + ')</span>') if m.get('remarks') else ''}"
+            f"<li><strong>{esc(m.get('name'))}</strong>"
+            f"{(' — ' + _mat_bits(m)) if _mat_bits(m) else ''}"
             f"</li>"
             for m in (ln.get("materials") or [])
         ) or "<li class=muted>—</li>"
         hws = "".join(
-            f"<li>{esc(h.get('name'))} · {esc(h.get('qty'))} {esc(h.get('unit'))}</li>"
+            f"<li>{esc(h.get('name'))} · {esc(h.get('pcs') if h.get('pcs') is not None else h.get('qty'))} {esc(h.get('unit') or 'PC')}</li>"
             for h in (ln.get("hardware") or [])
         ) or "<li class=muted>—</li>"
         g = ln.get("glass") or {}
+        waste_note = ""
+        if ln.get("wastageM") is not None:
+            waste_note = (
+                f" · wastage {esc(round(_f(ln.get('wastageM')), 3))} m"
+                + (f" ({esc(ln.get('wastagePercent'))}%)" if ln.get("wastagePercent") is not None else "")
+            )
         rows_html.append(
             f"""<section class="line">
   <h3>{esc(ln.get('serial') or '')} {esc(ln.get('product'))}
     <span class="muted">{esc(ln.get('width'))}×{esc(ln.get('height'))} mm · qty {esc(ln.get('qty'))}
-    · {esc(ln.get('colour'))}{(' · ' + esc(ln.get('location'))) if ln.get('location') else ''}</span></h3>
+    · {esc(ln.get('colour'))}{(' · ' + esc(ln.get('location'))) if ln.get('location') else ''}{waste_note}</span></h3>
   <div class="cols">
     <div><h4>Materials</h4><ul>{mats}</ul></div>
     <div><h4>Hardware</h4><ul>{hws}</ul></div>
@@ -265,11 +360,21 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
 
     def summary_table(title: str, items: Sequence[Mapping[str, Any]], qty_key: str = "qty") -> str:
         body = "".join(
-            f"<tr><td>{esc(it.get('name'))}</td><td class=num>{esc(round(_f(it.get(qty_key)), 3) if it.get(qty_key) is not None else '')}</td>"
-            f"<td>{esc(it.get('unit'))}</td></tr>"
+            f"<tr><td>{esc(it.get('name'))}</td>"
+            f"<td class=num>{esc(round(_f(it.get(qty_key)), 3) if it.get(qty_key) is not None else '')}</td>"
+            f"<td>{esc(it.get('unit'))}</td>"
+            f"<td>{esc(it.get('sides') or '')}</td>"
+            f"<td>{esc(it.get('stock') or '')}</td>"
+            f"<td class=num>{esc(round(_f(it.get('weightKg')), 3) if it.get('weightKg') is not None else '')}</td>"
+            f"<td class=num>{esc(round(_f(it.get('wastageM')), 3) if it.get('wastageM') is not None else '')}</td></tr>"
             for it in items
-        ) or "<tr><td colspan=3 class=muted>None</td></tr>"
-        return f"<h2>{esc(title)}</h2><table><thead><tr><th>Name</th><th>Qty</th><th>Unit</th></tr></thead><tbody>{body}</tbody></table>"
+        ) or "<tr><td colspan=7 class=muted>None</td></tr>"
+        return (
+            f"<h2>{esc(title)}</h2><table><thead><tr>"
+            f"<th>Name</th><th>Pcs / qty</th><th>Unit</th><th>Sides</th>"
+            f"<th>Section stock</th><th>Weight kg</th><th>Wastage m</th>"
+            f"</tr></thead><tbody>{body}</tbody></table>"
+        )
 
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"/>

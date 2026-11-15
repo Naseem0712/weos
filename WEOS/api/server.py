@@ -3203,7 +3203,11 @@ def api_quote_live(body: LivePriceRequest) -> dict[str, Any]:
 
 @app.post("/api/quote/materials-list")
 async def api_quote_materials_list(request: Request) -> HTMLResponse:
-    """Printable materials + hardware list for products already on the quote."""
+    """Printable materials + hardware list for products already on the quote.
+
+    Scope is quote membership only — callers must pass cart lines that were
+    added via Add to cart (never unsaved canvas / form draft).
+    """
     from WEOS.factory.materials_list import build_quote_materials_list, materials_list_html
 
     try:
@@ -3215,6 +3219,10 @@ async def api_quote_materials_list(request: Request) -> HTMLResponse:
     lines = body.get("lines") or body.get("items") or []
     if not isinstance(lines, list):
         lines = []
+    # Drop empty / cancelled stubs — never invent materials from a draft.
+    lines = [ln for ln in lines if isinstance(ln, dict) and not ln.get("cancelled")]
+    if not lines:
+        raise HTTPException(status_code=400, detail="Add products to the quote first (Add to cart)")
     pack = build_quote_materials_list(
         lines,
         customer=body.get("customer") or body.get("customerName"),

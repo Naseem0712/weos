@@ -9,7 +9,7 @@
   --bg:#e8e3d8; --ink:#141410; --muted:#5c584f; --panel:rgba(255,252,247,.94);
   --line:rgba(20,20,16,.12); --green:#0a5a48; --green2:#147a62; --copper:#b45324;
   --card:#fffdf9; --shadow:0 10px 40px rgba(20,20,16,.06); --radius:14px;
-  --nav:72px; --logo-w:168px; --side:200px; --cart-inspector:300px;
+  --nav:72px; --logo-w:168px; --side:200px; --cart-inspector:328px;
   --stage-paper:#f3f5f7; --stage-frame:#f3f5f7; --stage-ink:#1b2a25;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --serif: Georgia, "Palatino Linotype", Palatino, "Times New Roman", Times, serif;
@@ -267,10 +267,134 @@ body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
 #view-cart .cart-inspector.cart-tools::-webkit-scrollbar-track{background:#e4e0d6}
 #view-cart .cart-inspector.cart-tools::-webkit-scrollbar-thumb{background:#5c6b74;border-radius:8px;border:2px solid #e4e0d6}
 #view-cart .cart-inspector .setup-summary{
-  margin-bottom:.45rem;padding:.35rem .45rem;font-size:.78rem;gap:.35rem .5rem
+  margin-bottom:.45rem;padding:.4rem .5rem;font-size:.78rem;gap:.3rem .4rem;
+  display:grid;grid-template-columns:auto 1fr;align-items:center
 }
+#view-cart .cart-inspector .setup-summary > strong{grid-column:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#view-cart .cart-inspector .setup-summary > .btn{
+  grid-column:1 / -1;width:100%;justify-content:center;text-align:center;padding:.28rem .45rem;font-size:.72rem;min-height:28px
+}
+#view-cart .cart-inspector .inspector-sticky{
+  position:sticky;top:0;z-index:6;display:flex;flex-direction:column;gap:.4rem;
+  margin:0 0 .55rem;padding:.5rem .55rem;border:1px solid var(--line);border-radius:10px;
+  background:rgba(255,252,247,.98);box-shadow:0 6px 18px rgba(20,20,16,.1);backdrop-filter:blur(6px)
+}
+#view-cart .cart-inspector .inspector-sticky .insp-sticky-loc{min-width:0}
+#view-cart .cart-inspector .inspector-sticky .insp-sticky-loc input{width:100%}
+#view-cart .cart-inspector .insp-sticky-act{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.35rem .45rem;align-items:center
+}
+#view-cart .cart-inspector .insp-sticky-sell{min-width:0}
+#view-cart .cart-inspector .insp-sticky-sell .l{margin:0 0 .05rem}
+#view-cart .cart-inspector .insp-sticky-sell strong{
+  display:block;font-family:var(--serif);font-size:1.12rem;font-weight:700;line-height:1.15;
+  font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+#view-cart .cart-inspector .insp-sticky-act #btnAddLine{
+  justify-self:stretch;min-width:7.5rem;padding:.42rem .7rem;font-size:.78rem;text-align:center
+}
+#view-cart .cart-inspector .insp-sticky-act #btnAddAsNew{grid-column:1 / -1;width:100%;justify-content:center}
+#view-cart .cart-inspector .insp-fields{display:flex;flex-direction:column;gap:.5rem}
+#view-cart .cart-inspector .insp-fields > .row,
+#view-cart .cart-inspector #windowCartTools > .row,
+#view-cart .cart-inspector #windowCartTools > div > .row{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.4rem .5rem;align-items:end;margin-top:0!important
+}
+#view-cart .cart-inspector .row > div,
+#view-cart .cart-inspector .row > label,
+#view-cart .cart-inspector .row > .grow{
+  min-width:0;width:auto;max-width:100%
+}
+#view-cart .cart-inspector .row > .grow{grid-column:1 / -1}
+#view-cart .cart-inspector .row > .btn,
+#view-cart .cart-inspector .row > button.ghost{grid-column:1 / -1;justify-self:start}
+#view-cart .cart-inspector .row input:not([type=checkbox]):not([type=radio]):not([type=range]),
+#view-cart .cart-inspector .row select,
+#view-cart .cart-inspector .row textarea{
+  width:100%!important;max-width:100%;min-width:0;box-sizing:border-box
+}
+#view-cart .cart-inspector #sharedMaterialRow > div,
+#view-cart .cart-inspector #wrapLineGlass,
+#view-cart .cart-inspector #wrapSeries,
+#view-cart .cart-inspector #wrapLineHandle,
+#view-cart .cart-inspector #wrapFixSeries,
+#view-cart .cart-inspector #wrapTrack,
+#view-cart .cart-inspector #wrapOpening{grid-column:1 / -1}
+#view-cart .cart-inspector #wrapCurvedTop{
+  grid-column:1 / -1;display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;min-height:2rem
+}
+#view-cart .cart-inspector #wrapMeshChk{
+  grid-column:1;align-self:center;margin:0;min-height:2.1rem
+}
+#view-cart .cart-inspector #partChips{grid-column:1 / -1;min-height:1.5rem}
+#view-cart .cart-inspector #btnAddPart{grid-column:1 / -1;margin-top:0!important;justify-self:start}
+#view-cart .cart-inspector #wrapLineHandle > div,
+#view-cart .cart-inspector #wrapLineGlass > div,
+#view-cart .cart-inspector #sharedMaterialRow .grow > div{
+  display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem;align-items:end
+}
+#view-cart .cart-inspector #wrapLineHandle input{grid-column:1 / -1}
+#view-cart .cart-inspector #wrapLineGlass > div > .btn,
+#view-cart .cart-inspector #sharedMaterialRow .btn{grid-column:1 / -1;justify-self:start}
+#view-cart .cart-inspector #handleHint,
+#view-cart .cart-inspector #meshHint{grid-column:1 / -1;min-width:0!important;margin:0}
+#view-cart .cart-inspector #wrapSeriesDesigns{
+  display:grid!important;grid-template-columns:1fr;gap:.4rem;align-items:end;margin-top:0!important
+}
+#view-cart .cart-inspector #wrapSeriesDesigns > .grow,
+#view-cart .cart-inspector #wrapSeriesDesigns > div{min-width:0;width:100%}
+#view-cart .cart-inspector #wrapSeriesDesigns input,
+#view-cart .cart-inspector #wrapSeriesDesigns select{width:100%!important}
+#view-cart .cart-inspector #wrapSeriesDesigns .insp-saved-actions{
+  display:flex;flex-wrap:wrap;gap:.35rem;width:100%
+}
+#view-cart .cart-inspector #wrapSeriesDesigns .insp-saved-actions .btn{flex:1 1 auto;justify-content:center;min-width:4.5rem}
 #view-cart .cart-inspector .livebox{padding:.55rem .65rem;margin-top:.45rem}
-#view-cart .cart-inspector .livebox .big{font-size:1.2rem}
+#view-cart .cart-inspector .livebox .big{font-size:1.15rem}
+#view-cart .cart-inspector .livebox .row2{display:grid;grid-template-columns:1fr 1fr;gap:.4rem .5rem;margin-top:.4rem}
+#view-cart .cart-inspector .livebox .row2 .kpi{min-width:0}
+#view-cart .cart-inspector .livebox .row2 .kpi .big{font-size:1.05rem}
+#view-cart .cart-inspector .livebox .live-actions{
+  display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin-top:.45rem
+}
+#view-cart .cart-inspector .livebox .live-actions #liveMargin{flex:1 1 100%;min-width:0;font-size:.72rem;line-height:1.35}
+#view-cart .cart-inspector .bulk-sizes-box{padding:.5rem .55rem}
+#view-cart .cart-inspector .bulk-sizes-box .bulk-sizes-actions{
+  display:flex;flex-wrap:wrap;gap:.35rem;margin:.4rem 0 .35rem
+}
+#view-cart .cart-inspector .bulk-sizes-box .bulk-sizes-actions .btn{flex:1 1 auto;justify-content:center}
+#view-cart .cart-inspector .bulk-sizes-box .bulk-table-wrap{overflow:auto;max-height:220px;margin:0 -.1rem;padding:0 .1rem}
+#view-cart .cart-inspector .bulk-sizes-box table{
+  width:100%;min-width:0;table-layout:fixed;border-collapse:collapse;font-size:.72rem;margin-top:0
+}
+#view-cart .cart-inspector .bulk-sizes-box th,
+#view-cart .cart-inspector .bulk-sizes-box td{
+  padding:.18rem .12rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+#view-cart .cart-inspector .bulk-sizes-box th:nth-child(1),
+#view-cart .cart-inspector .bulk-sizes-box td:nth-child(1),
+#view-cart .cart-inspector .bulk-sizes-box th:nth-child(2),
+#view-cart .cart-inspector .bulk-sizes-box td:nth-child(2){width:18%}
+#view-cart .cart-inspector .bulk-sizes-box th:nth-child(3),
+#view-cart .cart-inspector .bulk-sizes-box td:nth-child(3){width:12%}
+#view-cart .cart-inspector .bulk-sizes-box th:nth-child(4),
+#view-cart .cart-inspector .bulk-sizes-box td:nth-child(4){width:28%}
+#view-cart .cart-inspector .bulk-sizes-box th:nth-child(5),
+#view-cart .cart-inspector .bulk-sizes-box td:nth-child(5){width:16%}
+#view-cart .cart-inspector .bulk-sizes-box th:nth-child(6),
+#view-cart .cart-inspector .bulk-sizes-box td:nth-child(6){width:8%}
+#view-cart .cart-inspector .bulk-sizes-box input{width:100%!important;min-width:0;font-size:.72rem;padding:.28rem .3rem}
+#view-cart .cart-inspector .quote-group-bar{
+  display:flex;flex-direction:column;align-items:stretch;gap:.4rem;margin:.55rem 0 .35rem;padding:.5rem .55rem
+}
+#view-cart .cart-inspector .quote-group-bar .pkg-tabs{margin:0;gap:.28rem}
+#view-cart .cart-inspector .quote-group-bar .pkg-tabs button{
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+#view-cart .cart-inspector .quote-group-bar > .row{display:flex!important;flex-wrap:wrap;gap:.3rem;margin:0!important}
+#view-cart .cart-inspector .specs{gap:.35rem .5rem;font-size:.8rem;margin-top:.45rem!important}
+#view-cart .cart-inspector #addFeatureBox .dev-hook{display:none!important}
+#view-cart .cart-inspector #liveWasteHint:empty{display:none}
 #view-cart .cart-preview.design-stage{
   /* Full workspace is the pan/clip viewport — no nested smaller square frame. */
   display:flex;flex-direction:column;align-items:stretch;justify-content:stretch;
@@ -500,7 +624,7 @@ img,svg,canvas{max-width:100%}
 .main,.panel,.card,.two,.row,.grow{min-width:0}
 textarea{max-width:100%}
 @media(min-width:701px) and (max-width:1100px){
-  :root{--logo-w:148px;--side:188px;--cart-inspector:300px}
+  :root{--logo-w:148px;--side:188px;--cart-inspector:328px}
   .main{padding:.85rem .85rem 2rem}
   .prodgrid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
   .cards{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
@@ -838,12 +962,23 @@ textarea{max-width:100%}
               <button class="btn ghost sm" id="btnEditSetup" type="button">Edit Project Setup</button>
               <button class="btn ghost sm" id="btnCartOutsideQuote" type="button">Add outside quote</button>
             </div>
-<div class="row">
-            <div class="grow"><label class="l">Product</label><select id="lineProduct"></select></div>
-            <div class="grow"><label class="l">Location / Position</label>
-              <input id="lineLocation" placeholder="e.g. Master Bedroom, Kitchen" style="width:100%" title="Optional. Prints with serial on quote PDF, e.g. W8 · Master Bedroom"/>
+            <div class="inspector-sticky" id="inspectorStickyBar">
+              <div class="insp-sticky-loc">
+                <label class="l" for="lineLocation">Location / Position</label>
+                <input id="lineLocation" placeholder="e.g. Master Bedroom, Kitchen" style="width:100%" title="Optional. Prints with serial on quote PDF, e.g. W8 · Master Bedroom"/>
+              </div>
+              <div class="insp-sticky-act">
+                <div class="insp-sticky-sell">
+                  <span class="l">Sell amount</span>
+                  <strong id="stickySell">₹ —</strong>
+                </div>
+                <button class="btn" id="btnAddLine" type="button">Add to cart</button>
+                <button class="btn ghost sm" id="btnAddAsNew" type="button" style="display:none">Add as new</button>
+              </div>
             </div>
-          </div>
+            <div class="row">
+              <div class="grow"><label class="l">Product</label><select id="lineProduct"></select></div>
+            </div>
           <div class="row" id="sharedMaterialRow" style="margin-top:.5rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
             <div><label class="l">Frame material</label>
               <select id="lineFrameMaterial" style="width:120px" title="Aluminium or UPVC">
@@ -906,11 +1041,11 @@ textarea{max-width:100%}
                 <option value="">— pick series —</option>
               </select>
             </div>
-            <button class="btn ghost sm" id="btnAddPart" type="button" style="margin-top:1rem">Add fix</button>
-            <div class="grow" id="partChips" style="display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;min-height:1.8rem"></div>
+            <button class="btn ghost sm" id="btnAddPart" type="button">Add fix</button>
+            <div class="grow" id="partChips" style="display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;min-height:1.5rem"></div>
           </div>
-          <div class="row" style="margin-top:.45rem;align-items:flex-end;gap:.7rem">
-            <label id="wrapMeshChk" style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;cursor:pointer">
+          <div class="row" style="margin-top:.45rem;align-items:end;gap:.5rem">
+            <label id="wrapMeshChk" class="chk" style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;cursor:pointer;margin:0">
               <input id="lineMesh" type="checkbox"/> Apply mesh
             </label>
             <div id="wrapMeshType" style="display:none"><label class="l">Mesh type</label>
@@ -1046,12 +1181,14 @@ textarea{max-width:100%}
             <p class="muted" style="font-size:.72rem;margin:.1rem 0 .35rem">Sliding handles sit on the side (outer) stiles by rule. With 4 or more shutters choose per shutter which stile carries the handle — never the interlock of a 2 / 3 shutter window.</p>
             <div id="slidingHandleList" class="row" style="gap:.5rem .8rem;flex-wrap:wrap;align-items:flex-end"></div>
           </div>
-          <div class="row" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
-            <div><label class="l">Handle level <span id="handleLevelVal" class="muted"></span></label>
-              <input id="lineHandleLevel" type="range" min="5" max="95" value="50" style="width:150px;vertical-align:middle"/>
+          <div class="row" style="margin-top:.45rem;flex-wrap:wrap;gap:.4rem .5rem;align-items:end">
+            <div style="grid-column:1 / -1"><label class="l">Handle level <span id="handleLevelVal" class="muted"></span></label>
+              <div style="display:flex;gap:.4rem;align-items:center">
+                <input id="lineHandleLevel" type="range" min="5" max="95" value="50" style="flex:1;min-width:0;width:auto!important"/>
+                <button type="button" id="btnResetHandles" class="btn ghost sm" style="flex:0 0 auto">Reset</button>
+              </div>
             </div>
-            <div id="handleHint" class="muted" style="font-size:.72rem;flex:1;min-width:180px">Drag the handle in the preview to reposition. Sliding keeps an equal level on both sashes; openable is free (hinge auto-moves opposite).</div>
-            <button type="button" id="btnResetHandles" class="ghost" style="font-size:.75rem">Reset handles</button>
+            <div id="handleHint" class="muted" style="font-size:.7rem;line-height:1.35">Drag handle in preview to set level (same on every sash). Sliding stays on side stiles.</div>
           </div>
           <div class="row" id="bifoldRow" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end;display:none">
             <div><label class="l">Config</label>
@@ -1097,14 +1234,16 @@ textarea{max-width:100%}
               <div class="chip-row" id="lineDescChips"></div>
             </div>
           </div>
-          <div id="wrapSeriesDesigns" class="row" style="margin-top:.45rem;flex-wrap:wrap;gap:.45rem .7rem;align-items:flex-end">
+          <div id="wrapSeriesDesigns" class="insp-saved-designs" style="margin-top:.15rem">
             <div class="grow"><label class="l">Saved designs (per series)</label>
-              <select id="lineSavedDesign" style="min-width:180px;width:100%" title="Reuse glass, hardware, notes and layout for this series on later floors"></select>
+              <select id="lineSavedDesign" style="width:100%" title="Reuse glass, hardware, notes and layout for this series on later floors"></select>
             </div>
-            <div><label class="l">Design name</label><input id="lineSavedDesignName" type="text" placeholder="e.g. Bedroom casement" style="width:150px"/></div>
-            <button class="btn ghost sm" type="button" id="btnSaveSeriesDesign" title="Save this series design for reuse">Save design</button>
-            <button class="btn ghost sm" type="button" id="btnLoadSeriesDesign" title="Load the selected saved design">Load</button>
-            <button class="btn ghost sm" type="button" id="btnDeleteSeriesDesign" title="Delete the selected saved design">Delete</button>
+            <div><label class="l">Design name</label><input id="lineSavedDesignName" type="text" placeholder="e.g. Bedroom casement" style="width:100%"/></div>
+            <div class="insp-saved-actions">
+              <button class="btn ghost sm" type="button" id="btnSaveSeriesDesign" title="Save this series design for reuse">Save design</button>
+              <button class="btn ghost sm" type="button" id="btnLoadSeriesDesign" title="Load the selected saved design">Load</button>
+              <button class="btn ghost sm" type="button" id="btnDeleteSeriesDesign" title="Delete the selected saved design">Delete</button>
+            </div>
           </div>
           <!-- Composable add-on: glass replacement (louvers / sheet) — not a product-type change -->
           <div id="addFeatureBox" style="margin-top:.55rem;padding:.55rem .65rem;border:1px dashed var(--line);border-radius:10px;background:rgba(0,0,0,.015)">
@@ -1153,7 +1292,6 @@ textarea{max-width:100%}
               </div>
               <div id="wrapSheetOpts" style="display:none"><label class="l">Sheet thk mm</label><input id="lineSheetThk" type="number" min="0.5" step="0.5" value="3" style="width:70px"/></div>
             </div>
-            <p class="muted" style="margin:.35rem 0 0;font-size:.7rem">Hook for later: Pergola → Insert window (feature <code>window_in_pergola</code>) nests a window job in a bay without dumping window tools into the pergola toolbar.</p>
           </div>
           </div><!-- /#windowCartTools — hidden when product world is railing -->
 
@@ -1767,34 +1905,30 @@ textarea{max-width:100%}
                 </select>
               </div>
               <div class="kpi grow"><label class="l">Your selling rate</label><input id="lineSellRate" type="number" step="0.01" placeholder="e.g. 950"/></div>
-              <div class="kpi"><label class="l">Sell amount</label><div class="big" style="font-size:1.2rem" id="liveSell">₹ —</div></div>
+              <div class="kpi" style="grid-column:1 / -1"><label class="l">Sell amount</label><div class="big" style="font-size:1.1rem" id="liveSell">₹ —</div></div>
             </div>
-            <div class="row" style="margin-top:.55rem;align-items:center">
-              <div class="muted" id="liveMargin" style="flex:1"></div>
+            <div class="live-actions">
+              <div class="muted" id="liveMargin"></div>
               <button class="btn ghost sm" id="btnSaveRate" type="button">Save rate for customer</button>
-              <button class="btn" id="btnAddLine" type="button">Add to cart</button>
-              <button class="btn ghost sm" id="btnAddAsNew" type="button" style="display:none">Add as new</button>
             </div>
           </div>
           <div class="bulk-sizes-box" id="bulkSizesBox">
-            <div class="row" style="align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap">
-              <div>
-                <strong style="font-size:.82rem">Multi-size for this design</strong>
-                <div class="muted" style="font-size:.72rem;margin-top:.1rem">Configure once above, then add many W×H / qty / location / rate rows as separate quote lines.</div>
-              </div>
-              <div class="row" style="gap:.35rem;margin:0;flex-wrap:wrap">
-                <button class="btn ghost sm" type="button" id="btnBulkAddRow" title="Add another size row">+ row</button>
-                <button class="btn ghost sm" type="button" id="btnBulkClearRows" title="Clear all size rows">Clear</button>
-                <button class="btn sm" type="button" id="btnAddAllSizes" title="Add every size row using the current design">Add all sizes to cart</button>
-              </div>
+            <div>
+              <strong style="font-size:.82rem">Multi-size for this design</strong>
+              <div class="muted" style="font-size:.72rem;margin-top:.1rem">Configure once above, then add many W×H / qty / location / rate rows as separate quote lines.</div>
             </div>
-            <div style="overflow:auto;max-height:220px">
+            <div class="bulk-sizes-actions">
+              <button class="btn ghost sm" type="button" id="btnBulkAddRow" title="Add another size row">+ row</button>
+              <button class="btn ghost sm" type="button" id="btnBulkClearRows" title="Clear all size rows">Clear</button>
+              <button class="btn sm" type="button" id="btnAddAllSizes" title="Add every size row using the current design">Add all sizes to cart</button>
+            </div>
+            <div class="bulk-table-wrap">
               <table>
-                <thead><tr><th style="width:78px">W mm</th><th style="width:78px">H mm</th><th style="width:56px">Qty</th><th>Location / name</th><th style="width:88px">Rate</th><th style="width:40px"></th></tr></thead>
+                <thead><tr><th>W</th><th>H</th><th>Qty</th><th>Loc / name</th><th>Rate</th><th></th></tr></thead>
                 <tbody id="bulkSizesBody"></tbody>
               </table>
             </div>
-            <div class="muted" id="bulkSizesHint" style="font-size:.7rem;margin-top:.3rem">Uses glass, colour, hardware, series design and notes from the form. Empty rate → form selling rate.</div>
+            <div class="muted" id="bulkSizesHint" style="font-size:.7rem;margin-top:.3rem">Empty rate uses the form selling rate above.</div>
           </div>
 <div class="quote-group-bar" id="quoteGroupBar">
             <span class="muted" style="font-size:.75rem">Quote sections</span>
@@ -4198,6 +4332,11 @@ function deselectCartIfSeriesChanged(prevBucket) {
     state._previewLineId = null;
     state._previewKey = null;
   }
+}
+function setSellDisplay(text) {
+  const t = text == null || text === '' ? '₹ —' : String(text);
+  if ($('liveSell')) $('liveSell').textContent = t;
+  if ($('stickySell')) $('stickySell').textContent = t;
 }
 function money(n){
   if (n == null || n === '') return '—';
@@ -6913,7 +7052,7 @@ function applySpecialLivePrice(kind) {
   const liveShown = sellN > 0 ? sellN : costN;
   if ($('liveCost')) $('liveCost').textContent = liveShown > 0 ? money(liveShown) : money(costN);
   if ($('liveMeta')) $('liveMeta').textContent = label;
-  if ($('liveSell')) $('liveSell').textContent = sellN > 0 ? money(sellN) : '₹ —';
+  setSellDisplay(sellN > 0 ? money(sellN) : '₹ —');
   if ($('liveMargin')) {
     $('liveMargin').textContent = q.sellingPerUnit != null
       ? `Rate ₹${q.sellingPerUnit}/${String(q.saleUnit||'sqft').toUpperCase()}`
@@ -6922,17 +7061,7 @@ function applySpecialLivePrice(kind) {
   if ($('lineSellRate') && $('lineSellRate').value === '' && q.sellingPerUnit != null) {
     $('lineSellRate').value = q.sellingPerUnit;
   }
-  const ln = state.lines[state.selectedLine];
-  if (!ln) return;
-  if (q.sellingPerUnit != null) ln.sellingRate = q.sellingPerUnit;
-  if (q.saleUnit) ln.saleUnit = q.saleUnit;
-  if (q.sellingTotal != null) {
-    const qty = Math.max(1, Number(ln.qty || 1) || 1);
-    ln.commercialTotal = kind === 'railing'
-      ? Math.round(Number(q.sellingTotal) * qty * 100) / 100
-      : Number(q.sellingTotal);
-  }
-  stampLineAmount(ln);
+  // Display-only — never write special-product live rates into quote lines here.
   updateLiveCartTotal();
 }
 async function refreshLivePrice() {
@@ -6972,7 +7101,7 @@ async function refreshLivePrice() {
     if ($('lineSellRate') && $('lineSellRate').value === '') $('lineSellRate').value = fallbackRate;
   }
   const localSell = lineLiveAmount(Object.assign({}, state.lines[state.selectedLine] || {}, draft));
-  if (localSell > 0 && $('liveSell')) $('liveSell').textContent = money(localSell);
+  if (localSell > 0) setSellDisplay(money(localSell));
   try {
     const body = { ...draft, customer: $('cartCustomer').value || null, lookupSavedRate: true };
     const live = await api('/api/quote/live', { method:'POST', body });
@@ -6997,7 +7126,8 @@ async function refreshLivePrice() {
       if ($('liveWasteHint')) {
         const eng = (live.cost && live.cost.costEngine) || design.costEngine || '';
         const bits = [];
-        if (eng) bits.push(eng === 'live' ? 'design cost' : ('cost ' + eng));
+        if (eng === 'live') bits.push('design cost');
+        else if (eng && eng !== 'stub') bits.push('cost ' + eng);
         if (w.wastageMetres > 0) bits.push('waste ' + (w.wastagePercent != null ? w.wastagePercent + '%' : ''));
         if (live.cost && live.cost.wastageCost > 0) bits.push(money(live.cost.wastageCost));
         $('liveWasteHint').textContent = bits.join(' · ');
@@ -7007,33 +7137,19 @@ async function refreshLivePrice() {
     $('liveMeta').textContent = `${m.areaSqft||'—'} sft · ${draft.width}×${draft.height} mm · qty ${draft.qty}` +
       (live.rateSource === 'customer_saved' ? ' · rate from customer history' : '');
     if (live.selling) {
-      $('liveSell').textContent = money(live.selling.sellingAmount);
+      setSellDisplay(money(live.selling.sellingAmount));
       if ($('lineSellRate').value === '' && live.selling.sellingRate != null) {
         $('lineSellRate').value = live.selling.sellingRate;
       }
     } else {
-      $('liveSell').textContent = sellN > 0 ? money(sellN) : '₹ —';
+      setSellDisplay(sellN > 0 ? money(sellN) : '₹ —');
       if ($('lineSellRate').value === '' && live.cost && live.cost.suggestedSellRate != null) {
         $('lineSellRate').value = live.cost.suggestedSellRate;
       }
     }
-    const wln = state.lines[state.selectedLine];
-    if (wln) {
-      if (costN > 0) {
-        wln.costTotal = costN;
-        wln.price = Object.assign({}, wln.price || {}, { total: costN, currency: 'INR' });
-        wln.designCost = live.designCost || null;
-      }
-      if (sellN > 0 || (live.selling && live.selling.sellingAmount > 0)) {
-        if (live.selling && live.selling.sellingRate != null && wln.sellingRate == null) wln.sellingRate = live.selling.sellingRate;
-        else if (draft.sellingRate != null && wln.sellingRate == null) wln.sellingRate = draft.sellingRate;
-        wln.commercialTotal = sellN > 0 ? sellN : wln.commercialTotal;
-        stampLineAmount(wln);
-      } else if (costN > 0) {
-        stampLineAmount(wln);
-      }
-      updateLiveCartTotal();
-    }
+    // Live price is display-only for the form draft. Quote lines update only via
+    // Add to cart / Update (never from preview price refresh).
+    updateLiveCartTotal();
     if (live.margin) {
       $('liveMargin').textContent = `Margin ${money(live.margin.marginAmount)} (${live.margin.marginPercent}%) · bump sell rate to raise profit`;
     } else {
@@ -7045,7 +7161,7 @@ async function refreshLivePrice() {
     $('liveMeta').textContent = e.message;
     if (localSell > 0) {
       $('liveCost').textContent = money(localSell);
-      $('liveSell').textContent = money(localSell);
+      setSellDisplay(money(localSell));
     }
   }
 }
@@ -9254,11 +9370,10 @@ async function openProject(id) {
 async function calculate() {
   $('cartErr').textContent='';
   try {
-    // Keep selected railing line in sync with designer so BOM rates + shape
-    // flow into calculate (Total from cascade; Manual rate only via rManual).
-    if (isRailingMode() || (state.lines[state.selectedLine] && state.lines[state.selectedLine].options && state.lines[state.selectedLine].options.railing)) {
+    // Quote membership is Add-to-cart only — Calculate never pushes designer draft
+    // into cart lines. Preview/calc may refresh drawings; lines stay as last Add/Update.
+    if (isRailingMode()) {
       try { await railingCalc(); } catch (_) {}
-      syncSelectedRailingLineFromTools();
     }
     await ensureProject();
     // Persist bill-to / terms / descriptions first so calculate can observe them,
@@ -9376,6 +9491,8 @@ function clearLineEdit() {
   syncAddButton();
 }
 function commitCartLine(line, opts) {
+  // Sole path that mutates quote membership (new line or Update). Callers must be
+  // explicit Add to cart / Add all sizes / specialty Add / library Add to Cart.
   opts = opts || {};
   const idx = opts.forceNew ? -1 : editingTargetIndex();
   if (idx >= 0) {
@@ -9562,11 +9679,11 @@ function renderBulkSizeRows() {
   const rows = ensureBulkSizeRows();
   body.innerHTML = rows.map((r, i) => `
     <tr data-bulk="${i}">
-      <td><input data-bf="width" type="number" value="${r.width !== '' && r.width != null ? r.width : ''}" placeholder="W" style="width:74px"/></td>
-      <td><input data-bf="height" type="number" value="${r.height !== '' && r.height != null ? r.height : ''}" placeholder="H" style="width:74px"/></td>
-      <td><input data-bf="qty" type="number" min="1" value="${r.qty != null ? r.qty : 1}" style="width:52px"/></td>
-      <td><input data-bf="location" type="text" value="${esc(r.location || '')}" placeholder="e.g. Bedroom 1" style="width:100%"/></td>
-      <td><input data-bf="rate" type="number" step="0.01" value="${r.rate !== '' && r.rate != null ? r.rate : ''}" placeholder="form" style="width:84px"/></td>
+      <td><input data-bf="width" type="number" value="${r.width !== '' && r.width != null ? r.width : ''}" placeholder="W"/></td>
+      <td><input data-bf="height" type="number" value="${r.height !== '' && r.height != null ? r.height : ''}" placeholder="H"/></td>
+      <td><input data-bf="qty" type="number" min="1" value="${r.qty != null ? r.qty : 1}"/></td>
+      <td><input data-bf="location" type="text" value="${esc(r.location || '')}" placeholder="Loc"/></td>
+      <td><input data-bf="rate" type="number" step="0.01" value="${r.rate !== '' && r.rate != null ? r.rate : ''}" placeholder="Rate"/></td>
       <td><button class="btn ghost sm" type="button" data-bulk-del="${i}" title="Remove row">×</button></td>
     </tr>`).join('');
   body.querySelectorAll('input[data-bf]').forEach(inp => {
@@ -11926,15 +12043,7 @@ document.querySelectorAll('#railModeBtns [data-mode]').forEach(btn => {
     state.railRuns = [];
     state._railBasisTouched = false;
     if (state.railMode === 'staircase' && $('rHandrail')) $('rHandrail').checked = true;
-    const ln = state.lines[state.selectedLine];
-    if (ln && ln.options && ln.options.railing) {
-      ln.options.railing = { ...ln.options.railing, shape: state.railShape };
-      delete ln.options.railingQuote;
-      ln.productType = state.railMode === 'staircase' ? 'staircase_railing' : 'railing';
-      ln.options.productType = ln.productType;
-      ln.displayName = ln.productType === 'staircase_railing' ? 'Staircase railing' : 'Railing';
-      ln.description = '';
-    }
+    // Designer-only — do not rewrite quote lines until Add to cart / Update.
     syncRailWizardUi();
     railingCalc();
   };
@@ -12167,14 +12276,8 @@ if ($('adminSectionsFile')) $('adminSectionsFile').onchange = async (ev) => {
 };
 if ($('lineLocation')) {
   const applyLoc = () => {
-    const loc = currentLocationName();
-    const ln = state.lines[state.selectedLine];
-    if (ln) {
-      ln.locationName = loc || null;
-      ln.positionName = loc || null;
-      ln.options = Object.assign({}, ln.options || {}, { locationName: loc || null, positionName: loc || null });
-      scheduleSave();
-    }
+    // Location stays on the form draft until Add to cart / Update commits it.
+    // Never auto-write location onto a quote line from keystrokes alone.
     refreshPreview();
   };
   $('lineLocation').addEventListener('input', () => { clearTimeout(state._locT); state._locT = setTimeout(applyLoc, 280); });
@@ -12283,9 +12386,9 @@ function stampSelectedDraftAmount() {
     stampLineAmount(ln);
   }
   const merged = Object.assign({}, ln || {}, draft || {});
-  if (draft && $('liveSell')) {
+  if (draft) {
     const amt = lineLiveAmount(merged);
-    if (amt > 0) $('liveSell').textContent = money(amt);
+    if (amt > 0) setSellDisplay(money(amt));
     if (amt > 0 && $('liveCost') && !isRailingMode() && !isShowerMode() && !isVentMode()) {
       const raw = (($('liveCost').textContent) || '').replace(/[₹,\s]/g, '');
       if (!raw || raw === '—' || raw === '-' || Number(raw) === 0) $('liveCost').textContent = money(amt);
@@ -12515,13 +12618,15 @@ if ($('btnAddPart')) {
 });
 if ($('btnMaterialsList')) {
   $('btnMaterialsList').onclick = async () => {
+    // Quote membership only — never include unsaved canvas / form draft.
     const lines = (state.lines || []).filter(ln => ln && !ln.cancelled);
-    if (!lines.length) { toast('Add products to the quote first'); return; }
+    if (!lines.length) { toast('Add products to the quote first (Add to cart)'); return; }
     try {
       const body = {
         customer: ($('cartCustomer') && $('cartCustomer').value) || ($('projCustName') && $('projCustName').value) || '',
         projectName: ($('projName') && $('projName').value) || '',
-        colour: ($('lineColour') && $('lineColour').selectedOptions[0] && $('lineColour').selectedOptions[0].textContent) || '',
+        // Colour comes from each quote line — do not override with form draft.
+        colour: '',
         lines: lines,
       };
       const res = await fetch(API_BASE + '/api/quote/materials-list', {
@@ -13287,17 +13392,7 @@ function _liveExportBody(brand, opts) {
 async function openProjectPdf(kind, opts) {
   opts = opts || {};
   const label = opts.label || (kind === 'factory' ? 'Factory PDF' : 'Quote PDF');
-  // Only push the form draft into the cart when the user is actively editing that
-  // line. After selecting a quote, selectedLine is set to 0 without syncing the
-  // form — merging the orphan designer draft used to rewrite / inflate the cart.
-  if (state.editingLineId && state.selectedLine != null && state.lines[state.selectedLine]
-      && String(state.lines[state.selectedLine].lineId || '') === String(state.editingLineId)
-      && !isRailingMode() && !isShowerMode() && !isVentMode()) {
-    try {
-      const draft = currentLineDraft();
-      state.lines[state.selectedLine] = { ...state.lines[state.selectedLine], ...draft };
-    } catch (_) {}
-  }
+  // Never merge designer draft into the quote here — membership is Add to cart only.
   // Lock in the live description/terms before any setup reload can wipe them.
   if (typeof syncPrintCopyTwins === 'function') {
     syncPrintCopyTwins(state._quoteCopySource === 'print' ? 'print' : 'proj');
@@ -13395,14 +13490,7 @@ if ($('linkCustXlsx')) $('linkCustXlsx').addEventListener('click', async (e) => 
   state._exportBusy = true;
   setButtonBusy($('linkCustXlsx'), true, 'Exporting...');
   try {
-    if (state.editingLineId && state.selectedLine != null && state.lines[state.selectedLine]
-        && String(state.lines[state.selectedLine].lineId || '') === String(state.editingLineId)
-        && !isRailingMode() && !isShowerMode() && !isVentMode()) {
-      try {
-        const draft = currentLineDraft();
-        state.lines[state.selectedLine] = { ...state.lines[state.selectedLine], ...draft };
-      } catch (_) {}
-    }
+    // Excel export uses quote lines only — no draft merge (Add to cart only).
     if (typeof syncPrintCopyTwins === 'function') {
       syncPrintCopyTwins(state._quoteCopySource === 'print' ? 'print' : 'proj');
     }
