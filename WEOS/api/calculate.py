@@ -225,6 +225,19 @@ def products_catalog() -> list[dict[str, Any]]:
             if status in ("hidden", "archived", "deleted"):
                 continue
             pricing = p.get("pricing") or {}
+            section_sizes = None
+            setup = p.get("setup") if isinstance(p.get("setup"), dict) else None
+            if setup:
+                try:
+                    from WEOS.factory.product_setup import derive_section_sizes, normalize_setup
+
+                    norm = normalize_setup(setup) if setup.get("type") or setup.get("casement") else setup
+                    section_sizes = derive_section_sizes(norm) or None
+                except Exception:
+                    section_sizes = None
+            cat = dict(p.get("catalogue") or {})
+            if section_sizes and not cat.get("sectionSizes"):
+                cat["sectionSizes"] = section_sizes
             items.append(
                 {
                     "id": pid,
@@ -242,8 +255,10 @@ def products_catalog() -> list[dict[str, Any]]:
                     "hardwareOptions": pricing.get("hardwareOptions") or [],
                     "glassOptions": (p.get("glass") or {}).get("options") or [],
                     "defaults": pricing.get("defaultOptions") or {},
-                    "catalogue": p.get("catalogue") or {},
+                    "catalogue": cat,
                     "sectionSeries": p.get("sectionSeries"),
+                    "linkedProductId": p.get("linkedProductId"),
+                    "sectionSizes": section_sizes,
                     "productType": p.get("productType"),
                     "manufacturingReady": not (p.get("_stub") or p.get("status") == "stub"),
                     "ratesEditable": bool(p.get("ratesEditable", True)),

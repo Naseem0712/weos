@@ -78,6 +78,12 @@ CATALOG_HIDDEN_ENGINES = (
     "casement_stub",
 )
 
+# Only these casement series stay selectable in Product Library / cart
+EXCEL_CASEMENT_SERIES = frozenset({
+    "40mm_casement_standard",
+    "50mm_casement_prestige",
+})
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -1202,6 +1208,80 @@ def _hide_catalog_engines() -> list[str]:
     return hidden
 
 
+def _hide_non_excel_casements() -> list[str]:
+    """Soft-hide casement clones so only Excel series remain selectable.
+
+    ``casement_stub`` stays on disk (hidden engine). ``bathroom_ventilator`` is a
+    separate product type linked to ``50mm_casement_prestige``, not a casement
+    series row.
+    """
+    hidden: list[str] = []
+    root = products_dir()
+    if not root.is_dir():
+        return hidden
+    seen_names: dict[str, str] = {}
+    for pdir in sorted(root.iterdir()):
+        meta_path = pdir / "product.json"
+        if not pdir.is_dir() or not meta_path.is_file():
+            continue
+        sid = pdir.name
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8-sig"))
+        except Exception:
+            continue
+        pt = str(meta.get("productType") or "").strip().lower()
+        if pt not in ("casements", "casement"):
+            continue
+        if sid in EXCEL_CASEMENT_SERIES:
+            dn = str(meta.get("displayName") or sid).strip().lower()
+            seen_names[dn] = sid
+            continue
+        # Engines / clones — keep loadable but not selectable
+        if str(meta.get("status") or "").lower() == "hidden":
+            hidden.append(sid)
+            continue
+        meta["status"] = "hidden"
+        if sid == "casement_stub":
+            meta["displayName"] = "Casement (manufacturing engine)"
+            meta["hiddenReason"] = (
+                "Manufacturing engine — use Excel casement series "
+                "(40mm_casement_standard / 50mm_casement_prestige) in Product Library"
+            )
+        else:
+            meta["hiddenReason"] = (
+                "Duplicate / non-Excel casement — use "
+                "40mm_casement_standard or 50mm_casement_prestige"
+            )
+        meta["hiddenAt"] = _now()
+        meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        hidden.append(sid)
+    # Soft-hide Excel series that collide on displayName (keep first id)
+    for pdir in sorted(root.iterdir()):
+        meta_path = pdir / "product.json"
+        if not pdir.is_dir() or not meta_path.is_file():
+            continue
+        sid = pdir.name
+        if sid not in EXCEL_CASEMENT_SERIES:
+            continue
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8-sig"))
+        except Exception:
+            continue
+        if str(meta.get("status") or "").lower() == "hidden":
+            continue
+        dn = str(meta.get("displayName") or sid).strip().lower()
+        first = seen_names.get(dn)
+        if first and first != sid:
+            meta["status"] = "hidden"
+            meta["hiddenReason"] = f"Duplicate display name of {first}"
+            meta["hiddenAt"] = _now()
+            meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            hidden.append(sid)
+        else:
+            seen_names[dn] = sid
+    return hidden
+
+
 def import_profile_hardware_excel(
     path: str | Path | None = None,
     *,
@@ -1270,6 +1350,7 @@ def import_profile_hardware_excel(
     if hide_dummies:
         hidden = _hide_dummy_stubs(set(created_products))
     hidden_engines = _hide_catalog_engines()
+    hidden_casements = _hide_non_excel_casements()
 
     # Durable snapshot when DB available
     persisted = False
@@ -1295,6 +1376,7 @@ def import_profile_hardware_excel(
         "products": created_products,
         "hiddenDummies": hidden,
         "hiddenEngines": hidden_engines,
+        "hiddenCasements": hidden_casements,
         "brandDefaults": {"indian": "HIVIC", "imported": "CMECH", "ette": "ETTE"},
         "ratesEditable": True,
         "editRatesIn": ["Admin · Product Library · Series Setup", "Admin · Hardware Library"],

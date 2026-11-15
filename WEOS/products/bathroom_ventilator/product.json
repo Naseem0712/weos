@@ -6,18 +6,28 @@
   "units": "mm",
   "version": 1,
   "status": "active",
-  "description": "Bathroom ventilator — outer frame always. Combine exhaust fan with fix glass or horizontal louvers on one side and fix glass or top-hung on the remaining area. Full-glass + round fan cut-out option. Same 2D on canvas and customer PDF.",
-  "tagline": "Bathroom ventilator · casement family · frosted glass default",
+  "description": "Bathroom ventilator — built in 50mm casement prestige series. Outer frame always. Combine exhaust fan with fix glass or horizontal louvers on one side and fix glass or top-hung on the remaining area. Full-glass + round fan cut-out option. Same 2D on canvas and customer PDF.",
+  "tagline": "Bathroom ventilator · 50mm casement prestige · frosted glass default",
   "warranty": "1 year",
   "heroImage": "/static/products/placeholder.svg",
   "gallery": [
     "/static/products/placeholder.svg"
   ],
+  "sectionSeries": "50mm_casement_prestige",
+  "linkedProductId": "casement_stub",
+  "catalogue": {
+    "sectionSeries": "50mm_casement_prestige",
+    "productId": "casement_stub",
+    "saleUnit": "sqft",
+    "ratePerUnit": 0
+  },
   "specifications": {
     "saleUnit": "sqft",
-    "outerProfile": "25×40 mm",
-    "sashProfile": "20×35 mm",
-    "mullionProfile": "25×40 mm",
+    "profileSeries": "50mm SERIES - Prestige",
+    "sectionSeries": "50mm_casement_prestige",
+    "outerProfile": "46×50 mm",
+    "sashProfile": "62.4×58.5 mm",
+    "mullionProfile": "67×50 mm",
     "hingeType": "casement",
     "hingesPerDoor": 2,
     "handleDefault": "D-type",
@@ -36,14 +46,18 @@
     "powderCoatingBrands": [
       "AkzoNobel",
       "Jotun"
-    ]
+    ],
+    "hardwareBrand": "HIVIC",
+    "hardwareOrigin": "indian"
   },
   "setup": {
     "type": "ventilator",
+    "defaultSeries": "50mm_casement_prestige",
+    "sectionSeries": "50mm_casement_prestige",
     "profiles": {
-      "outer": "25x40",
-      "sash": "20x35",
-      "mullion": "25x40"
+      "outer": "46x50",
+      "sash": "62.4x58.5",
+      "mullion": "67x50"
     },
     "hardware": {
       "handleDefault": "D-type",
@@ -66,22 +80,31 @@
   },
   "materials": [
     {
-      "id": "outer_25x40",
-      "name": "Outer frame 25×40",
+      "id": "outer_46x50",
+      "name": "Outer frame 46×50 (50mm casement prestige)",
       "category": "profile",
       "unit": "RFT",
       "quantityFormula": "LengthRft",
-      "unitRate": 160,
-      "remarks": "Always — overridable in gallery"
+      "unitRate": 0,
+      "remarks": "From 50mm_casement_prestige · overridable in gallery"
     },
     {
-      "id": "sash_20x35",
-      "name": "Top-hung sash 20×35",
+      "id": "door_slim_62x58",
+      "name": "Door slim 62.4×58.5 (top-hung sash)",
       "category": "profile",
       "unit": "RFT",
       "quantityFormula": "LengthRft",
-      "unitRate": 140,
-      "remarks": "Top-hung only"
+      "unitRate": 0,
+      "remarks": "From 50mm_casement_prestige · top-hung only"
+    },
+    {
+      "id": "mullion_slim_67x50",
+      "name": "Mullion slim 67×50",
+      "category": "profile",
+      "unit": "RFT",
+      "quantityFormula": "LengthRft",
+      "unitRate": 0,
+      "remarks": "From 50mm_casement_prestige"
     }
   ]
 }

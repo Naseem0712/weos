@@ -1123,10 +1123,10 @@ textarea{max-width:100%}
             <div id="casementSlidingNote" class="muted" style="display:none;font-size:.72rem;margin-top:.35rem;color:#9a3412">Sliding panel: pick the <strong>profile series</strong> for that fixed/sliding lite below (not anonymous). Full track geometry still uses a Sliding product.</div>
             <div class="row" style="gap:.5rem;margin-top:.4rem;flex-wrap:wrap;align-items:flex-end">
               <div><label class="l">Sash overlap mm</label>
-                <input id="lineSashOverlap" type="number" min="10" max="20" value="15" style="width:64px" title="Door overlap onto mullion and outer frame (10–20)"/>
+                <input id="lineSashOverlap" type="number" min="10" max="30" value="20" style="width:64px" title="Door overlap onto outer / mullion wings (default 20 mm)"/>
               </div>
-              <div><label class="l">Mullion gap mm</label>
-                <input id="lineMullionGap" type="number" min="10" max="20" value="15" style="width:64px" title="Gap / mullion between panels or bands (10–20)"/>
+              <div><label class="l">Mullion face mm</label>
+                <input id="lineMullionGap" type="number" min="20" max="200" value="60" style="width:64px" title="Catalogue mullion face (overall incl. 20+20 wings). Visible body = face − 40. Slim/big from series fills this."/>
               </div>
             </div>
           </div>
@@ -6706,6 +6706,45 @@ function currentSectionSizes() {
   return Object.keys(s).length ? s : null;
 }
 
+/** Catalogue mullion face (overall incl. 20+20 wings) from product / series setup. */
+function casementMullionFaceMm(ln) {
+  const p = selectedProductMeta() || {};
+  const sizes = (ln && ln.sectionSizes) || p.sectionSizes || (p.catalogue && p.catalogue.sectionSizes) || {};
+  const pick = (ln && (ln.mullionSize || (ln.casementLayout && ln.casementLayout.mullionSize)))
+    || ($('casementMullionSize') && $('casementMullionSize').value)
+    || state.draftCasementMullionSize
+    || 'slim';
+  const setup = p.setup || state.setup || null;
+  const cm = setup && setup.casement;
+  const mull = cm && cm.mullions;
+  if (mull && mull[pick] && (mull[pick].wMm || mull[pick].widthMm)) {
+    const f = +(mull[pick].wMm || mull[pick].widthMm);
+    if (isFinite(f) && f > 0) return f;
+  }
+  if (sizes && sizes.mullion != null && +sizes.mullion > 0) return +sizes.mullion;
+  return null;
+}
+
+function casementSectionSizesForDraft(ln) {
+  const base = currentSectionSizes() || {};
+  const p = selectedProductMeta() || {};
+  const fromCat = p.sectionSizes || (p.catalogue && p.catalogue.sectionSizes) || {};
+  const out = Object.assign({}, fromCat, base);
+  const face = casementMullionFaceMm(ln || null);
+  if (face) out.mullion = face;
+  const gapEl = $('lineMullionGap');
+  if (gapEl && gapEl.value !== '' && isFinite(+gapEl.value) && +gapEl.value > 0) out.mullion = +gapEl.value;
+  return Object.keys(out).length ? out : null;
+}
+
+function syncCasementMullionFaceInput() {
+  if (!$('lineMullionGap')) return;
+  const face = casementMullionFaceMm(null);
+  if (face && (!$('lineMullionGap').dataset.userEdited || $('lineMullionGap').dataset.userEdited !== '1')) {
+    $('lineMullionGap').value = face;
+  }
+}
+
 function syncDraftFromLine(ln) {
   if (!ln) return;
   state.draftPartitions = Array.isArray(ln.partitions) ? ln.partitions.map(p => ({...p})) : [];
@@ -6801,11 +6840,12 @@ function syncDraftFromLine(ln) {
   }
   if ($('lineSashOverlap')) {
     const ov = ln.sashOverlapMm != null ? ln.sashOverlapMm : (ln.options && ln.options.sashOverlapMm);
-    $('lineSashOverlap').value = (ov != null && ov !== '') ? ov : 15;
+    $('lineSashOverlap').value = (ov != null && ov !== '') ? ov : 20;
   }
   if ($('lineMullionGap')) {
     const gp = ln.mullionGapMm != null ? ln.mullionGapMm : (ln.options && ln.options.mullionGapMm);
-    $('lineMullionGap').value = (gp != null && gp !== '') ? gp : 15;
+    const face = casementMullionFaceMm(ln) || 60;
+    $('lineMullionGap').value = (gp != null && gp !== '') ? gp : face;
   }
   if (lnSys === 'casement') {
     const cl = ln.casementLayout || (ln.options && ln.options.casementLayout);
@@ -7036,7 +7076,6 @@ function currentLineDraft() {
     fixShutters: ($('lineFixShutters') && $('lineFixShutters').value.trim()) || null,
     foldLeft: $('lineFoldLeft') ? (parseInt($('lineFoldLeft').value) || 0) : 0,
     foldRight: $('lineFoldRight') ? (parseInt($('lineFoldRight').value) || 0) : 0,
-    sectionSizes: sys === 'bifold' ? currentSectionSizes() : null,
     handleLevel: $('lineHandleLevel') ? (parseInt($('lineHandleLevel').value) || 50) / 100 : 0.5,
     grid: currentGridSpec(),
     handleName: ($('lineHandleName') && $('lineHandleName').value.trim()) || null,
@@ -7078,15 +7117,21 @@ function currentLineDraft() {
     })(),
     mullionSize: (sys === 'casement' && $('casementMullionSize')) ? ($('casementMullionSize').value || 'slim') : null,
     doorSize: (sys === 'casement' && $('casementDoorSize')) ? ($('casementDoorSize').value || 'slim') : null,
+    sectionSizes: (function(){
+      if (sys === 'bifold') return currentSectionSizes();
+      if (sys === 'casement') return casementSectionSizesForDraft(null);
+      return null;
+    })(),
     sashOverlapMm: (function(){
       if (sys !== 'casement') return null;
-      const n = $('lineSashOverlap') ? parseFloat($('lineSashOverlap').value) : 15;
-      return Math.min(20, Math.max(10, isFinite(n) ? n : 15));
+      const n = $('lineSashOverlap') ? parseFloat($('lineSashOverlap').value) : 20;
+      return Math.min(30, Math.max(10, isFinite(n) ? n : 20));
     })(),
     mullionGapMm: (function(){
       if (sys !== 'casement') return null;
-      const n = $('lineMullionGap') ? parseFloat($('lineMullionGap').value) : 15;
-      return Math.min(20, Math.max(10, isFinite(n) ? n : 15));
+      const face = casementMullionFaceMm(null) || 60;
+      const n = $('lineMullionGap') ? parseFloat($('lineMullionGap').value) : face;
+      return Math.min(200, Math.max(20, isFinite(n) && n > 0 ? n : face));
     })(),
     handleOverrides: (function(){
       // Casement and sliding keep SEPARATE handle state. Casement panel roles /
@@ -7943,8 +7988,9 @@ async function refreshPreview() {
       trackCount: productHasTracks(selectedProductMeta(), ln, ln.system) ? (ln.trackCount != null ? ln.trackCount : 2) : null,
       casementPanels: (ln.system === 'casement') ? (ln.casementPanels || state.draftCasementPanels || null) : null,
       casementLayout: (ln.system === 'casement') ? (ln.casementLayout || state.draftCasementLayout || null) : null,
-      sashOverlapMm: ln.sashOverlapMm != null ? ln.sashOverlapMm : (ln.system === 'casement' ? 15 : null),
-      mullionGapMm: ln.mullionGapMm != null ? ln.mullionGapMm : (ln.system === 'casement' ? 15 : null),
+      sashOverlapMm: ln.sashOverlapMm != null ? ln.sashOverlapMm : (ln.system === 'casement' ? 20 : null),
+      mullionGapMm: ln.mullionGapMm != null ? ln.mullionGapMm : (ln.system === 'casement' ? (casementMullionFaceMm(ln) || 60) : null),
+      mullionSize: ln.mullionSize || (ln.casementLayout && ln.casementLayout.mullionSize) || null,
       sectionSeries: ln.sectionSeries || null,
       system: ln.system || 'sliding',
       glassShutters: ln.glassShutters != null ? ln.glassShutters : null,
@@ -7955,7 +8001,7 @@ async function refreshPreview() {
       fixShutters: ln.fixShutters || null,
       foldLeft: ln.foldLeft != null ? ln.foldLeft : null,
       foldRight: ln.foldRight != null ? ln.foldRight : null,
-      sectionSizes: ln.sectionSizes || null,
+      sectionSizes: ln.sectionSizes || (ln.system === 'casement' ? casementSectionSizesForDraft(ln) : null),
       handleFinish: ln.handleFinish || null,
       handleLevel: ln.handleLevel != null ? ln.handleLevel : null,
       handleOverrides: ln.handleOverrides || null,
@@ -12799,13 +12845,20 @@ if ($('btnAddPart')) {
 ['casementMullionSize','casementDoorSize'].forEach(id => {
   const el = $(id); if (!el) return;
   el.addEventListener('change', () => {
-    if (id === 'casementMullionSize') state.draftCasementMullionSize = el.value || 'slim';
+    if (id === 'casementMullionSize') {
+      state.draftCasementMullionSize = el.value || 'slim';
+      if ($('lineMullionGap')) $('lineMullionGap').dataset.userEdited = '0';
+      syncCasementMullionFaceInput();
+    }
     if (id === 'casementDoorSize') state.draftCasementDoorSize = el.value || 'slim';
     ensureCasementPanels();
     refreshPreview();
     scheduleLivePrice();
   });
 });
+if ($('lineMullionGap')) {
+  $('lineMullionGap').addEventListener('input', () => { $('lineMullionGap').dataset.userEdited = '1'; });
+}
 if ($('btnMaterialsList')) {
   $('btnMaterialsList').onclick = async () => {
     // Quote membership only — never include unsaved canvas / form draft.

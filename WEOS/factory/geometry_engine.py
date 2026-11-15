@@ -44,11 +44,17 @@ from WEOS.factory.types import DrawingModel, Point, Rect, Segment
 MM_PER_FOOT = 304.8
 BIFOLD_MAX_WIDTH_MM = 25.0 * MM_PER_FOOT   # 7620 mm
 BIFOLD_MAX_HEIGHT_MM = 12.0 * MM_PER_FOOT  # 3657.6 mm
-DEFAULT_SASH_OVERLAP_MM = 15.0
-DEFAULT_MULLION_GAP_MM = 15.0
+# Casement seating: outer + mullion wings are always 20 mm each side.
+# Catalogue mullion face = overall (wings + body); body = face − 40.
+CASEMENT_WING_MM = 20.0
+DEFAULT_SASH_OVERLAP_MM = CASEMENT_WING_MM
+DEFAULT_MULLION_BODY_MM = 20.0  # visible face between closed doors when face unknown
+DEFAULT_MULLION_FACE_MM = DEFAULT_MULLION_BODY_MM + 2.0 * CASEMENT_WING_MM  # 60
+DEFAULT_MULLION_GAP_MM = DEFAULT_MULLION_FACE_MM  # layout gap = full face
 DEFAULT_TOP_HUNG_OVERLAP_MM = 10.0
 _TOP_HUNG_ROLES = frozenset({"top_hung", "tophung", "top-hung", "top hung", "top"})
 _FIX_ROLES = frozenset({"fix", "fixed"})
+_DOOR_ROLES = frozenset({"openable", "door", "top_hung"})
 
 
 def _clamp_mm(value: Any, lo: float, hi: float, default: float) -> float:
@@ -59,6 +65,49 @@ def _clamp_mm(value: Any, lo: float, hi: float, default: float) -> float:
     if v <= 0:
         v = default
     return min(max(v, lo), hi)
+
+
+def resolve_casement_mullion_seating(
+    mullion_gap_mm: Any = None,
+    sash_overlap_mm: Any = None,
+    *,
+    section_sizes: Mapping[str, Any] | None = None,
+) -> tuple[float, float, float]:
+    """Return ``(face_mm, wing_mm, body_mm)`` for casement mullion / door seating.
+
+    * ``wing`` — door overlap onto outer frame and mullion wings (default 20).
+    * ``face`` — catalogue overall mullion face (wings + body).
+    * ``body`` — visible elevation face between closed doors (= face − 2×wing).
+
+    Legacy callers that passed a small ``mullionGapMm`` (10–40) meant the visible
+    body; those values are expanded to ``body + 2×wing`` so doors no longer cover
+    the entire mullion.
+    """
+    wing = _clamp_mm(sash_overlap_mm, 10.0, 30.0, CASEMENT_WING_MM)
+    face: float | None = None
+    try:
+        gap_v = float(mullion_gap_mm) if mullion_gap_mm is not None else 0.0
+    except (TypeError, ValueError):
+        gap_v = 0.0
+    # Explicit full-face gap wins over series sectionSizes.
+    if gap_v > (2.0 * wing) + 5.0:
+        face = gap_v
+    elif gap_v > 0:
+        # Legacy visible-gap / body value — expand to full face including wings.
+        body_legacy = max(gap_v, DEFAULT_MULLION_BODY_MM)
+        face = body_legacy + 2.0 * wing
+    if face is None and section_sizes:
+        raw = section_sizes.get("mullion")
+        try:
+            if raw is not None and float(raw) > 0:
+                face = float(raw)
+        except (TypeError, ValueError):
+            face = None
+    if face is None:
+        face = DEFAULT_MULLION_FACE_MM
+    face = max(float(face), 2.0 * wing + 1.0)
+    body = max(face - 2.0 * wing, 1.0)
+    return face, wing, body
 
 
 def _casement_cell_role(raw: Any, *, is_fixed: bool = False) -> str:
@@ -519,11 +568,19 @@ def _build_casement_leaves(
     Vertical mullions live only inside ``inner`` (one horizontal band after any
     top/bottom/left/right fix partitions, or one height-split row), so a top
     full-width fix / upper band is never cut by a lower-band vertical split.
+
+    ``mullion_gap`` is the **full catalogue face** (wings + body). Doors overlap
+    only the wing seats (``sash_overlap``, typically 20 mm), so the body
+    ``face − 2×wing`` stays visible between closed doors. Door+door always
+    inserts a vertical mullion when G ≥ 2.
     """
     fw = float(frame_width)
     G = max(int(glass_count), 1)
-    ov = float(sash_overlap)
+    ov = float(sash_overlap) if sash_overlap > 0 else CASEMENT_WING_MM
+    # Always reserve a mullion face between panels (door+door / divides).
     mull_w = float(mullion_gap) if G >= 2 else 0.0
+    if G >= 2 and mull_w <= 0:
+        mull_w = DEFAULT_MULLION_FACE_MM
     x0, y0, x1, y1 = inner.x0, inner.y0, inner.x1, inner.y1
     inner_w = max(x1 - x0, fw * 2 * G + mull_w * max(G - 1, 0))
     usable = max(inner_w - mull_w * (G - 1), fw * 2.2 * G)
@@ -926,7 +983,9 @@ class SlidingLayout:
     notes: tuple[str, ...] = ()
     grid_spec: Mapping[str, Any] | None = None
     sash_overlap_mm: float = 0.0
-    mullion_gap_mm: float = 0.0
+    mullion_gap_mm: float = 0.0  # full catalogue face (wings + body)
+    mullion_body_mm: float = 0.0  # visible face between closed doors
+    mullion_wing_mm: float = 0.0  # wing seat each side (= sash overlap)
 
     @property
     def left_shutter_width(self) -> float:
@@ -974,6 +1033,9 @@ class SlidingLayout:
             "system": str(self.system),
             "sashOverlapMm": round(float(self.sash_overlap_mm), 1) if self.sash_overlap_mm else None,
             "mullionGapMm": round(float(self.mullion_gap_mm), 1) if self.mullion_gap_mm else None,
+            "mullionFaceMm": round(float(self.mullion_gap_mm), 1) if self.mullion_gap_mm else None,
+            "mullionBodyMm": round(float(self.mullion_body_mm), 1) if self.mullion_body_mm else None,
+            "mullionWingMm": round(float(self.mullion_wing_mm), 1) if self.mullion_wing_mm else None,
             "fold_left": int(self.fold_left),
             "fold_right": int(self.fold_right),
             "hinges": [
@@ -1161,14 +1223,26 @@ def compute_two_track_layout(
     handle_length = float(geometry["handleLengthMm"]) if geometry.get("handleLengthMm") else None
     is_casement = sys_kind in ("casement", "openable", "opening")
     h_level = float(handle_level) if handle_level is not None else 0.5
-    sash_ov = _clamp_mm(sash_overlap_mm, 10.0, 20.0, DEFAULT_SASH_OVERLAP_MM) if is_casement else 0.0
-    mull_gap = _clamp_mm(mullion_gap_mm, 10.0, 20.0, DEFAULT_MULLION_GAP_MM) if is_casement else 0.0
+    if is_casement:
+        mull_face, sash_ov, mull_body = resolve_casement_mullion_seating(
+            mullion_gap_mm,
+            sash_overlap_mm,
+            section_sizes=section_sizes,
+        )
+        mull_gap = mull_face  # layout gap = full face (wings + body)
+        mull_wing = sash_ov
+    else:
+        sash_ov = 0.0
+        mull_gap = 0.0
+        mull_body = 0.0
+        mull_wing = 0.0
 
     if is_casement:
         # Casement daylight = inner opening minus any fix partitions (top / bottom /
         # left / right carve a fixed lite + a mullion, exactly like sliding).
         # Height-split bands stack with horizontal mullions; vertical splits stay
         # inside each band so a top full-width fix is never cut by a lower door.
+        # Door+door / divides always insert a mullion (slim/big face from series).
         bands = normalize_casement_bands(
             casement_layout,
             casement_panels,
@@ -1294,6 +1368,9 @@ def compute_two_track_layout(
         hinges=tuple(hinges),
         sash_overlap_mm=sash_ov,
         mullion_gap_mm=mull_gap,
+        mullion_body_mm=mull_body if is_casement else 0.0,
+        mullion_wing_mm=mull_wing if is_casement else 0.0,
+        section_sizes=dict(section_sizes) if section_sizes else None,
     )
 
 
@@ -1691,10 +1768,11 @@ def _build_casement_profiles(model: DrawingModel, L: SlidingLayout) -> None:
     # Fix partitions (top / bottom / left / right) — framed fixed lites.
     _emit_fix_partitions(model, L)
 
-    # Mullions: 90° T into outer frame (no 45°, no end caps). Vertical mullions
-    # draw their two vertical edges; a horizontal mullion (top / bottom fix
-    # partition) draws its two horizontal edges. Hide the portion covered by a
-    # front sash overlap.
+    # Mullions: 90° T into outer frame (no 45°, no end caps).
+    # Catalogue face includes 20 mm wings each side; doors sit on the wings so
+    # the body (face − 40) stays visible. Draw outer edges (often hidden under
+    # sash overlap) plus body seat edges that remain between closed doors.
+    wing = float(L.mullion_wing_mm or L.sash_overlap_mm or 0.0)
     for mi, m in enumerate(L.mullions):
         horizontal = m.width > m.height
         if horizontal:
@@ -1709,6 +1787,11 @@ def _build_casement_profiles(model: DrawingModel, L: SlidingLayout) -> None:
                 model.add_segment(horizontal_segment(m.y0, a, b, layer="PROFILES", name=f"mullion_{mi+1}_B_{j}"))
             for j, (a, b) in enumerate(subtract_intervals(m.x0, m.x1, hide_t)):
                 model.add_segment(horizontal_segment(m.y1, a, b, layer="PROFILES", name=f"mullion_{mi+1}_T_{j}"))
+            # Body seats (wing inset) — visible band between overlapping sashes.
+            if wing > 0.5 and m.height > 2.0 * wing + 1.0:
+                by0, by1 = m.y0 + wing, m.y1 - wing
+                model.add_segment(horizontal_segment(by0, m.x0, m.x1, layer="PROFILES", name=f"mullion_{mi+1}_body_B"))
+                model.add_segment(horizontal_segment(by1, m.x0, m.x1, layer="PROFILES", name=f"mullion_{mi+1}_body_T"))
             continue
         hide_l: list[tuple[float, float]] = []
         hide_r: list[tuple[float, float]] = []
@@ -1721,6 +1804,11 @@ def _build_casement_profiles(model: DrawingModel, L: SlidingLayout) -> None:
             model.add_segment(vertical_segment(m.x0, a, b, layer="PROFILES", name=f"mullion_{mi+1}_L_{j}"))
         for j, (a, b) in enumerate(subtract_intervals(m.y0, m.y1, hide_r)):
             model.add_segment(vertical_segment(m.x1, a, b, layer="PROFILES", name=f"mullion_{mi+1}_R_{j}"))
+        # Body seats — the visible vertical face between door+door / divides.
+        if wing > 0.5 and m.width > 2.0 * wing + 1.0:
+            bx0, bx1 = m.x0 + wing, m.x1 - wing
+            model.add_segment(vertical_segment(bx0, m.y0, m.y1, layer="PROFILES", name=f"mullion_{mi+1}_body_L"))
+            model.add_segment(vertical_segment(bx1, m.y0, m.y1, layer="PROFILES", name=f"mullion_{mi+1}_body_R"))
 
     # Neighbours are only within the same height band (vertical mullion peers).
     by_band: dict[int, list[ShutterPanel]] = {}

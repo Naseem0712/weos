@@ -1667,6 +1667,8 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
                     sash_overlap_mm=getattr(body, "sashOverlapMm", None),
                     mullion_gap_mm=getattr(body, "mullionGapMm", None),
                     frame_material=getattr(body, "frameMaterial", None),
+                    casement_layout=getattr(body, "casementLayout", None),
+                    casement_panels=getattr(body, "casementPanels", None),
                 )
                 break
             except Exception as exc:  # try next engine id

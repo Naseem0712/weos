@@ -53,6 +53,7 @@ SERIES_PRODUCT_MAP: dict[str, str] = {
     "40mm_prestige": "29mm_sliding",
     "40mm_casement_standard": "casement_stub",
     "50mm_casement_prestige": "casement_stub",
+    "bathroom_ventilator": "casement_stub",
 }
 
 

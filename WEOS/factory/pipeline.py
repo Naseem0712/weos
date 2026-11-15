@@ -183,6 +183,50 @@ def generate_job(
     sys_kind = str(system or "sliding").strip().lower()
     is_bifold = sys_kind in ("bifold", "fold", "fold_sliding", "fold_and_sliding")
     is_grid = sys_kind == "grid"
+    is_casement = sys_kind in ("casement", "openable", "opening")
+
+    # Casement: derive frame / door / mullion faces from Series Setup when the
+    # caller did not pass explicit sectionSizes (slim|big mullion face = overall
+    # including 20 mm wings; geometry body = face − 40).
+    if is_casement:
+        try:
+            from WEOS.factory.product_setup import derive_section_sizes, normalize_setup
+
+            setup_blob = product.get("setup") if isinstance(product.get("setup"), Mapping) else None
+            if setup_blob:
+                norm = normalize_setup(setup_blob) if setup_blob.get("type") or setup_blob.get("casement") else setup_blob
+                derived = derive_section_sizes(norm)
+                # Honour per-design slim/big mullion override from casement_layout.
+                cm = norm.get("casement") if isinstance(norm.get("casement"), Mapping) else {}
+                mull = cm.get("mullions") if isinstance(cm.get("mullions"), Mapping) else {}
+                pick = None
+                if isinstance(casement_layout, Mapping):
+                    pick = casement_layout.get("mullionSize") or casement_layout.get("mullion")
+                if pick and isinstance(mull.get(str(pick)), Mapping):
+                    sec = mull.get(str(pick)) or {}
+                    try:
+                        face = float(
+                            sec.get("wMm")
+                            or sec.get("widthMm")
+                            or sec.get("faceMm")
+                            or 0
+                        )
+                    except (TypeError, ValueError):
+                        face = 0.0
+                    if face > 0:
+                        derived = dict(derived)
+                        derived["mullion"] = face
+                if derived:
+                    merged = dict(derived)
+                    if section_sizes:
+                        merged.update({k: v for k, v in section_sizes.items() if v not in (None, "")})
+                    section_sizes = merged
+                if mullion_gap_mm is None and section_sizes and section_sizes.get("mullion"):
+                    mullion_gap_mm = float(section_sizes["mullion"])
+                if sash_overlap_mm is None:
+                    sash_overlap_mm = 20.0
+        except Exception:
+            pass
 
     if is_grid:
         shutter_cfg = {"glassCount": 1, "meshCount": 0, "opening": "center", "fixedShutters": []}

@@ -25,13 +25,19 @@ MM_PER_FT = 304.8
 SQMM_PER_SQFT = 92903.04
 
 DEFAULT_COLOURS = ("matt_black", "white", "grey", "wood_finish")
-DEFAULT_OUTER = "25×40 mm"
-DEFAULT_SASH = "20×35 mm"
-DEFAULT_MULLION = "25×40 mm"
+# Geometry / sections from 50mm_casement_prestige (Excel casement series)
+DEFAULT_SERIES = "50mm_casement_prestige"
+DEFAULT_OUTER = "46×50 mm"
+DEFAULT_SASH = "62.4×58.5 mm"
+DEFAULT_MULLION = "67×50 mm"
+DEFAULT_OUTER_FACE_MM = 46.0
+DEFAULT_SASH_FACE_MM = 62.4
+DEFAULT_MULLION_FACE_MM = 67.0
 DEFAULT_HANDLE = "D-type"
 DEFAULT_HINGE = "casement"
 DEFAULT_GLASS_LABEL = "5mm Frosted tuff"
 TOP_HUNG_OVERLAP_MM = 10.0
+CASEMENT_WING_MM = 20.0
 
 
 def _f(value: Any, default: float = 0.0) -> float:
@@ -129,6 +135,14 @@ def ensure_ventilator_dims(
         out.setdefault("glassThicknessMm", 5)
         out.setdefault("glassLabel", DEFAULT_GLASS_LABEL)
         out.setdefault("glassToughened", True)
+    out.setdefault("sectionSeries", DEFAULT_SERIES)
+    out.setdefault("defaultSeries", DEFAULT_SERIES)
+    out.setdefault("outerProfile", DEFAULT_OUTER)
+    out.setdefault("sashProfile", DEFAULT_SASH)
+    out.setdefault("mullionProfile", DEFAULT_MULLION)
+    out.setdefault("outerFaceMm", DEFAULT_OUTER_FACE_MM)
+    out.setdefault("sashFaceMm", DEFAULT_SASH_FACE_MM)
+    out.setdefault("mullionFaceMm", DEFAULT_MULLION_FACE_MM)
     return out
 
 
@@ -581,9 +595,15 @@ def ventilator_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = Non
     elev_h = 210.0
     scale = elev_h / max(height, 1.0)
     elev_w = max(width * scale, 140.0)
-    frame_t = max(50.0 * scale, 5.0)  # 50 mm series visual thickness
-    sash_t = max(50.0 * scale * 0.85, 4.2)
-    mull_t = max(50.0 * scale * 0.70, 4.0)
+    # Face sizes from 50mm_casement_prestige (elevation = face, not depth).
+    outer_face = _f(cfg.get("outerFaceMm") or q.get("outerFaceMm"), DEFAULT_OUTER_FACE_MM) or DEFAULT_OUTER_FACE_MM
+    sash_face = _f(cfg.get("sashFaceMm") or q.get("sashFaceMm"), DEFAULT_SASH_FACE_MM) or DEFAULT_SASH_FACE_MM
+    mull_face = _f(cfg.get("mullionFaceMm") or q.get("mullionFaceMm"), DEFAULT_MULLION_FACE_MM) or DEFAULT_MULLION_FACE_MM
+    frame_t = max(outer_face * scale, 5.0)
+    sash_t = max(sash_face * scale * 0.55, 4.2)
+    # Visible mullion body between bays = face − 2×20 mm wings
+    mull_body = max(mull_face - 2.0 * CASEMENT_WING_MM, DEFAULT_MULLION_FACE_MM - 40.0)
+    mull_t = max(mull_body * scale, 4.0)
     fan_d_mm = _f(q.get("fanDiameterMm"), 200)
     fan_d_px = max(fan_d_mm * scale, 18.0)
     svg_w = elev_w + margin * 2 + 36
