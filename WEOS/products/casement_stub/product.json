@@ -1,12 +1,14 @@
 {
   "id": "casement_stub",
-  "displayName": "40MM Standerd",
+  "displayName": "Casement (manufacturing engine)",
   "productType": "casements",
   "category": "Windows",
   "units": "mm",
   "version": 1,
-  "status": "active",
-  "description": "Casement series from profile/hardwares Excel — rates editable in Series Setup.",
+  "status": "hidden",
+  "hiddenReason": "Manufacturing engine — use Excel casement series (40mm_casement_standard / 50mm_casement_prestige) in Product Library",
+  "hiddenAt": "2026-11-15T18:15:00+00:00",
+  "description": "Casement manufacturing engine linked by Excel series — not shown in Product Library.",
   "tagline": "Casement · per-panel fix / openable",
   "heroImage": "/static/products/placeholder.svg",
   "specifications": {

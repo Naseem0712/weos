@@ -57,7 +57,7 @@ DUMMY_SLIDING_STUBS = (
     "fixed_stub",
 )
 
-# Keep manufacturing engines / unrelated products
+# Keep manufacturing engines / unrelated products (engines stay on disk for linkedProductId)
 KEEP_PRODUCTS = {
     "29mm_sliding",
     "casement_stub",
@@ -71,6 +71,12 @@ KEEP_PRODUCTS = {
     "pergola_stub",
     "fluted_stub",
 }
+
+# Engines must remain loadable but must NOT appear beside Excel series in Product Library
+CATALOG_HIDDEN_ENGINES = (
+    "29mm_sliding",
+    "casement_stub",
+)
 
 
 def _now() -> str:
@@ -1128,6 +1134,10 @@ def _enrich_29mm_sliding(series_29: Mapping[str, Any] | None, hw_items: Sequence
     meta["specifications"] = specs
     meta["ratesEditable"] = True
     meta["sourceExcel"] = "profile and hardwares weos.xlsx"
+    # Keep engine hidden from Product Library (Excel 29mm_premium is the selectable series)
+    meta["status"] = "hidden"
+    meta["hiddenReason"] = "Manufacturing engine — use Excel series (e.g. 29mm_premium) in Product Library"
+    meta["hiddenAt"] = _now()
     path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
@@ -1140,9 +1150,15 @@ def _enrich_casement_stub(series_40: Mapping[str, Any] | None, hw_items: Sequenc
         return
     meta = json.loads(path.read_text(encoding="utf-8-sig"))
     meta["setup"] = setup
-    meta["status"] = "active"
-    meta["displayName"] = series_40.get("displayName") or "40mm Casement Standard"
-    meta["description"] = "Casement series from profile/hardwares Excel — rates editable in Series Setup."
+    # Do NOT mirror Excel displayName/status — that duplicated 40mm_casement_standard in the library
+    meta["displayName"] = "Casement (manufacturing engine)"
+    meta["description"] = "Casement manufacturing engine linked by Excel series — not shown in Product Library."
+    meta["status"] = "hidden"
+    meta["hiddenReason"] = (
+        "Manufacturing engine — use Excel casement series "
+        "(40mm_casement_standard / 50mm_casement_prestige) in Product Library"
+    )
+    meta["hiddenAt"] = _now()
     specs = dict(meta.get("specifications") or {})
     specs["hardwareBrand"] = "HIVIC"
     specs["hardwareOrigin"] = "indian"
@@ -1152,6 +1168,38 @@ def _enrich_casement_stub(series_40: Mapping[str, Any] | None, hw_items: Sequenc
     meta["ratesEditable"] = True
     meta["sourceExcel"] = "profile and hardwares weos.xlsx"
     path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _hide_catalog_engines() -> list[str]:
+    """Soft-hide manufacturing engines so Product Library only lists Excel series."""
+    hidden: list[str] = []
+    for sid in CATALOG_HIDDEN_ENGINES:
+        pdir = products_dir() / sid
+        meta_path = pdir / "product.json"
+        if not meta_path.is_file():
+            continue
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8-sig"))
+        except Exception:
+            continue
+        if str(meta.get("status") or "").lower() == "hidden":
+            hidden.append(sid)
+            continue
+        meta["status"] = "hidden"
+        if sid == "casement_stub":
+            meta["displayName"] = "Casement (manufacturing engine)"
+            meta["hiddenReason"] = (
+                "Manufacturing engine — use Excel casement series "
+                "(40mm_casement_standard / 50mm_casement_prestige) in Product Library"
+            )
+        else:
+            meta["hiddenReason"] = (
+                "Manufacturing engine — use Excel series (e.g. 29mm_premium) in Product Library"
+            )
+        meta["hiddenAt"] = _now()
+        meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        hidden.append(sid)
+    return hidden
 
 
 def import_profile_hardware_excel(
@@ -1221,6 +1269,7 @@ def import_profile_hardware_excel(
     hidden: list[str] = []
     if hide_dummies:
         hidden = _hide_dummy_stubs(set(created_products))
+    hidden_engines = _hide_catalog_engines()
 
     # Durable snapshot when DB available
     persisted = False
@@ -1245,6 +1294,7 @@ def import_profile_hardware_excel(
         "hardwareIds": hw_ids,
         "products": created_products,
         "hiddenDummies": hidden,
+        "hiddenEngines": hidden_engines,
         "brandDefaults": {"indian": "HIVIC", "imported": "CMECH", "ette": "ETTE"},
         "ratesEditable": True,
         "editRatesIn": ["Admin · Product Library · Series Setup", "Admin · Hardware Library"],
