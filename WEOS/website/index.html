@@ -787,6 +787,44 @@ textarea{max-width:100%}
  #view-cart .cart-inspector .insp-fields > .row{gap:.35rem}
  #view-cart .cart-inspector .insp-fields input,#view-cart .cart-inspector .insp-fields select{min-width:0}
 }
+
+/* Phone-only inspector field alignment: no desktop, pricing or JS changes. */
+@media(max-width:700px){
+ #view-cart .cart-inspector #sharedMaterialRow{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem!important;align-items:start!important}
+ #view-cart .cart-inspector #sharedMaterialRow>div{min-width:0}
+ #view-cart .cart-inspector #sharedMaterialRow>.grow{grid-column:2}
+ #view-cart .cart-inspector #sharedMaterialRow #wrapUpvcReinf:not([style*="display:none"]){grid-column:1 / -1}
+ #view-cart .cart-inspector #sharedMaterialRow #lineFrameMaterial{width:100%!important}
+ #view-cart .cart-inspector #sharedMaterialRow #lineColour{width:100%!important;min-width:0!important;flex:1 1 100%!important}
+ #view-cart .cart-inspector #sharedMaterialRow #btnAddColour{width:100%;min-width:0}
+ #view-cart .cart-inspector #windowCartTools>.row{gap:.65rem .55rem!important;align-items:start!important}
+ #view-cart .cart-inspector #windowCartTools>.row>div{min-width:0}
+ #view-cart .cart-inspector #windowCartTools #lineW,
+ #view-cart .cart-inspector #windowCartTools #lineH,
+ #view-cart .cart-inspector #windowCartTools #lineQty,
+ #view-cart .cart-inspector #windowCartTools #partSide,
+ #view-cart .cart-inspector #windowCartTools #partSize,
+ #view-cart .cart-inspector #windowCartTools #partProfileSeries,
+ #view-cart .cart-inspector #windowCartTools #lineTrack,
+ #view-cart .cart-inspector #windowCartTools #lineSeries,
+ #view-cart .cart-inspector #windowCartTools #lineDesc{width:100%!important;min-width:0!important;max-width:100%}
+ #view-cart .cart-inspector #windowCartTools #wrapLineGlass{grid-column:1 / -1}
+ #view-cart .cart-inspector #windowCartTools #wrapLineGlass>div{display:grid!important;grid-template-columns:minmax(0,1fr) auto;align-items:stretch!important}
+ #view-cart .cart-inspector #windowCartTools #lineGlass{width:100%!important;min-width:0!important}
+ #view-cart .cart-inspector #windowCartTools #wrapFixSeries{grid-column:1 / -1}
+ #view-cart .cart-inspector #windowCartTools #btnAddPart{justify-self:start}
+ #view-cart .cart-inspector #windowCartTools #partChips{grid-column:1 / -1}
+ #view-cart .cart-inspector #windowCartTools #wrapMeshChk{min-height:40px}
+ #view-cart .cart-inspector #windowCartTools #wrapTrack{min-width:0}
+ #view-cart .cart-inspector #windowCartTools #wrapLineHandle{grid-column:1 / -1}
+ #view-cart .cart-inspector #windowCartTools #wrapLineHandle>div{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem!important}
+ #view-cart .cart-inspector #windowCartTools #wrapLineHandle>div>select{width:100%!important;min-width:0}
+ #view-cart .cart-inspector #windowCartTools #lineHandleName,
+ #view-cart .cart-inspector #windowCartTools #lineHwBrand{width:100%!important;min-width:0!important;grid-column:1 / -1}
+ #view-cart .cart-inspector #windowCartTools #wrapSeries{grid-column:1 / -1}
+ #view-cart .cart-inspector #windowCartTools .l{margin-bottom:.25rem;line-height:1.25}
+ #view-cart .cart-inspector #windowCartTools select{max-width:100%;text-overflow:ellipsis}
+}
 </style>
 </head>
 <body>
