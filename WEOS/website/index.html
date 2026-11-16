@@ -482,10 +482,10 @@ body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
 @media(max-width:1000px){
   #view-cart.grid{height:auto;overflow:visible;grid-template-rows:none;min-height:calc(100vh - 4.5rem)}
   .cart-shell{height:auto;min-height:70vh}
-  .cart-workspace{grid-template-columns:1fr;grid-template-rows:minmax(320px,min(72vh,560px)) auto;height:auto}
-  #view-cart.inspector-collapsed .cart-workspace{grid-template-columns:1fr;grid-template-rows:minmax(320px,min(72vh,560px))}
+  .cart-workspace{grid-template-columns:1fr;grid-template-rows:minmax(260px,min(52svh,440px)) auto;height:auto}
+  #view-cart.inspector-collapsed .cart-workspace{grid-template-columns:1fr;grid-template-rows:minmax(260px,min(52svh,440px))}
   #view-cart .cart-inspector.cart-tools{height:auto;max-height:none;overflow-y:visible;order:2}
-  #view-cart .cart-preview.design-stage{order:1;min-height:320px;height:min(72vh,560px);width:100%}
+  #view-cart .cart-preview.design-stage{order:1;min-height:260px;height:min(52svh,440px);width:100%}
   #view-cart .cart-preview .design-canvas-frame,
   #view-cart.preview-roomy .cart-preview .design-canvas-frame{
     width:100%;height:100%;max-width:100%;max-height:100%
@@ -495,6 +495,16 @@ body:has(#view-cart:not(.hidden)) .top .sub{font-size:.78rem}
   #view-cart .cart-inspector .inspector-sticky{position:static;top:auto;z-index:auto}
   #view-cart .cart-inspector .insp-fields{min-height:0}
   .quote-line-card .qlc-pricing{grid-template-columns:1fr 1fr}
+}
+@media(max-width:700px){
+  /* Keep the drawing visible without consuming almost the entire phone screen. */
+  #view-cart .cart-preview.design-stage{height:clamp(260px,46svh,390px);min-height:260px}
+  #view-cart .cart-workspace{grid-template-rows:clamp(260px,46svh,390px) auto}
+  #view-cart.inspector-collapsed .cart-workspace{grid-template-rows:clamp(260px,46svh,390px)}
+  #view-cart .cart-inspector.cart-tools{padding:.55rem .5rem;overflow:visible}
+  #view-cart .cart-inspector .inspector-sticky{padding:.45rem;gap:.35rem}
+  #view-cart .cart-inspector .insp-sticky-act{grid-template-columns:minmax(0,1fr) minmax(112px,auto)}
+  #view-cart .cart-inspector .insp-sticky-act #btnAddLine{min-width:0;min-height:44px}
 }
 @media(max-width:700px){
   .cart-topbar{flex-wrap:wrap;gap:.22rem;padding:.2rem .3rem}
