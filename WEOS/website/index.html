@@ -773,6 +773,20 @@ textarea{max-width:100%}
 #view-cart .cart-tb-export>#btnCalc{display:none}
 #view-cart .cart-tb-export .actions-inline #btnCalc{display:inline-flex}
 @media(max-width:700px){#view-cart .cart-tb-export .actions-inline #btnCalc{width:100%;justify-content:center}}
+
+/* Mobile-only layout; desktop untouched. */
+@media(max-width:700px){
+ #view-cart .cart-shell,#view-cart .cart-workspace,#view-cart .cart-inspector.cart-tools{overflow:visible!important}
+ #view-cart .cart-inspector.cart-tools{align-self:stretch;min-height:0}
+ #view-cart .cart-inspector .inspector-sticky{position:sticky!important;top:calc(env(safe-area-inset-top,0px) + 6px)!important;z-index:35!important;padding:.4rem .5rem;gap:.25rem;box-shadow:0 4px 14px rgba(20,20,16,.12)}
+ #view-cart .cart-inspector .insp-sticky-loc input{min-height:36px}
+ #view-cart .cart-inspector .insp-sticky-act #btnAddLine{min-height:42px}
+ #view-cart .cart-inspector .setup-summary{gap:.25rem}
+ #view-cart .cart-topbar,#view-cart .cart-topbar .cart-tb-group{gap:.25rem}
+ #view-cart .cart-topbar .btn,#view-cart .cart-topbar select{min-height:34px}
+ #view-cart .cart-inspector .insp-fields > .row{gap:.35rem}
+ #view-cart .cart-inspector .insp-fields input,#view-cart .cart-inspector .insp-fields select{min-width:0}
+}
 </style>
 </head>
 <body>
@@ -7747,7 +7761,7 @@ async function refreshLivePrice() {
       const showBreak = costN > 0 || perWin > 0 || profitAmt > 0;
       $('liveCostBreak').style.display = showBreak ? '' : 'none';
       if ($('livePerWin')) $('livePerWin').textContent = perWin > 0 ? money(perWin) : money(costN / Math.max(draft.qty || 1, 1));
-      if ($('liveProfitAmt')) $('liveProfitAmt').textContent = profitAmt > 0 ? money(profitAmt) : '₹ 0';
+      if ($('liveProfitAmt')) { const actualProfit = explicitRate && costN > 0 ? sellN - costN : null; $('liveProfitAmt').textContent = actualProfit === null ? '₹ —' : (actualProfit < 0 ? '−' + money(Math.abs(actualProfit)) : money(actualProfit)); $('liveProfitAmt').style.color = actualProfit === null ? '' : actualProfit < 0 ? '#b42332' : '#086044'; }
       const w = (live.cost && live.cost.wastage) || design.wastage || {};
       const br = (live.cost && live.cost.breakdown) || design.breakdown || {};
       if ($('liveWasteHint')) {
