@@ -832,6 +832,18 @@ textarea{max-width:100%}
   #windowCartTools > .row:has(#lineW) select { min-height:38px!important; }
 }
 
+/* Keep company credentials together instead of stretching across the panel. */
+#coLoginFold .co-login-primary{display:grid;grid-template-columns:minmax(0,360px) 100px auto;align-items:start;gap:.5rem;max-width:550px}
+#coLoginFold .co-login-primary>div{min-width:0}
+#coLoginFold .co-login-primary input{width:100%;min-width:0}
+#coLoginFold .co-login-primary>.btn{align-self:start;margin-top:20px;white-space:nowrap}
+#coLoginFold .co-login-secondary{display:flex;align-items:flex-end;gap:.5rem;flex-wrap:wrap;margin-top:.45rem}
+#coLoginFold .co-login-detail{flex:0 1 260px;min-width:0;max-width:100%}
+@media(max-width:480px){
+  #coLoginFold .co-login-primary{grid-template-columns:minmax(0,1fr) 85px}
+  #coLoginFold .co-login-primary>.btn{grid-column:1/-1;margin-top:0;justify-self:start}
+  #coLoginFold .co-login-detail{flex:1 1 100%}
+}
 </style>
 </head>
 <body>
@@ -2454,21 +2466,21 @@ textarea{max-width:100%}
         </div>
         <div class="fold-body">
         <p class="muted" style="margin:.2rem 0 .7rem;font-size:.82rem">GSTIN, company name, or registered mobile + <strong>4-digit PIN</strong>. After login this company’s quotes, customers and advances load from the server. Log out before switching company on this device.</p>
-        <div class="row" style="align-items:flex-end;gap:.5rem;flex-wrap:wrap">
-          <div class="grow" style="flex:1 1 280px;min-width:min(100%,280px)">
+        <div class="co-login-primary">
+          <div>
             <label class="l">GSTIN / name / mobile</label>
             <input id="coGstLogin" placeholder="15-char GSTIN, company name, or mobile" autocomplete="username" autocapitalize="characters" spellcheck="false" style="text-transform:uppercase;font-family:ui-monospace,Consolas,monospace;letter-spacing:.04em"/>
             <div class="muted" id="coGstLoginHint" style="font-size:.72rem;margin-top:.2rem"></div>
           </div>
-          <div style="flex:0 0 auto">
+          <div>
             <label class="l">4-digit PIN</label>
-            <input id="coGstPin" type="password" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="••••" style="width:110px"/>
+            <input id="coGstPin" type="password" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="••••"/>
           </div>
-        </div>
-        <div class="row" style="align-items:flex-end;gap:.5rem;flex-wrap:wrap;margin-top:.45rem">
-          <div class="grow"><label class="l">Company name (first time)</label><input id="coGstLoginName" style="text-transform:uppercase" placeholder="new company only" autocomplete="organization"/></div>
-          <div class="grow"><label class="l">Registered email (PIN reset)</label><input id="coGstLoginEmail" type="email" placeholder="company email" autocomplete="email"/></div>
           <button class="btn" id="btnCoGstAuth" type="button">Log in</button>
+        </div>
+        <div class="co-login-secondary">
+          <div class="co-login-detail"><label class="l">Company name (first time)</label><input id="coGstLoginName" style="text-transform:uppercase" placeholder="new company only" autocomplete="organization"/></div>
+          <div class="co-login-detail"><label class="l">Registered email (PIN reset)</label><input id="coGstLoginEmail" type="email" placeholder="company email" autocomplete="email"/></div>
           <button class="btn ghost sm" id="btnCoGstForgot" type="button">Forgot PIN</button>
           <button class="btn ghost sm" id="btnCoGstRefresh" type="button">Refresh hub</button>
         </div>
