@@ -2986,6 +2986,77 @@ def api_public_quote_slashed(ref: str) -> dict[str, Any]:
     return rec
 
 
+class PublicPackageQuoteBody(BaseModel):
+    """Customer calculator input — WoodenMax / public sites. No cost fields accepted back."""
+
+    model_config = {"extra": "allow"}
+
+    product: str = "29mm_premium"
+    width: float = 1500
+    height: float = 1200
+    qty: int = 1
+    glass: str | None = "10mm"
+    glassThickness: str | None = None
+    colour: str | None = "Matte Black"
+    color: str | None = None
+    frameColour: str | None = None
+    mesh: bool | None = None
+    meshChoice: str | None = None
+    meshShutters: int | None = None
+    trackCount: float | None = None
+    glassShutters: int | None = 2
+    locking: str | None = "multipoint"
+    lock: str | None = None
+    lockType: str | None = None
+    quoteId: str | None = None
+    source: str | None = "woodenmax"
+
+
+@app.post("/api/public/package-quote")
+def api_public_package_quote(body: PublicPackageQuoteBody) -> dict[str, Any]:
+    """Customer-safe package quotation: design_cost → 2× package price + SVG.
+
+    Strips aluminiumCost / coatingCost / hardware rates / labour / profit / breakdown.
+    Persists opaque quoteId for later discount reopen.
+    """
+    from WEOS.factory.public_package_quote import build_public_package_quote
+
+    payload = body.model_dump()
+    # Prefer explicit aliases when provided
+    if body.glassThickness and not (body.glass and body.glass != "10mm"):
+        payload["glass"] = body.glassThickness
+    if body.color and not body.colour:
+        payload["colour"] = body.color
+    if body.frameColour:
+        payload["colour"] = body.frameColour
+    if body.lockType and not body.locking:
+        payload["locking"] = body.lockType
+    elif body.lock and not body.locking:
+        payload["locking"] = body.lock
+    try:
+        result = build_public_package_quote(payload)
+    except Exception as exc:
+        _log.exception("public package-quote failed")
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "package quote failed")
+    return result
+
+
+@app.get("/api/public/package-quote/{quote_id}")
+def api_get_public_package_quote(
+    quote_id: str,
+    preview: bool = Query(False, description="Rebuild SVG preview when true"),
+) -> dict[str, Any]:
+    """Load a saved customer package quote (selection + package price only)."""
+    from WEOS.factory.public_package_quote import get_public_package_quote
+
+    rec = get_public_package_quote(quote_id, include_preview=preview)
+    if not rec:
+        raise HTTPException(status_code=404, detail=f"Package quote not found: {quote_id}")
+    return rec
+
+
 @app.post("/api/projects/import")
 async def api_projects_import(
     file: UploadFile = File(...),
