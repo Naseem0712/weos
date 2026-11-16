@@ -766,6 +766,13 @@ textarea{max-width:100%}
  #view-cart .cart-inspector .row>.grow{min-width:0}
  #view-cart .cart-inspector select,#view-cart .cart-inspector input{max-width:100%}
 }
+
+#view-cart .sticky-profit-status{display:block}
+#view-cart .inspector-sticky.profit-loss .sticky-profit-status{color:#b42332}
+#view-cart .inspector-sticky.profit-ok .sticky-profit-status,#view-cart .inspector-sticky.profit-low .sticky-profit-status{color:#086044}
+#view-cart .cart-tb-export>#btnCalc{display:none}
+#view-cart .cart-tb-export .actions-inline #btnCalc{display:inline-flex}
+@media(max-width:700px){#view-cart .cart-tb-export .actions-inline #btnCalc{width:100%;justify-content:center}}
 </style>
 </head>
 <body>
@@ -967,7 +974,6 @@ textarea{max-width:100%}
       <div class="cart-shell">
         <div class="cart-topbar">
           <div class="cart-tb-group cart-tb-export">
-            <button class="btn" id="btnCalc" title="Price the cart, save the quote, then download PDFs below">Calculate price</button>
             <label class="l" style="margin:0;font-size:.62rem">Print setup</label>
             <select id="exportSetupSelect" title="Choose which customer account’s bill-to / terms print on the quote"></select>
             <button class="btn ghost sm" id="btnPrintCopyToggle" type="button" title="See what description and terms will print, then edit if needed">Desc &amp; terms</button>
@@ -978,6 +984,7 @@ textarea{max-width:100%}
                 <a class="btn sec sm" id="linkFact" href="#" title="Factory production sheet: panel schedule, glass sizes, hardware BOM, cut list, weights. No customer pricing.">🏭 Factory Sheet (PDF)</a>
                 <button class="btn ghost sm" type="button" id="btnMaterialsList" title="Materials + hardware list for products on this quote (catalogue names, customer, date, colour)">📋 Materials list</button>
                 <button class="btn ghost sm" type="button" id="btnStockViewer" title="Reusable aluminium remnants / stock (series · section · colour · lengths &gt; ~3 ft)">📦 Stock</button>
+                <button class="btn ghost sm" id="btnCalc" title="Recalculate and save quotation before export, if needed">Recalculate quote</button>
                 <a class="btn ghost sm" id="linkQuote" href="#" target="_blank" title="Raw quotation data (JSON) — for integrations.">Quote data</a>
               </div>
             <div id="printCopyPanel" class="hidden" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;padding:.55rem .65rem;background:#fff">
@@ -4483,15 +4490,18 @@ function setSellDisplay(text) {
   if ($('stickySell')) $('stickySell').textContent = t;
 }
 function updateStickyProfit(cost, sell, hasRate) {
- const node=$('stickyProfitStatus'), panel=$('inspectorStickyBar');
+ const node=$('stickyProfitStatus'),panel=$('inspectorStickyBar');
  if(!node||!panel)return;
  const c=Number(cost),v=Number(sell);
  panel.classList.remove('profit-loss','profit-low','profit-ok');
  if(!Number.isFinite(c)||c<=0){node.textContent='Cost pending';return;}
  const sale=hasRate&&Number.isFinite(v)?Math.max(0,v):0;
  const profit=sale-c,shortfall=Math.max(0,c*1.2-sale);
- panel.classList.add(profit<0?'profit-loss':shortfall>0.005?'profit-low':'profit-ok');
- node.textContent=(hasRate?(profit<0?'Actual loss '+money(-profit):'Actual profit '+money(profit)):'No rate · actual loss '+money(c))+
+ const percent=c>0?(profit/c*100):0;
+ const loss=profit<0;
+ const low=!loss&&shortfall>0.005;
+ panel.classList.add(loss?'profit-loss':low?'profit-low':'profit-ok');
+ node.textContent=(loss?'🔴 Loss ':'🟢 Profit ')+money(Math.abs(profit))+' ('+(loss?'-':'+')+Math.abs(percent).toFixed(1)+'% on cost)'+
  (shortfall>0.005?' · 20% target short '+money(shortfall):' · 20% target met');
 }
 /** Company / project currency — never emit tofu / replacement glyphs. */
