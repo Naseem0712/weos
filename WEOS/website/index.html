@@ -7575,9 +7575,6 @@ function applySpecialLivePrice(kind) {
       ? `Rate ₹${q.sellingPerUnit}/${String(q.saleUnit||'sqft').toUpperCase()}`
       : '';
   }
-  if ($('lineSellRate') && $('lineSellRate').value === '' && q.sellingPerUnit != null) {
-    $('lineSellRate').value = q.sellingPerUnit;
-  }
   // Display-only — never write special-product live rates into quote lines here.
   updateLiveCartTotal();
 }
@@ -7612,11 +7609,7 @@ async function refreshLivePrice() {
   }
   const draft = currentLineDraft();
   if (!draft.width || !draft.height) return;
-  const fallbackRate = lastKnownSellingRate(draft);
-  if ((draft.sellingRate == null || draft.sellingRate === '') && fallbackRate != null) {
-    draft.sellingRate = fallbackRate;
-    if ($('lineSellRate') && $('lineSellRate').value === '') $('lineSellRate').value = fallbackRate;
-  }
+  // Respect a deliberately cleared selling-rate field; never borrow an older rate.
   const localSell = lineLiveAmount(Object.assign({}, state.lines[state.selectedLine] || {}, draft));
   if (localSell > 0) setSellDisplay(money(localSell));
   try {
@@ -7705,14 +7698,8 @@ async function refreshLivePrice() {
       (live.rateSource === 'customer_saved' ? ' · rate from customer history' : '');
     if (live.selling) {
       setSellDisplay(money(live.selling.sellingAmount));
-      if ($('lineSellRate').value === '' && live.selling.sellingRate != null) {
-        $('lineSellRate').value = live.selling.sellingRate;
-      }
     } else {
       setSellDisplay(sellN > 0 ? money(sellN) : '₹ —');
-      if ($('lineSellRate').value === '' && live.cost && live.cost.suggestedSellRate != null) {
-        $('lineSellRate').value = live.cost.suggestedSellRate;
-      }
     }
     // Live price is display-only for the form draft. Quote lines update only via
     // Add to cart / Update (never from preview price refresh).
