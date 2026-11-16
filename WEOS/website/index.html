@@ -719,6 +719,15 @@ textarea{max-width:100%}
   .main{padding:0}
   .card,.panel{box-shadow:none;break-inside:avoid}
 }
+
+#view-cart .sticky-profit-status{display:block;font-size:.7rem;line-height:1.35;margin-top:.25rem;font-weight:650;color:#4b5563;overflow-wrap:anywhere}
+#view-cart .inspector-sticky.profit-loss{border-color:#d86a6a;background:#fff3f3}
+#view-cart .inspector-sticky.profit-loss .sticky-profit-status{color:#a51c30}
+#view-cart .inspector-sticky.profit-low{border-color:#d9a147;background:#fff9eb}
+#view-cart .inspector-sticky.profit-low .sticky-profit-status{color:#895900}
+#view-cart .inspector-sticky.profit-ok{border-color:#62a58b;background:#f1faf5}
+#view-cart .inspector-sticky.profit-ok .sticky-profit-status{color:#086044}
+@media(max-width:700px){#view-cart .cart-inspector .inspector-sticky{border-radius:12px;box-shadow:none}#view-cart .cart-inspector .insp-sticky-sell strong{font-size:1.05rem}}
 </style>
 </head>
 <body>
@@ -986,7 +995,7 @@ textarea{max-width:100%}
               <div class="insp-sticky-act">
                 <div class="insp-sticky-sell">
                   <span class="l">Sell amount</span>
-                  <strong id="stickySell">₹ —</strong>
+                  <strong id="stickySell">₹ —</strong><span id="stickyProfitStatus" class="sticky-profit-status" role="status" aria-live="polite">Enter selling rate</span>
                 </div>
                 <button class="btn" id="btnAddLine" type="button">Add to cart</button>
                 <button class="btn ghost sm" id="btnAddAsNew" type="button" style="display:none">Add as new</button>
@@ -4435,6 +4444,18 @@ function setSellDisplay(text) {
   if ($('liveSell')) $('liveSell').textContent = t;
   if ($('stickySell')) $('stickySell').textContent = t;
 }
+function updateStickyProfit(cost, sell, hasRate) {
+ const node=$('stickyProfitStatus'), panel=$('inspectorStickyBar');
+ if(!node||!panel)return;
+ const c=Number(cost),v=Number(sell);
+ panel.classList.remove('profit-loss','profit-low','profit-ok');
+ if(!Number.isFinite(c)||c<=0){node.textContent='Cost pending';return;}
+ const sale=hasRate&&Number.isFinite(v)?Math.max(0,v):0;
+ const profit=sale-c,shortfall=Math.max(0,c*1.2-sale);
+ panel.classList.add(profit<0?'profit-loss':shortfall>0.005?'profit-low':'profit-ok');
+ node.textContent=(hasRate?(profit<0?'Actual loss '+money(-profit):'Actual profit '+money(profit)):'No rate · actual loss '+money(c))+
+ (shortfall>0.005?' · 20% target short '+money(shortfall):' · 20% target met');
+}
 /** Company / project currency — never emit tofu / replacement glyphs. */
 const CURRENCY_META = {
   INR: { symbol: '\u20B9', iso: 'INR', locale: 'en-IN' },
@@ -4652,6 +4673,7 @@ function lineProductAmount(ln) {
   const qty = Math.max(1, Number(ln.qty || ln.quantity || 1) || 1);
   const rate = Number(ln.sellingRate != null ? ln.sellingRate : (ln.selling && ln.selling.sellingRate));
   // Live rate wins over stale stamped windowAmount so Quote-lines edits recalculate totals.
+  if (ln.sellingRate === 0) return 0;
   if (Number.isFinite(rate) && rate > 0) {
     const fromRate = lineProductAmountFromRate(ln, rate);
     if (fromRate != null) return fromRate;
@@ -7621,10 +7643,11 @@ async function refreshLivePrice() {
   if (!draft.width || !draft.height) return;
   // Respect a deliberately cleared selling-rate field; never borrow an older rate.
   const localSell = lineLiveAmount(Object.assign({}, state.lines[state.selectedLine] || {}, draft));
-  if (localSell > 0) setSellDisplay(money(localSell));
+  setSellDisplay(money(localSell || 0));
   try {
     const body = { ...draft, customer: $('cartCustomer').value || null, lookupSavedRate: true };
     const live = await api('/api/quote/live', { method:'POST', body });
+    if (JSON.stringify(currentLineDraft()) !== JSON.stringify(draft)) return;
     state.livePrice = live;
     const costN = Number(
       (live.cost && live.cost.total) ||
@@ -7632,7 +7655,8 @@ async function refreshLivePrice() {
       (live.lineCalc && live.lineCalc.price && live.lineCalc.price.total) ||
       0
     ) || 0;
-    const sellN = Number((live.selling && live.selling.sellingAmount) || localSell || 0) || 0;
+    const explicitRate = draft.sellingRate != null;
+    const sellN = explicitRate ? Number(localSell || 0) : 0;
     const design = live.designCost || live.cost || {};
     const perWin = Number(design.perWindowCost != null ? design.perWindowCost : (live.cost && live.cost.unitTotal)) || 0;
     const profitAmt = Number(design.profitAmount != null ? design.profitAmount : (live.cost && live.cost.profitAmount)) || 0;
@@ -7659,7 +7683,8 @@ async function refreshLivePrice() {
         fillWheelSelect($('lineMeshWheel'), state._meshWheelOptions, design.selectedMeshWheel.id);
       }
     }
-    $('liveCost').textContent = costN > 0 ? money(costN) : (sellN > 0 ? money(sellN) : '₹ —');
+    $('liveCost').textContent = costN > 0 ? money(costN) : '₹ —';
+    updateStickyProfit(costN,sellN,explicitRate);
     if ($('liveCostBreak')) {
       const showBreak = costN > 0 || perWin > 0 || profitAmt > 0;
       $('liveCostBreak').style.display = showBreak ? '' : 'none';
@@ -7707,9 +7732,9 @@ async function refreshLivePrice() {
     $('liveMeta').textContent = `${m.areaSqft||'—'} sft · ${draft.width}×${draft.height} mm · qty ${draft.qty}` +
       (live.rateSource === 'customer_saved' ? ' · rate from customer history' : '');
     if (live.selling) {
-      setSellDisplay(money(live.selling.sellingAmount));
+      setSellDisplay(money(sellN));
     } else {
-      setSellDisplay(sellN > 0 ? money(sellN) : '₹ —');
+      setSellDisplay(money(sellN));
     }
     // Live price is display-only for the form draft. Quote lines update only via
     // Add to cart / Update (never from preview price refresh).
@@ -12976,7 +13001,7 @@ function stampSelectedDraftAmount() {
     if (draft.width) ln.width = draft.width;
     if (draft.height) ln.height = draft.height;
     if (draft.qty) ln.qty = draft.qty;
-    if (draft.sellingRate != null) ln.sellingRate = draft.sellingRate;
+    ln.sellingRate = draft.sellingRate;
     if (draft.saleUnit) ln.saleUnit = draft.saleUnit;
     clearLinePriceStamp(ln);
     stampLineAmount(ln);
@@ -12984,7 +13009,7 @@ function stampSelectedDraftAmount() {
   const merged = Object.assign({}, ln || {}, draft || {});
   if (draft) {
     const amt = lineLiveAmount(merged);
-    if (amt > 0) setSellDisplay(money(amt));
+    if (amt != null || draft.sellingRate == null) setSellDisplay(money(amt || 0));
     if (amt > 0 && $('liveCost') && !isRailingMode() && !isShowerMode() && !isVentMode()) {
       const raw = (($('liveCost').textContent) || '').replace(/[₹,\s]/g, '');
       if (!raw || raw === '—' || raw === '-' || Number(raw) === 0) $('liveCost').textContent = money(amt);
