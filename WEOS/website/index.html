@@ -773,6 +773,65 @@ textarea{max-width:100%}
 #view-cart .cart-tb-export>#btnCalc{display:none}
 #view-cart .cart-tb-export .actions-inline #btnCalc{display:inline-flex}
 @media(max-width:700px){#view-cart .cart-tb-export .actions-inline #btnCalc{width:100%;justify-content:center}}
+
+/* WEOS mobile-only compact Window Cart form — desktop intentionally untouched */
+@media (max-width: 700px) {
+  #sharedMaterialRow {
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:8px!important;
+    align-items:end!important;
+    margin-top:8px!important;
+  }
+  #sharedMaterialRow > div { min-width:0!important; width:auto!important; margin:0!important; }
+  #sharedMaterialRow > div:has(#lineColour) { grid-column:auto; }
+  #sharedMaterialRow select, #sharedMaterialRow input { width:100%!important; min-width:0!important; max-width:100%!important; box-sizing:border-box; }
+  #sharedMaterialRow > div:has(#lineColour) > div { display:grid!important; grid-template-columns:minmax(0,1fr) auto; gap:5px!important; flex-wrap:nowrap!important; }
+  #btnAddColour { width:auto!important; min-width:0!important; padding:0 9px!important; font-size:11px!important; white-space:nowrap; }
+  #windowCartTools > .row:has(#lineW) {
+    display:grid!important;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:8px!important;
+    align-items:end!important;
+    margin-top:9px!important;
+  }
+  #windowCartTools > .row:has(#lineW) > div { min-width:0!important; width:auto!important; margin:0!important; }
+  #lineW, #lineH, #lineQty { width:100%!important; min-width:0!important; box-sizing:border-box; }
+  #wrapCurvedTop { grid-column:1 / -1; min-width:0!important; align-items:center!important; }
+  #wrapLineGlass { grid-column:1 / -1; min-width:0!important; }
+  #wrapLineGlass > div { display:grid!important; grid-template-columns:minmax(0,1fr) auto; gap:6px!important; flex-wrap:nowrap!important; }
+  #lineGlass { min-width:0!important; width:100%!important; box-sizing:border-box; }
+  #btnAddGlass { white-space:nowrap; }
+  #windowCartTools > .row:has(#partSide) {
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px!important;
+    align-items:end!important;
+    margin-top:9px!important;
+  }
+  #windowCartTools > .row:has(#partSide) > div { min-width:0!important; width:auto!important; margin:0!important; }
+  #partSide, #partSize, #partProfileSeries { width:100%!important; min-width:0!important; box-sizing:border-box; }
+  #wrapFixSeries { grid-column:1 / -1; }
+  #btnAddPart { width:100%; min-width:0; }
+  #partChips { align-self:center; min-width:0; }
+  #windowCartTools > .row:has(#lineMesh) {
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:8px!important;
+    align-items:end!important;
+  }
+  #wrapMeshChk, #wrapTrack { min-width:0!important; margin:0!important; }
+  #wrapTrack select { width:100%!important; min-width:0!important; }
+  #wrapMeshType, #wrapMeshName, #meshHint { grid-column:1 / -1; min-width:0!important; }
+  #wrapMeshType select, #wrapMeshName input { width:100%!important; max-width:100%!important; box-sizing:border-box; }
+  #windowCartTools .l, #sharedMaterialRow .l { font-size:10px!important; letter-spacing:.04em!important; margin-bottom:3px!important; }
+  #windowCartTools > .row:has(#lineW) input,
+  #windowCartTools > .row:has(#partSide) input,
+  #windowCartTools > .row:has(#partSide) select,
+  #sharedMaterialRow select { min-height:38px!important; }
+  #windowCartTools > .row:has(#lineW) select { min-height:38px!important; }
+}
+
 </style>
 </head>
 <body>
