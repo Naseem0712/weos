@@ -728,6 +728,44 @@ textarea{max-width:100%}
 #view-cart .inspector-sticky.profit-ok{border-color:#62a58b;background:#f1faf5}
 #view-cart .inspector-sticky.profit-ok .sticky-profit-status{color:#086044}
 @media(max-width:700px){#view-cart .cart-inspector .inspector-sticky{border-radius:12px;box-shadow:none}#view-cart .cart-inspector .insp-sticky-sell strong{font-size:1.05rem}}
+
+/* Mobile quotation workspace: compact status, grouped actions and natural sticky cart. */
+@media(max-width:700px){
+ body:has(#view-cart:not(.hidden)) .top{display:grid;grid-template-columns:42px minmax(0,1fr) auto auto;gap:.3rem;align-items:center;padding:.25rem .4rem}
+ body:has(#view-cart:not(.hidden)) .top .burger{grid-column:1;min-width:40px;min-height:40px}
+ body:has(#view-cart:not(.hidden)) .top .grow{grid-column:2;min-width:0}
+ body:has(#view-cart:not(.hidden)) .top h1{font-size:1.03rem;line-height:1.15;margin:0}
+ body:has(#view-cart:not(.hidden)) .top .sub{display:none}
+ body:has(#view-cart:not(.hidden)) .top #enginePill,
+ body:has(#view-cart:not(.hidden)) .top #wsPill{width:14px;height:14px;min-width:14px;padding:0!important;border-radius:50%;font-size:0!important;overflow:hidden;white-space:nowrap;margin:0!important;border:2px solid #fff;box-shadow:0 0 0 1px #ccc}
+ body:has(#view-cart:not(.hidden)) .top #enginePill{grid-column:3}
+ body:has(#view-cart:not(.hidden)) .top #wsPill{grid-column:4;background:#b91c1c}
+ body:has(#view-cart:not(.hidden)) .top #projPill{display:none}
+ #view-cart .cart-topbar{display:grid;grid-template-columns:1fr;gap:.35rem;padding:.4rem}
+ #view-cart .cart-topbar .cart-tb-group{display:flex;flex-wrap:wrap;gap:.3rem;max-width:none;width:100%;overflow:visible;justify-content:flex-start;margin:0}
+ #view-cart .cart-topbar .cart-tb-export{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.3rem}
+ #view-cart .cart-topbar .cart-tb-export #btnCalc{grid-column:1}
+ #view-cart .cart-topbar .cart-tb-export #exportSetupSelect{grid-column:2;min-width:0;width:100%}
+ #view-cart .cart-topbar .cart-tb-export>label.l{display:none}
+ #view-cart .cart-topbar .cart-tb-export #btnPrintCopyToggle{grid-column:1}
+ #view-cart .cart-topbar .cart-tb-export .actions-inline{grid-column:2;min-width:0}
+ #view-cart .cart-topbar .cart-tb-export .actions-inline #linkCust{width:100%;justify-content:center}
+ #view-cart .cart-topbar .btn,#view-cart .cart-topbar select{min-height:36px}
+ #view-cart .cart-inspector.cart-tools{overflow:visible!important;contain:none}
+ #view-cart .cart-inspector .inspector-sticky{position:sticky!important;top:calc(env(safe-area-inset-top, 0px) + 8px)!important;z-index:30!important;box-shadow:0 3px 12px rgba(0,0,0,.10)}
+ #view-cart .cart-inspector .setup-summary{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem;padding:.4rem}
+ #view-cart .cart-inspector .setup-summary>.btn{width:auto;flex:1 1 125px;min-width:0}
+ #view-cart .cart-inspector .setup-summary>strong{min-width:0}
+ #view-cart .cart-inspector .insp-sticky-loc label{font-size:.68rem}
+ #view-cart .cart-inspector .insp-sticky-loc input{min-height:38px;padding:.35rem .55rem}
+ #view-cart .cart-inspector .insp-sticky-act{grid-template-columns:minmax(0,1fr) minmax(110px,34%);gap:.35rem}
+ #view-cart .cart-inspector .insp-sticky-act #btnAddLine{min-width:0;min-height:44px}
+ #view-cart .cart-inspector .insp-sticky-sell strong{font-size:1rem}
+ #view-cart .cart-inspector .sticky-profit-status{font-size:.66rem}
+ #view-cart .cart-inspector .row{row-gap:.35rem}
+ #view-cart .cart-inspector .row>.grow{min-width:0}
+ #view-cart .cart-inspector select,#view-cart .cart-inspector input{max-width:100%}
+}
 </style>
 </head>
 <body>
