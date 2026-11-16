@@ -13389,44 +13389,7 @@ if ($('btnStockViewer')) {
         '<table><thead><tr><th>Series</th><th>Section / profile</th><th>Colour</th><th>Length m</th><th>Length ft</th><th>Id</th></tr></thead><tbody>' +
         rows + '</tbody></table>' +
         (data.stub && data.stub.detail ? ('<p class="muted" style="margin-top:1rem">' + esc(data.stub.detail) + '</p>') : '') +
-        '<script>
-/* Mobile-only smart cart bar. The placeholder preserves its original slot and
-   the real controls retain their listeners and values while fixed. */
-(function initMobileSmartCart(){
- const bar=document.getElementById('inspectorStickyBar');
- const inspector=bar&&bar.closest('.cart-inspector');
- if(!bar||!inspector)return;
- const anchor=document.createElement('div');
- anchor.setAttribute('aria-hidden','true');
- anchor.style.display='none';
- bar.parentNode.insertBefore(anchor,bar);
- let pending=false;
- function update(){
-   pending=false;
-   const view=document.getElementById('view-cart');
-   const enabled=window.matchMedia('(max-width:700px)').matches && view && !view.classList.contains('hidden');
-   if(!enabled){bar.classList.remove('mobile-cart-fixed');anchor.style.display='none';bar.style.removeProperty('--mobile-cart-left');bar.style.removeProperty('--mobile-cart-width');return;}
-   const wasFixed=bar.classList.contains('mobile-cart-fixed');
-   if(wasFixed) {anchor.style.height=bar.offsetHeight+'px';}
-   const reference=wasFixed?anchor:bar;
-   const rect=reference.getBoundingClientRect();
-   const bottom=inspector.getBoundingClientRect().bottom;
-   const shouldFix=rect.top<6 && bottom>bar.offsetHeight+12;
-   if(shouldFix){
-     anchor.style.display='block';anchor.style.height=bar.offsetHeight+'px';
-     const bounds=inspector.getBoundingClientRect();
-     bar.style.setProperty('--mobile-cart-left',Math.max(8,bounds.left)+'px');
-     bar.style.setProperty('--mobile-cart-width',Math.min(bounds.width,window.innerWidth-16)+'px');
-     bar.classList.add('mobile-cart-fixed');
-   }else{bar.classList.remove('mobile-cart-fixed');anchor.style.display='none';}
- }
- function schedule(){if(pending)return;pending=true;requestAnimationFrame(update)}
- window.addEventListener('scroll',schedule,{passive:true});
- window.addEventListener('resize',schedule,{passive:true});
- document.addEventListener('change',schedule,true);
- schedule();
-})();
-</script>
+        '
 </body></html>';
       const w = window.open('', '_blank');
       if (w) { w.document.write(html); w.document.close(); }
@@ -18388,6 +18351,44 @@ async function pingEngine(){
   scheduleLivePrice();
   // WEOS AI Agent FAB/dock removed from the front screen by request.
   if (typeof refreshCartProjectPick === 'function') refreshCartProjectPick().catch(() => {});
+})();
+</script>
+<script>
+/* Mobile-only smart cart bar. The placeholder preserves its original slot and
+   the real controls retain their listeners and values while fixed. */
+(function initMobileSmartCart(){
+ const bar=document.getElementById('inspectorStickyBar');
+ const inspector=bar&&bar.closest('.cart-inspector');
+ if(!bar||!inspector)return;
+ const anchor=document.createElement('div');
+ anchor.setAttribute('aria-hidden','true');
+ anchor.style.display='none';
+ bar.parentNode.insertBefore(anchor,bar);
+ let pending=false;
+ function update(){
+   pending=false;
+   const view=document.getElementById('view-cart');
+   const enabled=window.matchMedia('(max-width:700px)').matches && view && !view.classList.contains('hidden');
+   if(!enabled){bar.classList.remove('mobile-cart-fixed');anchor.style.display='none';bar.style.removeProperty('--mobile-cart-left');bar.style.removeProperty('--mobile-cart-width');return;}
+   const wasFixed=bar.classList.contains('mobile-cart-fixed');
+   if(wasFixed) {anchor.style.height=bar.offsetHeight+'px';}
+   const reference=wasFixed?anchor:bar;
+   const rect=reference.getBoundingClientRect();
+   const bottom=inspector.getBoundingClientRect().bottom;
+   const shouldFix=rect.top<6 && bottom>bar.offsetHeight+12;
+   if(shouldFix){
+     anchor.style.display='block';anchor.style.height=bar.offsetHeight+'px';
+     const bounds=inspector.getBoundingClientRect();
+     bar.style.setProperty('--mobile-cart-left',Math.max(8,bounds.left)+'px');
+     bar.style.setProperty('--mobile-cart-width',Math.min(bounds.width,window.innerWidth-16)+'px');
+     bar.classList.add('mobile-cart-fixed');
+   }else{bar.classList.remove('mobile-cart-fixed');anchor.style.display='none';}
+ }
+ function schedule(){if(pending)return;pending=true;requestAnimationFrame(update)}
+ window.addEventListener('scroll',schedule,{passive:true});
+ window.addEventListener('resize',schedule,{passive:true});
+ document.addEventListener('change',schedule,true);
+ schedule();
 })();
 </script>
 </body>
