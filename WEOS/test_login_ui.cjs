@@ -17,7 +17,7 @@ const $ = id => {
 function storage(){const data=new Map();return {getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k)};}
 let loggedIn=false;
 const state={workspaceRestored:false,projectId:null,lines:[]};
-const ctx=vm.createContext({state,$,isCompanyLoggedIn:()=>loggedIn,savedCompanyGst:()=> 'COMPANY_A',sessionStorage:storage(),localStorage:storage(),WEOS_CART_KEY:'weos.cart.v1',WEOS_GST_KEY:'gst',WEOS_SESSION_KEY:'session',clearTimeout,hydrateCartLines:x=>x,adoptCartQuoteGroups(){},isPlaceholderProjectName:x=>!x,console});
+const ctx=vm.createContext({state,$,isCompanyLoggedIn:()=>loggedIn,savedCompanyGst:()=> 'COMPANY_A',sessionStorage:storage(),localStorage:storage(),WEOS_CART_KEY:'weos.cart.v1',cancelScrollRestore:null,WEOS_VIEW_KEY:'view',WEOS_GST_KEY:'gst',WEOS_SESSION_KEY:'session',clearTimeout,hydrateCartLines:x=>x,adoptCartQuoteGroups(){},isPlaceholderProjectName:x=>!x,console});
 for(const name of ['restoreCartSession','persistCartSession','projectDisplayName','refreshSetupSummary','updatePdfLinks','wipeLoggedOutUi','pingEngine'])vm.runInContext(source(name),ctx);
 const pack={companyGst:'COMPANY_A',projectId:'P1',name:'Private project',customer:'Private customer',lines:[{lineId:'1'}]};
 ctx.sessionStorage.setItem('weos.cart.v1',JSON.stringify(pack));

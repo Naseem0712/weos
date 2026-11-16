@@ -20,9 +20,10 @@ html,body{margin:0;min-height:100%;font-family:var(--sans);color:var(--ink);
              radial-gradient(ellipse 60% 40% at 100% 0%,#efd6c2,transparent 50%),var(--bg)}
 button,input,select{font:inherit}
 a{color:inherit}
-.app{display:grid;grid-template-columns:var(--side) 1fr;min-height:100vh;transition:grid-template-columns .2s ease}
+.app{display:grid;grid-template-columns:1fr;min-height:100vh}
 .app.side-collapsed{grid-template-columns:0 1fr}
-.app.side-collapsed .side{width:0;min-width:0;padding:0;overflow:hidden;border:0}
+.side{position:fixed;inset:0 auto 0 0;transform:translateX(-105%);z-index:40;transition:transform .2s ease;overflow-y:auto;box-shadow:18px 0 42px rgba(20,20,16,.2)}
+.side.open{transform:none}
 @media(max-width:900px){.app{grid-template-columns:1fr}.app.side-collapsed{grid-template-columns:1fr}.side{position:fixed;inset:0 auto 0 0;transform:translateX(-105%);z-index:40;transition:.25s}
 .side.open{transform:none}}
 .side{background:linear-gradient(165deg,#e4f1ff 0%,#e6f7ee 48%,#fdf5d8 100%);color:#1b2a25;
@@ -875,7 +876,7 @@ textarea{max-width:100%}
   </aside>
   <div class="main">
     <div class="top">
-      <button class="burger" id="burger" type="button" title="Hide / show menu">☰</button>
+      <button class="burger" id="burger" type="button" title="Open / close menu" aria-controls="side" aria-expanded="false">☰</button>
       <div class="grow">
         <h1 id="title">Dashboard</h1>
         <p class="sub" id="subtitle">Manufacturing Operating System</p>
@@ -3488,6 +3489,8 @@ function isCompanyLoggedIn() {
   return !!(state.workspaceRestored && savedSessionToken() && (state.companyGst || savedCompanyGst()));
 }
 function wipeLoggedOutUi() {
+  if (cancelScrollRestore) cancelScrollRestore();
+  try { sessionStorage.removeItem(WEOS_VIEW_KEY); } catch (_) {}
   state.companyGst = null;
   state.workspace = null;
   state.workspaceRestored = false;
@@ -3764,20 +3767,18 @@ function bindFolds() {
     });
   });
 }
-function toggleSideNav() {
-  const app = $('appRoot') || document.querySelector('.app');
+function closeSideNav() {
   const side = $('side');
-  if (!app || !side) return;
-  if (window.matchMedia('(max-width:900px)').matches) {
-    side.classList.toggle('open');
-  } else {
-    const collapsed = app.classList.toggle('side-collapsed');
-    try { localStorage.setItem('weos.sideCollapsed', collapsed ? '1' : '0'); } catch (_) {}
-  }
-  if (typeof fitPreviewToStage === 'function') {
-    requestAnimationFrame(() => fitPreviewToStage({ reset: false }));
-    setTimeout(() => fitPreviewToStage({ reset: false }), 220);
-  }
+  if (side) { side.classList.remove('open'); side.inert = true; }
+  if ($('burger')) $('burger').setAttribute('aria-expanded', 'false');
+}
+function toggleSideNav() {
+  const side = $('side');
+  if (!side) return;
+  const open = !side.classList.contains('open');
+  side.classList.toggle('open', open);
+  side.inert = !open;
+  if ($('burger')) $('burger').setAttribute('aria-expanded', String(open));
 }
 function setCartLinesOpen(open) {
   const view = $('view-cart');
@@ -3824,15 +3825,61 @@ function initCartLayoutChrome() {
 }
 
 function restoreSideNav() {
-  try {
-    if (localStorage.getItem('weos.sideCollapsed') === '1') {
-      const app = $('appRoot') || document.querySelector('.app');
-      if (app) app.classList.add('side-collapsed');
-    }
-  } catch (_) {}
+  closeSideNav();
 }
 
+// Per-tab, per-company navigation: no company identity is restored before login.
+const WEOS_VIEW_KEY = 'weos.view.v1';
+const RESUMABLE_VIEWS = ['dashboard','setup','master','projects','customers','cart','library','product','company','learning','formulas','templates','engines'];
+let viewPersistenceReady = false;
+let cancelScrollRestore = null;
+function saveViewPosition() {
+  if (!viewPersistenceReady || cancelScrollRestore || !isCompanyLoggedIn()) return;
+  try {
+    sessionStorage.setItem(WEOS_VIEW_KEY, JSON.stringify({
+      companyGst: savedCompanyGst(), view: state.view,
+      scrollY: Math.max(0, window.scrollY || 0),
+    }));
+  } catch (_) {}
+}
+function readViewPosition() {
+  if (!isCompanyLoggedIn()) return null;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(WEOS_VIEW_KEY) || 'null');
+    if (!saved || saved.companyGst !== savedCompanyGst() || !RESUMABLE_VIEWS.includes(saved.view)) return null;
+    return {view: saved.view, scrollY: Math.max(0, Number(saved.scrollY) || 0)};
+  } catch (_) { return null; }
+}
+function restoreViewScroll(saved) {
+  if (!saved) return;
+  if (cancelScrollRestore) cancelScrollRestore();
+  const view = state.view;
+  let observer, timer;
+  const stop = () => {
+    if (observer) observer.disconnect();
+    clearTimeout(timer);
+    ['wheel','touchstart','pointerdown','keydown'].forEach(type => window.removeEventListener(type, stop));
+    cancelScrollRestore = null;
+  };
+  cancelScrollRestore = stop;
+  const apply = () => {
+    if (state.view !== view) { stop(); return; }
+    window.scrollTo(0, saved.scrollY);
+  };
+  // Lists and previews arrive asynchronously; retry as the document grows.
+  observer = new ResizeObserver(apply);
+  observer.observe(document.body);
+  ['wheel','touchstart','pointerdown','keydown'].forEach(type => window.addEventListener(type, stop, {passive:true}));
+  timer = setTimeout(stop, 8000);
+  requestAnimationFrame(apply);
+}
+window.addEventListener('scroll', saveViewPosition, {passive:true});
+window.addEventListener('pagehide', () => { saveViewPosition(); persistCartSession(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveViewPosition(); });
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
 function setView(v) {
+  if (cancelScrollRestore) cancelScrollRestore();
   const needLogin = ['dashboard','setup','master','projects','customers','cart'];
   if (v === 'admin') v = 'library';
   if (needLogin.indexOf(v) >= 0 && !isCompanyLoggedIn()) {
@@ -3864,7 +3911,7 @@ function setView(v) {
   };
   $('title').textContent = titles[v][0];
   $('subtitle').textContent = titles[v][1];
-  $('side').classList.remove('open');
+  closeSideNav();
   if (v==='dashboard') loadDashboard();
   if (v==='setup') { refreshSetupSummary(); loadSetupList(); renderPackageQuotes(); renderSetupDiscount(); lookupSetupClient(); refreshQuoteCopySuggestions(); }
   if (v==='master') initMasterLedger();
@@ -3879,11 +3926,19 @@ function setView(v) {
   if (v==='formulas') initFormulas();
   if (v==='templates') initTemplates();
   if (v==='engines') initEngines();
+  saveViewPosition();
 }
 window.setView = setView;
 
 document.querySelectorAll('.navbtn').forEach(b => b.onclick = () => setView(b.dataset.view));
 if ($('burger')) $('burger').onclick = toggleSideNav;
+document.addEventListener('pointerdown', ev => {
+  const side = $('side'), burger = $('burger');
+  if (side && side.classList.contains('open') && !side.contains(ev.target) && !(burger && burger.contains(ev.target))) closeSideNav();
+});
+document.addEventListener('keydown', ev => {
+  if (ev.key === 'Escape') { closeSideNav(); if ($('burger')) $('burger').focus(); }
+});
 initCartLayoutChrome();
 restoreSideNav();
 bindFolds();
@@ -9884,6 +9939,7 @@ function persistCartSession() {
     state.lines = hydrateCartLines(state.lines);
     const pack = {
       companyGst: savedCompanyGst(),
+      selectedLine: state.selectedLine,
       projectId: state.projectId || null,
       lines: (state.lines || []).map((ln) => slimCartLine(ln, { keepPreviewSvg: true })).filter((ln) => ln && typeof ln === 'object'),
       name: projectNameForPayload() || '',
@@ -9915,6 +9971,7 @@ function restoreCartSession() {
     const hasLines = Array.isArray(d.lines) && d.lines.length;
     if (d.projectId) state.projectId = d.projectId;
     if (hasLines) state.lines = hydrateCartLines(d.lines);
+    if (Number.isInteger(d.selectedLine) && d.selectedLine >= 0 && d.selectedLine < state.lines.length) state.selectedLine = d.selectedLine;
     if ($('cartName') && d.name && !isPlaceholderProjectName(d.name)) $('cartName').value = d.name;
     if ($('cartCustomer') && d.customer) $('cartCustomer').value = d.customer;
     const bill = d.bill || {};
@@ -18411,10 +18468,11 @@ async function pingEngine(){
   if (typeof applyCompanyPdfBrand === 'function') applyCompanyPdfBrand();
   updatePdfLinks();
   updateWorkspacePill();
-  setView(state.workspaceRestored ? 'dashboard' : 'company');
-  if (state.workspaceRestored) {
-    try { await loadDashboard(); } catch (_) {}
-  }
+  const resumeView = readViewPosition();
+  setView(resumeView ? resumeView.view : (isCompanyLoggedIn() ? 'dashboard' : 'company'));
+  viewPersistenceReady = true;
+  if (resumeView) restoreViewScroll(resumeView);
+  else saveViewPosition();
   try { await loadProducts(); } catch (e) { console.warn('Product catalog unavailable', e); }
   try { state.adminMeta = await api('/api/admin/meta', { timeoutMs: 8000 }); } catch(_){}
   const hasSavedLines = Array.isArray(state.lines) && state.lines.some(ln => ln && typeof ln === 'object' && (ln.lineId || ln.product || ln.itemSnapshot || ln.item_snapshot));
