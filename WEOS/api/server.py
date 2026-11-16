@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from WEOS import TAGLINE, __version__, BUILD_REVISION
 from WEOS.api.calculate import build_api_response, get_product_detail, products_catalog
+from WEOS.api.domain_access import BlockRailwayDomainsMiddleware
 from WEOS.factory.formula import (
     DEFAULT_QTY_FORMULA_BY_UNIT,
     FORMULA_VARIABLE_HELP,
@@ -80,6 +81,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(BlockRailwayDomainsMiddleware)
 
 
 @app.exception_handler(Exception)
