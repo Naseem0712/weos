@@ -162,6 +162,34 @@ def _bool(value: Any, default: bool = False) -> bool:
     return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
+def _as_clip_section(raw: Any) -> dict[str, Any] | None:
+    """Glass/mullion clip row: full section when present, else None."""
+    if not isinstance(raw, Mapping):
+        return None
+    # Nested ``section`` under glassClips.sg / .dgu
+    nested = raw.get("section") if isinstance(raw.get("section"), Mapping) else None
+    src = nested if nested is not None else raw
+    if not (
+        _str(src.get("name"))
+        or src.get("weightKgPerM") is not None
+        or src.get("weightKgPerMtr") is not None
+        or src.get("rate") is not None
+        or src.get("wMm") is not None
+        or src.get("widthMm") is not None
+    ):
+        return None
+    sec = normalize_section(src)
+    if _str(sec.get("name")) or (_num(sec.get("weightKgPerM")) or 0) > 0 or (_num(sec.get("rate")) or 0) > 0:
+        return sec
+    return None
+
+
+def _clip_mm_from(raw: Any, *, fallback: Any = None) -> float | None:
+    if isinstance(raw, Mapping):
+        return _num(raw.get("clipMm") or raw.get("wMm") or raw.get("widthMm") or fallback)
+    return _num(raw if raw not in (None, "") else fallback)
+
+
 # Sliding Product Gallery — track side modes & BOM fill patterns.
 TRACK_MODES = (
     "all_sides_same",           # one track type on all sides
@@ -1408,8 +1436,12 @@ def _norm_casement(raw: Any) -> dict[str, Any]:
             legacy_shutter or doors.get("slim") or doors.get("allSides") or doors.get("hingeSide")
         ),
         "glass": {
-            "sgClip": _num(glass.get("sgClip") or glass_clips.get("sgClip") or glass_clips.get("sg")),
-            "dgClip": _num(glass.get("dgClip") or glass_clips.get("dgClip") or glass_clips.get("dgu")),
+            "sgClip": _as_clip_section(glass.get("sgClip"))
+            or _as_clip_section(glass_clips.get("sg"))
+            or _num(glass.get("sgClip") if not isinstance(glass.get("sgClip"), Mapping) else None),
+            "dgClip": _as_clip_section(glass.get("dgClip"))
+            or _as_clip_section(glass_clips.get("dgu") or glass_clips.get("dg"))
+            or _num(glass.get("dgClip") if not isinstance(glass.get("dgClip"), Mapping) else None),
         },
         "glassClips": {
             "active": active_clip,
@@ -1422,25 +1454,23 @@ def _norm_casement(raw: Any) -> dict[str, Any]:
                     )
                     or 12.0
                 ),
-                "clipMm": _num(
-                    glass.get("sgClip")
-                    or (
-                        (glass_clips.get("sg") or {}).get("clipMm")
-                        if isinstance(glass_clips.get("sg"), Mapping)
-                        else glass_clips.get("sgClip")
-                    )
+                "clipMm": _clip_mm_from(
+                    glass_clips.get("sg") if isinstance(glass_clips.get("sg"), Mapping) else None,
+                    fallback=glass.get("sgClip") if not isinstance(glass.get("sgClip"), Mapping) else None,
                 ),
+                "section": _as_clip_section(glass.get("sgClip"))
+                or _as_clip_section(glass_clips.get("sg"))
+                or {},
                 "notes": "Single glass up to 12mm",
             },
             "dgu": {
-                "clipMm": _num(
-                    glass.get("dgClip")
-                    or (
-                        (glass_clips.get("dgu") or {}).get("clipMm")
-                        if isinstance(glass_clips.get("dgu"), Mapping)
-                        else glass_clips.get("dgClip")
-                    )
+                "clipMm": _clip_mm_from(
+                    glass_clips.get("dgu") if isinstance(glass_clips.get("dgu"), Mapping) else None,
+                    fallback=glass.get("dgClip") if not isinstance(glass.get("dgClip"), Mapping) else None,
                 ),
+                "section": _as_clip_section(glass.get("dgClip"))
+                or _as_clip_section(glass_clips.get("dgu") or glass_clips.get("dg"))
+                or {},
                 "notes": "Series-dependent DGU clip",
             },
         },
@@ -1567,7 +1597,12 @@ def derive_casement_hardware_lines(
     pack = cm.get("hardwarePack") if isinstance(cm.get("hardwarePack"), Mapping) else {}
     if not pack:
         return []
-    doors = max(float(door_count or 1), 1.0)
+    # Explicit layout counts of 0 operable must stay 0 (fixed+mullion only).
+    # Legacy callers that omit counts still default to 1 door.
+    if side_swing_doors is not None or top_hung_doors is not None:
+        doors = max(float(side_swing_doors or 0) + float(top_hung_doors or 0), 0.0)
+    else:
+        doors = max(float(door_count or 1), 1.0)
     w_m = max(float(width_mm or 0), 0.0) / 1000.0
     h_m = max(float(height_mm or 0), 0.0) / 1000.0
     kind = _str(cm.get("kind") or "normal")
@@ -1584,7 +1619,7 @@ def derive_casement_hardware_lines(
         capacity: float | None = None,
         source: str = "casement.hardwarePack",
     ) -> None:
-        if qty <= 0 and rate <= 0:
+        if qty <= 0:
             return
         display = name
         if capacity or brand:
@@ -3249,8 +3284,13 @@ def apply_setup_bom(
             ]
         hw = list(hw) + list(pack_hw)
     elif stype == "casement":
-        side_n = context.get("sideSwingDoors") or context.get("side_swing_doors")
-        top_n = context.get("topHungDoors") or context.get("top_hung_doors")
+        # Use `is not None` — 0 operable (fixed+mullion) must not fall through to defaults.
+        side_n = context.get("sideSwingDoors")
+        if side_n is None:
+            side_n = context.get("side_swing_doors")
+        top_n = context.get("topHungDoors")
+        if top_n is None:
+            top_n = context.get("top_hung_doors")
         pack_hw = derive_casement_hardware_lines(
             setup,
             width_mm=width_mm,

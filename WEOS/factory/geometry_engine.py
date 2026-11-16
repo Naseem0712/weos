@@ -653,7 +653,8 @@ def _build_casement_leaves(
             yb = min(y1 + ov_th, outer_h - 0.4)
             outer = Rect(xa, ya, xb, yb)
             glass = outer.inset(fw, fw, fw, fw)
-            depth = (G - i)
+            # Coplanar with side-hung leaves — mullion/transom separates cells (no interlock lap).
+            depth = 1
             handle_side = "bottom"
             handle_rect = _bottom_rail_handle(outer, glass, fw)
             handles.append(handle_rect)
@@ -670,8 +671,10 @@ def _build_casement_leaves(
             yb = min(y1 + ov, outer_h - 0.4)
             outer = Rect(xa, ya, xb, yb)
             glass = outer.inset(fw, fw, fw, fw)
-            # Left openable is back at a shared mullion; right is front.
-            depth = (G - i)
+            # Coplanar leaves seat on mullion wings — not sliding interlock lap.
+            # Equal depth so every operable leaf keeps full outer + 45° mitres
+            # (including left door right/handle edge). Fixed lites stay behind.
+            depth = 1
             default_side = "right" if open_seen <= center_l else "left"
             raw_side = ov_cfg.get("side") if "side" in ov_cfg else default_side
             handle_side = None if raw_side in (None, "none", "bottom") else ("left" if str(raw_side).lower() == "left" else "right")
@@ -1850,25 +1853,18 @@ def _build_casement_profiles(model: DrawingModel, L: SlidingLayout) -> None:
             if k < len(row) - 1 and not neighbour_front_right(sp):
                 model.add_segment(vertical_segment(o.x1, o.y0 + ov * 0.25, o.y1 - ov * 0.25, layer="PROFILES", name=f"{oname}_meet_r"))
             continue
-        if ol and orr:
-            model.add_segment(Segment(Point(o.x0, o.y1), Point(o.x1, o.y1), layer="PROFILES", name=f"{oname}_top"))
-            model.add_segment(Segment(Point(o.x0, o.y0), Point(o.x1, o.y0), layer="PROFILES", name=f"{oname}_bot"))
-        elif orr:
-            model.add_polyline(u_polyline_open_right(o, layer="PROFILES", name=oname))
-        elif ol:
-            model.add_polyline(u_polyline_open_left(o, layer="PROFILES", name=oname))
-        else:
-            model.add_polyline(rect_polyline(o, closed=True, layer="PROFILES", name=oname))
+        # Operable casement leaves sit on mullion wings — always full sash + 45° on
+        # every corner (left door right/handle edge included). Sliding interlock
+        # open-U / back-lap skip does not apply here.
+        model.add_polyline(rect_polyline(o, closed=True, layer="PROFILES", name=oname))
         model.add_polyline(rect_polyline(g, closed=True, layer="GLASS", name=f"{prefix}_{sp.index}_glass"))
         miters = (
-            ("bl", Point(o.x0, o.y0), Point(g.x0, g.y0), ol),
-            ("br", Point(o.x1, o.y0), Point(g.x1, g.y0), orr),
-            ("tr", Point(o.x1, o.y1), Point(g.x1, g.y1), orr),
-            ("tl", Point(o.x0, o.y1), Point(g.x0, g.y1), ol),
+            ("bl", Point(o.x0, o.y0), Point(g.x0, g.y0)),
+            ("br", Point(o.x1, o.y0), Point(g.x1, g.y0)),
+            ("tr", Point(o.x1, o.y1), Point(g.x1, g.y1)),
+            ("tl", Point(o.x0, o.y1), Point(g.x0, g.y1)),
         )
-        for tag, p0, p1, back_lap in miters:
-            if back_lap:
-                continue  # back leaf at lap — front sash draws the 45°
+        for tag, p0, p1 in miters:
             model.add_segment(Segment(p0, p1, layer="PROFILES", name=f"{prefix}_{sp.index}_miter_{tag}"))
 
     for sp in glass_panels:

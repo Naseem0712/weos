@@ -620,7 +620,12 @@ def nest_cuts_by_section(
     }
 
 
-def _active_casement_sections(cm: Mapping[str, Any]) -> dict[str, Any]:
+def _active_casement_sections(
+    cm: Mapping[str, Any],
+    *,
+    series_id: str | None = None,
+    glass_kind: str | None = None,
+) -> dict[str, Any]:
     of = cm.get("outerFrame") if isinstance(cm.get("outerFrame"), Mapping) else {}
     variants = of.get("variants") if isinstance(of.get("variants"), Mapping) else {}
     active_v = _str(of.get("activeVariant") or cm.get("activeFrameVariant") or "plain")
@@ -637,15 +642,189 @@ def _active_casement_sections(cm: Mapping[str, Any]) -> dict[str, Any]:
         door_sec = doors.get("allSides") or doors.get("vertical") or doors.get(door_active) or {}
     else:
         door_sec = doors.get(door_active) or doors.get("slim") or doors.get("allSides") or {}
+    clip = _resolve_casement_clip_section(cm, series_id=series_id, glass_kind=glass_kind)
     return {
         "frame": normalize_section(frame if isinstance(frame, Mapping) else {}),
         "mullion": normalize_section(mull_sec if isinstance(mull_sec, Mapping) else {}),
         "door": normalize_section(door_sec if isinstance(door_sec, Mapping) else {}),
+        "clip": normalize_section(clip if isinstance(clip, Mapping) else {}),
         "mullionSize": mull_active,
         "doorSize": door_active,
         "includeBottom": bool(of.get("includeBottom", kind == "normal")),
         "kind": kind,
     }
+
+
+def _resolve_casement_layout_from_line(
+    line: Mapping[str, Any],
+    *,
+    width_mm: float,
+    height_mm: float,
+) -> dict[str, Any] | None:
+    """Prefer casementLayout; fall back to casementPanels / handleOverrides.
+
+    Geometry uses handleOverrides + glassCount even when casementLayout is
+    missing; costing must follow the same canvas so fix+mullion is counted.
+    """
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    layout = line.get("casementLayout") or opts.get("casementLayout")
+    if isinstance(layout, Mapping) and (
+        (isinstance(layout.get("bands"), (list, tuple)) and layout.get("bands"))
+        or (isinstance(layout.get("panels"), (list, tuple)) and layout.get("panels"))
+    ):
+        return dict(layout)
+
+    panels_flat = line.get("casementPanels") or opts.get("casementPanels")
+    if isinstance(panels_flat, (list, tuple)) and panels_flat:
+        by_band: dict[int, list[dict[str, Any]]] = {}
+        for i, p in enumerate(panels_flat):
+            if not isinstance(p, Mapping):
+                p = {"role": p}
+            bi = int(_f(p.get("bandIndex"), 0))
+            by_band.setdefault(bi, []).append({
+                "index": int(_f(p.get("index"), i)),
+                "role": _role(p.get("role")),
+                "widthMm": p.get("widthMm"),
+                "heightMm": p.get("heightMm"),
+                "profileSeries": p.get("profileSeries") or p.get("fixedSeries"),
+                "doorSize": p.get("doorSize"),
+            })
+        bands = []
+        for bi in sorted(by_band):
+            plist = by_band[bi]
+            h = next((_f(p.get("heightMm")) for p in plist if _f(p.get("heightMm")) > 0), 0.0)
+            bands.append({"heightMm": h or None, "panels": plist})
+        return {
+            "mullionSize": _str(line.get("mullionSize") or opts.get("mullionSize") or ""),
+            "bands": bands,
+        }
+
+    overrides = line.get("handleOverrides") or opts.get("handleOverrides") or {}
+    if not isinstance(overrides, Mapping):
+        overrides = {}
+    n_raw = (
+        line.get("glassShutters")
+        or line.get("glassCount")
+        or opts.get("glassShutters")
+        or opts.get("glassCount")
+    )
+    try:
+        n = int(_f(n_raw, 0))
+    except (TypeError, ValueError):
+        n = 0
+    keys: list[int] = []
+    for k in overrides:
+        try:
+            keys.append(int(k))
+        except (TypeError, ValueError):
+            continue
+    if keys:
+        n = max(n, max(keys) + 1)
+    if n <= 0 and not overrides:
+        return None
+    n = max(n, 1)
+    by_band2: dict[int, list[dict[str, Any]]] = {}
+    for i in range(n):
+        ov = overrides.get(i) or overrides.get(str(i)) or {}
+        if not isinstance(ov, Mapping):
+            ov = {}
+        bi = int(_f(ov.get("bandIndex"), 0))
+        by_band2.setdefault(bi, []).append({
+            "index": i,
+            "role": _role(ov.get("role") or "openable"),
+            "widthMm": ov.get("widthMm"),
+            "heightMm": ov.get("heightMm"),
+        })
+    bands2 = []
+    for bi in sorted(by_band2):
+        plist = by_band2[bi]
+        h = next((_f(p.get("heightMm")) for p in plist if _f(p.get("heightMm")) > 0), 0.0)
+        bands2.append({"heightMm": h or (height_mm if len(by_band2) == 1 else None), "panels": plist})
+    return {
+        "mullionSize": _str(line.get("mullionSize") or opts.get("mullionSize") or ""),
+        "bands": bands2,
+        "widthMm": width_mm,
+        "heightMm": height_mm,
+    }
+
+
+def _clip_section_from_catalogue(series_id: str | None, *, kind: str) -> dict[str, Any]:
+    """Load Clip SG / Clip DG from products/sections/<series>.json when setup is empty."""
+    sid = _str(series_id)
+    if not sid:
+        return {}
+    try:
+        from WEOS.factory.section_catalogue import get_series
+
+        doc = get_series(sid)
+    except Exception:
+        return {}
+    needles = ("clip", "sg") if kind == "sg" else ("clip", "dg")
+    alt = ("clip", "dgu") if kind != "sg" else ("clip", "single")
+    found = None
+    for s in doc.get("sections") or []:
+        if not isinstance(s, Mapping):
+            continue
+        nl = _str(s.get("name")).lower()
+        if all(n in nl for n in needles) or all(n in nl for n in alt):
+            found = s
+            break
+    if found is None and kind == "sg":
+        for s in doc.get("sections") or []:
+            if isinstance(s, Mapping) and "clip" in _str(s.get("name")).lower():
+                found = s
+                break
+    if not found:
+        return {}
+    return normalize_section({
+        "name": found.get("name"),
+        "wMm": found.get("widthMm"),
+        "hMm": found.get("sectionDepthMm"),
+        "wallMm": found.get("wallThicknessMm"),
+        "weightKgPerM": found.get("weightKgPerMtr"),
+        "rate": found.get("rate"),
+        "rateUnit": found.get("rateUnit") or "rft",
+        "coatingCost": found.get("coatingCost"),
+        "coatingUnit": found.get("coatingUnit") or "rft",
+        "stdLength": found.get("standardLength"),
+        "use": found.get("use"),
+    })
+
+
+def _resolve_casement_clip_section(
+    cm: Mapping[str, Any],
+    *,
+    series_id: str | None = None,
+    glass_kind: str | None = None,
+) -> dict[str, Any]:
+    """Active glass/mullion clip section (SG or DGU) with catalogue fallback."""
+    clips = cm.get("glassClips") if isinstance(cm.get("glassClips"), Mapping) else {}
+    glass = cm.get("glass") if isinstance(cm.get("glass"), Mapping) else {}
+    active = _str(clips.get("active") or "sg").lower()
+    if glass_kind:
+        gk = glass_kind.lower()
+        if any(x in gk for x in ("dgu", "double", "igu", "lam", "laminat")):
+            active = "dgu"
+        elif any(x in gk for x in ("sg", "single", "clear", "tuff", "tough")):
+            active = "sg"
+    if active in ("dg", "double"):
+        active = "dgu"
+    if active not in ("sg", "dgu"):
+        active = "sg"
+    block = clips.get("sg" if active == "sg" else "dgu")
+    block = block if isinstance(block, Mapping) else {}
+    for cand in (
+        block.get("section"),
+        glass.get("sgClip" if active == "sg" else "dgClip"),
+        glass.get("sgClip") if active == "sg" else glass.get("dgClip"),
+    ):
+        if isinstance(cand, Mapping) and (
+            _str(cand.get("name"))
+            or _f(cand.get("weightKgPerM")) > 0
+            or _f(cand.get("rate")) > 0
+        ):
+            return normalize_section(cand)
+    return _clip_section_from_catalogue(series_id, kind="sg" if active == "sg" else "dg")
 
 
 def _flatten_layout(
@@ -726,6 +905,8 @@ def derive_casement_profile_cuts(
     door_size: str | None = None,
     colour: Any = None,
     coating_multiplier: float | None = None,
+    series_id: str | None = None,
+    glass_kind: str | None = None,
 ) -> dict[str, Any]:
     """Cut list from what is on the canvas — only profiles actually used."""
     if not isinstance(setup, Mapping):
@@ -746,7 +927,8 @@ def derive_casement_profile_cuts(
         doors["active"] = door_size
         cm["doors"] = doors
 
-    secs = _active_casement_sections(cm)
+    sid = _str(series_id) or _str((setup or {}).get("id") or (setup or {}).get("series") or "")
+    secs = _active_casement_sections(cm, series_id=sid or None, glass_kind=glass_kind)
     W = max(_f(width_mm), 1.0)
     H = max(_f(height_mm), 1.0)
     panels = _flatten_layout(casement_layout, width_mm=W, height_mm=H)
@@ -909,7 +1091,36 @@ def derive_casement_profile_cuts(
             add_profile("Door · vertical", ph, 2, door, use="door", remarks=p["role"])
             add_profile("Door · top/bottom", pw, 2, door, use="door", remarks=p["role"])
 
-    fixed_n = sum(1 for p in panels if p["role"] in ("fix", "sliding"))
+    # Fixed / sliding-in-casement lites — glass clips (v2 + h2 per lite) from series
+    clip = secs.get("clip") if isinstance(secs.get("clip"), Mapping) else {}
+    fixed_panels = [p for p in panels if p["role"] in ("fix", "sliding")]
+    for p in fixed_panels:
+        if not clip or not (
+            _str(clip.get("name"))
+            or _f(clip.get("weightKgPerM")) > 0
+            or _f(clip.get("rate")) > 0
+        ):
+            break
+        pw, ph = _f(p["widthMm"]) / 1000.0, _f(p["heightMm"]) / 1000.0
+        add_profile(
+            f"Glass clip · vertical",
+            ph,
+            2,
+            clip,
+            use="glass_clip",
+            remarks=f"fix R{p['bandIndex']+1}P{p['index']+1}",
+        )
+        add_profile(
+            f"Glass clip · horizontal",
+            pw,
+            2,
+            clip,
+            use="glass_clip",
+            remarks=f"fix R{p['bandIndex']+1}P{p['index']+1}",
+        )
+
+    fixed_n = len(fixed_panels)
+    mullion_pcs = sum(max(len(plist) - 1, 0) for plist in bands.values()) + max(n_bands - 1, 0)
     return {
         "lines": lines,
         "cutsM": cuts_m,
@@ -921,8 +1132,17 @@ def derive_casement_profile_cuts(
             "topHungDoors": top_n,
             "operable": len(operable),
             "fixed": fixed_n,
+            "mullionCount": mullion_pcs,
             "mullionSize": secs["mullionSize"],
             "doorSize": secs["doorSize"],
+            "hasClip": bool(
+                clip
+                and (
+                    _str(clip.get("name"))
+                    or _f(clip.get("weightKgPerM")) > 0
+                    or _f(clip.get("rate")) > 0
+                )
+            ),
         },
         "sections": secs,
     }
@@ -1026,13 +1246,24 @@ def compute_casement_design_cost(
     qty = max(_f(line.get("qty") or line.get("quantity"), 1.0), 1.0)
     opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
     colour = _str(line.get("colour") or opts.get("colour") or "white")
-    layout = (
-        line.get("casementLayout")
-        or opts.get("casementLayout")
-        or product.get("casementLayout")
+    layout = _resolve_casement_layout_from_line(line, width_mm=W, height_mm=H)
+    if layout is None and isinstance(product.get("casementLayout"), Mapping):
+        layout = product.get("casementLayout")
+    mull_ov = _str(
+        line.get("mullionSize")
+        or opts.get("mullionSize")
+        or (layout or {}).get("mullionSize")
+        or ""
     )
-    mull_ov = _str(line.get("mullionSize") or opts.get("mullionSize") or "")
     door_ov = _str(line.get("doorSize") or opts.get("doorSize") or "")
+    series_id = _str(
+        product.get("id")
+        or line.get("sectionSeries")
+        or line.get("productId")
+        or line.get("product")
+        or ""
+    )
+    glass_kind = _str(line.get("glass") or line.get("glassName") or opts.get("glass") or "")
 
     cuts = derive_casement_profile_cuts(
         norm,
@@ -1042,6 +1273,8 @@ def compute_casement_design_cost(
         mullion_size=mull_ov or None,
         door_size=door_ov or None,
         colour=colour,
+        series_id=series_id or None,
+        glass_kind=glass_kind or None,
     )
     counts = cuts.get("counts") or {}
     cm = norm.get("casement") or {}
@@ -1070,10 +1303,11 @@ def compute_casement_design_cost(
     profile_net = al_amt + coat_amt
     profile_purchased = profile_net + wastage_cost
 
-    # Hardware from pack — only operable doors (side-swing ≠ top-hung)
+    # Hardware from pack — only operable doors (side-swing ≠ top-hung).
+    # Fixed-only layouts must not invent a phantom leaf via ``or 1``.
     side_n = float(counts.get("sideSwingDoors") or 0)
     top_n = float(counts.get("topHungDoors") or 0)
-    operable = float(counts.get("operable") or (side_n + top_n) or 1)
+    operable = float(counts.get("operable") if counts.get("operable") is not None else (side_n + top_n))
     # Side-swing stay XOR hinge; top hung stay-only + size from Specs
     norm = _apply_casement_hw_clarity(norm, line, side_n=side_n, top_n=top_n)
     bom = apply_setup_bom(
@@ -1081,13 +1315,15 @@ def compute_casement_design_cost(
         width_mm=W,
         height_mm=H,
         ctx={
-            "shutterCount": operable,
-            "leafCount": operable,
+            "shutterCount": max(operable, 0.0),
+            "leafCount": max(operable, 0.0),
             "sideSwingDoors": side_n,
             "topHungDoors": top_n,
+            "mullionCount": float(counts.get("mullionCount") or 0),
+            "fixedCount": float(counts.get("fixed") or 0),
             "system": "casement",
         },
-        shutter_count=operable,
+        shutter_count=max(operable, 0.0),
         system_type="casement",
         qty=1.0,
     )
