@@ -773,6 +773,24 @@ textarea{max-width:100%}
 #view-cart .cart-tb-export>#btnCalc{display:none}
 #view-cart .cart-tb-export .actions-inline #btnCalc{display:inline-flex}
 @media(max-width:700px){#view-cart .cart-tb-export .actions-inline #btnCalc{width:100%;justify-content:center}}
+
+/* Mobile-only: a fixed cart action bar follows the viewport after its original position. */
+@media(max-width:700px){
+ #view-cart .cart-workspace,#view-cart .cart-shell,#view-cart.grid{overflow:visible!important}
+ #view-cart .cart-inspector.cart-tools{overflow:visible!important;height:auto!important;max-height:none!important}
+ #view-cart .cart-inspector .inspector-sticky.mobile-cart-fixed{
+   position:fixed!important;top:calc(env(safe-area-inset-top, 0px) + 6px)!important;
+   left:var(--mobile-cart-left,8px)!important;width:var(--mobile-cart-width,calc(100% - 16px))!important;
+   z-index:100!important;box-shadow:0 8px 24px rgba(0,0,0,.18)!important;
+   margin:0!important
+ }
+ #view-cart .cart-inspector .inspector-sticky{transition:box-shadow .15s ease}
+ #view-cart .cart-inspector .insp-sticky-act{align-items:center}
+ #view-cart .cart-inspector .insp-sticky-loc input{font-size:16px}
+ #view-cart .cart-inspector .row2{gap:.45rem}
+ #view-cart .cart-inspector .kpi{min-width:0}
+ #view-cart .cart-inspector .insp-fields{gap:.5rem}
+}
 </style>
 </head>
 <body>
@@ -7747,7 +7765,13 @@ async function refreshLivePrice() {
       const showBreak = costN > 0 || perWin > 0 || profitAmt > 0;
       $('liveCostBreak').style.display = showBreak ? '' : 'none';
       if ($('livePerWin')) $('livePerWin').textContent = perWin > 0 ? money(perWin) : money(costN / Math.max(draft.qty || 1, 1));
-      if ($('liveProfitAmt')) $('liveProfitAmt').textContent = profitAmt > 0 ? money(profitAmt) : '₹ 0';
+      if ($('liveProfitAmt')) {
+        const actualProfit = explicitRate && Number.isFinite(sellN) && costN > 0 ? sellN - costN : null;
+        const el = $('liveProfitAmt');
+        el.textContent = actualProfit == null ? '—' : (actualProfit < 0 ? '−' : '+') + money(Math.abs(actualProfit));
+        el.style.color = actualProfit == null ? '' : actualProfit < 0 ? '#b42332' : '#086044';
+        if (el.parentElement) el.parentElement.firstChild.textContent = actualProfit != null && actualProfit < 0 ? 'Loss ' : 'Profit ';
+      }
       const w = (live.cost && live.cost.wastage) || design.wastage || {};
       const br = (live.cost && live.cost.breakdown) || design.breakdown || {};
       if ($('liveWasteHint')) {
@@ -13365,7 +13389,45 @@ if ($('btnStockViewer')) {
         '<table><thead><tr><th>Series</th><th>Section / profile</th><th>Colour</th><th>Length m</th><th>Length ft</th><th>Id</th></tr></thead><tbody>' +
         rows + '</tbody></table>' +
         (data.stub && data.stub.detail ? ('<p class="muted" style="margin-top:1rem">' + esc(data.stub.detail) + '</p>') : '') +
-        '</body></html>';
+        '<script>
+/* Mobile-only smart cart bar. The placeholder preserves its original slot and
+   the real controls retain their listeners and values while fixed. */
+(function initMobileSmartCart(){
+ const bar=document.getElementById('inspectorStickyBar');
+ const inspector=bar&&bar.closest('.cart-inspector');
+ if(!bar||!inspector)return;
+ const anchor=document.createElement('div');
+ anchor.setAttribute('aria-hidden','true');
+ anchor.style.display='none';
+ bar.parentNode.insertBefore(anchor,bar);
+ let pending=false;
+ function update(){
+   pending=false;
+   const view=document.getElementById('view-cart');
+   const enabled=window.matchMedia('(max-width:700px)').matches && view && !view.classList.contains('hidden');
+   if(!enabled){bar.classList.remove('mobile-cart-fixed');anchor.style.display='none';bar.style.removeProperty('--mobile-cart-left');bar.style.removeProperty('--mobile-cart-width');return;}
+   const wasFixed=bar.classList.contains('mobile-cart-fixed');
+   if(wasFixed) {anchor.style.height=bar.offsetHeight+'px';}
+   const reference=wasFixed?anchor:bar;
+   const rect=reference.getBoundingClientRect();
+   const bottom=inspector.getBoundingClientRect().bottom;
+   const shouldFix=rect.top<6 && bottom>bar.offsetHeight+12;
+   if(shouldFix){
+     anchor.style.display='block';anchor.style.height=bar.offsetHeight+'px';
+     const bounds=inspector.getBoundingClientRect();
+     bar.style.setProperty('--mobile-cart-left',Math.max(8,bounds.left)+'px');
+     bar.style.setProperty('--mobile-cart-width',Math.min(bounds.width,window.innerWidth-16)+'px');
+     bar.classList.add('mobile-cart-fixed');
+   }else{bar.classList.remove('mobile-cart-fixed');anchor.style.display='none';}
+ }
+ function schedule(){if(pending)return;pending=true;requestAnimationFrame(update)}
+ window.addEventListener('scroll',schedule,{passive:true});
+ window.addEventListener('resize',schedule,{passive:true});
+ document.addEventListener('change',schedule,true);
+ schedule();
+})();
+</script>
+</body></html>';
       const w = window.open('', '_blank');
       if (w) { w.document.write(html); w.document.close(); }
       else toast('Pop-up blocked — allow pop-ups for Stock');
