@@ -150,6 +150,41 @@ def laminated_pack_rate(g1: float, g2: float) -> dict[str, Any]:
     }
 
 
+def commercial_rate_for_spec(spec: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Compute ₹/sft from leaf thicknesses for DGU / laminated / single clear tuff.
+
+    DGU = leaf1 + leaf2 + ₹150 (+ ₹50 argon). Laminated = leaf1 + leaf2 + ₹250.
+    Returns None when layers / thickness cannot be priced from the catalogue.
+    """
+    if not isinstance(spec, Mapping):
+        return None
+    kind = normalize_makeup_kind(spec.get("makeup") or spec.get("kind") or spec.get("type"))
+    try:
+        g1 = float(spec["glass1Mm"]) if spec.get("glass1Mm") not in (None, "") else None
+    except (TypeError, ValueError):
+        g1 = None
+    try:
+        g2 = float(spec["glass2Mm"]) if spec.get("glass2Mm") not in (None, "") else None
+    except (TypeError, ValueError):
+        g2 = None
+    argon = bool(spec.get("argon") or str(spec.get("fillGas") or "").strip().lower() == "argon")
+    if kind == "dgu" and g1 and g2:
+        return dgu_pack_rate(g1, g2, argon=argon)
+    if kind == "laminated" and g1 and g2:
+        return laminated_pack_rate(g1, g2)
+    if kind == "single":
+        thk = spec.get("thicknessMm") or spec.get("overallMm") or g1
+        rate = clear_tuff_rate(thk)
+        if rate is None:
+            return None
+        return {
+            "rate": float(rate),
+            "rateUnit": "sqft",
+            "rateBreakdown": {"leafRate": float(rate), "formula": "clear tuff leaf ₹/sft"},
+        }
+    return None
+
+
 def dgu_pack_id(g1: float, gap: float, g2: float, *, argon: bool = False) -> str:
     base = f"dgu_{int(g1)}_{int(gap)}_{int(g2)}"
     return f"{base}_argon" if argon else base
@@ -328,6 +363,29 @@ def build_glass_spec(
 
     gid = glass_id or f"glass_{_slug(kind)}_{_slug(colour)}_{int(round((thickness_mm or 0) * 100))}"
     fill = str(fill_gas or ("argon" if argon else ("air" if kind == "dgu" else "")) or "").strip().lower()
+    # Commercial packs: always derive ₹/sft from actual leaf thicknesses (never flat wrong totals).
+    priced = commercial_rate_for_spec(
+        {
+            "makeup": kind,
+            "glass1Mm": g1,
+            "glass2Mm": g2,
+            "thicknessMm": thickness_mm,
+            "overallMm": overall_mm or thickness_mm,
+            "argon": bool(argon) or fill == "argon",
+            "fillGas": fill,
+            "toughened": toughened,
+        }
+    )
+    final_rate = float(rate) if rate is not None else None
+    final_breakdown = dict(rate_breakdown) if isinstance(rate_breakdown, Mapping) and rate_breakdown else None
+    if priced and kind in ("dgu", "laminated"):
+        final_rate = float(priced["rate"])
+        final_breakdown = dict(priced.get("rateBreakdown") or {})
+        rate_unit = str(priced.get("rateUnit") or rate_unit or "sqft")
+    elif priced and final_rate is None:
+        final_rate = float(priced["rate"])
+        final_breakdown = dict(priced.get("rateBreakdown") or {})
+        rate_unit = str(priced.get("rateUnit") or rate_unit or "sqft")
     out: dict[str, Any] = {
         "id": gid,
         "name": display,
@@ -344,20 +402,20 @@ def build_glass_spec(
         "brand": brand,
         "toughened": bool(toughened),
         "toughenedLabel": tuff,
-        "rate": float(rate) if rate is not None else None,
+        "rate": final_rate,
         "rateUnit": rate_unit,
         "densityKgPerM3": float(density),
         "makeupLabel": makeup_label,
         "display_label": display_label,
-        "specLine": _spec_line(display, makeup_label, colour, tuff, brand, rate, rate_unit),
+        "specLine": _spec_line(display, makeup_label, colour, tuff, brand, final_rate, rate_unit),
         "status": status,
         "updatedAt": _now(),
     }
     if kind == "dgu":
         out["argon"] = bool(argon) or fill == "argon"
         out["fillGas"] = "argon" if out["argon"] else (fill or "air")
-    if isinstance(rate_breakdown, Mapping) and rate_breakdown:
-        out["rateBreakdown"] = dict(rate_breakdown)
+    if final_breakdown:
+        out["rateBreakdown"] = final_breakdown
     return out
 
 

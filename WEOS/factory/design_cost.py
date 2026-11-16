@@ -940,7 +940,7 @@ def _glass_cost(line: Mapping[str, Any], *, width_mm: float, height_mm: float, q
     kind = None
     g: Mapping[str, Any] | None = None
     try:
-        from WEOS.factory.glass_catalogue import cart_glass_options, get_glass
+        from WEOS.factory.glass_catalogue import cart_glass_options, commercial_rate_for_spec, get_glass
 
         g = get_glass(gid) if gid else None
         if isinstance(g, Mapping):
@@ -949,9 +949,14 @@ def _glass_cost(line: Mapping[str, Any], *, width_mm: float, height_mm: float, q
             rate = _f(g.get("rate") or g.get("ratePerSft") or g.get("ratePerSqft"))
             thickness_mm = g.get("thicknessMm") or g.get("overallMm")
             glass_colour = _str(g.get("colour") or g.get("color") or "")
-            kind = _str(g.get("kind") or g.get("type") or "")
+            kind = _str(g.get("makeup") or g.get("kind") or g.get("type") or "")
             if isinstance(g.get("rateBreakdown"), Mapping):
                 breakdown = dict(g["rateBreakdown"])
+            priced = commercial_rate_for_spec(g)
+            if priced and str(g.get("makeup") or "").lower() in ("dgu", "laminated"):
+                rate = _f(priced.get("rate"), rate)
+                if isinstance(priced.get("rateBreakdown"), Mapping):
+                    breakdown = dict(priced["rateBreakdown"])
         if rate <= 0 and gid:
             for opt in cart_glass_options(merge_library=True):
                 if str(opt.get("id") or "") == gid:
@@ -960,8 +965,14 @@ def _glass_cost(line: Mapping[str, Any], *, width_mm: float, height_mm: float, q
                     pack_name = name
                     thickness_mm = opt.get("thicknessMm") or thickness_mm
                     glass_colour = _str(opt.get("colour") or glass_colour or "")
+                    kind = _str(opt.get("makeup") or kind or "")
                     if isinstance(opt.get("rateBreakdown"), Mapping):
                         breakdown = dict(opt["rateBreakdown"])
+                    priced = commercial_rate_for_spec(opt)
+                    if priced and str(opt.get("makeup") or "").lower() in ("dgu", "laminated"):
+                        rate = _f(priced.get("rate"), rate)
+                        if isinstance(priced.get("rateBreakdown"), Mapping):
+                            breakdown = dict(priced["rateBreakdown"])
                     break
     except Exception:
         pass

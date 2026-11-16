@@ -35,7 +35,14 @@ _GLASS_MAP = {
     "10": "10mm_toughened",
     "10mm": "10mm_toughened",
     "10mm_toughened": "10mm_toughened",
+    "12": "12mm_toughened",
+    "12mm": "12mm_toughened",
+    "12mm_toughened": "12mm_toughened",
 }
+
+# 3-track page: DGU overall ≤22 mm; laminated overall ≤13.52 mm.
+PUBLIC_DGU_MAX_MM = 22.0
+PUBLIC_LAM_MAX_MM = 13.52
 
 _COLOUR_MAP = {
     "matte black": "black",
@@ -94,22 +101,71 @@ def new_quote_id() -> str:
     return f"pq_{secrets.token_urlsafe(12)}"
 
 
+def _glass_label_from_spec(glass_id: str, spec: Mapping[str, Any] | None = None) -> str:
+    if isinstance(spec, Mapping):
+        for key in ("display_label", "name", "label", "specLine", "makeupLabel"):
+            val = _str(spec.get(key))
+            if val:
+                return val
+    return re.sub(r"_+", " ", glass_id).strip()
+
+
+def _lookup_glass_spec(glass_id: str) -> dict[str, Any] | None:
+    gid = _str(glass_id)
+    if not gid:
+        return None
+    try:
+        from WEOS.factory.glass_catalogue import get_glass
+
+        return get_glass(gid)
+    except Exception:
+        pass
+    try:
+        from WEOS.factory.glass_catalogue import cart_glass_options
+
+        for opt in cart_glass_options(merge_library=True):
+            if str(opt.get("id") or "") == gid:
+                return dict(opt)
+    except Exception:
+        pass
+    return None
+
+
 def normalize_glass(raw: Any) -> tuple[str, str]:
-    key = _str(raw).lower().replace(" ", "")
-    # strip trailing "clear"/"tuff" noise for map lookup
-    for suffix in ("cleartuff", "cleartoughened", "toughened", "tuff", "clear"):
-        if key.endswith(suffix) and key not in _GLASS_MAP:
-            pass
-    glass_id = _GLASS_MAP.get(key) or _GLASS_MAP.get(re.sub(r"[^0-9mm]", "", key)[:4])
-    if not glass_id:
-        m = re.search(r"(5|6|8|10)\s*mm", _str(raw), re.I)
-        if m:
-            glass_id = _GLASS_MAP.get(f"{m.group(1)}mm")
+    """Resolve single / DGU / laminated catalogue ids (never force unknown packs → 10mm)."""
+    raw_s = _str(raw)
+    key = raw_s.lower().replace(" ", "").replace("-", "_")
+    glass_id: str | None = None
+
+    if key in _GLASS_MAP:
+        glass_id = _GLASS_MAP[key]
+    elif key.startswith(("dgu_", "lam_")) or re.match(
+        r"^\d+mm_(clear_)?(black_|grey_|brown_)?toughened$", key
+    ):
+        glass_id = key
+    else:
+        compact = re.sub(r"[^0-9mm]", "", key)
+        glass_id = _GLASS_MAP.get(compact) or _GLASS_MAP.get(compact[:4] if len(compact) >= 3 else "")
+        if not glass_id:
+            m = re.search(r"(5|6|8|10|12)\s*mm", raw_s, re.I)
+            if m:
+                glass_id = _GLASS_MAP.get(f"{m.group(1)}mm")
+
     glass_id = glass_id or "10mm_toughened"
-    label = re.sub(r"_", " ", glass_id).replace("toughened", "toughened").strip()
-    mm = re.search(r"(\d+)\s*mm", glass_id)
-    thickness_label = f"{mm.group(1)}mm" if mm else glass_id
-    return glass_id, thickness_label
+    spec = _lookup_glass_spec(glass_id)
+    if spec is None and glass_id not in _GLASS_MAP.values():
+        # Unknown catalogue id → fall back to 10mm rather than silently mis-price as 10mm via map bug;
+        # keep id if it looks like a single thickness we can still cost.
+        m = re.search(r"(5|6|8|10|12)", glass_id)
+        if glass_id.startswith(("dgu_", "lam_")):
+            glass_id = "10mm_toughened"
+            spec = _lookup_glass_spec(glass_id)
+        elif m and f"{m.group(1)}mm" in _GLASS_MAP:
+            glass_id = _GLASS_MAP[f"{m.group(1)}mm"]
+            spec = _lookup_glass_spec(glass_id)
+
+    label = _glass_label_from_spec(glass_id, spec)
+    return glass_id, label
 
 
 def normalize_colour(raw: Any) -> tuple[str, str]:
@@ -130,30 +186,63 @@ def normalize_lock(raw: Any) -> tuple[str, str]:
 
 
 def normalize_mesh(body: Mapping[str, Any]) -> tuple[bool, int, float]:
-    """Return (mesh_enabled, mesh_shutters, track_count)."""
-    mesh_raw = body.get("mesh")
-    mesh_shutters = body.get("meshShutters")
-    track = body.get("trackCount")
+    """Legacy helper — prefer :func:`normalize_shutter_config` for 3-track rules."""
+    cfg = normalize_shutter_config(body)
+    return bool(cfg["mesh"]), int(cfg["meshShutters"]), float(cfg["trackCount"])
+
+
+def normalize_shutter_config(body: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """3-track page shutter rules.
+
+    - 3 glass shutters → mesh disabled, side opening, 3-track
+    - 4 glass shutters → center opening; mesh (if on) = exactly 2 mesh shutters, 4-track
+    """
+    body = body if isinstance(body, Mapping) else {}
+    try:
+        glass = int(round(_f(body.get("glassShutters") or body.get("glassCount"), 3)))
+    except (TypeError, ValueError):
+        glass = 3
+    if glass not in (3, 4):
+        glass = 4 if glass >= 4 else 3
+
     mesh_choice = _str(body.get("meshChoice") or body.get("meshOption") or "").lower()
+    mesh_raw = body.get("mesh")
+    mesh_shutters_raw = body.get("meshShutters")
 
+    mesh_on = False
     if mesh_choice in ("no", "none", "no_mesh", "nomesh", "0"):
-        return False, 0, float(track or 2)
-    if mesh_choice in ("mesh", "mesh1", "mesh_1", "1", "yes"):
-        return True, int(mesh_shutters or 1), float(track or 3)
+        mesh_on = False
+    elif mesh_choice in ("mesh", "mesh1", "mesh_1", "mesh2", "mesh_2", "1", "2", "yes"):
+        mesh_on = True
+    elif mesh_shutters_raw is not None:
+        mesh_on = int(_f(mesh_shutters_raw, 0)) > 0
+    elif mesh_raw is True or str(mesh_raw).lower() in ("1", "true", "yes"):
+        mesh_on = True
+    elif mesh_raw is False or str(mesh_raw).lower() in ("0", "false", "no"):
+        mesh_on = False
 
-    if mesh_shutters is not None:
-        n = int(_f(mesh_shutters, 0))
-        if n > 0:
-            return True, n, float(track or 3)
-        return False, 0, float(track or 2)
+    if glass == 3:
+        return {
+            "glassShutters": 3,
+            "mesh": False,
+            "meshShutters": 0,
+            "opening": "side",
+            "openingLabel": "Side opening",
+            "trackCount": 3.0,
+            "meshLabel": "No Mesh",
+        }
 
-    if mesh_raw is True or str(mesh_raw).lower() in ("1", "true", "yes"):
-        return True, 1, float(track or 3)
-    if mesh_raw is False or str(mesh_raw).lower() in ("0", "false", "no"):
-        return False, 0, float(track or 2)
-
-    # Default demo: Mesh 1 on 3-track
-    return True, 1, float(track or 3)
+    # 4 glass → center; mesh if enabled is always 2 (never 1)
+    mesh_n = 2 if mesh_on else 0
+    return {
+        "glassShutters": 4,
+        "mesh": bool(mesh_n),
+        "meshShutters": mesh_n,
+        "opening": "center",
+        "openingLabel": "Center opening",
+        "trackCount": 4.0,
+        "meshLabel": f"Mesh {mesh_n}" if mesh_n else "No Mesh",
+    }
 
 
 def _pick_lock_from_product(product: Mapping[str, Any], lock_type: str) -> dict[str, Any]:
@@ -255,6 +344,7 @@ def _render_preview(line: Mapping[str, Any], product: Mapping[str, Any]) -> dict
     last_exc: Exception | None = None
     for engine_id in engine_ids:
         try:
+            opening_raw = _str(line.get("opening") or "side")
             job = generate_job(
                 float(line["width"]),
                 float(line["height"]),
@@ -267,6 +357,8 @@ def _render_preview(line: Mapping[str, Any], product: Mapping[str, Any]) -> dict
                 section_series=section_series,
                 glass_count=int(line.get("glassShutters") or 2),
                 mesh_count=0 if addon else int(line.get("meshShutters") or 0),
+                opening=opening_raw,
+                opening_explicit=True,
                 system="sliding",
             )
             break
@@ -338,8 +430,14 @@ def build_public_package_quote(body: Mapping[str, Any] | None = None) -> dict[st
     glass_id, glass_label = normalize_glass(body.get("glass") or body.get("glassThickness") or "10mm")
     colour_id, colour_label = normalize_colour(body.get("colour") or body.get("color") or body.get("frameColour") or "Matte Black")
     lock_type, lock_label = normalize_lock(body.get("locking") or body.get("lock") or body.get("lockType") or "multipoint")
-    mesh_on, mesh_n, track_count = normalize_mesh(body)
-    glass_shutters = int(_f(body.get("glassShutters"), 2) or 2)
+    shutters = normalize_shutter_config(body)
+    mesh_on = bool(shutters["mesh"])
+    mesh_n = int(shutters["meshShutters"])
+    track_count = float(shutters["trackCount"])
+    glass_shutters = int(shutters["glassShutters"])
+    opening = _str(shutters.get("opening") or "side")
+    opening_label = _str(shutters.get("openingLabel") or opening)
+    mesh_label = _str(shutters.get("meshLabel") or ("No Mesh" if not mesh_on else f"Mesh {mesh_n}"))
 
     try:
         product = load_product(product_id, strict=False)
@@ -360,6 +458,8 @@ def build_public_package_quote(body: Mapping[str, Any] | None = None) -> dict[st
         "meshShutters": mesh_n if mesh_on else 0,
         "glassShutters": glass_shutters,
         "trackCount": track_count,
+        "opening": opening,
+        "openingExplicit": True,
         "sectionSeries": product.get("sectionSeries") or product_id,
         "productType": product.get("productType") or "sliding",
         "system": "sliding",
@@ -369,7 +469,10 @@ def build_public_package_quote(body: Mapping[str, Any] | None = None) -> dict[st
             "colour": colour_id,
             "mesh": mesh_on,
             "meshShutters": mesh_n if mesh_on else 0,
+            "glassShutters": glass_shutters,
             "trackCount": track_count,
+            "opening": opening,
+            "openingExplicit": True,
             "lockType": lock_type,
         },
     }
@@ -417,6 +520,8 @@ def build_public_package_quote(body: Mapping[str, Any] | None = None) -> dict[st
         "mesh": mesh_on,
         "meshShutters": mesh_n if mesh_on else 0,
         "glassShutters": glass_shutters,
+        "opening": opening,
+        "openingLabel": opening_label,
         "glass": glass_id,
         "glassLabel": glass_label,
         "locking": lock_type,
@@ -440,8 +545,12 @@ def build_public_package_quote(body: Mapping[str, Any] | None = None) -> dict[st
             "glass": glass_shutters,
             "mesh": mesh_n if mesh_on else 0,
         },
+        "glassShutters": glass_shutters,
+        "meshShutters": mesh_n if mesh_on else 0,
+        "opening": opening,
+        "openingLabel": opening_label,
         "mesh": mesh_on,
-        "meshLabel": f"Mesh {mesh_n}" if mesh_on and mesh_n else "No Mesh",
+        "meshLabel": mesh_label,
         "glass": glass_id,
         "glassLabel": glass_label,
         "locking": lock_type,
@@ -461,6 +570,9 @@ def build_public_package_quote(body: Mapping[str, Any] | None = None) -> dict[st
             "layout": preview.get("layout"),
             "system": preview.get("system"),
             "trackCount": preview.get("trackCount"),
+            "opening": opening,
+            "glassShutters": glass_shutters,
+            "meshShutters": mesh_n if mesh_on else 0,
         },
         "selection": selection,
         "updatedAt": _now(),
@@ -496,17 +608,29 @@ def get_public_package_quote(quote_id: str, *, include_preview: bool = False) ->
     if not rec:
         return None
     selection = rec.get("selection") if isinstance(rec.get("selection"), Mapping) else {}
+    customer = rec.get("customer") if isinstance(rec.get("customer"), Mapping) else {}
     out = {
         "ok": True,
         "quoteId": rec.get("quoteId") or quote_id,
+        "projectId": rec.get("projectId"),
+        "shareToken": rec.get("shareToken"),
+        "scanUrl": rec.get("scanUrl"),
+        "pdfUrl": rec.get("pdfUrl"),
         "product": selection.get("product"),
         "productName": selection.get("productName"),
         "widthMm": selection.get("widthMm"),
         "heightMm": selection.get("heightMm"),
         "qty": selection.get("qty"),
         "trackCount": selection.get("trackCount"),
+        "glassShutters": selection.get("glassShutters"),
+        "meshShutters": selection.get("meshShutters"),
+        "opening": selection.get("opening"),
+        "openingLabel": selection.get("openingLabel"),
         "mesh": selection.get("mesh"),
-        "meshLabel": f"Mesh {selection.get('meshShutters')}" if selection.get("mesh") else "No Mesh",
+        "meshLabel": (
+            selection.get("meshLabel")
+            or (f"Mesh {selection.get('meshShutters')}" if selection.get("mesh") else "No Mesh")
+        ),
         "glass": selection.get("glass"),
         "glassLabel": selection.get("glassLabel"),
         "locking": selection.get("locking"),
@@ -520,13 +644,208 @@ def get_public_package_quote(quote_id: str, *, include_preview: bool = False) ->
         "packagePricePerUnit": rec.get("packagePricePerUnit"),
         "packagePriceLabel": "Total Package Price",
         "gstNote": "GST extra as applicable (via quote settings)",
+        "customer": {
+            "name": customer.get("name"),
+            "mobile": customer.get("mobile"),
+            "address": customer.get("address"),
+        } if customer else None,
         "selection": selection,
         "updatedAt": rec.get("updatedAt"),
     }
     if include_preview and selection:
-        rebuilt = build_public_package_quote({**selection, "quoteId": quote_id, "colour": selection.get("colour"), "locking": selection.get("locking"), "glass": selection.get("glass"), "width": selection.get("widthMm"), "height": selection.get("heightMm"), "mesh": selection.get("mesh"), "meshShutters": selection.get("meshShutters"), "trackCount": selection.get("trackCount"), "qty": selection.get("qty")})
+        rebuilt = build_public_package_quote(
+            {
+                **selection,
+                "quoteId": quote_id,
+                "colour": selection.get("colour"),
+                "locking": selection.get("locking"),
+                "glass": selection.get("glass"),
+                "width": selection.get("widthMm"),
+                "height": selection.get("heightMm"),
+                "mesh": selection.get("mesh"),
+                "meshShutters": selection.get("meshShutters"),
+                "glassShutters": selection.get("glassShutters"),
+                "opening": selection.get("opening"),
+                "trackCount": selection.get("trackCount"),
+                "qty": selection.get("qty"),
+            }
+        )
         if rebuilt.get("ok"):
             out["preview"] = rebuilt.get("preview")
             out["packagePrice"] = rebuilt.get("packagePrice")
             out["packagePricePerUnit"] = rebuilt.get("packagePricePerUnit")
     return out
+
+
+def save_public_package_quote(
+    body: Mapping[str, Any] | None = None,
+    *,
+    base_url: str | None = None,
+) -> dict[str, Any]:
+    """Persist a customer-facing WeOS project from a package quote (no cost fields returned)."""
+    from WEOS.factory.project_store import empty_project, save_project
+    from WEOS.factory.quote_share import ensure_project_share_token
+
+    body = body if isinstance(body, Mapping) else {}
+    quote = build_public_package_quote(body)
+    if not quote.get("ok"):
+        return quote
+
+    customer_name = _str(body.get("customerName") or body.get("name") or body.get("customer") or "WoodenMax Customer")
+    customer_mobile = _str(body.get("customerMobile") or body.get("mobile") or body.get("phone"))
+    customer_address = _str(body.get("customerAddress") or body.get("address"))
+    if not customer_mobile and not customer_name:
+        return {"ok": False, "error": "customer name or mobile required"}
+
+    area = _f(quote.get("areaSqft"), 1.0) or 1.0
+    package_total = _f(quote.get("packagePrice"))
+    package_unit = _f(quote.get("packagePricePerUnit"))
+    selling_rate = round(package_unit / area, 2) if area else package_unit
+    selection = quote.get("selection") if isinstance(quote.get("selection"), Mapping) else {}
+    glass_id = _str(selection.get("glass") or quote.get("glass") or "10mm_toughened")
+    colour_id = _str(selection.get("colour") or quote.get("finish") or "black")
+    opening = _str(selection.get("opening") or quote.get("opening") or "side")
+    glass_shutters = int(_f(selection.get("glassShutters") or quote.get("glassShutters"), 3))
+    mesh_n = int(_f(selection.get("meshShutters") or quote.get("meshShutters"), 0))
+    mesh_on = bool(selection.get("mesh") if selection.get("mesh") is not None else quote.get("mesh"))
+    track_count = _f(selection.get("trackCount") or quote.get("trackCount"), 3)
+    product_id = _str(selection.get("product") or quote.get("product") or DEFAULT_PRODUCT_ID)
+
+    existing_pid = _str(body.get("projectId"))
+    doc = None
+    if existing_pid:
+        try:
+            from WEOS.factory.project_store import load_project
+
+            doc = load_project(existing_pid)
+        except Exception:
+            doc = None
+    if not isinstance(doc, dict):
+        doc = empty_project(
+            name=_str(body.get("projectName") or f"Package · {quote.get('productName') or '29mm'}"),
+            customer=customer_name,
+        )
+    doc["customer"] = customer_name
+    doc["customerMobile"] = customer_mobile
+    doc["customerAddress"] = customer_address
+    doc["status"] = "draft"
+    doc["source"] = _str(body.get("source") or "woodenmax-public")
+    doc["packageQuoteId"] = quote.get("quoteId")
+    doc["description"] = _str(
+        body.get("description")
+        or (
+            f"WoodenMax package quote · {quote.get('widthMm')}×{quote.get('heightMm')} mm · "
+            f"{glass_shutters} glass · {quote.get('glassLabel')} · {quote.get('finishLabel')}"
+        )
+    )
+    line = {
+        "lineId": "pkg1",
+        "product": product_id,
+        "width": quote.get("widthMm"),
+        "height": quote.get("heightMm"),
+        "qty": quote.get("qty") or 1,
+        "glass": glass_id,
+        "colour": colour_id,
+        "mesh": mesh_on,
+        "meshShutters": mesh_n,
+        "glassShutters": glass_shutters,
+        "trackCount": track_count,
+        "opening": opening,
+        "openingExplicit": True,
+        "system": "sliding",
+        "productType": "sliding",
+        "sectionSeries": product_id,
+        "lockType": selection.get("locking") or quote.get("locking"),
+        "sellingRate": selling_rate,
+        "saleUnit": "sqft",
+        "windowAmount": package_total,
+        "options": {
+            "glass": glass_id,
+            "colour": colour_id,
+            "mesh": mesh_on,
+            "meshShutters": mesh_n,
+            "glassShutters": glass_shutters,
+            "trackCount": track_count,
+            "opening": opening,
+            "openingExplicit": True,
+            "lockType": selection.get("locking") or quote.get("locking"),
+        },
+    }
+    # Keep SVG on the line for re-export without leaking cost
+    preview = quote.get("preview") if isinstance(quote.get("preview"), Mapping) else {}
+    if preview.get("svg"):
+        line["previewSvg"] = preview.get("svg")
+    doc["lines"] = [line]
+    saved = save_project(doc, action="public_package_quote_save")
+    token = ensure_project_share_token(saved, persist=True)
+    base = (_str(base_url) or "http://127.0.0.1:8000").rstrip("/")
+    scan_url = f"{base}/q/{token}"
+    scan_alt = f"{base}/scan/{token}"
+    pdf_url = f"{base}/api/projects/{saved.get('projectId')}/pdf/customer"
+    quote_id = _str(quote.get("quoteId"))
+
+    # Merge customer + WeOS project refs into package quote store (costs stay in _internal only)
+    prior = load_package_quote(quote_id) or {}
+    record = {
+        **prior,
+        "quoteId": quote_id,
+        "updatedAt": _now(),
+        "createdAt": prior.get("createdAt") or _now(),
+        "source": _str(body.get("source") or "woodenmax-public"),
+        "selection": selection,
+        "packagePrice": package_total,
+        "packagePricePerUnit": package_unit,
+        "currency": "INR",
+        "customer": {
+            "name": customer_name,
+            "mobile": customer_mobile,
+            "address": customer_address,
+        },
+        "projectId": saved.get("projectId"),
+        "shareToken": token,
+        "scanUrl": scan_url,
+        "scanAltUrl": scan_alt,
+        "pdfUrl": pdf_url,
+        "_internal": {
+            **(prior.get("_internal") if isinstance(prior.get("_internal"), Mapping) else {}),
+            "projectId": saved.get("projectId"),
+            "shareToken": token,
+            "savedAt": time.time(),
+        },
+    }
+    _save_record(quote_id, record)
+
+    return {
+        "ok": True,
+        "quoteId": quote_id,
+        "projectId": saved.get("projectId"),
+        "shareToken": token,
+        "scanUrl": scan_url,
+        "scanAltUrl": scan_alt,
+        "pdfUrl": pdf_url,
+        "packagePrice": package_total,
+        "packagePricePerUnit": package_unit,
+        "packagePriceLabel": "Total Package Price",
+        "currency": "INR",
+        "gstNote": quote.get("gstNote"),
+        "productName": quote.get("productName"),
+        "widthMm": quote.get("widthMm"),
+        "heightMm": quote.get("heightMm"),
+        "qty": quote.get("qty"),
+        "glassLabel": quote.get("glassLabel"),
+        "meshLabel": quote.get("meshLabel"),
+        "openingLabel": quote.get("openingLabel"),
+        "finishLabel": quote.get("finishLabel"),
+        "lockingLabel": quote.get("lockingLabel"),
+        "glassShutters": glass_shutters,
+        "meshShutters": mesh_n,
+        "trackCount": track_count,
+        "areaSqft": quote.get("areaSqft"),
+        "customer": {
+            "name": customer_name,
+            "mobile": customer_mobile,
+            "address": customer_address,
+        },
+        "preview": {"svg": preview.get("svg")} if preview.get("svg") else None,
+        "updatedAt": _now(),
+    }

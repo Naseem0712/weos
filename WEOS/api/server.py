@@ -3004,12 +3004,22 @@ class PublicPackageQuoteBody(BaseModel):
     meshChoice: str | None = None
     meshShutters: int | None = None
     trackCount: float | None = None
-    glassShutters: int | None = 2
+    glassShutters: int | None = 3
+    opening: str | None = None
     locking: str | None = "multipoint"
     lock: str | None = None
     lockType: str | None = None
     quoteId: str | None = None
     source: str | None = "woodenmax"
+    customerName: str | None = None
+    customerMobile: str | None = None
+    customerAddress: str | None = None
+    name: str | None = None
+    mobile: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    projectId: str | None = None
+    projectName: str | None = None
 
 
 @app.post("/api/public/package-quote")
@@ -3055,6 +3065,32 @@ def api_get_public_package_quote(
     if not rec:
         raise HTTPException(status_code=404, detail=f"Package quote not found: {quote_id}")
     return rec
+
+
+@app.post("/api/public/package-quote/save")
+def api_save_public_package_quote(body: PublicPackageQuoteBody, request: Request) -> dict[str, Any]:
+    """Save package quote + customer into WeOS project; return scan/PDF URLs (no cost fields)."""
+    from WEOS.factory.public_package_quote import save_public_package_quote
+
+    payload = body.model_dump()
+    if body.glassThickness and not (body.glass and body.glass != "10mm"):
+        payload["glass"] = body.glassThickness
+    if body.color and not body.colour:
+        payload["colour"] = body.color
+    if body.frameColour:
+        payload["colour"] = body.frameColour
+    if body.lockType and not body.locking:
+        payload["locking"] = body.lockType
+    elif body.lock and not body.locking:
+        payload["locking"] = body.lock
+    try:
+        result = save_public_package_quote(payload, base_url=_public_base_url(request))
+    except Exception as exc:
+        _log.exception("public package-quote save failed")
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "package quote save failed")
+    return result
 
 
 @app.post("/api/projects/import")
