@@ -736,10 +736,8 @@ textarea{max-width:100%}
  body:has(#view-cart:not(.hidden)) .top .grow{grid-column:2;min-width:0}
  body:has(#view-cart:not(.hidden)) .top h1{font-size:1.03rem;line-height:1.15;margin:0}
  body:has(#view-cart:not(.hidden)) .top .sub{display:none}
- body:has(#view-cart:not(.hidden)) .top #enginePill,
- body:has(#view-cart:not(.hidden)) .top #wsPill{width:14px;height:14px;min-width:14px;padding:0!important;border-radius:50%;font-size:0!important;overflow:hidden;white-space:nowrap;margin:0!important;border:2px solid #fff;box-shadow:0 0 0 1px #ccc}
  body:has(#view-cart:not(.hidden)) .top #enginePill{grid-column:3}
- body:has(#view-cart:not(.hidden)) .top #wsPill{grid-column:4;background:#b91c1c}
+ body:has(#view-cart:not(.hidden)) .top #wsPill{grid-column:4}
  body:has(#view-cart:not(.hidden)) .top #projPill{display:none}
  #view-cart .cart-topbar{display:grid;grid-template-columns:1fr;gap:.35rem;padding:.4rem}
  #view-cart .cart-topbar .cart-tb-group{display:flex;flex-wrap:wrap;gap:.3rem;max-width:none;width:100%;overflow:visible;justify-content:flex-start;margin:0}
@@ -832,17 +830,26 @@ textarea{max-width:100%}
   #windowCartTools > .row:has(#lineW) select { min-height:38px!important; }
 }
 
-/* Keep company credentials together instead of stretching across the panel. */
-#coLoginFold .co-login-primary{display:grid;grid-template-columns:minmax(0,360px) 100px auto;align-items:start;gap:.5rem;max-width:550px}
-#coLoginFold .co-login-primary>div{min-width:0}
-#coLoginFold .co-login-primary input{width:100%;min-width:0}
-#coLoginFold .co-login-primary>.btn{align-self:start;margin-top:20px;white-space:nowrap}
-#coLoginFold .co-login-secondary{display:flex;align-items:flex-end;gap:.5rem;flex-wrap:wrap;margin-top:.45rem}
-#coLoginFold .co-login-detail{flex:0 1 260px;min-width:0;max-width:100%}
+/* Compact company login; registration fields use the right side. */
+#coLoginFold{padding:.7rem .85rem}
+#coLoginFold .co-login-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.6rem 1.25rem;align-items:start}
+#coLoginFold .co-login-primary{display:grid;grid-template-columns:minmax(0,1fr) 85px auto;gap:.45rem;align-items:start}
+#coLoginFold .co-login-primary>div,#coLoginFold .co-login-detail{min-width:0}
+#coLoginFold input{width:100%;min-width:0;padding:.45rem .6rem}
+#coLoginFold .co-login-primary>.btn{margin-top:20px;white-space:nowrap;padding:.45rem .65rem}
+#coLoginFold .co-login-secondary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}
+#coLoginFold .co-login-actions{grid-column:1/-1;display:flex;gap:.4rem;justify-content:flex-end}
+#coLoginFold .co-login-help{margin:.15rem 0 .5rem;font-size:.76rem}
+.top #enginePill{width:30px;height:30px;min-width:30px;padding:0!important;margin:0!important;border:0;border-radius:50%;font-size:0!important;cursor:pointer;box-shadow:inset 0 0 0 8px var(--bg)}
+.top #wsPill{width:32px;height:32px;min-width:32px;padding:0!important;margin:0!important;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;font-size:16px!important;cursor:pointer}
+.top #wsPill[data-status="logged-in"]{background:#dcfce7;color:#166534}
+.top #wsPill[data-status="logged-out"]{background:#f3f4f6;color:#6b7280}
+#projPill[hidden]{display:none!important}
+@media(max-width:850px){#coLoginFold .co-login-layout{grid-template-columns:1fr}}
 @media(max-width:480px){
-  #coLoginFold .co-login-primary{grid-template-columns:minmax(0,1fr) 85px}
-  #coLoginFold .co-login-primary>.btn{grid-column:1/-1;margin-top:0;justify-self:start}
-  #coLoginFold .co-login-detail{flex:1 1 100%}
+ #coLoginFold .co-login-primary{grid-template-columns:minmax(0,1fr) 75px}
+ #coLoginFold .co-login-primary>.btn{grid-column:1/-1;margin-top:0;justify-self:start}
+ #coLoginFold .co-login-secondary{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -873,9 +880,9 @@ textarea{max-width:100%}
         <h1 id="title">Dashboard</h1>
         <p class="sub" id="subtitle">Manufacturing Operating System</p>
       </div>
-      <button type="button" class="pill" id="enginePill" title="Click to retry backend health" style="margin-right:.5rem;background:#6b7280;color:#fff">● Engine…</button>
-      <span class="pill" id="wsPill" title="Company login">Not logged in</span>
-      <span class="pill" id="projPill">No project</span>
+      <button type="button" class="pill" id="enginePill" title="Click to retry backend health" aria-label="Connecting to server" style="background:#eab308"></button>
+      <button type="button" class="pill" id="wsPill" data-status="logged-out" title="Not logged in — open login" aria-label="Not logged in — open login">🔒</button>
+      <span class="pill" id="projPill" hidden></span>
     </div>
 
     <!-- DASHBOARD -->
@@ -2465,7 +2472,8 @@ textarea{max-width:100%}
           <button type="button" class="btn ghost sm fold-btn" title="Collapse / expand">▾</button>
         </div>
         <div class="fold-body">
-        <p class="muted" style="margin:.2rem 0 .7rem;font-size:.82rem">GSTIN, company name, or registered mobile + <strong>4-digit PIN</strong>. After login this company’s quotes, customers and advances load from the server. Log out before switching company on this device.</p>
+        <p class="muted co-login-help">Log in with GSTIN, name or mobile + PIN. New company? Add name and email.</p>
+        <div class="co-login-layout">
         <div class="co-login-primary">
           <div>
             <label class="l">GSTIN / name / mobile</label>
@@ -2481,8 +2489,11 @@ textarea{max-width:100%}
         <div class="co-login-secondary">
           <div class="co-login-detail"><label class="l">Company name (first time)</label><input id="coGstLoginName" style="text-transform:uppercase" placeholder="new company only" autocomplete="organization"/></div>
           <div class="co-login-detail"><label class="l">Registered email (PIN reset)</label><input id="coGstLoginEmail" type="email" placeholder="company email" autocomplete="email"/></div>
+          <div class="co-login-actions">
           <button class="btn ghost sm" id="btnCoGstForgot" type="button">Forgot PIN</button>
           <button class="btn ghost sm" id="btnCoGstRefresh" type="button">Refresh hub</button>
+        </div>
+        </div>
         </div>
         <div class="err" id="coGstErr" style="margin-top:.4rem"></div>
         <p class="muted" id="coGstStatus" style="margin:.45rem 0 0;font-size:.8rem"></p>
@@ -3481,6 +3492,21 @@ function wipeLoggedOutUi() {
   state.workspace = null;
   state.workspaceRestored = false;
   state.projectId = null;
+  state.lines = [];
+  state._lineById = {};
+  state.selectedLine = null;
+  state.lastResult = null;
+  state.livePrice = null;
+  state.customerMemory = null;
+  state.memoryAskedFor = null;
+  if (state.saveTimer) clearTimeout(state.saveTimer);
+  if (state.liveTimer) clearTimeout(state.liveTimer);
+  ['cartName','cartCustomer','projCustName','projMobile','projCustAddress','projCustGst','projQuoteNo','projDescription','projTerms'].forEach(id => {
+    if ($(id)) $(id).value = '';
+  });
+  if ($('projPill')) { $('projPill').textContent = ''; $('projPill').title = ''; $('projPill').hidden = true; }
+  if ($('setupSummaryText')) $('setupSummaryText').textContent = 'Log in to open a project';
+  ['linkQuote','linkCust','linkCustPrint','linkCustXlsx','linkFact'].forEach(id => { if ($(id)) $(id).removeAttribute('href'); });
   state.selectedCustomer = null;
   state.packageQuotes = [];
   state.masterJobId = null;
@@ -3526,13 +3552,16 @@ function updateWorkspacePill() {
   const el = $('wsPill');
   if (!el) return;
   const gst = savedCompanyGst();
-  if (state.workspaceRestored && gst) {
-    el.textContent = 'Logged in · ' + gst.slice(0, 4) + '…';
+  if (isCompanyLoggedIn()) {
+    el.textContent = '🔓';
+    el.dataset.status = 'logged-in';
     el.title = 'Company workspace ' + gst + ' — click Company Setup to log out';
   } else {
-    el.textContent = 'Not logged in';
+    el.textContent = '🔒';
+    el.dataset.status = 'logged-out';
     el.title = 'Log in with GST / name / mobile + PIN';
   }
+  el.setAttribute('aria-label', el.title);
   if (typeof syncCompanyAuthButton === 'function') syncCompanyAuthButton();
 }
 function syncCompanyAuthButton() {
@@ -8659,6 +8688,11 @@ async function refreshPreview() {
 function updatePdfLinks(){
   const id = state.projectId;
   const pill = $('projPill');
+  if (pill) pill.hidden = !isCompanyLoggedIn();
+  if (!isCompanyLoggedIn()) {
+    if (pill) { pill.textContent = ''; pill.title = ''; }
+    return;
+  }
   if (id) {
     const nm = (typeof projectDisplayName === 'function') ? projectDisplayName() : '';
     if (pill) pill.textContent = nm ? (id + ' · ' + nm) : id;
@@ -8691,6 +8725,7 @@ function projectNameForPayload() {
   return raw;
 }
 function projectDisplayName() {
+  if (!isCompanyLoggedIn()) return '';
   const raw = ($('cartName') && $('cartName').value.trim()) || '';
   if (raw && !isPlaceholderProjectName(raw)) return raw;
   const cust = ($('projCustName') && $('projCustName').value.trim()) || '';
@@ -8711,6 +8746,11 @@ function syncProjectHeader() {
   refreshSetupSummary();
 }
 function refreshSetupSummary(){
+  if (!isCompanyLoggedIn()) {
+    if ($('projPill')) { $('projPill').hidden = true; $('projPill').textContent = ''; }
+    if ($('setupSummaryText')) $('setupSummaryText').textContent = 'Log in to open a project';
+    return;
+  }
   const sel = $('exportSetupSelect');
   const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
   const fromSelect = (opt && sel.value)
@@ -9839,9 +9879,11 @@ function slimCartLines(lines) {
   return serializeCartLines(lines);
 }
 function persistCartSession() {
+  if (!isCompanyLoggedIn()) return;
   try {
     state.lines = hydrateCartLines(state.lines);
     const pack = {
+      companyGst: savedCompanyGst(),
       projectId: state.projectId || null,
       lines: (state.lines || []).map((ln) => slimCartLine(ln, { keepPreviewSvg: true })).filter((ln) => ln && typeof ln === 'object'),
       name: projectNameForPayload() || '',
@@ -9864,11 +9906,12 @@ function persistCartSession() {
   } catch (_) {}
 }
 function restoreCartSession() {
+  if (!isCompanyLoggedIn()) return false;
   try {
     const raw = sessionStorage.getItem(WEOS_CART_KEY) || localStorage.getItem(WEOS_CART_KEY);
     if (!raw) return false;
     const d = JSON.parse(raw);
-    if (!d) return false;
+    if (!d || d.companyGst !== savedCompanyGst()) return false;
     const hasLines = Array.isArray(d.lines) && d.lines.length;
     if (d.projectId) state.projectId = d.projectId;
     if (hasLines) state.lines = hydrateCartLines(d.lines);
@@ -18312,12 +18355,10 @@ function weosMountAgentDock(){
 async function pingEngine(){
   const pill = $('enginePill');
   if (!pill) return;
-  const current = (pill.textContent || '').trim();
-  if (!current || current.includes('Engine…') || /offline|Retry|Checking/i.test(current)) {
-    pill.textContent = '● Checking…';
-    pill.style.background = '#6b7280';
-    pill.style.color = '#fff';
-  }
+  pill.textContent = '';
+  pill.style.background = '#eab308';
+  pill.title = 'Connecting to server';
+  pill.setAttribute('aria-label', pill.title);
   try {
     let h = null;
     try {
@@ -18331,21 +18372,23 @@ async function pingEngine(){
     const backend = db.backend || db.dialect || '';
     const ok = h.status === 'ok' || h.ok === true || dbOk;
     if (ok) {
-      pill.textContent = '● Engine connected' + (backend ? ` (${backend})` : '');
+      pill.textContent = '';
       pill.style.background = '#166534';
       pill.style.color = '#fff';
       pill.title = 'Backend healthy' + (backend ? ` · ${backend}` : '') + ' — click to recheck';
     } else {
-      pill.textContent = '● Backend offline · Retry';
+      pill.textContent = '';
       pill.style.background = '#b91c1c';
       pill.style.color = '#fff';
       pill.title = 'Database not reachable: ' + (db.error || h.status || 'unknown') + ' — click to retry';
     }
   } catch(e){
-    pill.textContent = '● Backend offline · Retry';
+    pill.textContent = '';
     pill.style.background = '#b91c1c';
     pill.style.color = '#fff';
     pill.title = 'Cannot reach backend: ' + (e && e.message ? e.message : 'network error') + ' — click to retry';
+  } finally {
+    pill.setAttribute('aria-label', pill.title);
   }
 }
 
@@ -18359,11 +18402,12 @@ async function pingEngine(){
     $('wsPill').style.cursor = 'pointer';
     $('wsPill').onclick = () => setView('company');
   }
-  const restoredCart = restoreCartSession();
   updatePdfLinks();
   if (typeof initPreviewZoom === 'function') initPreviewZoom();
   // Auto-restore company workspace only when a PIN session exists.
   try { await restoreCompanyWorkspace(); } catch (e) { console.warn(e); }
+  if (isCompanyLoggedIn()) restoreCartSession();
+  else wipeLoggedOutUi();
   if (typeof applyCompanyPdfBrand === 'function') applyCompanyPdfBrand();
   updatePdfLinks();
   updateWorkspacePill();
