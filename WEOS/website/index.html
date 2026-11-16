@@ -7617,6 +7617,7 @@ function applyPanelFillToForm(pf) {
 }
 
 function scheduleLivePrice() {
+  state.livePriceRequestId = (state.livePriceRequestId || 0) + 1;
   clearTimeout(state.liveTimer);
   state.liveTimer = setTimeout(refreshLivePrice, 220);
 }
@@ -7650,6 +7651,7 @@ function applySpecialLivePrice(kind) {
 }
 async function refreshLivePrice() {
   if (!$('liveCost')) return;
+  const requestId = state.livePriceRequestId || 0;
   if (isRailingMode()) {
     try {
       if (!(state.railing && state.railing.quote)) await railingCalc();
@@ -7678,14 +7680,22 @@ async function refreshLivePrice() {
     return;
   }
   const draft = currentLineDraft();
-  if (!draft.width || !draft.height) return;
+  if (!draft.product || !draft.width || !draft.height) {
+    $('liveCost').textContent = '₹ —';
+    if ($('liveCostBreak')) $('liveCostBreak').style.display = 'none';
+    if ($('liveCostParts')) $('liveCostParts').style.display = 'none';
+    updateStickyProfit(NaN, 0, false);
+    return;
+  }
   // Respect a deliberately cleared selling-rate field; never borrow an older rate.
   const localSell = lineLiveAmount(Object.assign({}, state.lines[state.selectedLine] || {}, draft));
   setSellDisplay(money(localSell || 0));
   try {
     const body = { ...draft, customer: $('cartCustomer').value || null, lookupSavedRate: true };
     const live = await api('/api/quote/live', { method:'POST', body });
-    if (JSON.stringify(currentLineDraft()) !== JSON.stringify(draft)) return;
+    // A scheduled newer edit invalidates older requests. Comparing complete drafts
+    // here was unsafe: UI normalization/auto wheel selection can change derived fields.
+    if (requestId !== (state.livePriceRequestId || 0)) return;
     state.livePrice = live;
     const costN = Number(
       (live.cost && live.cost.total) ||
@@ -7785,11 +7795,13 @@ async function refreshLivePrice() {
         : 'Enter selling rate (or set labour ₹/sft + profit % in Series Setup)';
     }
   } catch(e) {
-    $('liveMeta').textContent = e.message;
-    if (localSell > 0) {
-      $('liveCost').textContent = money(localSell);
-      setSellDisplay(money(localSell));
-    }
+    if (requestId !== (state.livePriceRequestId || 0)) return;
+    $('liveMeta').textContent = 'Cost calculation unavailable: ' + (e && e.message ? e.message : 'retry');
+    $('liveCost').textContent = '₹ —';
+    if ($('liveCostBreak')) $('liveCostBreak').style.display = 'none';
+    if ($('liveCostParts')) $('liveCostParts').style.display = 'none';
+    updateStickyProfit(NaN, localSell, draft.sellingRate != null);
+    setSellDisplay(money(localSell || 0));
   }
 }
 
