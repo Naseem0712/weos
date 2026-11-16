@@ -192,10 +192,16 @@ def normalize_mesh(body: Mapping[str, Any]) -> tuple[bool, int, float]:
 
 
 def normalize_shutter_config(body: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """3-track page shutter rules.
+    """Shutter / track rules for the WoodenMax 3-track package calculator.
 
-    - 3 glass shutters → mesh disabled, side opening, 3-track
-    - 4 glass shutters → center opening; mesh (if on) = exactly 2 mesh shutters, 4-track
+    Correct mapping:
+      - **3 glass** → side opening, mesh off, **3-track**
+      - **4 glass + mesh** → center opening, meshShutters=2, stay on **3-track**
+        (track layout: line1=2 glass, line2=2 glass, line3=both mesh inside)
+      - **4-track** only when **side opening + 4 glass** and **no mesh**
+        (WM UI does not offer this; honour if caller asks explicitly)
+
+    Never bump 4-glass+mesh to 4-track — that mismatches WeOS cart preview.
     """
     body = body if isinstance(body, Mapping) else {}
     try:
@@ -208,6 +214,7 @@ def normalize_shutter_config(body: Mapping[str, Any] | None = None) -> dict[str,
     mesh_choice = _str(body.get("meshChoice") or body.get("meshOption") or "").lower()
     mesh_raw = body.get("mesh")
     mesh_shutters_raw = body.get("meshShutters")
+    opening_raw = _str(body.get("opening") or "").lower().replace("-", "_").replace(" ", "_")
 
     mesh_on = False
     if mesh_choice in ("no", "none", "no_mesh", "nomesh", "0"):
@@ -228,11 +235,35 @@ def normalize_shutter_config(body: Mapping[str, Any] | None = None) -> dict[str,
             "meshShutters": 0,
             "opening": "side",
             "openingLabel": "Side opening",
+            "openingExplicit": True,
             "trackCount": 3.0,
+            "system": "sliding",
+            "meshType": None,
             "meshLabel": "No Mesh",
         }
 
-    # 4 glass → center; mesh if enabled is always 2 (never 1)
+    # 4-track ONLY: side opening + 4 glass + no mesh
+    side_4track = (not mesh_on) and opening_raw in (
+        "side",
+        "telescopic",
+        "telescope",
+        "side_opening",
+    )
+    if side_4track:
+        return {
+            "glassShutters": 4,
+            "mesh": False,
+            "meshShutters": 0,
+            "opening": "side",
+            "openingLabel": "Side opening",
+            "openingExplicit": True,
+            "trackCount": 4.0,
+            "system": "sliding",
+            "meshType": None,
+            "meshLabel": "No Mesh",
+        }
+
+    # Default 4 glass on this page: center on 3-track; mesh if on = exactly 2
     mesh_n = 2 if mesh_on else 0
     return {
         "glassShutters": 4,
@@ -240,7 +271,10 @@ def normalize_shutter_config(body: Mapping[str, Any] | None = None) -> dict[str,
         "meshShutters": mesh_n,
         "opening": "center",
         "openingLabel": "Center opening",
-        "trackCount": 4.0,
+        "openingExplicit": True,
+        "trackCount": 3.0,
+        "system": "sliding",
+        "meshType": "standard" if mesh_n else None,
         "meshLabel": f"Mesh {mesh_n}" if mesh_n else "No Mesh",
     }
 
@@ -358,8 +392,8 @@ def _render_preview(line: Mapping[str, Any], product: Mapping[str, Any]) -> dict
                 glass_count=int(line.get("glassShutters") or 2),
                 mesh_count=0 if addon else int(line.get("meshShutters") or 0),
                 opening=opening_raw,
-                opening_explicit=True,
-                system="sliding",
+                opening_explicit=bool(line.get("openingExplicit", True)),
+                system=_str(line.get("system") or "sliding") or "sliding",
             )
             break
         except Exception as exc:
@@ -447,6 +481,7 @@ def build_public_package_quote(body: Mapping[str, Any] | None = None) -> dict[st
     product = _apply_lock_override(product, lock_type)
     lock_pack = ((product.get("setup") or {}).get("sliding") or {}).get("hardwarePack", {}).get("lock") or {}
 
+    mesh_type = _str(shutters.get("meshType") or body.get("meshType") or ("standard" if mesh_on else "")) or None
     line = {
         "product": product_id,
         "width": width,
@@ -456,23 +491,26 @@ def build_public_package_quote(body: Mapping[str, Any] | None = None) -> dict[st
         "colour": colour_id,
         "mesh": mesh_on,
         "meshShutters": mesh_n if mesh_on else 0,
+        "meshType": mesh_type if mesh_on else None,
         "glassShutters": glass_shutters,
         "trackCount": track_count,
         "opening": opening,
         "openingExplicit": True,
         "sectionSeries": product.get("sectionSeries") or product_id,
         "productType": product.get("productType") or "sliding",
-        "system": "sliding",
+        "system": _str(shutters.get("system") or "sliding") or "sliding",
         "lockType": lock_type,
         "options": {
             "glass": glass_id,
             "colour": colour_id,
             "mesh": mesh_on,
             "meshShutters": mesh_n if mesh_on else 0,
+            "meshType": mesh_type if mesh_on else None,
             "glassShutters": glass_shutters,
             "trackCount": track_count,
             "opening": opening,
             "openingExplicit": True,
+            "system": "sliding",
             "lockType": lock_type,
         },
     }
