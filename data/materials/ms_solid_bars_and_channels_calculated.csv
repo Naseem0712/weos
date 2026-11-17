@@ -1,0 +1,112 @@
+Section Type,Section (mm),Width / Diameter (mm),Height / Depth (mm),Thickness (mm),Weight (kg/m),Cross-section area (mm²),Status,Density,Method / Assumption
+FLAT,12x4,12,,4,0.3768,48.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,12x5,12,,5,0.4710,60.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,12x6,12,,6,0.5652,72.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,12x8,12,,8,0.7536,96.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,12x10,12,,10,0.9420,120.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,12x12,12,,12,1.1304,144.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,18x4,18,,4,0.5652,72.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,18x5,18,,5,0.7065,90.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,18x6,18,,6,0.8478,108.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,18x8,18,,8,1.1304,144.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,18x10,18,,10,1.4130,180.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,18x12,18,,12,1.6956,216.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,25x4,25,,4,0.7850,100.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,25x5,25,,5,0.9812,125.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,25x6,25,,6,1.1775,150.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,25x8,25,,8,1.5700,200.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,25x10,25,,10,1.9625,250.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,25x12,25,,12,2.3550,300.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,32x4,32,,4,1.0048,128.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,32x5,32,,5,1.2560,160.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,32x6,32,,6,1.5072,192.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,32x8,32,,8,2.0096,256.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,32x10,32,,10,2.5120,320.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,32x12,32,,12,3.0144,384.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,38x4,38,,4,1.1932,152.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,38x5,38,,5,1.4915,190.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,38x6,38,,6,1.7898,228.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,38x8,38,,8,2.3864,304.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,38x10,38,,10,2.9830,380.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,38x12,38,,12,3.5796,456.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,50x4,50,,4,1.5700,200.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,50x5,50,,5,1.9625,250.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,50x6,50,,6,2.3550,300.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,50x8,50,,8,3.1400,400.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,50x10,50,,10,3.9250,500.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,50x12,50,,12,4.7100,600.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,62x4,62,,4,1.9468,248.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,62x5,62,,5,2.4335,310.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,62x6,62,,6,2.9202,372.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,62x8,62,,8,3.8936,496.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,62x10,62,,10,4.8670,620.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,62x12,62,,12,5.8404,744.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,75x4,75,,4,2.3550,300.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,75x5,75,,5,2.9437,375.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,75x6,75,,6,3.5325,450.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,75x8,75,,8,4.7100,600.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,75x10,75,,10,5.8875,750.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,75x12,75,,12,7.0650,900.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,100x4,100,,4,3.1400,400.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,100x5,100,,5,3.9250,500.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,100x6,100,,6,4.7100,600.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,100x8,100,,8,6.2800,800.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,100x10,100,,10,7.8500,1000.000,Calculated MS,7850 kg/m³,Flat width x thickness
+FLAT,100x12,100,,12,9.4200,1200.000,Calculated MS,7850 kg/m³,Flat width x thickness
+SOLID SQUARE,10x10,10,10,,0.7850,100.000,Calculated MS,7850 kg/m³,Solid square
+SOLID SQUARE,12x12,12,12,,1.1304,144.000,Calculated MS,7850 kg/m³,Solid square
+SOLID SQUARE,16x16,16,16,,2.0096,256.000,Calculated MS,7850 kg/m³,Solid square
+SOLID SQUARE,20x20,20,20,,3.1400,400.000,Calculated MS,7850 kg/m³,Solid square
+SOLID SQUARE,25x25,25,25,,4.9063,625.000,Calculated MS,7850 kg/m³,Solid square
+SOLID SQUARE,32x32,32,32,,8.0384,1024.000,Calculated MS,7850 kg/m³,Solid square
+SOLID SQUARE,38x38,38,38,,11.3354,1444.000,Calculated MS,7850 kg/m³,Solid square
+SOLID SQUARE,50x50,50,50,,19.6250,2500.000,Calculated MS,7850 kg/m³,Solid square
+SOLID ROUND,Ø8,8,,,0.3946,50.265,Calculated MS,7850 kg/m³,Solid round
+SOLID ROUND,Ø10,10,,,0.6165,78.540,Calculated MS,7850 kg/m³,Solid round
+SOLID ROUND,Ø12,12,,,0.8878,113.097,Calculated MS,7850 kg/m³,Solid round
+SOLID ROUND,Ø16,16,,,1.5783,201.062,Calculated MS,7850 kg/m³,Solid round
+SOLID ROUND,Ø18,18,,,1.9976,254.469,Calculated MS,7850 kg/m³,Solid round
+SOLID ROUND,Ø20,20,,,2.4662,314.159,Calculated MS,7850 kg/m³,Solid round
+SOLID ROUND,Ø22,22,,,2.9840,380.133,Calculated MS,7850 kg/m³,Solid round
+SOLID ROUND,Ø24,24,,,3.5513,452.389,Calculated MS,7850 kg/m³,Solid round
+SOLID ROUND,Ø25,25,,,3.8534,490.874,Calculated MS,7850 kg/m³,Solid round
+SOLID ROUND,Ø32,32,,,6.3133,804.248,Calculated MS,7850 kg/m³,Solid round
+SOLID ROUND,Ø38,38,,,8.9028,1134.115,Calculated MS,7850 kg/m³,Solid round
+SOLID ROUND,Ø50,50,,,15.4134,1963.495,Calculated MS,7850 kg/m³,Solid round
+SOLID ROUND,Ø62,62,,,23.6997,3019.071,Calculated MS,7850 kg/m³,Solid round
+C CHANNEL,38x75x4,38,75,4,4.4902,572.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x75x5,38,75,5,5.5342,705.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x75x6,38,75,6,6.5469,834.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x75x8,38,75,8,8.4780,1080.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x100x4,38,100,4,5.2752,672.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x100x5,38,100,5,6.5155,830.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x100x6,38,100,6,7.7244,984.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x100x8,38,100,8,10.0480,1280.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x125x4,38,125,4,6.0602,772.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x125x5,38,125,5,7.4967,955.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x125x6,38,125,6,8.9019,1134.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x125x8,38,125,8,11.6180,1480.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x150x4,38,150,4,6.8452,872.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x150x5,38,150,5,8.4780,1080.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x150x6,38,150,6,10.0794,1284.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+C CHANNEL,38x150x8,38,150,8,13.1880,1680.000,Calculated MS,7850 kg/m³,Ideal uniform thickness channel
+I CHANNEL,76x150x4,76,150,4,9.2316,1176.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,76x150x5,76,150,5,11.4610,1460.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,76x150x6,76,150,6,13.6590,1740.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,76x150x8,76,150,8,17.9608,2288.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,76x150x10,76,150,10,22.1370,2820.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x200x4,75,200,4,10.7388,1368.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x200x5,75,200,5,13.3450,1700.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x200x6,75,200,6,15.9198,2028.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x200x8,75,200,8,20.9752,2672.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x200x10,75,200,10,25.9050,3300.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x250x4,75,250,4,12.3088,1568.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x250x5,75,250,5,15.3075,1950.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x250x6,75,250,6,18.2748,2328.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x250x8,75,250,8,24.1152,3072.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x250x10,75,250,10,29.8300,3800.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x305x4,75,305,4,14.0358,1788.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x305x5,75,305,5,17.4662,2225.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x305x6,75,305,6,20.8653,2658.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x305x8,75,305,8,27.5692,3512.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
+I CHANNEL,75x305x10,75,305,10,34.1475,4350.000,Calculated MS,7850 kg/m³,Ideal uniform thickness I section
