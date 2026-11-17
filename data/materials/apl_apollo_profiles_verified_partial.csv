@@ -1,0 +1,14 @@
+Section Type,Section (mm),Width (mm),Height (mm),Thickness (mm),Weight (kg/m),PDF Page,Verification
+SHS,12x12,12,12,1.6,0.47,4,Verified against PDF
+SHS,12x12,12,12,2.0,0.55,4,Verified against PDF
+SHS,15x15,15,15,1.6,0.62,4,Verified against PDF
+SHS,15x15,15,15,2.0,0.74,4,Verified against PDF
+SHS,15x15,15,15,2.2,0.79,4,Verified against PDF
+SHS,20x20,20,20,1.6,0.87,4,Verified against PDF
+SHS,20x20,20,20,2.0,1.05,4,Verified against PDF
+SHS,20x20,20,20,2.2,1.13,4,Verified against PDF
+SHS,20x20,20,20,2.6,1.29,4,Verified against PDF
+SHS,25x25,25,25,1.6,1.12,4,Verified against PDF
+SHS,25x25,25,25,2.0,1.37,4,Verified against PDF
+SHS,25x25,25,25,2.2,1.48,4,Verified against PDF
+SHS,25x25,25,25,2.6,1.70,4,Verified against PDF
