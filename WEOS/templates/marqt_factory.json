@@ -2,10 +2,10 @@
   "id": "marqt_factory",
   "brand": "marqt",
   "kind": "factory",
-  "name": "WEOS Windows Factory PDF",
+  "name": "CutList Windows Factory PDF",
   "pageSize": "A4",
   "branding": {
-    "companyName": "WEOS Windows",
+    "companyName": "CutList Windows",
     "tagline": "Design \u2022 Calculate \u2022 Manufacture \u2022 Quote",
     "primaryColor": [
       0.12,
@@ -17,7 +17,7 @@
       0.15,
       0.12
     ],
-    "logoText": "WEOS Windows"
+    "logoText": "CutList Windows"
   },
   "blocks": [
     {
@@ -27,7 +27,7 @@
       "y": 40,
       "w": 160,
       "h": 36,
-      "label": "WEOS Windows"
+      "label": "CutList Windows"
     },
     {
       "id": "title",
@@ -85,7 +85,7 @@
       "y": 780,
       "w": 515,
       "h": 24,
-      "text": "WEOS Windows Factory \u2014 machine-ready data"
+      "text": "CutList Windows Factory \u2014 machine-ready data"
     }
   ]
 }

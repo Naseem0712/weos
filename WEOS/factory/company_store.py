@@ -519,18 +519,14 @@ def _ensure_logo_cache() -> Path | None:
 
 
 def default_logo_file() -> Path | None:
-    """The bundled WEOS brand logo shipped in the website dir (served at
-    /static/weos-logo.png). Used as the default app + PDF logo when the company
-    has not uploaded their own."""
-    for cand in (website_dir() / "weos-logo.png", website_dir() / "weos-logo.svg"):
-        if cand.is_file():
-            return cand
-    return None
+    """The bundled CutList wordmark used when the company has no uploaded logo."""
+    logo = website_dir() / "cutlist-logo.png"
+    return logo if logo.is_file() else None
 
 
 def logo_file() -> Path | None:
     """Effective logo: the company's uploaded logo when present, else the bundled
-    WEOS default. Company upload always overrides the default."""
+    CutList default. Company upload always overrides the default."""
     _ensure_logo_cache()
     doc = load_company()
     p = doc.get("logoPath")

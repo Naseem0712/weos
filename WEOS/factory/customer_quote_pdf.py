@@ -166,7 +166,7 @@ def render_customer_quote_sheet(
         except Exception:
             logo_w = logo_h = 0.0
     tx = M + ((logo_w + 10) if logo_h else 0)
-    co_name = (_txt(co.get("companyName") or co.get("name") or "WEOS")).upper()
+    co_name = (_txt(co.get("companyName") or co.get("name") or "CutList")).upper()
     c.setFillColorRGB(*green)
     c.setFont("Helvetica-Bold", 13)
     c.drawString(tx, y - 14, co_name[:70])
@@ -333,7 +333,7 @@ def render_customer_quote_sheet(
 
     c.setFillColorRGB(*muted)
     c.setFont("Helvetica", 7)
-    c.drawString(M, max(M - 8, 24), "Powered by WEOS")
+    c.drawString(M, max(M - 8, 24), "Powered by CutList")
     c.drawRightString(W - M, max(M - 8, 24), datetime.now(timezone.utc).strftime("%d %b %Y"))
     c.showPage()
     c.save()

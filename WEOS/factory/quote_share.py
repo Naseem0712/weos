@@ -815,6 +815,7 @@ def render_access_verify_html(
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
+<link rel="icon" href="/static/cutlist-icon-32.png"/>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <meta name="robots" content="noindex"/>
@@ -833,7 +834,7 @@ input{{font:inherit;width:100%;padding:.7rem;border:1px solid rgba(20,20,16,.16)
 <div class="wrap">
   <div class="card">
     <div class="muted">Protected monitor link</div>
-    <h1>{esc(co.get('name') if isinstance(co, Mapping) else '') or 'WEOS'} · Quote {esc(quote_no)}</h1>
+    <h1>{esc(co.get('name') if isinstance(co, Mapping) else '') or 'CutList'} · Quote {esc(quote_no)}</h1>
     <p class="muted">Customer: {esc(cust.get('name') if isinstance(cust, Mapping) else '')} {(' · ' + esc(cust.get('phoneMasked') or cust.get('phone'))) if isinstance(cust, Mapping) and (cust.get('phoneMasked') or cust.get('phone')) else ''}</p>
     {f"<p class='muted'>Access for: <strong>{esc(grant.get('name'))}</strong> · {esc(grant.get('role'))} · {esc(grant.get('phoneMasked'))}</p>" if isinstance(grant, Mapping) else ""}
     <form method="get" action="/q/{esc(ref)}/access/{esc(access_token)}">
@@ -1267,7 +1268,7 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     {f'<div style="margin-top:.65rem"><div class="muted" style="margin-bottom:.25rem">By type</div>{type_tot_html}</div>' if type_tot_html else ''}
   </div>"""
 
-    co_name = esc(co.get("name") or "WEOS")
+    co_name = esc(co.get("name") or "CutList")
     try:
         from WEOS.factory.pdf_rich_text import markdown_emphasis_to_html
 
@@ -1294,6 +1295,7 @@ def render_scan_html(record: Mapping[str, Any], *, base_url: str = "") -> str:
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
+<link rel="icon" href="/static/cutlist-icon-32.png"/>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <meta name="robots" content="noindex"/>
@@ -1350,7 +1352,7 @@ input{{font:inherit;background:#fffdf9;color:var(--ink)}}
 <body>
 <div class="wrap">
   <div class="card section">
-    <div class="muted">Live quote · powered by WEOS</div>
+    <div class="muted">Live quote · powered by CutList</div>
     <div class="header-bar">
       <div>
         <h1>{co_name}</h1>

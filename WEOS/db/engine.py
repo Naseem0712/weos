@@ -276,7 +276,7 @@ def health() -> dict[str, Any]:
         info["status"] = "MISCONFIGURED"
         info["misconfigured"] = True
         info["reason"] = (
-            "DATABASE_URL is NOT present in this running process, so WEOS used the "
+            "DATABASE_URL is NOT present in this running process, so CutList used the "
             "sqlite dev fallback. On Railway, variables are injected at container "
             "start — set DATABASE_URL=${{Postgres.DATABASE_URL}} on THIS (web) "
             "service, remove any stray/empty DATABASE_URL, then trigger a fresh "

@@ -67,7 +67,7 @@ def render_advance_slip_pdf(
             logo_w = logo_h = 0.0
 
     text_x = M + ((logo_w + 10) if logo_h else 0)
-    co_name = (_txt(company.get("companyName")) or "WEOS").upper()
+    co_name = (_txt(company.get("companyName")) or "CutList").upper()
     c.setFillColorRGB(*primary)
     c.setFont("Helvetica-Bold", 14)
     c.drawString(text_x, y - 16, co_name[:70])
@@ -233,7 +233,7 @@ def render_advance_slip_pdf(
 
     c.setFont("Helvetica", 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawString(M, M / 2 + 6, "This is a computer generated document - powered by WEOS - advance receipt")
+    c.drawString(M, M / 2 + 6, "This is a computer generated document - powered by CutList - advance receipt")
     c.showPage()
     c.save()
     return buf.getvalue()

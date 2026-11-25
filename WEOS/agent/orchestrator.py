@@ -1,4 +1,4 @@
-"""WEOS Agent Orchestrator (Part 3) — the live brain of the quote builder.
+"""CutList Agent Orchestrator (Part 3) — the live brain of the quote builder.
 
 Receives a live **Quote Context** (customer, product, series, W, H, qty, track
 count, shutter count, selected profiles, glass, hardware, colour, calculation
@@ -8,7 +8,7 @@ change, glass change, hardware change, colour change, BOM calc, price calc,
 finalize.
 
 It is deliberately NOT isolated: it is invoked by the FastAPI quote workflow and
-its output (suggestions + explanations) is displayed in the "WEOS Agent" panel.
+its output (suggestions + explanations) is displayed in the "CutList Agent" panel.
 
 Responsibilities:
 1. Run the live Suggestion Engine → suggestions/warnings/recommendations.
@@ -80,7 +80,7 @@ def analyze(
         "brainNotes": brain_notes,
         "count": len(suggestions),
         "context": _context_echo(context),
-        "message": "WEOS Agent analysed the live quote context.",
+        "message": "CutList Agent analysed the live quote context.",
     }
 
 

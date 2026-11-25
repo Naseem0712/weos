@@ -105,8 +105,8 @@ def _apply_a4(ws, *, last_col: str = "H", last_row: int = 40, title_rows: str | 
     ws.page_setup.paperWidth = "210mm"
 
 
-def _header_footer(ws, *, company: str, right: str, footer_left: str = "Powered by WEOS") -> None:
-    ws.oddHeader.left.text = (company or "WEOS")[:60]
+def _header_footer(ws, *, company: str, right: str, footer_left: str = "Powered by CutList") -> None:
+    ws.oddHeader.left.text = (company or "CutList")[:60]
     ws.oddHeader.right.text = (right or "")[:60]
     ws.oddFooter.left.text = footer_left
     ws.oddFooter.right.text = "Page &P of &N"
@@ -319,7 +319,7 @@ def _type_group(line: Mapping[str, Any]) -> str:
 
 
 def _write_letterhead(ws, company: Mapping[str, Any], styles, *, row: int = 1, temps: list[str]) -> int:
-    co_name = (_txt(company.get("companyName") or company.get("name") or "WEOS")).upper()
+    co_name = (_txt(company.get("companyName") or company.get("name") or "CutList")).upper()
     logo = _logo_png_bytes(company)
     start = row
     col_text = 1
@@ -409,7 +409,7 @@ def prepare_customer_export_payload(doc: Mapping[str, Any]) -> tuple[dict[str, A
         if lf:
             company["logoPath"] = str(lf)
     except Exception:
-        company = {"companyName": "WEOS"}
+        company = {"companyName": "CutList"}
 
     cust_name = _txt(doc.get("customer"))
     profile: dict[str, Any] = {}
@@ -676,7 +676,7 @@ def export_quote_xlsx(
             ws.column_dimensions[col].hidden = True
 
         _apply_a4(ws, last_col="H", last_row=last_print_row, title_rows=f"{header_row}:{header_row}")
-        _header_footer(ws, company=_txt(company.get("companyName") or "WEOS").upper(), right=f"Quote {qid}")
+        _header_footer(ws, company=_txt(company.get("companyName") or "CutList").upper(), right=f"Quote {qid}")
         ws.freeze_panes = f"A{first_data}"
         ws.sheet_view.showGridLines = False
 
@@ -873,9 +873,9 @@ def _write_ledger_sheet(
     _apply_a4(ws, last_col="G", last_row=last_row + 2)
     _header_footer(
         ws,
-        company=_txt(company.get("companyName") or "WEOS").upper(),
+        company=_txt(company.get("companyName") or "CutList").upper(),
         right=f"Ledger · {cust}"[:50],
-        footer_left="Powered by WEOS — ledger",
+        footer_left="Powered by CutList — ledger",
     )
     ws.sheet_view.showGridLines = False
     # Keep stored totals as comments only — formulas are source of truth.
@@ -1016,9 +1016,9 @@ def export_advance_xlsx(
         _apply_a4(ws, last_col="E", last_row=last_row + 3)
         _header_footer(
             ws,
-            company=_txt(company.get("companyName") or "WEOS").upper(),
+            company=_txt(company.get("companyName") or "CutList").upper(),
             right=f"Slip {slip_no}",
-            footer_left="Powered by WEOS — advance receipt",
+            footer_left="Powered by CutList — advance receipt",
         )
         ws.sheet_view.showGridLines = False
         out = io.BytesIO()

@@ -71,7 +71,7 @@ def render_scan_all_pdf(record: Mapping[str, Any]) -> bytes:
     # Header
     c.setFillColorRGB(*green)
     c.setFont("Helvetica-Bold", 14)
-    c.drawString(M, y, (_txt(co.get("name") or "WEOS")).upper()[:70])
+    c.drawString(M, y, (_txt(co.get("name") or "CutList")).upper()[:70])
     y -= 14
     c.setFillColorRGB(*muted)
     c.setFont("Helvetica", 8)
@@ -364,7 +364,7 @@ def render_scan_all_pdf(record: Mapping[str, Any]) -> bytes:
 
     c.setFillColorRGB(*muted)
     c.setFont("Helvetica", 7)
-    c.drawString(M, 22, "Powered by WEOS · live quote pack")
+    c.drawString(M, 22, "Powered by CutList · live quote pack")
     c.drawRightString(W - M, 22, _fmt_dt(rec.get("updatedAt") or datetime.now(timezone.utc).isoformat()))
     c.showPage()
     c.save()

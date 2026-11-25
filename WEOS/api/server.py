@@ -17,7 +17,7 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -69,8 +69,8 @@ if _log.level == logging.NOTSET:
     _log.setLevel(logging.INFO)
 
 app = FastAPI(
-    title="WEOS API",
-    description="WEOS — Design • Calculate • Manufacture • Quote",
+    title="CutList API",
+    description="CutList — Design • Calculate • Manufacture • Quote",
     version=__version__,
 )
 
@@ -777,7 +777,7 @@ def _pdf_filename(quote_no: Any, customer: Any, project_id: str, kind: str, proj
             parts.append(part)
     if not parts:
         parts = [p for p in (_sanitize_filename_part(quote_no), _sanitize_filename_part(project_id)) if p]
-    base = "_".join(parts) or "WEOS-quotation"
+    base = "_".join(parts) or "CutList-quotation"
     if kind == "factory":
         base = f"{base}_factory"
     return f"{base}.pdf"
@@ -1180,7 +1180,7 @@ def _pdf_response(
         _log.exception("PDF build failed for %s (%s); returning minimal PDF", project_id, kind)
         from WEOS.factory.pdf_engine import _minimal_text_pdf
 
-        pdf = _minimal_text_pdf(f"WEOS {kind.title()} PDF", payload)
+        pdf = _minimal_text_pdf(f"CutList {kind.title()} PDF", payload)
     if overlay and overlay.get("persist"):
         try:
             from datetime import datetime as _dt, timezone as _tz
@@ -1234,8 +1234,8 @@ def health() -> dict[str, str]:
 def api_version() -> dict[str, Any]:
     """App identity + git-free build info for deploy checks."""
     return {
-        "name": "WEOS",
-        "app": "WEOS",
+        "name": "CutList",
+        "app": "CutList",
         "version": __version__,
         "buildRevision": BUILD_REVISION,
         "tagline": TAGLINE,
@@ -1934,7 +1934,7 @@ def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
         doc = load_project(project_id)
     except FileNotFoundError:
         # Stale browser id (deleted / never persisted / merged away) — start a new job.
-        doc = empty_project(name=body.name or "WEOS Project", customer=body.customer or "")
+        doc = empty_project(name=body.name or "CutList Project", customer=body.customer or "")
         doc["status"] = body.status or "draft"
     if body.name is not None:
         doc["name"] = body.name
@@ -3547,7 +3547,8 @@ def pin_reset_page(token: str = "") -> HTMLResponse:
     return HTMLResponse(
         f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>WEOS PIN reset</title>
+<link rel="icon" href="/static/cutlist-icon-32.png"/>
+<title>CutList PIN reset</title>
 <style>
 body{{font-family:system-ui,sans-serif;background:#e8e3d8;color:#141410;margin:0;padding:1.5rem}}
 .card{{max-width:420px;margin:2rem auto;background:#fffdf9;border:1px solid rgba(20,20,16,.12);border-radius:14px;padding:1.2rem}}
@@ -3580,7 +3581,7 @@ document.getElementById('go').onclick = async function(){{
     var j = await res.json();
     if (!res.ok) {{ err.textContent = j.detail || j.message || 'Could not save'; return; }}
     err.style.color = '#0a5a48';
-    err.textContent = 'PIN saved. You can log in on WEOS now.';
+    err.textContent = 'PIN saved. You can log in on CutList now.';
     setTimeout(function(){{ location.href = '/'; }}, 1200);
   }} catch (e) {{ err.textContent = e.message || 'Network error'; }}
 }};
@@ -5315,7 +5316,7 @@ def api_template_preview_pdf(body: TemplatePreviewRequest) -> Response:
         _log.exception("template preview render failed (brand=%s kind=%s)", body.brand, body.kind)
         from WEOS.factory.pdf_engine import _minimal_text_pdf
 
-        pdf = _minimal_text_pdf("WEOS Template Preview", sample)
+        pdf = _minimal_text_pdf("CutList Template Preview", sample)
     return Response(
         content=pdf,
         media_type="application/pdf",
@@ -5977,11 +5978,16 @@ def _weos_seed_defaults() -> None:
         pass
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def app_favicon() -> FileResponse:
+    return FileResponse(WEBSITE_DIR / "cutlist-icon-32.png", media_type="image/png")
+
+
 @app.get("/", response_class=HTMLResponse)
 def website_index() -> HTMLResponse:
     index = WEBSITE_DIR / "index.html"
     if not index.is_file():
-        return HTMLResponse("<h1>WEOS</h1><p>UI missing.</p>")
+        return HTMLResponse("<h1>CutList</h1><p>UI missing.</p>")
     return HTMLResponse(index.read_text(encoding="utf-8"))
 
 

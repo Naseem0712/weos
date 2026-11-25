@@ -38,7 +38,7 @@ def _seed_defaults() -> None:
 
 def default_template(brand: str, kind: str) -> dict[str, Any]:
     brand = brand.lower()
-    company = {"woodenmax": "WoodenMax", "allkraft": "AllKraft", "marqt": "WEOS Windows"}.get(brand, brand.title())
+    company = {"woodenmax": "WoodenMax", "allkraft": "AllKraft", "marqt": "CutList Windows"}.get(brand, brand.title())
     colors = {
         "woodenmax": {"primary": [0.04, 0.35, 0.28], "accent": [0.71, 0.33, 0.14]},
         "allkraft": {"primary": [0.12, 0.22, 0.45], "accent": [0.85, 0.55, 0.12]},
@@ -73,7 +73,7 @@ def default_template(brand: str, kind: str) -> dict[str, Any]:
             {"id": "terms", "type": "terms", "x": 40, "y": 660, "w": 515, "h": 80,
              "text": "Terms: 50% advance, balance before dispatch. Rates excl. site installation unless noted. Warranty: 1 year manufacturing defects."},
             {"id": "footer", "type": "footer", "x": 40, "y": 780, "w": 515, "h": 24,
-             "text": f"{company} · Powered by WEOS"},
+             "text": f"{company} · Powered by CutList"},
         ]
     return {
         "id": f"{brand}_{kind}",
@@ -92,12 +92,35 @@ def default_template(brand: str, kind: str) -> dict[str, Any]:
     }
 
 
+def _read_template(path: Path) -> dict[str, Any]:
+    """Display current branding in existing templates while preserving custom content."""
+    doc = json.loads(path.read_text(encoding="utf-8-sig"))
+    old_labels = {
+        "WEOS": "CutList",
+        "WEOS Windows": "CutList Windows",
+        "WEOS Windows Factory PDF": "CutList Windows Factory PDF",
+        "WEOS Windows Factory — machine-ready data": "CutList Windows Factory — machine-ready data",
+        "powered by WEOS — Window Engineering Operating System": "Powered by CutList",
+    }
+    for item in [doc, doc.get("branding", {}), *doc.get("blocks", [])]:
+        if not isinstance(item, dict):
+            continue
+        for key in ("name", "companyName", "logoText", "text", "label"):
+            value = item.get(key)
+            if isinstance(value, str):
+                if value in old_labels:
+                    item[key] = old_labels[value]
+                elif value.endswith("Powered by WEOS"):
+                    item[key] = value.removesuffix("Powered by WEOS") + "Powered by CutList"
+    return doc
+
+
 def list_templates(*, brand: str | None = None, kind: str | None = None) -> list[dict[str, Any]]:
     _seed_defaults()
     out: list[dict[str, Any]] = []
     for path in sorted(templates_dir().glob("*.json")):
         try:
-            doc = json.loads(path.read_text(encoding="utf-8-sig"))
+            doc = _read_template(path)
         except Exception:
             continue
         if brand and str(doc.get("brand", "")).lower() != brand.lower():
@@ -124,7 +147,7 @@ def load_template(template_id: str) -> dict[str, Any]:
         if pkg.is_file():
             return json.loads(pkg.read_text(encoding="utf-8-sig"))
         raise FileNotFoundError(f"Template '{template_id}' not found")
-    return json.loads(path.read_text(encoding="utf-8-sig"))
+    return _read_template(path)
 
 
 def save_template(template_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:

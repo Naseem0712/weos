@@ -35,10 +35,10 @@ def send_pin_reset_email(*, to_email: str, company_name: str, reset_url: str) ->
         port = int(os.environ.get("SMTP_PORT") or os.environ.get("WEOS_SMTP_PORT") or 587)
     except (TypeError, ValueError):
         port = 587
-    name = (company_name or "WEOS company").strip() or "WEOS company"
+    name = (company_name or "CutList company").strip() or "CutList company"
     body = (
         f"Hello {name},\n\n"
-        "A 4-digit company login PIN reset was requested for this WEOS workspace.\n\n"
+        "A 4-digit company login PIN reset was requested for this CutList workspace.\n\n"
         f"Set a new PIN here (link expires in 1 hour):\n{reset_url}\n\n"
         "If you did not ask for this, ignore this email — your current PIN stays the same.\n"
     )
@@ -46,7 +46,7 @@ def send_pin_reset_email(*, to_email: str, company_name: str, reset_url: str) ->
         _log.warning("PIN reset email not sent (SMTP not configured). Link: %s", reset_url)
         return False
     msg = EmailMessage()
-    msg["Subject"] = f"WEOS PIN reset — {name}"
+    msg["Subject"] = f"CutList PIN reset — {name}"
     msg["From"] = from_addr
     msg["To"] = to_email
     msg.set_content(body)

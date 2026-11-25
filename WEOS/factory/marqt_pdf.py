@@ -1093,7 +1093,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     branding = template.get("branding") or {}
     primary = _rgb(branding.get("primaryColor"), (0.12, 0.22, 0.38))
     accent = _rgb(branding.get("accentColor"), (0.75, 0.15, 0.12))
-    company = branding.get("companyName") or branding.get("logoText") or "WEOS"
+    company = branding.get("companyName") or branding.get("logoText") or "CutList"
     phone = branding.get("phone") or ""
     email = branding.get("email") or ""
     address = branding.get("address") or ""
@@ -1255,7 +1255,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     def _cover_footer():
         set_font(c, 7)
         c.setFillColorRGB(0.5, 0.5, 0.5)
-        c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {cover_page}")
+        c.drawString(M, M / 2 + 8, f"Computer generated document - powered by CutList - page {cover_page}")
         c.setFillColorRGB(0, 0, 0)
 
     def _cover_new_page():
@@ -1373,7 +1373,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             if y < bottom_limit + min(draw_h, 80) + 60:
                 set_font(c, 7)
                 c.setFillColorRGB(0.5, 0.5, 0.5)
-                c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
+                c.drawString(M, M / 2 + 8, f"Computer generated document - powered by CutList - page {page_no}")
                 c.showPage()
                 page_no += 1
                 y = header(page_no)
@@ -1400,14 +1400,14 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         if y < bottom_limit + min_block:
             set_font(c, 7)
             c.setFillColorRGB(0.5, 0.5, 0.5)
-            c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
+            c.drawString(M, M / 2 + 8, f"Computer generated document - powered by CutList - page {page_no}")
             c.showPage()
             page_no += 1
             y = header(page_no)
         elif need <= page_usable and y < bottom_limit + need:
             set_font(c, 7)
             c.setFillColorRGB(0.5, 0.5, 0.5)
-            c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
+            c.drawString(M, M / 2 + 8, f"Computer generated document - powered by CutList - page {page_no}")
             c.showPage()
             page_no += 1
             y = header(page_no)
@@ -1510,7 +1510,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             specs_paged[0] = True
             set_font(c, 7)
             c.setFillColorRGB(0.5, 0.5, 0.5)
-            c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
+            c.drawString(M, M / 2 + 8, f"Computer generated document - powered by CutList - page {page_no}")
             c.showPage()
             page_no += 1
             ny = header(page_no)
@@ -1562,7 +1562,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
                 if addon_y < bottom_limit + 20:
                     set_font(c, 7)
                     c.setFillColorRGB(0.5, 0.5, 0.5)
-                    c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
+                    c.drawString(M, M / 2 + 8, f"Computer generated document - powered by CutList - page {page_no}")
                     c.showPage()
                     page_no += 1
                     addon_y = header(page_no)
@@ -1599,7 +1599,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     if y < 140:
         set_font(c, 7)
         c.setFillColorRGB(0.5, 0.5, 0.5)
-        c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
+        c.drawString(M, M / 2 + 8, f"Computer generated document - powered by CutList - page {page_no}")
         c.showPage()
         page_no += 1
         y = header(page_no)
@@ -1655,7 +1655,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
                 if y < bottom_limit + 24:
                     set_font(c, 7)
                     c.setFillColorRGB(0.5, 0.5, 0.5)
-                    c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
+                    c.drawString(M, M / 2 + 8, f"Computer generated document - powered by CutList - page {page_no}")
                     c.showPage()
                     page_no += 1
                     y = header(page_no)
@@ -1694,7 +1694,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
 
     set_font(c, 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
+    c.drawString(M, M / 2 + 8, f"Computer generated document - powered by CutList - page {page_no}")
     c.showPage()
     page_no += 1
 
@@ -1727,7 +1727,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
     def _terms_footer():
         set_font(c, 7)
         c.setFillColorRGB(0.5, 0.5, 0.5)
-        c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
+        c.drawString(M, M / 2 + 8, f"Computer generated document - powered by CutList - page {page_no}")
         c.setFillColorRGB(0, 0, 0)
 
     def _terms_new_page():
@@ -1795,7 +1795,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
 
     set_font(c, 7)
     c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawString(M, M / 2 + 8, f"Computer generated document - powered by WEOS - page {page_no}")
+    c.drawString(M, M / 2 + 8, f"Computer generated document - powered by CutList - page {page_no}")
     c.showPage()
     c.save()
     return buf.getvalue()

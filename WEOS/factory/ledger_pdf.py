@@ -89,7 +89,7 @@ def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | No
         except Exception:
             logo_w = logo_h = 0.0
     text_x = M + ((logo_w + 10) if logo_h else 0)
-    co_name = (_txt(company.get("companyName") or company.get("name") or "WEOS")).upper()
+    co_name = (_txt(company.get("companyName") or company.get("name") or "CutList")).upper()
     c.setFillColorRGB(*green)
     c.setFont("Helvetica-Bold", 13)
     c.drawString(text_x, y - 14, co_name[:70])
@@ -289,7 +289,7 @@ def render_ledger_pdf(ledger: Mapping[str, Any], company: Mapping[str, Any] | No
 
     c.setFillColorRGB(*muted)
     c.setFont("Helvetica", 7)
-    c.drawString(M, 20, "This is a computer generated document - Powered by WEOS")
+    c.drawString(M, 20, "This is a computer generated document - Powered by CutList")
     c.showPage()
     c.save()
     return buf.getvalue()
@@ -316,7 +316,7 @@ def render_ledger_html(ledger: Mapping[str, Any], company: Mapping[str, Any] | N
     advances = list(ledger.get("advances") or [])
     totals = ledger.get("totals") or {}
     cust = _txt(ledger.get("customer") or profile.get("name"))
-    co_name = html.escape(_txt(company.get("companyName") or company.get("name") or "WEOS"))
+    co_name = html.escape(_txt(company.get("companyName") or company.get("name") or "CutList"))
 
     def esc(x: Any) -> str:
         return html.escape("" if x is None else str(x))
@@ -411,7 +411,7 @@ th{{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mu
 <body>
 <div class="wrap">
   <div class="card">
-    <div class="muted">Customer account ledger · WEOS</div>
+    <div class="muted">Customer account ledger · CutList</div>
     <h1>{co_name}</h1>
     <div class="muted">GSTIN {esc(company.get('gstNo') or '—')}
       {(' · ' + esc(company.get('phone'))) if company.get('phone') else ''}

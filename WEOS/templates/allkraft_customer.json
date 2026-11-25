@@ -19,6 +19,6 @@
     {"id": "prices", "type": "price_table", "x": 40, "y": 260, "w": 515, "h": 280},
     {"id": "totals", "type": "totals", "x": 300, "y": 560, "w": 255, "h": 80},
     {"id": "terms", "type": "terms", "x": 40, "y": 660, "w": 515, "h": 80, "text": "Terms: 50% advance, balance before dispatch. AllKraft warranty as per work order."},
-    {"id": "footer", "type": "footer", "x": 40, "y": 780, "w": 515, "h": 24, "text": "AllKraft · Powered by WEOS"}
+    {"id": "footer", "type": "footer", "x": 40, "y": 780, "w": 515, "h": 24, "text": "AllKraft · Powered by CutList"}
   ]
 }

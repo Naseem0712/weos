@@ -355,7 +355,7 @@ def agent_status() -> dict[str, Any]:
         "status": "learning" if rows else "waiting",
         "observationCount": len(_read_observations(limit=5000)),
         "lastObservation": rows[-1] if rows else None,
-        "blurb": "I watch products, sizes, selling rates, cost, terms & descriptions you use — so WEOS can suggest quotes later.",
+        "blurb": "I watch products, sizes, selling rates, cost, terms & descriptions you use — so CutList can suggest quotes later.",
     }
 
 

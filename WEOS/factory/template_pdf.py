@@ -119,7 +119,7 @@ def _render_reportlab(template: Mapping[str, Any], payload: Mapping[str, Any]) -
     branding = template.get("branding") or {}
     primary = _rgb(branding.get("primaryColor"), (0.04, 0.35, 0.28))
     accent = _rgb(branding.get("accentColor"), (0.71, 0.33, 0.14))
-    company = branding.get("companyName") or branding.get("logoText") or "WEOS"
+    company = branding.get("companyName") or branding.get("logoText") or "CutList"
 
     # PDF y is from bottom; template y is from top (designer canvas)
     def ty(y: float, h: float = 0) -> float:
@@ -239,7 +239,7 @@ def _render_reportlab(template: Mapping[str, Any], payload: Mapping[str, Any]) -
         elif btype == "footer":
             c.setFont("Helvetica", 7)
             c.setFillColorRGB(0.4, 0.4, 0.4)
-            c.drawString(x, y - 10, str(block.get("text") or f"{company} · WEOS"))
+            c.drawString(x, y - 10, str(block.get("text") or f"{company} · CutList"))
             c.setFillColorRGB(0, 0, 0)
 
         elif btype == "qr":

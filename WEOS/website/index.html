@@ -3,7 +3,12 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>WEOS — Manufacturing OS</title>
+<title>CutList — Manufacturing OS</title>
+<meta name="application-name" content="CutList"/>
+<meta name="apple-mobile-web-app-title" content="CutList"/>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/cutlist-icon-32.png"/>
+<link rel="apple-touch-icon" sizes="180x180" href="/static/cutlist-icon-180.png"/>
+<link rel="manifest" href="/static/cutlist.webmanifest"/>
 <style>
 :root{
   --bg:#e8e3d8; --ink:#141410; --muted:#5c584f; --panel:rgba(255,252,247,.94);
@@ -858,7 +863,7 @@ textarea{max-width:100%}
 <div class="app" id="appRoot">
   <aside class="side" id="side">
     <div class="brand">
-      <img id="brandLogo" src="/api/company/logo?v=5" alt="WEOS" onerror="this.onerror=null;this.src='/static/weos-logo.png?v=5'"/>
+      <img id="brandLogo" src="/static/cutlist-logo.png" alt="CutList"/>
     </div>
     <button class="navbtn active" data-view="dashboard">Dashboard</button>
     <button class="navbtn" data-view="setup">Project Setup</button>
@@ -977,7 +982,7 @@ textarea{max-width:100%}
         <p class="muted" id="setupQuoteHint" style="margin:-.35rem 0 .55rem;font-size:.75rem">Same mobile = same client. New project = new quote number. Old project = same quote number; add text (e.g. /A2 or site note) for the new quote on that running job.</p>
         <hr style="border:none;border-top:1px solid var(--line);margin:1.1rem 0 .7rem"/>
         <strong style="font-size:.92rem">Import a running job (Excel / PDF)</strong>
-        <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">Upload the same project’s quote PDF and/or Excel (all sheets are read). Fill <strong>customer name, mobile, address</strong> above first. Preview, then save. If this Excel was already imported, WEOS skips those stages and only adds <strong>new sheets</strong> or updates changed amounts — it will not double project value. Advances already on this job are also skipped. After save the editor row clears; open the project from Saved setups to edit details.</p>
+        <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">Upload the same project’s quote PDF and/or Excel (all sheets are read). Fill <strong>customer name, mobile, address</strong> above first. Preview, then save. If this Excel was already imported, CutList skips those stages and only adds <strong>new sheets</strong> or updates changed amounts — it will not double project value. Advances already on this job are also skipped. After save the editor row clears; open the project from Saved setups to edit details.</p>
         <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.45rem">
           <div class="grow"><label class="l">Project files</label><input id="setupImportFiles" type="file" accept=".xlsx,.xls,.xlsm,.pdf,application/pdf" multiple/></div>
           <label class="muted" style="font-size:.78rem;display:flex;align-items:center;gap:.35rem;margin:0 0 .15rem">
@@ -1001,7 +1006,7 @@ textarea{max-width:100%}
         </div>
         <hr style="border:none;border-top:1px solid var(--line);margin:1.1rem 0 .7rem"/>
         <strong style="font-size:.92rem">Outside / package quotes on this project</strong>
-        <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">WEOS Window Cart quotes stay on this job. Add any <strong>outside finalized quote</strong> here (windows, louvers, vents, railing, fabrication, gates…). All quote totals become this project’s value. An advance on Master Ledger reduces this project’s balance and this client’s total business.</p>
+        <p class="muted" style="margin:.2rem 0 .55rem;font-size:.78rem">CutList Window Cart quotes stay on this job. Add any <strong>outside finalized quote</strong> here (windows, louvers, vents, railing, fabrication, gates…). All quote totals become this project’s value. An advance on Master Ledger reduces this project’s balance and this client’s total business.</p>
         <div class="pkg-tabs" id="pkgQuoteTabs"></div>
         <div class="row" style="gap:.4rem;flex-wrap:wrap;margin-bottom:.4rem">
           <button class="btn sm" id="btnPkgAddQuote" type="button">Add outside quote to this project</button>
@@ -3320,7 +3325,7 @@ function ensurePdfMachine() {
     <div class="pdf-machine-card" role="dialog" aria-modal="true" aria-labelledby="pdfMachineTitle">
       <div class="pdf-machine-head">
         <div>
-          <h2 class="pdf-machine-title" id="pdfMachineTitle">WEOS Engine</h2>
+          <h2 class="pdf-machine-title" id="pdfMachineTitle">CutList Engine</h2>
           <p class="pdf-machine-sub" id="pdfMachineSub">Collecting drawings, specs, rates and terms.</p>
         </div>
         <button class="pdf-machine-close" type="button" id="pdfMachineClose">Back to app</button>
@@ -3358,7 +3363,7 @@ function showPdfMachine(title) {
   const box = ensurePdfMachine();
   box.classList.add('active');
   const titleEl = $('pdfMachineTitle');
-  if (titleEl) titleEl.textContent = title || 'WEOS Engine';
+  if (titleEl) titleEl.textContent = title || 'CutList Engine';
   const sub = $('pdfMachineSub');
   if (sub) sub.textContent = 'Customer data, saved design, 2D drawings and terms are being compiled in one place.';
   const frame = $('pdfMachineFrame');
@@ -3373,7 +3378,7 @@ function showPdfMachine(title) {
     dl.setAttribute('aria-disabled', 'true');
   }
   const note = $('pdfMachineNote');
-  if (note) note.textContent = 'WEOS engine is gathering the latest project details...';
+  if (note) note.textContent = 'CutList engine is gathering the latest project details...';
   updatePdfMachineStep('project');
 }
 function hidePdfMachine() {
@@ -3411,7 +3416,7 @@ function pdfDownloadFilename(kind) {
     || 'Project'
   );
   const parts = [customer, project].filter(Boolean);
-  let base = parts.length ? parts.join('_') : safePdfFilePart(state.projectId || 'WEOS-quotation');
+  let base = parts.length ? parts.join('_') : safePdfFilePart(state.projectId || 'CutList-quotation');
   if (kind === 'factory') base += '_factory';
   return base + '.pdf';
 }
@@ -9322,14 +9327,14 @@ async function applySetupProjectPick(){
     persistCartSession();
     renderPackageQuotes();
     renderSetupDiscount();
-    toast('New project — customer stays. Quote number generates on save. Add WEOS items or an outside quote.');
+    toast('New project — customer stays. Quote number generates on save. Add CutList items or an outside quote.');
     return;
   }
   await openProject(v);
   if (choiceId) applyLoadedQuoteChoice(choiceId);
   setView('setup');
   renderSetupDiscount();
-  toast('Running project opened. Add text to the quote number for a new version, then add WEOS or outside items.');
+  toast('Running project opened. Add text to the quote number for a new version, then add CutList or outside items.');
   if ($('projQuoteNo')) { try { $('projQuoteNo').focus(); $('projQuoteNo').select(); } catch(_){} }
   if ($('setupQuoteHint')) $('setupQuoteHint').textContent = 'This project’s quote number stays one. Add text (e.g. /A2 or site note) so the new quote is a version on this running job.';
 }
@@ -9442,7 +9447,7 @@ function renderPkgTotalsOnly(){
     <div class="kpi"><label class="l">Items / taxable</label><div class="big" style="font-size:1.05rem">${money(taxable)}</div></div>
     <div class="kpi"><label class="l">GST</label><div class="big" style="font-size:1.05rem">${money(gst)}</div></div>
     <div class="kpi"><label class="l">Outside quotes</label><div class="big" style="font-size:1.05rem">${money(value)}</div></div>
-    <div class="muted" style="font-size:.75rem;align-self:center">${quotes.length} outside quote${quotes.length===1?'':'s'} · WEOS cart quotes also count in Master Ledger</div>` : '<p class="muted" style="font-size:.8rem;margin:0">No outside quote amounts yet — Window Cart quotes still count. Use <strong>Add outside quote</strong> for a finalized job made elsewhere.</p>';
+    <div class="muted" style="font-size:.75rem;align-self:center">${quotes.length} outside quote${quotes.length===1?'':'s'} · CutList cart quotes also count in Master Ledger</div>` : '<p class="muted" style="font-size:.8rem;margin:0">No outside quote amounts yet — Window Cart quotes still count. Use <strong>Add outside quote</strong> for a finalized job made elsewhere.</p>';
   refreshSetupLedgerStrip();
 }
 async function refreshSetupLedgerStrip(){
@@ -10049,7 +10054,7 @@ async function ensureProject() {
     }
   }
   const doc = await api('/api/projects', {method:'POST', body:{
-    name: projectNameForPayload() || 'WEOS Project',
+    name: projectNameForPayload() || 'CutList Project',
     customer: $('cartCustomer').value || '',
     lines: serializeCartLines(state.lines),
     status: 'draft',
@@ -13934,7 +13939,7 @@ function renderMasterLedger(wrap){
     const want = String(forPid||'');
     const subset = want ? quotes.filter(q => !q.projectId || String(q.projectId)===want) : [];
     return `<option value="any">Any — this project’s quotes</option>` + subset.map(q => {
-      const kindLabel = q.kind==='version' ? 'Version · ' : (q.kind==='weos' ? 'WEOS · ' : 'Outside · ');
+      const kindLabel = q.kind==='version' ? 'Version · ' : (q.kind==='weos' ? 'CutList · ' : 'Outside · ');
       const label = kindLabel + (q.quotationId || q.id || 'quote') + (q.versionLabel ? (' · ' + q.versionLabel) : '') + ' · ' + money(q.projectValue);
       return `<option value="${esc(q.id)}" data-pid="${esc(q.projectId||'')}">${esc(label)}</option>`;
     }).join('');
@@ -13994,7 +13999,7 @@ function renderMasterLedger(wrap){
     </div>` : '';
   const outsideBox = scope === 'project' ? `
     <strong style="font-size:.88rem">Add outside / finalized quote</strong>
-    <p class="muted" style="margin:.15rem 0 .4rem;font-size:.75rem">Existing WEOS cart quotes stay. Add a quote made outside this app — PDF and photos optional.</p>
+    <p class="muted" style="margin:.15rem 0 .4rem;font-size:.75rem">Existing CutList cart quotes stay. Add a quote made outside this app — PDF and photos optional.</p>
     <div class="row" style="gap:.45rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.35rem">
       <div class="grow"><label class="l">Quote number</label><input id="mlOutNo" placeholder="optional"/></div>
       <div><label class="l">Item</label><select id="mlOutCat" style="min-width:140px">${catOpts}</select></div>
@@ -14032,11 +14037,11 @@ function renderMasterLedger(wrap){
     ${projectsTable}
     ${discountBox}
     <strong style="font-size:.88rem">${scope==='client'?'All quotes (open a project to work inside it)':'Quotes on this project'}</strong>
-    <p class="muted" style="margin:.15rem 0 .35rem;font-size:.75rem">${scope==='client'?'Client total = every project. Select a project for that job’s quotes and running balance.':'WEOS + outside quotes on this quote number. Discount applies to this project value.'}</p>
+    <p class="muted" style="margin:.15rem 0 .35rem;font-size:.75rem">${scope==='client'?'Client total = every project. Select a project for that job’s quotes and running balance.':'CutList + outside quotes on this quote number. Discount applies to this project value.'}</p>
     <div style="overflow:auto;margin:.35rem 0 .8rem"><table><thead><tr><th>Quote</th><th>Kind</th><th>Taxable</th><th>GST</th><th>Value</th><th>PDF / photos</th></tr></thead><tbody>${
       quotes.length ? quotes.map(q => `<tr>
         <td>${esc(q.quotationId||q.id||'—')}${q.versionLabel?` <span class="muted">${esc(q.versionLabel)}</span>`:''}${q.projectId?`<div class="muted" style="font-size:.72rem">${esc(q.projectId)}</div>`:''}${q.items&&q.items.length?`<div class="muted" style="font-size:.72rem">${q.items.map(it=>esc((it.categoryLabel||it.category||'')+' '+(it.qty||'')+(it.size?(' · '+it.size):'')+' · '+money(it.amount))).join('<br/>')}</div>`:''}</td>
-        <td>${q.kind==='version'?'Saved version':(q.kind==='weos'?'WEOS quote':'Outside quote')}</td>
+        <td>${q.kind==='version'?'Saved version':(q.kind==='weos'?'CutList quote':'Outside quote')}</td>
         <td>${money(q.totalTaxable)}</td>
         <td>${money(q.gstAmount)}</td>
         <td>${money(q.projectValue)}</td>
@@ -17413,7 +17418,7 @@ async function loadPublicScan(token) {
     $('scanBody').innerHTML = `
       <div class="row" style="justify-content:space-between;align-items:flex-start;gap:.6rem;flex-wrap:wrap">
         <div>
-          <strong style="font-size:1.15rem">${esc(co.name||'WEOS')}</strong>
+          <strong style="font-size:1.15rem">${esc(co.name||'CutList')}</strong>
           <div class="muted" style="font-size:.8rem">GSTIN ${esc(co.gstNo||'—')}${co.phone?(' · '+esc(co.phone)):''}${co.email?(' · '+esc(co.email)):''}</div>
           ${co.address?('<div class="muted" style="font-size:.78rem">'+esc(co.address)+'</div>'):''}
         </div>
