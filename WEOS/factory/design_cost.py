@@ -7,8 +7,15 @@ profit %.
 Aluminium = section weight (kg/m) × rate (₹/kg|rft|rmt) × cut length.
 Powder coating = section coating ₹ × finish multiplier (plain / texture+20% /
 wooden+50%), separate from aluminium.
-Wastage: cut from std bars; leftover ≤ ~3 ft is scrap charged to the product;
-leftover > ~3 ft is reusable remnant (in-quote pool + persisted stock hook).
+
+WEOS window rulebook v2:
+- Quote costing nests the whole quote's cuts together (same-quote offcut reuse;
+  any leftover that fits is reusable — no fixed 1–2 ft limit). Customer cost
+  uses new-material purchase; approved old stock does not reduce quote cost.
+- Closing balance / blade-trim loss is valued and allocated within family
+  (sliding↔sliding, casement↔casement) by used-profile material cost share.
+- Factory plan may consume approved stock; purchase list = extra full bars.
+- Stock posts only reusable leftovers (>~3 ft) on approval, idempotently.
 """
 
 from __future__ import annotations
@@ -433,10 +440,14 @@ def pack_std_length_wastage(
         return empty
 
     # Bins: remaining length after cuts. Seed from reusable stock when reuse on.
+    # thresh=0 → any positive leftover is reusable within the quote (rulebook v2).
     bins: list[dict[str, Any]] = []
     remnants_used = 0.0
     if reuse:
-        for rem in sorted((_f(x) for x in (remnants_in or []) if _f(x) > thresh), reverse=True):
+        for rem in sorted(
+            (_f(x) for x in (remnants_in or []) if _f(x) > thresh + 1e-12),
+            reverse=True,
+        ):
             bins.append({"source": "remnant", "capacity": rem, "remaining": rem, "new": False})
 
     def _place(L: float) -> None:
@@ -1603,6 +1614,8 @@ def compute_casement_design_cost(
         "purchasedMetres": nest.get("purchasedMetres"),
         "balanceMetres": nest.get("balanceMetres"),
         "balanceCost": nest.get("balanceCost"),
+        "cutSpecs": cuts.get("cutSpecs") or [],
+        "profileFamily": "casement",
         "counts": counts,
         "sideSwingOpenHw": _str(
             ((norm.get("casement") or {}).get("hardwarePack") or {}).get("openHardware") or "hinges"
@@ -2295,6 +2308,8 @@ def compute_sliding_design_cost(
         "purchasedMetres": nest.get("purchasedMetres"),
         "balanceMetres": nest.get("balanceMetres"),
         "balanceCost": nest.get("balanceCost"),
+        "cutSpecs": cut_specs,
+        "profileFamily": "sliding",
         "breakdown": {
             "aluminium": round(al_amt, 2),
             "coating": round(coat_amt, 2),
@@ -2362,19 +2377,281 @@ def compute_design_cost(
     return {"ok": False, "costEngine": "stub", "reason": "unsupported", "total": 0.0}
 
 
+def _line_profile_family(line: Mapping[str, Any], cost: Mapping[str, Any] | None = None) -> str:
+    """sliding | casement — wastage pools stay within family (rulebook v2 §4)."""
+    fam = _str((cost or {}).get("profileFamily") or (cost or {}).get("system")).lower()
+    if "casement" in fam or "openable" in fam:
+        return "casement"
+    if "sliding" in fam:
+        return "sliding"
+    system = _str(
+        line.get("system")
+        or (line.get("options") or {}).get("system")
+        or ""
+    ).lower()
+    if "casement" in system or "openable" in system:
+        return "casement"
+    if "sliding" in system:
+        return "sliding"
+    if line.get("casementLayout") or (line.get("options") or {}).get("casementLayout"):
+        return "casement"
+    return fam or "sliding"
+
+
+def _expand_cut_specs_for_qty(
+    specs: Sequence[Mapping[str, Any]],
+    *,
+    qty: float,
+    line_id: Any,
+    family: str,
+) -> list[dict[str, Any]]:
+    """Replicate one-window cut list by line qty; tag window + family."""
+    q = max(int(round(_f(qty, 1.0))), 1)
+    out: list[dict[str, Any]] = []
+    for spec in specs or []:
+        if not isinstance(spec, Mapping) or _f(spec.get("lengthM")) <= 0:
+            continue
+        for copy_i in range(q):
+            row = dict(spec)
+            row["lineId"] = line_id
+            row["profileFamily"] = family
+            row["qtyCopy"] = copy_i
+            out.append(row)
+    return out
+
+
+def _used_profile_costs(specs: Sequence[Mapping[str, Any]]) -> dict[str, float]:
+    """Net used profile material + coating from cut lengths (before nesting)."""
+    used_al = 0.0
+    used_coat = 0.0
+    used_m = 0.0
+    for s in specs or []:
+        if not isinstance(s, Mapping):
+            continue
+        Lm = _f(s.get("lengthM"))
+        if Lm <= 0:
+            continue
+        used_al += Lm * _f(s.get("aluminiumPerM"))
+        used_coat += Lm * _f(s.get("coatingPerM"))
+        used_m += Lm
+    return {
+        "usedAluminium": round(used_al, 4),
+        "usedCoating": round(used_coat, 4),
+        "usedMetres": round(used_m, 4),
+    }
+
+
+def allocate_family_wastage(
+    line_used: Sequence[Mapping[str, Any]],
+    family_wastage: Mapping[str, Mapping[str, float]],
+) -> dict[str, dict[str, float]]:
+    """Distribute family closing wastage ₹ by used-profile material cost share.
+
+    window share = family_wastage × window_used / family_used_total.
+    Rounding remainder lands on the last applicable line. Zero family used cost
+    with leftover allocation stays ``unallocated``.
+    """
+    by_line: dict[str, dict[str, float]] = {}
+    unallocated: dict[str, float] = {"aluminium": 0.0, "coating": 0.0}
+    families = sorted({_str(r.get("family") or "sliding") for r in line_used})
+    for fam in families:
+        members = [r for r in line_used if _str(r.get("family") or "sliding") == fam]
+        waste = family_wastage.get(fam) if isinstance(family_wastage.get(fam), Mapping) else {}
+        waste_al = _f((waste or {}).get("aluminium"))
+        waste_coat = _f((waste or {}).get("coating"))
+        total_used = sum(_f(m.get("usedAluminium")) for m in members)
+        if (waste_al > 1e-9 or waste_coat > 1e-9) and total_used <= 1e-9:
+            unallocated["aluminium"] += waste_al
+            unallocated["coating"] += waste_coat
+            for m in members:
+                lid = _str(m.get("lineId"))
+                by_line[lid] = {"aluminium": 0.0, "coating": 0.0, "unallocated": True}
+            continue
+        assigned_al = 0.0
+        assigned_coat = 0.0
+        for i, m in enumerate(members):
+            lid = _str(m.get("lineId"))
+            share = (_f(m.get("usedAluminium")) / total_used) if total_used > 0 else 0.0
+            if i == len(members) - 1:
+                al_share = round(waste_al - assigned_al, 2)
+                coat_share = round(waste_coat - assigned_coat, 2)
+            else:
+                al_share = round(waste_al * share, 2)
+                coat_share = round(waste_coat * share, 2)
+                assigned_al += al_share
+                assigned_coat += coat_share
+            by_line[lid] = {
+                "aluminium": al_share,
+                "coating": coat_share,
+                "share": round(share, 6),
+                "unallocated": False,
+            }
+    return {
+        "byLine": by_line,
+        "unallocated": {k: round(v, 2) for k, v in unallocated.items()},
+    }
+
+
+def _purchase_list_from_nest(nest: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Full bars to buy from a commercial/factory nest (rulebook v2 §2)."""
+    rows: list[dict[str, Any]] = []
+    for g in nest.get("groups") or []:
+        if not isinstance(g, Mapping):
+            continue
+        pack = g.get("pack") if isinstance(g.get("pack"), Mapping) else {}
+        bars = int(pack.get("bars") or g.get("bars") or 0)
+        if bars <= 0:
+            continue
+        std_m = _f(pack.get("stdLengthM"))
+        rows.append({
+            "key": _str(g.get("key")),
+            "sectionName": _str(g.get("sectionName") or g.get("key")),
+            "bars": bars,
+            "stdLengthM": round(std_m, 4),
+            "stdLengthFt": round(std_m / 0.3048, 2) if std_m else None,
+            "purchasedMetres": round(_f(pack.get("purchasedMetres")), 4),
+            "aluminiumCost": round(_f(g.get("aluminiumCost")), 2),
+            "coatingCost": round(_f(g.get("coatingCost")), 2),
+            "balanceMetres": round(_f(g.get("balanceMetres")), 4),
+            "balanceCost": round(_f(g.get("balanceCost")), 2),
+            "coatFullBars": bool(g.get("coatFullBars")),
+        })
+    return rows
+
+
 def compute_quote_design_costs(
     lines: Sequence[Mapping[str, Any]],
     *,
     persist_remnants: bool = False,
+    use_approved_stock: bool = False,
+    source_quote: str | None = None,
+    source_version: int | str | None = None,
 ) -> dict[str, Any]:
-    """Cost all quote lines sharing one remnant pool (same series/section reuse).
+    """Quote-wide commercial nest + family wastage allocation (rulebook v2).
 
-    Short leftovers (≤3 ft) are charged on the line that created them; longer
-    remnants feed later lines, then optionally ``inventory.json``.
+    1. Cost each window alone for BOM / glass / HW (cut list source).
+    2. Nest all cuts per family with same-quote offcut reuse (threshold 0 —
+       any leftover that fits is reused; final balance is closing wastage).
+    3. Quote cost ignores approved old stock unless ``use_approved_stock``
+       (factory cutting plan). Purchase list = new full bars after nesting.
+    4. Allocate closing balance ₹ within each family by used-profile share.
     """
-    pool: dict[str, list[float]] = {}
     results: list[dict[str, Any]] = []
+    line_meta: list[dict[str, Any]] = []
+    cuts_by_family: dict[str, list[dict[str, Any]]] = {"sliding": [], "casement": []}
+    coat_full = True
+
+    for raw in lines or []:
+        if not isinstance(raw, Mapping) or raw.get("cancelled"):
+            continue
+        # Per-line nest is only a cut-list / BOM source; quote Al is rewritten below.
+        cost = compute_design_cost(raw)
+        line_id = raw.get("lineId") or raw.get("id") or f"L{len(line_meta)+1}"
+        family = _line_profile_family(raw, cost if isinstance(cost, Mapping) else None)
+        qty = max(_f(raw.get("qty") or raw.get("quantity"), 1.0), 1.0)
+        specs = _expand_cut_specs_for_qty(
+            (cost.get("cutSpecs") if isinstance(cost, Mapping) else None) or [],
+            qty=qty,
+            line_id=line_id,
+            family=family,
+        )
+        used = _used_profile_costs(specs)
+        if isinstance(cost, Mapping) and cost.get("ok"):
+            # Prefer cut-only coating flag from nest if present
+            if (cost.get("wastage") or {}).get("coatFullBars") is False:
+                coat_full = False
+        cuts_by_family.setdefault(family, []).extend(specs)
+        line_meta.append({
+            "lineId": line_id,
+            "family": family,
+            "qty": qty,
+            "raw": raw,
+            "cost": cost,
+            "usedAluminium": used["usedAluminium"],
+            "usedCoating": used["usedCoating"],
+            "usedMetres": used["usedMetres"],
+            "cutCount": len(specs),
+        })
+
+    family_nests: dict[str, dict[str, Any]] = {}
+    family_wastage: dict[str, dict[str, float]] = {}
+    purchase_list: list[dict[str, Any]] = []
     all_remnants: list[dict[str, Any]] = []
+    remnant_pool_out: dict[str, list[float]] = {}
+
+    for fam, fam_cuts in cuts_by_family.items():
+        if not fam_cuts:
+            continue
+        # Quote costing: never seed approved stock. Factory plan may.
+        seed_pool: dict[str, list[float]] = {}
+        if use_approved_stock:
+            try:
+                from WEOS.factory.remnant_stock import leftovers_for_nesting
+
+                for spec in fam_cuts:
+                    key = _str(spec.get("key"))
+                    if not key or key in seed_pool:
+                        continue
+                    leftovers = leftovers_for_nesting(
+                        series=spec.get("series"),
+                        section=spec.get("sectionName"),
+                        colour=spec.get("colour"),
+                    )
+                    seed_pool[key] = [
+                        _f(x.get("lengthMm")) / 1000.0
+                        for x in leftovers
+                        if _f(x.get("lengthMm")) > 0
+                    ]
+            except Exception:
+                seed_pool = {}
+        nest = nest_cuts_by_section(
+            fam_cuts,
+            remnant_pool=seed_pool,
+            reuse=True,
+            # v2 §1: in-quote reuse has no fixed leftover floor
+            wastage_threshold_m=0.0,
+            default_std_m=5.85 if fam == "sliding" else 3.0,
+            coat_full_bars=coat_full,
+        )
+        family_nests[fam] = nest
+        bal_al = _f(nest.get("balanceCost"))
+        # Full-bar coating: include coating on balance once; cut-only → 0.
+        bal_coat = 0.0
+        if coat_full:
+            for g in nest.get("groups") or []:
+                if not isinstance(g, Mapping):
+                    continue
+                bal_coat += _f(g.get("balanceMetres")) * _f(g.get("coatingPerM"))
+        family_wastage[fam] = {
+            "aluminium": round(bal_al, 2),
+            "coating": round(bal_coat, 2),
+            "balanceMetres": round(_f(nest.get("balanceMetres")), 4),
+        }
+        for row in _purchase_list_from_nest(nest):
+            row["profileFamily"] = fam
+            purchase_list.append(row)
+        for r in nest.get("remnantsCreated") or []:
+            if isinstance(r, Mapping):
+                piece = dict(r)
+                piece["profileFamily"] = fam
+                all_remnants.append(piece)
+        for k, v in (nest.get("remnantPool") or {}).items():
+            if isinstance(v, list):
+                remnant_pool_out.setdefault(str(k), []).extend(_f(x) for x in v)
+
+    alloc = allocate_family_wastage(
+        [
+            {
+                "lineId": m["lineId"],
+                "family": m["family"],
+                "usedAluminium": m["usedAluminium"],
+            }
+            for m in line_meta
+        ],
+        family_wastage,
+    )
+    by_line_waste = alloc.get("byLine") if isinstance(alloc.get("byLine"), Mapping) else {}
+
     totals = {
         "aluminium": 0.0,
         "coating": 0.0,
@@ -2384,21 +2661,89 @@ def compute_quote_design_costs(
         "installation": 0.0,
         "wastage": 0.0,
         "total": 0.0,
+        "usedAluminium": 0.0,
+        "allocatedWastage": 0.0,
     }
-    for raw in lines or []:
-        if not isinstance(raw, Mapping) or raw.get("cancelled"):
-            continue
-        cost = compute_design_cost(raw, remnant_pool=pool)
-        # Keep pool mutations from nested nest_cuts
-        if isinstance(cost.get("remnantPool"), dict):
-            pool.clear()
-            for k, v in cost["remnantPool"].items():
-                if isinstance(v, list):
-                    pool[str(k)] = list(v)
-        for r in cost.get("remnants") or []:
-            if isinstance(r, Mapping):
-                all_remnants.append(dict(r))
-        results.append({"lineId": raw.get("lineId") or raw.get("id"), "cost": cost})
+
+    for m in line_meta:
+        cost = dict(m["cost"]) if isinstance(m["cost"], Mapping) else {"ok": False}
+        lid = _str(m["lineId"])
+        share = by_line_waste.get(lid) if isinstance(by_line_waste.get(lid), Mapping) else {}
+        waste_al = _f((share or {}).get("aluminium"))
+        waste_coat = _f((share or {}).get("coating"))
+        used_al = _f(m["usedAluminium"])
+        used_coat = _f(m["usedCoating"])
+        # Commercial Al/coat = used + allocated closing balance (purchase breakup).
+        new_al = used_al + waste_al
+        new_coat = used_coat + waste_coat
+        # Rebuild unit economics from replaced profile costs.
+        qty = max(_f(m["qty"]), 1.0)
+        hw = _f(cost.get("hardwareCost"))
+        glass = _f(cost.get("glassCost"))
+        mesh = _f(cost.get("meshCost"))
+        labour = _f(cost.get("labourAmount"))
+        install = _f(cost.get("installationAmount"))
+        profit_pct = _f(cost.get("profitPercent"))
+        # design_cost stores qty-multiplied component costs — normalize to unit then reapply.
+        unit_al = new_al / qty
+        unit_coat = new_coat / qty
+        unit_hw = hw / qty
+        unit_glass = glass / qty
+        unit_mesh = mesh / qty
+        unit_labour = labour / qty
+        unit_install = install / qty
+        material_sub = unit_al + unit_coat + unit_hw + unit_glass + unit_mesh
+        cost_before = material_sub + unit_labour + unit_install
+        profit_amt = cost_before * (profit_pct / 100.0) if profit_pct else 0.0
+        unit_total = cost_before + profit_amt
+        area_sft = _f(cost.get("areaSft"))
+        sale_unit = _str(cost.get("saleUnit") or "sqft")
+        if sale_unit == "rft":
+            suggested = cost.get("suggestedSellRate")
+        else:
+            suggested = round(unit_total / area_sft, 1) if area_sft > 0 else cost.get("suggestedSellRate")
+
+        br = dict(cost.get("breakdown") or {}) if isinstance(cost.get("breakdown"), Mapping) else {}
+        br["aluminium"] = round(unit_al, 2)
+        br["coating"] = round(unit_coat, 2)
+        br["profiles"] = round(unit_al + unit_coat, 2)
+        br["wastage"] = round(waste_al / qty, 2)
+        br["balance"] = round(waste_al / qty, 2)
+        br["allocatedWastage"] = round((waste_al + waste_coat) / qty, 2)
+        br["usedAluminium"] = round(used_al / qty, 2)
+        br["profit"] = round(profit_amt, 2)
+
+        cost["aluminiumCost"] = round(new_al, 2)
+        cost["coatingCost"] = round(new_coat, 2)
+        cost["profileCost"] = round(new_al + new_coat, 2)
+        cost["wastageCost"] = round(waste_al, 2)
+        cost["allocatedWastageAluminium"] = round(waste_al, 2)
+        cost["allocatedWastageCoating"] = round(waste_coat, 2)
+        cost["usedAluminiumCost"] = round(used_al, 2)
+        cost["usedCoatingCost"] = round(used_coat, 2)
+        cost["materialCost"] = round(material_sub * qty, 2)
+        cost["unitTotal"] = round(unit_total, 2)
+        cost["total"] = round(unit_total * qty, 2)
+        cost["perWindowCost"] = round(cost_before, 2)
+        cost["profitAmount"] = round(profit_amt * qty, 2)
+        cost["suggestedSellRate"] = suggested
+        cost["costPerUnit"] = suggested
+        cost["breakdown"] = br
+        cost["quoteNestFamily"] = m["family"]
+        cost["wastageShare"] = share
+        cost["balanceMetres"] = family_wastage.get(m["family"], {}).get("balanceMetres")
+        cost["balanceCost"] = round(waste_al, 2)
+        fam_nest = family_nests.get(m["family"]) or {}
+        cost["purchasedMetres"] = fam_nest.get("purchasedMetres")
+        cost["nestGroups"] = fam_nest.get("groups") or []
+        cost["wastage"] = fam_nest.get("wastage") or cost.get("wastage")
+        cost["remnants"] = [
+            r for r in all_remnants
+            if isinstance(r, Mapping) and _str(r.get("profileFamily")) == m["family"]
+        ]
+        cost["remnantPool"] = fam_nest.get("remnantPool") or {}
+
+        results.append({"lineId": m["lineId"], "cost": cost, "family": m["family"]})
         if cost.get("ok"):
             totals["aluminium"] += _f(cost.get("aluminiumCost"))
             totals["coating"] += _f(cost.get("coatingCost"))
@@ -2406,27 +2751,80 @@ def compute_quote_design_costs(
             totals["hardware"] += _f(cost.get("hardwareCost"))
             totals["labour"] += _f(cost.get("labourAmount"))
             totals["installation"] += _f(cost.get("installationAmount"))
-            totals["wastage"] += _f(cost.get("wastageCost"))
+            totals["wastage"] += waste_al
+            totals["usedAluminium"] += used_al
+            totals["allocatedWastage"] += waste_al + waste_coat
             totals["total"] += _f(cost.get("total"))
 
+    # Stock: only >~3 ft pieces; quote costing never posts theoretical unused of unused bars.
+    stock_remnants = [
+        r for r in all_remnants
+        if isinstance(r, Mapping) and is_reusable_remnant_m(_f(r.get("lengthM")))
+    ]
+    for r in stock_remnants:
+        if source_quote:
+            r["sourceQuote"] = _str(source_quote)
+        if source_version is not None:
+            r["sourceVersion"] = source_version
+        r["source"] = _str(r.get("source") or "quote_approval")
+
     persisted = None
-    if persist_remnants and all_remnants:
+    if persist_remnants and stock_remnants:
         try:
-            persisted = merge_remnants_into_stock(all_remnants)
+            persisted = merge_remnants_into_stock(
+                stock_remnants,
+                source_quote=source_quote,
+                source_version=source_version,
+            )
+        except TypeError:
+            # Older signature without idempotency kwargs
+            try:
+                persisted = merge_remnants_into_stock(stock_remnants)
+            except Exception as exc:
+                persisted = {"ok": False, "error": str(exc)}
         except Exception as exc:
             persisted = {"ok": False, "error": str(exc)}
 
+    purch_m = sum(_f(n.get("purchasedMetres")) for n in family_nests.values())
+    purch_al = sum(_f(n.get("aluminiumCost")) for n in family_nests.values())
+    purch_coat = sum(_f(n.get("coatingCost")) for n in family_nests.values())
+
     return {
         "ok": True,
+        "rulebook": "v2",
         "lines": results,
         "totals": {k: round(v, 2) for k, v in totals.items()},
-        "remnantPool": {k: [round(_f(x), 4) for x in v] for k, v in pool.items()},
-        "remnants": all_remnants,
+        "familyNests": {k: {
+            "purchasedMetres": v.get("purchasedMetres"),
+            "balanceMetres": v.get("balanceMetres"),
+            "balanceCost": v.get("balanceCost"),
+            "aluminiumCost": v.get("aluminiumCost"),
+            "coatingCost": v.get("coatingCost"),
+            "wastage": v.get("wastage"),
+            "groups": v.get("groups"),
+        } for k, v in family_nests.items()},
+        "familyWastage": family_wastage,
+        "wastageAllocation": alloc,
+        "purchaseList": purchase_list,
+        "purchaseSummary": {
+            "purchasedMetres": round(purch_m, 4),
+            "aluminiumCost": round(purch_al, 2),
+            "coatingCost": round(purch_coat, 2),
+            "bars": sum(int(r.get("bars") or 0) for r in purchase_list),
+        },
+        "remnantPool": {k: [round(_f(x), 4) for x in v] for k, v in remnant_pool_out.items()},
+        "remnants": stock_remnants,
+        "closingRemnants": all_remnants,
         "persistedStock": persisted,
-        "wastageThresholdFt": WASTAGE_MAX_REUSABLE_FT,
+        "useApprovedStock": bool(use_approved_stock),
+        "coatFullBars": bool(coat_full),
+        "wastageThresholdFt": 0.0,  # in-quote commercial reuse floor
+        "stockWastageThresholdFt": WASTAGE_MAX_REUSABLE_FT,
         "notes": (
-            "In-quote remnant reuse across lines of the same series/section. "
-            "Leftover ≤3 ft charged as wastage; >3 ft kept as reusable stock"
-            + (" and merged into inventory.json." if persist_remnants else " (persist_remnants=False).")
+            "Rulebook v2: quote-wide nest per family, same-quote offcut reuse, "
+            "new-material quote cost (old stock ignored"
+            + (" unless factory use_approved_stock)." if use_approved_stock else ").")
+            + " Closing balance allocated by used-profile share within family."
+            + (" Stock remnants >3 ft merged into inventory.json." if persist_remnants else "")
         ),
     }

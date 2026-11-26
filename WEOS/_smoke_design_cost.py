@@ -348,6 +348,137 @@ def main() -> None:
     stock = stock_viewer_payload()
     _ok(stock.get("ok") and stock.get("remnants") is not None, f"stock remnants {stock.get('counts')}")
 
+    # ── Rulebook v2: quote-wide nest + family wastage allocation ─────
+    from WEOS.factory.design_cost import (
+        allocate_family_wastage,
+        compute_quote_design_costs,
+        nest_cuts_by_section,
+    )
+
+    # Worked example §5: 16 ft @ ₹100/rft; S1 10 ft + S2 5 ft → ₹1600; wastage ₹100 → 66.67 / 33.33
+    rft_m = 100.0 / 0.3048
+    std16 = 16 * 0.3048
+    cut10 = 10 * 0.3048
+    cut5 = 5 * 0.3048
+    nest_v2 = nest_cuts_by_section(
+        [
+            {"lengthM": cut10, "key": "ov", "stdM": std16, "aluminiumPerM": rft_m, "coatingPerM": 0,
+             "lineId": "S1", "profileFamily": "sliding"},
+            {"lengthM": cut5, "key": "ov", "stdM": std16, "aluminiumPerM": rft_m, "coatingPerM": 0,
+             "lineId": "S2", "profileFamily": "sliding"},
+        ],
+        reuse=True,
+        wastage_threshold_m=0.0,
+        default_std_m=std16,
+        coat_full_bars=True,
+    )
+    _ok(abs(nest_v2["aluminiumCost"] - 1600) < 0.5, f"v2 nest purchase ₹1600 got {nest_v2['aluminiumCost']}")
+    _ok(abs(nest_v2["balanceCost"] - 100) < 0.5, f"v2 nest balance ₹100 got {nest_v2['balanceCost']}")
+    alloc = allocate_family_wastage(
+        [
+            {"lineId": "S1", "family": "sliding", "usedAluminium": 1000},
+            {"lineId": "S2", "family": "sliding", "usedAluminium": 500},
+        ],
+        {"sliding": {"aluminium": 100, "coating": 0}},
+    )
+    s1w = (alloc["byLine"]["S1"]["aluminium"])
+    s2w = (alloc["byLine"]["S2"]["aluminium"])
+    _ok(abs(s1w - 66.67) < 0.02, f"v2 wastage S1 ₹66.67 got {s1w}")
+    _ok(abs(s2w - 33.33) < 0.02, f"v2 wastage S2 ₹33.33 got {s2w}")
+    # Casement gets none of sliding wastage
+    alloc_x = allocate_family_wastage(
+        [
+            {"lineId": "S1", "family": "sliding", "usedAluminium": 1000},
+            {"lineId": "C1", "family": "casement", "usedAluminium": 800},
+        ],
+        {"sliding": {"aluminium": 100, "coating": 0}, "casement": {"aluminium": 0, "coating": 0}},
+    )
+    _ok(abs(alloc_x["byLine"]["C1"]["aluminium"]) < 0.01, f"casement gets 0 of sliding wastage {alloc_x['byLine']['C1']}")
+
+    # Quote materials list exposes purchase list
+    mats2 = build_quote_materials_list(
+        [
+            {
+                "lineId": "A",
+                "product": "35mm_prestige",
+                "displayName": "35mm Sliding A",
+                "width": 1800,
+                "height": 2100,
+                "qty": 1,
+                "glass": "8mm_toughened",
+                "colour": "white",
+                "glassShutters": 2,
+                "meshShutters": 0,
+                "trackCount": 2,
+                "opening": "side",
+                "system": "sliding",
+            },
+            {
+                "lineId": "B",
+                "product": "35mm_prestige",
+                "displayName": "35mm Sliding B",
+                "width": 1200,
+                "height": 1500,
+                "qty": 1,
+                "glass": "8mm_toughened",
+                "colour": "white",
+                "glassShutters": 2,
+                "meshShutters": 0,
+                "trackCount": 2,
+                "opening": "side",
+                "system": "sliding",
+            },
+        ],
+        customer="V2",
+    )
+    _ok(mats2.get("rulebook") == "v2", f"materials rulebook v2 {mats2.get('rulebook')}")
+    _ok(isinstance(mats2.get("purchaseList"), list), f"purchase list present {mats2.get('purchaseList')}")
+    html2 = materials_list_html(mats2)
+    _ok("Purchase list" in html2, "materials html has purchase list")
+
+    qcost = compute_quote_design_costs(
+        [
+            {
+                "lineId": "A",
+                "product": "35mm_prestige",
+                "width": 1800,
+                "height": 2100,
+                "qty": 1,
+                "glass": "8mm_toughened",
+                "colour": "white",
+                "glassShutters": 2,
+                "trackCount": 2,
+                "system": "sliding",
+            },
+            {
+                "lineId": "B",
+                "product": "35mm_prestige",
+                "width": 1200,
+                "height": 1500,
+                "qty": 1,
+                "glass": "8mm_toughened",
+                "colour": "white",
+                "glassShutters": 2,
+                "trackCount": 2,
+                "system": "sliding",
+            },
+        ]
+    )
+    _ok(qcost.get("ok") and qcost.get("rulebook") == "v2", f"quote design costs v2 {qcost.get('rulebook')}")
+    _ok(qcost.get("purchaseList") is not None, "quote purchase list")
+    # Idempotent stock merge
+    from WEOS.factory.remnant_stock import merge_remnants_into_stock
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as td:
+        sp = Path(td) / "inventory.json"
+        sp.write_text('{"leftoverStock":[],"aluminiumBars":[]}\n', encoding="utf-8")
+        rem = [{"lengthM": 2.0, "series": "35mm", "section": "outer", "colour": "white", "id": "T1"}]
+        first = merge_remnants_into_stock(rem, path=sp, source_quote="Q1", source_version=1)
+        second = merge_remnants_into_stock(rem, path=sp, source_quote="Q1", source_version=1)
+        _ok(first.get("added") == 1, f"first stock post added 1 got {first.get('added')}")
+        _ok(second.get("skipped") is True and second.get("added") == 0, f"retry skipped {second}")
+
     print("Design cost / interlock / materials / stock smoke passed.")
 
 

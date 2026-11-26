@@ -152,11 +152,34 @@ def merge_remnants_into_stock(
     remnants: Sequence[Mapping[str, Any]],
     *,
     path: str | Path | None = None,
+    source_quote: str | None = None,
+    source_version: int | str | None = None,
 ) -> dict[str, Any]:
-    """Append reusable remnants (>3 ft) into leftoverStock. Returns updated viewer payload."""
+    """Append reusable remnants (>3 ft) into leftoverStock.
+
+    Rulebook v2: approval retry / re-open must not duplicate stock. When
+    ``source_quote`` (+ optional version) is set and those pieces already exist,
+    the post is skipped.
+    """
     p = Path(path) if path else stock_path()
     doc = load_stock(p)
     leftover = list(doc.get("leftoverStock") or [])
+    sq = _str(source_quote)
+    sv = None if source_version is None or _str(source_version) == "" else _str(source_version)
+    if sq:
+        already = [
+            x for x in leftover
+            if isinstance(x, Mapping)
+            and _str(x.get("sourceQuote")) == sq
+            and (sv is None or _str(x.get("sourceVersion")) == sv)
+        ]
+        if already:
+            payload = stock_viewer_payload()
+            payload["added"] = 0
+            payload["skipped"] = True
+            payload["reason"] = "already_posted"
+            payload["existing"] = len(already)
+            return payload
     added = 0
     for raw in remnants or []:
         if not isinstance(raw, Mapping):
@@ -169,8 +192,10 @@ def merge_remnants_into_stock(
         series = _str(raw.get("series") or raw.get("profileFamily") or "default")
         section = _str(raw.get("section") or raw.get("sectionName") or "section")
         colour = _str(raw.get("colour") or "any")
-        rid = _str(raw.get("id")) or f"LO-{series[:8]}-{int(length_m * 1000)}-{len(leftover)+1}"
-        leftover.append({
+        rid = _str(raw.get("id"))
+        if not rid:
+            rid = f"LO-{sq or series[:8]}-{sv or 'x'}-{int(length_m * 1000)}-{len(leftover)+1}"
+        piece = {
             "id": rid,
             "lengthMm": round(length_m * 1000.0, 1),
             "lengthM": round(length_m, 4),
@@ -182,7 +207,14 @@ def merge_remnants_into_stock(
             "source": _str(raw.get("source") or "quote"),
             "updatedAt": _now(),
             "notes": _str(raw.get("notes")),
-        })
+        }
+        if sq:
+            piece["sourceQuote"] = sq
+        if sv is not None:
+            piece["sourceVersion"] = sv
+        if raw.get("profileFamily"):
+            piece["windowFamily"] = _str(raw.get("profileFamily"))
+        leftover.append(piece)
         added += 1
     doc = deepcopy(doc) if isinstance(doc, dict) else {}
     doc["leftoverStock"] = leftover
@@ -191,6 +223,7 @@ def merge_remnants_into_stock(
     p.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     payload = stock_viewer_payload()
     payload["added"] = added
+    payload["skipped"] = False
     return payload
 
 

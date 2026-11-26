@@ -324,8 +324,60 @@ def build_quote_materials_list(
     colour: str | None = None,
     project_name: str | None = None,
 ) -> dict[str, Any]:
-    """Aggregate materials/hardware for all cart lines."""
-    rows = [materials_rows_for_line(ln) for ln in lines if isinstance(ln, Mapping)]
+    """Aggregate materials/hardware for all cart lines.
+
+    Rulebook v2: quote-wide commercial nest + purchase list + allocated wastage
+    are attached so the printable list matches quote costing (not isolated lines).
+    """
+    active = [ln for ln in lines if isinstance(ln, Mapping)]
+    quote_pack: dict[str, Any] = {}
+    cost_by_line: dict[str, Mapping[str, Any]] = {}
+    try:
+        from WEOS.factory.design_cost import compute_quote_design_costs
+
+        quote_pack = compute_quote_design_costs(active, persist_remnants=False, use_approved_stock=False)
+        for item in quote_pack.get("lines") or []:
+            if not isinstance(item, Mapping):
+                continue
+            lid = _str(item.get("lineId"))
+            cost = item.get("cost") if isinstance(item.get("cost"), Mapping) else None
+            if lid and cost:
+                cost_by_line[lid] = cost
+    except Exception:
+        quote_pack = {}
+        cost_by_line = {}
+
+    rows = [materials_rows_for_line(ln) for ln in active]
+    # Overlay quote-wide Al / balance / allocated wastage onto each printable row.
+    for i, ln in enumerate(active):
+        if i >= len(rows):
+            break
+        lid = _str(ln.get("lineId") or ln.get("id") or rows[i].get("lineId"))
+        cost = cost_by_line.get(lid)
+        if not cost and len(active) == len(quote_pack.get("lines") or []):
+            # Fall back to positional match when lines lack stable ids.
+            item = (quote_pack.get("lines") or [])[i]
+            cost = item.get("cost") if isinstance(item, Mapping) else None
+        if not isinstance(cost, Mapping):
+            continue
+        rows[i]["purchasedMetres"] = cost.get("purchasedMetres")
+        rows[i]["balanceMetres"] = cost.get("balanceMetres")
+        rows[i]["balanceCost"] = cost.get("balanceCost")
+        rows[i]["aluminiumCost"] = cost.get("aluminiumCost")
+        rows[i]["coatingCost"] = cost.get("coatingCost")
+        rows[i]["usedAluminiumCost"] = cost.get("usedAluminiumCost")
+        rows[i]["allocatedWastageAluminium"] = cost.get("allocatedWastageAluminium")
+        rows[i]["allocatedWastageCoating"] = cost.get("allocatedWastageCoating")
+        rows[i]["nestGroups"] = cost.get("nestGroups") if isinstance(cost.get("nestGroups"), list) else rows[i].get("nestGroups")
+        rows[i]["designCost"] = cost.get("total") if cost.get("ok") else rows[i].get("designCost")
+        rows[i]["costBreakdown"] = cost.get("breakdown") if isinstance(cost.get("breakdown"), Mapping) else rows[i].get("costBreakdown")
+        waste = cost.get("wastage") if isinstance(cost.get("wastage"), Mapping) else {}
+        if waste.get("wastageMetres") is not None or cost.get("balanceMetres") is not None:
+            rows[i]["wastageM"] = _f(waste.get("balanceMetres") or cost.get("balanceMetres") or waste.get("wastageMetres"))
+            rows[i]["wastagePercent"] = waste.get("wastagePercent")
+        rows[i]["quoteNestFamily"] = cost.get("quoteNestFamily")
+        rows[i]["wastageShare"] = cost.get("wastageShare")
+
     # Roll up by catalogue name
     mat_roll: dict[str, dict[str, Any]] = {}
     hw_roll: dict[str, dict[str, Any]] = {}
@@ -396,6 +448,11 @@ def build_quote_materials_list(
         "materialsSummary": sorted(mat_roll.values(), key=lambda x: str(x["name"]).lower()),
         "hardwareSummary": sorted(hw_roll.values(), key=lambda x: str(x["name"]).lower()),
         "glassSummary": sorted(glass_roll.values(), key=lambda x: str(x["name"]).lower()),
+        "purchaseList": quote_pack.get("purchaseList") or [],
+        "purchaseSummary": quote_pack.get("purchaseSummary") if isinstance(quote_pack.get("purchaseSummary"), Mapping) else None,
+        "familyWastage": quote_pack.get("familyWastage") if isinstance(quote_pack.get("familyWastage"), Mapping) else None,
+        "wastageAllocation": quote_pack.get("wastageAllocation") if isinstance(quote_pack.get("wastageAllocation"), Mapping) else None,
+        "rulebook": quote_pack.get("rulebook") or "v2",
     }
 
 
@@ -494,14 +551,17 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
                 f" ({esc(inter.get('rule'))})</p>"
             )
         purch_note = ""
-        if ln.get("purchasedMetres") is not None or ln.get("aluminiumCost") is not None:
+        if ln.get("aluminiumCost") is not None or ln.get("usedAluminiumCost") is not None:
+            alloc_al = ln.get("allocatedWastageAluminium")
+            used_al = ln.get("usedAluminiumCost")
             purch_note = (
-                f"<p class=muted style=margin:.25rem 0 0>Purchase (balance included): "
-                f"{esc(round(_f(ln.get('purchasedMetres')), 3))} m bought"
-                f" · Al ₹{esc(round(_f(ln.get('aluminiumCost')), 2))}"
+                f"<p class=muted style=margin:.25rem 0 0>Quote Al (v2): "
+                f"used ₹{esc(round(_f(used_al if used_al is not None else ln.get('aluminiumCost')), 2))}"
+                f" · allocated wastage ₹{esc(round(_f(alloc_al), 2))}"
+                f" · total Al ₹{esc(round(_f(ln.get('aluminiumCost')), 2))}"
                 f" · powder ₹{esc(round(_f(ln.get('coatingCost')), 2))}"
-                f" · balance {esc(round(_f(ln.get('balanceMetres')), 3))} m"
-                f" (₹{esc(round(_f(ln.get('balanceCost')), 2))})</p>"
+                f" · family balance {esc(round(_f(ln.get('balanceMetres')), 3))} m"
+                f"</p>"
             )
             inter_note = (inter_note or "") + purch_note
         waste_note = ""
@@ -574,6 +634,49 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
 {summary_table('Materials (catalogue names)', pack.get('materialsSummary') or [])}
 {summary_table('Hardware (catalogue names)', pack.get('hardwareSummary') or [])}
 {summary_table('Glass', pack.get('glassSummary') or [], qty_key='areaSft')}
+{_purchase_list_html(pack)}
 <h2>Per product</h2>
 {''.join(rows_html) or '<p class=muted>No lines on quote.</p>'}
 </body></html>"""
+
+
+def _purchase_list_html(pack: Mapping[str, Any]) -> str:
+    """Purchase list block for printable materials (rulebook v2 §2)."""
+    esc = (
+        lambda s: str(s or "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+    rows = pack.get("purchaseList") or []
+    if not rows:
+        return ""
+    body = "".join(
+        f"<tr><td>{esc(it.get('sectionName') or it.get('key'))}</td>"
+        f"<td>{esc(it.get('profileFamily') or '')}</td>"
+        f"<td class=num>{esc(it.get('bars'))}</td>"
+        f"<td class=num>{esc(it.get('stdLengthFt') if it.get('stdLengthFt') is not None else round(_f(it.get('stdLengthM')) / 0.3048, 2) if _f(it.get('stdLengthM')) else '')}</td>"
+        f"<td class=num>{esc(round(_f(it.get('purchasedMetres')), 3) if it.get('purchasedMetres') is not None else '')}</td>"
+        f"<td class=num>{esc(round(_f(it.get('aluminiumCost')), 2) if it.get('aluminiumCost') is not None else '')}</td>"
+        f"<td class=num>{esc(round(_f(it.get('coatingCost')), 2) if it.get('coatingCost') is not None else '')}</td>"
+        f"<td class=num>{esc(round(_f(it.get('balanceMetres')), 3) if it.get('balanceMetres') is not None else '')}</td></tr>"
+        for it in rows if isinstance(it, Mapping)
+    )
+    summary = pack.get("purchaseSummary") if isinstance(pack.get("purchaseSummary"), Mapping) else {}
+    foot = ""
+    if summary:
+        foot = (
+            f"<p class=muted>Purchase summary: {esc(summary.get('bars'))} bars · "
+            f"{esc(round(_f(summary.get('purchasedMetres')), 3))} m · "
+            f"Al ₹{esc(round(_f(summary.get('aluminiumCost')), 2))} · "
+            f"powder ₹{esc(round(_f(summary.get('coatingCost')), 2))} "
+            f"(new-material quote basis; old stock not applied)</p>"
+        )
+    return (
+        f"<h2>Purchase list (full bars)</h2>"
+        f"<table><thead><tr>"
+        f"<th>Section</th><th>Family</th><th>Bars</th><th>Std ft</th>"
+        f"<th>Bought m</th><th>Al ₹</th><th>Powder ₹</th><th>Balance m</th>"
+        f"</tr></thead><tbody>{body}</tbody></table>{foot}"
+    )

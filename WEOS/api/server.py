@@ -2207,7 +2207,7 @@ def api_project_set_status(project_id: str, body: ProjectStatusBody) -> dict[str
 
 @app.post("/api/projects/{project_id}/approve")
 def api_project_approve(project_id: str, body: QuoteApproveBody | None = None) -> dict[str, Any]:
-    from WEOS.factory.project_store import set_project_status
+    from WEOS.factory.project_store import load_project, set_project_status
 
     body = body or QuoteApproveBody()
     note = (body.note or "").strip() or None
@@ -2215,7 +2215,7 @@ def api_project_approve(project_id: str, body: QuoteApproveBody | None = None) -
     if ver and not note:
         note = f"Approved version v{int(ver)}"
     try:
-        return set_project_status(
+        result = set_project_status(
             project_id,
             "approved",
             source="admin",
@@ -2227,6 +2227,30 @@ def api_project_approve(project_id: str, body: QuoteApproveBody | None = None) -
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # Rulebook v2 §3: on approval, post reusable closing leftovers (>~3 ft) once.
+    try:
+        from WEOS.factory.design_cost import compute_quote_design_costs
+
+        doc = load_project(project_id)
+        lines = doc.get("lines") or []
+        approved_ver = result.get("approvedVersion") or ver or doc.get("approvedVersion") or doc.get("version")
+        stock = compute_quote_design_costs(
+            lines,
+            persist_remnants=True,
+            use_approved_stock=True,
+            source_quote=str(project_id),
+            source_version=approved_ver,
+        )
+        result["remnantStock"] = {
+            "added": (stock.get("persistedStock") or {}).get("added"),
+            "skipped": (stock.get("persistedStock") or {}).get("skipped"),
+            "reason": (stock.get("persistedStock") or {}).get("reason"),
+            "remnantCount": len(stock.get("remnants") or []),
+            "purchaseBars": (stock.get("purchaseSummary") or {}).get("bars"),
+        }
+    except Exception as exc:
+        result["remnantStock"] = {"ok": False, "error": str(exc)}
+    return result
 
 
 @app.post("/api/projects/{project_id}/reject")
