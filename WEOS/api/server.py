@@ -1872,14 +1872,19 @@ def api_list_projects(
 
 
 @app.post("/api/projects")
-def api_create_project(body: ProjectCreate) -> dict[str, Any]:
+def api_create_project(body: ProjectCreate, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+
+    g = require_company_gst(request, gst)
     doc = empty_project(name=body.name, customer=body.customer)
     doc["status"] = body.status or "draft"
     doc["lines"] = _coerce_cart_lines(body.lines)
-    for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms", "quotationId", "companyGst"):
+    for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms", "quotationId"):
         _val = getattr(body, _fld, None)
         if _val is not None:
             doc[_fld] = _val
+    # Always stamp the logged-in workspace — never trust client companyGst.
+    doc["companyGst"] = g
     from WEOS.factory.package_quote import apply_package_fields
 
     dumped = body.model_dump(exclude_none=True)
@@ -1929,13 +1934,25 @@ def api_project_follow_up(
 
 
 @app.put("/api/projects/{project_id}")
-def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
+def api_update_project(
+    project_id: str,
+    body: ProjectUpdate,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory.project_store import _belongs_to_company
+
+    g = require_company_gst(request, gst)
     try:
         doc = load_project(project_id)
+        if not _belongs_to_company(doc, g, include_unscoped=False):
+            raise HTTPException(status_code=404, detail="Project not found")
     except FileNotFoundError:
         # Stale browser id (deleted / never persisted / merged away) — start a new job.
         doc = empty_project(name=body.name or "CutList Project", customer=body.customer or "")
         doc["status"] = body.status or "draft"
+        doc["companyGst"] = g
     if body.name is not None:
         doc["name"] = body.name
     if body.customer is not None:
@@ -1949,10 +1966,12 @@ def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
             doc["lines"] = incoming
         else:
             _log.warning("PUT %s ignored empty lines (saved cart has %s rows)", project_id, len(doc.get("lines") or []))
-    for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms", "quotationId", "companyGst"):
+    for _fld in ("customerMobile", "customerAddress", "customerGst", "description", "terms", "quotationId"):
         _val = getattr(body, _fld, None)
         if _val is not None:
             doc[_fld] = _val
+    # Keep project locked to the logged-in company workspace.
+    doc["companyGst"] = g
     dumped = body.model_dump(exclude_unset=True)
     from WEOS.factory.package_quote import apply_package_fields
 
@@ -1967,14 +1986,17 @@ def api_update_project(project_id: str, body: ProjectUpdate) -> dict[str, Any]:
 
 @app.get("/api/ledger/master")
 def api_master_ledger_search(
+    request: Request,
     q: str | None = Query(None),
     projectId: str | None = Query(None),
     gst: str | None = Query(None),
 ) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
     from WEOS.factory.master_ledger import build_master_ledger
 
+    g = require_company_gst(request, gst)
     try:
-        return build_master_ledger(q=q, project_id=projectId, company_gst=gst)
+        return build_master_ledger(q=q, project_id=projectId, company_gst=g)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -1984,11 +2006,17 @@ def api_master_ledger_search(
 
 
 @app.get("/api/projects/{project_id}/master-ledger")
-def api_project_master_ledger(project_id: str, gst: str | None = Query(None)) -> dict[str, Any]:
+def api_project_master_ledger(
+    project_id: str,
+    request: Request,
+    gst: str | None = Query(None),
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
     from WEOS.factory.master_ledger import build_master_ledger
 
+    g = require_company_gst(request, gst)
     try:
-        return build_master_ledger(project_id=project_id, company_gst=gst)
+        return build_master_ledger(project_id=project_id, company_gst=g)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -2123,44 +2151,33 @@ def api_get_package_quote_file(project_id: str, quote_id: str) -> Response:
 @app.delete("/api/projects/{project_id}")
 def api_delete_project(
     project_id: str,
+    request: Request,
     hard: bool = Query(False),
     gst: str | None = None,
     pin: str | None = None,
     confirm: str | None = None,
 ) -> dict[str, Any]:
     from WEOS.factory.company_quotes import delete_company_quote, require_delete_confirm
-    from WEOS.factory.company_store import get_active_gst, load_company, normalise_gstin
+    from WEOS.factory.company_workspace import require_company_gst
 
-    g = normalise_gstin(gst) if gst else (get_active_gst() or "")
-    if not g:
-        g = normalise_gstin((load_company() or {}).get("gstNo") or "")
-    if hard or g:
-        try:
-            require_delete_confirm(project_id, company_gst=g or None, pin=pin, confirm=confirm)
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if g:
-        try:
-            return delete_company_quote(project_id, company_gst=g, hard=hard)
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    g = require_company_gst(request, gst)
     try:
-        return delete_project(project_id, hard=hard)
+        require_delete_confirm(project_id, company_gst=g, pin=pin, confirm=confirm)
+        return delete_company_quote(project_id, company_gst=g, hard=hard)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/projects/{project_id}/delete")
-def api_delete_project_post(project_id: str, body: QuoteDeleteBody) -> dict[str, Any]:
+def api_delete_project_post(project_id: str, body: QuoteDeleteBody, request: Request) -> dict[str, Any]:
     """PIN-confirmed hard delete (Saved Projects)."""
     return api_delete_project(
         project_id,
+        request,
         hard=body.hard,
         gst=body.gstNo,
         pin=body.pin,
@@ -2168,36 +2185,60 @@ def api_delete_project_post(project_id: str, body: QuoteDeleteBody) -> dict[str,
     )
 
 
+def _require_owned_project(project_id: str, request: Request, gst: str | None = None) -> tuple[str, dict[str, Any]]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory.project_store import _belongs_to_company
+
+    g = require_company_gst(request, gst)
+    doc = load_project(project_id)
+    if not _belongs_to_company(doc, g, include_unscoped=False):
+        raise HTTPException(status_code=404, detail="Project not found")
+    return g, doc
+
+
 @app.post("/api/projects/{project_id}/duplicate")
-def api_duplicate(project_id: str) -> dict[str, Any]:
+def api_duplicate(project_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
     try:
-        return duplicate_project(project_id)
+        g, _doc = _require_owned_project(project_id, request, gst)
+        dup = duplicate_project(project_id)
+        if isinstance(dup, dict) and not dup.get("companyGst"):
+            dup["companyGst"] = g
+            return save_project(dup, bump_version=False, action="duplicate_scope")
+        return dup
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/api/projects/{project_id}/archive")
-def api_archive(project_id: str) -> dict[str, Any]:
+def api_archive(project_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
     try:
+        _require_owned_project(project_id, request, gst)
         return archive_project(project_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/api/projects/{project_id}/restore")
-def api_restore(project_id: str) -> dict[str, Any]:
+def api_restore(project_id: str, request: Request, gst: str | None = None) -> dict[str, Any]:
     try:
+        _require_owned_project(project_id, request, gst)
         return restore_project(project_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/api/projects/{project_id}/status")
-def api_project_set_status(project_id: str, body: ProjectStatusBody) -> dict[str, Any]:
+def api_project_set_status(
+    project_id: str,
+    body: ProjectStatusBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
     """Mark a project/quote status (draft → approved → rejected/cancelled)."""
     from WEOS.factory.project_store import set_project_status
 
     try:
+        _require_owned_project(project_id, request, gst)
         return set_project_status(project_id, body.status)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -2206,9 +2247,15 @@ def api_project_set_status(project_id: str, body: ProjectStatusBody) -> dict[str
 
 
 @app.post("/api/projects/{project_id}/approve")
-def api_project_approve(project_id: str, body: QuoteApproveBody | None = None) -> dict[str, Any]:
+def api_project_approve(
+    project_id: str,
+    request: Request,
+    body: QuoteApproveBody | None = None,
+    gst: str | None = None,
+) -> dict[str, Any]:
     from WEOS.factory.project_store import load_project, set_project_status
 
+    _require_owned_project(project_id, request, gst)
     body = body or QuoteApproveBody()
     note = (body.note or "").strip() or None
     ver = body.quoteVersion
@@ -2254,8 +2301,14 @@ def api_project_approve(project_id: str, body: QuoteApproveBody | None = None) -
 
 
 @app.post("/api/projects/{project_id}/reject")
-def api_project_reject(project_id: str, body: QuoteRejectBody | None = None) -> dict[str, Any]:
+def api_project_reject(
+    project_id: str,
+    request: Request,
+    body: QuoteRejectBody | None = None,
+    gst: str | None = None,
+) -> dict[str, Any]:
     """Un-approve: status=rejected, excluded from turnover; history + advances kept."""
+    _require_owned_project(project_id, request, gst)
     body = body or QuoteRejectBody()
     if not body.confirm:
         raise HTTPException(status_code=400, detail="Confirm reject to un-approve this quote.")
@@ -3302,6 +3355,13 @@ def api_admin_update_product(product_id: str, body: ProductAdminBody) -> dict[st
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/admin/products/{product_id}/usage")
+def api_admin_product_usage(product_id: str) -> dict[str, Any]:
+    from WEOS.factory.product_admin import product_usage
+
+    return product_usage(product_id)
+
+
 @app.delete("/api/admin/products/{product_id}")
 def api_admin_delete_product(product_id: str, hard: bool = Query(False)) -> dict[str, Any]:
     try:
@@ -3421,23 +3481,29 @@ def api_sale_units() -> dict[str, Any]:
 
 
 @app.get("/api/customers/rates")
-def api_list_customer_rates() -> dict[str, Any]:
+def api_list_customer_rates(request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
     from WEOS.factory.customer_rates import list_customers_with_rates
 
-    return {"customers": list_customers_with_rates()}
+    g = require_company_gst(request, gst)
+    return {"customers": list_customers_with_rates(company_gst=g)}
 
 
 @app.get("/api/customers/{customer}/rates")
-def api_get_customer_rates(customer: str) -> dict[str, Any]:
+def api_get_customer_rates(customer: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
     from WEOS.factory.customer_rates import load_customer_rates
 
-    return load_customer_rates(customer)
+    g = require_company_gst(request, gst)
+    return load_customer_rates(customer, company_gst=g)
 
 
 @app.post("/api/customers/rates")
-def api_save_customer_rate(body: CustomerRateBody) -> dict[str, Any]:
+def api_save_customer_rate(body: CustomerRateBody, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
     from WEOS.factory.customer_rates import save_customer_rate
 
+    g = require_company_gst(request, gst)
     return save_customer_rate(
         body.customer,
         product=body.product,
@@ -3445,6 +3511,7 @@ def api_save_customer_rate(body: CustomerRateBody) -> dict[str, Any]:
         sale_unit=body.saleUnit,
         section_series=body.sectionSeries,
         notes=body.notes,
+        company_gst=g,
     )
 
 
@@ -3464,10 +3531,14 @@ def api_get_company(request: Request, gst: str | None = None) -> dict[str, Any]:
 
 @app.put("/api/company")
 @app.post("/api/company")
-def api_save_company(body: CompanyBody) -> dict[str, Any]:
-    from WEOS.factory.company_store import save_company
+def api_save_company(body: CompanyBody, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_store import save_company_by_gst
+    from WEOS.factory.company_workspace import require_company_gst
 
-    return save_company(body.model_dump(exclude_none=True))
+    g = require_company_gst(request, gst)
+    payload = body.model_dump(exclude_none=True)
+    payload["gstNo"] = g
+    return save_company_by_gst(g, payload)
 
 
 class CompanyWorkspaceOpenBody(BaseModel):
@@ -3479,7 +3550,7 @@ class CompanyWorkspaceOpenBody(BaseModel):
     gstNo: str | None = None
     pin: str | None = None
     sessionToken: str | None = None
-    create: bool = True
+    create: bool = False
     companyName: str | None = None
     email: str | None = None
     phone: str | None = None
@@ -3501,7 +3572,8 @@ def api_company_workspace_open(body: CompanyWorkspaceOpenBody) -> dict[str, Any]
 
     dumped = body.model_dump(exclude_none=True)
     gst = dumped.pop("gstNo", None)
-    create = bool(dumped.pop("create", True))
+    # Default false — create:true is only for explicit first-time registration.
+    create = bool(dumped.pop("create", False))
     pin = dumped.pop("pin", None)
     session_token = dumped.pop("sessionToken", None)
     login = dumped.pop("login", None)
@@ -3848,19 +3920,33 @@ def api_list_customers(
 
 
 @app.get("/api/customers/{customer}/profile")
-def api_get_customer_profile(customer: str) -> dict[str, Any]:
-    from WEOS.factory.customer_store import load_customer_profile
+def api_get_customer_profile(customer: str, request: Request, gst: str | None = None) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
+    from WEOS.factory.customer_store import _belongs_to_company, load_customer_profile
 
-    return load_customer_profile(customer)
+    g = require_company_gst(request, gst)
+    doc = load_customer_profile(customer)
+    if doc.get("name") and not _belongs_to_company(doc, g, include_unscoped=True):
+        raise HTTPException(status_code=404, detail="Customer not found")
+    return doc
 
 
 @app.put("/api/customers/{customer}/profile")
 @app.post("/api/customers/{customer}/profile")
-def api_save_customer_profile(customer: str, body: CustomerProfileBody) -> dict[str, Any]:
+def api_save_customer_profile(
+    customer: str,
+    body: CustomerProfileBody,
+    request: Request,
+    gst: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.company_workspace import require_company_gst
     from WEOS.factory.customer_store import save_customer_profile
 
+    g = require_company_gst(request, gst)
+    payload = body.model_dump(exclude_none=True)
+    payload["companyGst"] = g
     try:
-        return save_customer_profile(customer, body.model_dump(exclude_none=True))
+        return save_customer_profile(customer, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

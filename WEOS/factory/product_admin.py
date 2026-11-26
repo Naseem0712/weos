@@ -310,24 +310,87 @@ def update_product(product_id: str, payload: Mapping[str, Any]) -> dict[str, Any
     return get_admin_product(product_id)
 
 
+def product_usage(product_id: str) -> dict[str, Any]:
+    """How many live quote lines still reference this product/series id."""
+    pid = str(product_id or "").strip()
+    hits: list[dict[str, Any]] = []
+    if not pid:
+        return {"productId": pid, "referenced": False, "count": 0, "projects": []}
+    try:
+        from WEOS.factory.project_store import list_projects, load_project
+
+        for row in list_projects(include_archived=True):
+            project_id = str(row.get("projectId") or "")
+            if not project_id:
+                continue
+            try:
+                doc = load_project(project_id)
+            except Exception:
+                continue
+            for ln in doc.get("lines") or []:
+                if not isinstance(ln, Mapping):
+                    continue
+                refs = {
+                    str(ln.get("product") or "").strip(),
+                    str(ln.get("productId") or "").strip(),
+                    str(ln.get("sectionSeries") or "").strip(),
+                    str((ln.get("setup") or {}).get("seriesId") or "").strip()
+                    if isinstance(ln.get("setup"), Mapping)
+                    else "",
+                }
+                if pid in refs:
+                    hits.append(
+                        {
+                            "projectId": project_id,
+                            "quotationId": doc.get("quotationId"),
+                            "customer": doc.get("customer"),
+                            "companyGst": doc.get("companyGst"),
+                        }
+                    )
+                    break
+    except Exception:
+        pass
+    return {
+        "productId": pid,
+        "referenced": bool(hits),
+        "count": len(hits),
+        "projects": hits[:20],
+    }
+
+
 def delete_product(product_id: str, *, hard: bool = False) -> dict[str, Any]:
+    """Remove a product/series from the library.
+
+    Soft-delete (default) archives the product so historical quotes keep resolving.
+    Hard delete is allowed only when no live quote lines reference the id.
+    """
     pdir = product_dir(product_id)
-    if product_id == "29mm_sliding" and not hard:
-        raise ValueError("Cannot delete core product 29mm_sliding without hard=true")
     meta_path = pdir / "product.json"
+    if not meta_path.is_file() and not pdir.is_dir():
+        raise FileNotFoundError(f"Product not found: {product_id}")
+    usage = product_usage(product_id)
     if hard:
+        if product_id == "29mm_sliding":
+            raise ValueError("Core product 29mm_sliding cannot be hard-deleted")
+        if usage.get("referenced"):
+            raise ValueError(
+                f"Cannot hard-delete {product_id}: used on {usage.get('count')} quote(s). "
+                "Archive/hide it instead so historical quotes stay intact."
+            )
         import shutil
 
-        shutil.rmtree(pdir)
+        if pdir.is_dir():
+            shutil.rmtree(pdir)
         try:
             from WEOS.db.product_store import delete_product as _db_delete
 
             _db_delete(product_id)
         except Exception:  # pragma: no cover
             pass
-        return {"deleted": product_id, "hard": True}
+        return {"deleted": product_id, "hard": True, "status": "deleted", "usage": usage}
     meta = _read_json(meta_path) if meta_path.is_file() else {"id": product_id}
     meta["status"] = "archived"
+    meta["id"] = meta.get("id") or product_id
     _write_json(meta_path, meta)
     _mirror_to_db(product_id)
-    return {"deleted": product_id, "hard": False, "status": "archived"}
+    return {"deleted": product_id, "hard": False, "status": "archived", "usage": usage}

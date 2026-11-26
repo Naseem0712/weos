@@ -107,16 +107,17 @@ def open_workspace(
     gst_no: str | None = None,
     *,
     profile: Mapping[str, Any] | None = None,
-    create: bool = True,
+    create: bool = False,
     pin: str | None = None,
     session_token: str | None = None,
     login: str | None = None,
 ) -> dict[str, Any]:
     """Login / open seller company workspace by GSTIN, name, or mobile + PIN.
 
-    First-time: creates the company (PIN + profile). Returning companies with a
-    login PIN need that PIN or a valid session token. Same mobile/name/GST is
-    one company workspace — data is fetched after login.
+    First-time create requires an explicit ``create=True`` plus a valid 4-digit PIN.
+    Returning companies with a login PIN need that PIN, or a valid session token
+    with no PIN typed. A typed PIN that does not match is always rejected — a
+    leftover session must never override a wrong PIN.
     """
     prof = dict(profile or {})
     gst = normalise_gstin(gst_no or prof.get("gstNo") or "")
@@ -145,33 +146,55 @@ def open_workspace(
     if not gst:
         raise ValueError("Enter company GSTIN, registered name, or mobile to log in.")
 
+    pin_raw = str(pin or "").strip()
+    pin_provided = bool(pin_raw)
+    pin_digits: str | None = None
+    if pin_provided:
+        try:
+            pin_digits = validate_login_pin(pin_raw)
+        except ValueError as exc:
+            raise PermissionError(str(exc)) from exc
+
     existing = load_company_by_gst(gst)
     created = False
     enrolled = False
+    session_ok = bool(session_token) and verify_workspace_session(gst, session_token)
+
     if existing is None:
         if not create:
             raise FileNotFoundError(f"No company workspace for GSTIN {gst}")
+        if not pin_digits:
+            raise PermissionError("Set a 4-digit PIN to create this company workspace.")
         payload = dict(prof)
         payload["gstNo"] = gst
         if not (payload.get("companyName") or "").strip():
             payload.setdefault("companyName", f"Company {gst[-4:]}")
-        if pin:
-            payload["loginPin"] = validate_login_pin(pin)
+        payload["loginPin"] = pin_digits
         company = save_company_by_gst(gst, payload)
         created = True
         _migrate_legacy_into(gst)
     else:
         has_pin = company_has_login_pin(gst, existing)
-        session_ok = verify_workspace_session(gst, session_token)
         if has_pin:
-            if not session_ok and not verify_login_pin(gst, pin):
+            # Typed PIN always wins: wrong PIN must never open via stale session.
+            if pin_provided:
+                if not verify_login_pin(gst, pin_digits):
+                    raise PermissionError("Incorrect company PIN.")
+            elif not session_ok:
                 raise PermissionError("Enter the 4-digit company PIN to open this workspace.")
-        elif pin:
-            save_company_by_gst(gst, {**existing, "loginPin": validate_login_pin(pin)})
+        else:
+            # Legacy company without a PIN — require enrollment; never open blank.
+            if not pin_digits:
+                if session_ok:
+                    raise PermissionError("Set a 4-digit company PIN before continuing.")
+                raise PermissionError("Set a 4-digit company PIN to open this workspace.")
+            save_company_by_gst(gst, {**existing, "loginPin": pin_digits})
             enrolled = True
             existing = load_company_by_gst(gst) or existing
-        if pin or session_ok or enrolled:
+
+        if pin_provided or session_ok or enrolled:
             patch = {k: prof[k] for k in _FIELDS if k in prof and prof[k] is not None}
+            # Never let profile PATCH rewrite login credentials through this path.
             if patch:
                 existing = save_company_by_gst(gst, {**existing, **patch})
         company = existing

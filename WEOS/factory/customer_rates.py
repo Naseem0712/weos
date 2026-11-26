@@ -16,23 +16,52 @@ def _slug(name: str) -> str:
     return s or "default"
 
 
-def rates_dir() -> Path:
+def _norm_gst(company_gst: str | None) -> str:
+    try:
+        from WEOS.factory.company_store import normalise_gstin
+
+        return normalise_gstin(company_gst) or ""
+    except Exception:
+        return re.sub(r"[^A-Za-z0-9]", "", str(company_gst or "")).upper()
+
+
+def rates_dir(company_gst: str | None = None) -> Path:
     d = data_dir() / "customer_rates"
+    gst = _norm_gst(company_gst)
+    if gst:
+        d = d / gst
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def customer_path(customer: str) -> Path:
-    return rates_dir() / f"{_slug(customer)}.json"
+def customer_path(customer: str, company_gst: str | None = None) -> Path:
+    return rates_dir(company_gst) / f"{_slug(customer)}.json"
 
 
-def load_customer_rates(customer: str) -> dict[str, Any]:
+def load_customer_rates(customer: str, *, company_gst: str | None = None) -> dict[str, Any]:
     if not (customer or "").strip():
-        return {"customer": "", "rates": [], "updatedAt": None}
-    path = customer_path(customer)
+        return {"customer": "", "rates": [], "updatedAt": None, "companyGst": _norm_gst(company_gst)}
+    gst = _norm_gst(company_gst)
+    path = customer_path(customer, gst or None)
+    # Fall back to legacy unscoped file only when reading for a logged-in GST
+    # that has no scoped rates yet (do not write back into the shared file).
+    if not path.is_file() and gst:
+        legacy = rates_dir(None) / f"{_slug(customer)}.json"
+        if legacy.is_file():
+            try:
+                doc = json.loads(legacy.read_text(encoding="utf-8-sig"))
+                if not _norm_gst(doc.get("companyGst")) or _norm_gst(doc.get("companyGst")) == gst:
+                    doc = dict(doc)
+                    doc["companyGst"] = gst
+                    return doc
+            except Exception:
+                pass
     if not path.is_file():
-        return {"customer": customer.strip(), "rates": [], "updatedAt": None}
-    return json.loads(path.read_text(encoding="utf-8-sig"))
+        return {"customer": customer.strip(), "rates": [], "updatedAt": None, "companyGst": gst}
+    doc = json.loads(path.read_text(encoding="utf-8-sig"))
+    if gst:
+        doc["companyGst"] = gst
+    return doc
 
 
 def save_customer_rate(
@@ -43,10 +72,14 @@ def save_customer_rate(
     sale_unit: str = "sqft",
     section_series: str | None = None,
     notes: str | None = None,
+    company_gst: str | None = None,
 ) -> dict[str, Any]:
     cust = (customer or "").strip() or "Walk-in"
-    doc = load_customer_rates(cust)
+    gst = _norm_gst(company_gst)
+    doc = load_customer_rates(cust, company_gst=gst or None)
     doc["customer"] = cust
+    if gst:
+        doc["companyGst"] = gst
     rates = list(doc.get("rates") or [])
     now = datetime.now(timezone.utc).isoformat()
     key_match = None
@@ -72,7 +105,8 @@ def save_customer_rate(
         rates[key_match] = {**rates[key_match], **entry}
     doc["rates"] = rates
     doc["updatedAt"] = now
-    path = customer_path(cust)
+    path = customer_path(cust, gst or None)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return doc
 
@@ -83,8 +117,9 @@ def lookup_rate(
     *,
     sale_unit: str | None = None,
     section_series: str | None = None,
+    company_gst: str | None = None,
 ) -> dict[str, Any] | None:
-    doc = load_customer_rates(customer)
+    doc = load_customer_rates(customer, company_gst=company_gst)
     candidates = [
         r
         for r in (doc.get("rates") or [])
@@ -107,18 +142,24 @@ def lookup_rate(
     return candidates[0]
 
 
-def list_customers_with_rates() -> list[dict[str, Any]]:
+def list_customers_with_rates(*, company_gst: str | None = None) -> list[dict[str, Any]]:
     out = []
-    for path in sorted(rates_dir().glob("*.json")):
+    gst = _norm_gst(company_gst)
+    root = rates_dir(gst or None)
+    for path in sorted(root.glob("*.json")):
         try:
             doc = json.loads(path.read_text(encoding="utf-8-sig"))
         except Exception:
+            continue
+        row_gst = _norm_gst(doc.get("companyGst"))
+        if gst and row_gst and row_gst != gst:
             continue
         out.append(
             {
                 "customer": doc.get("customer") or path.stem,
                 "rateCount": len(doc.get("rates") or []),
                 "updatedAt": doc.get("updatedAt"),
+                "companyGst": row_gst or gst,
             }
         )
     return out
@@ -127,9 +168,12 @@ def list_customers_with_rates() -> list[dict[str, Any]]:
 def save_quote_line_rates(
     customer: str,
     lines: list[Mapping[str, Any]],
+    *,
+    company_gst: str | None = None,
 ) -> dict[str, Any]:
     """Persist selling rates from saved quote lines for that customer."""
     saved = 0
+    gst = _norm_gst(company_gst)
     for ln in lines:
         rate = ln.get("sellingRate")
         if rate is None or str(rate).strip() == "":
@@ -141,6 +185,7 @@ def save_quote_line_rates(
             sale_unit=str(ln.get("saleUnit") or "sqft"),
             section_series=ln.get("sectionSeries"),
             notes=ln.get("description"),
+            company_gst=gst or None,
         )
         saved += 1
-    return {"customer": customer, "saved": saved, "doc": load_customer_rates(customer)}
+    return {"customer": customer, "saved": saved, "doc": load_customer_rates(customer, company_gst=gst or None)}

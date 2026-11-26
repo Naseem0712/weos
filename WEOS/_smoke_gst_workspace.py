@@ -30,7 +30,13 @@ def main() -> int:
         return 1
 
     gst = "22AAAAA0000A1Z5"
-    ws = open_workspace(gst, profile={"companyName": "GST Smoke Co", "phone": "9000000001"})
+    pin = "4242"
+    ws = open_workspace(
+        gst,
+        profile={"companyName": "GST Smoke Co", "phone": "9000000001", "email": "smoke@example.com"},
+        create=True,
+        pin=pin,
+    )
     if not ws.get("ok"):
         fails.append("workspace open failed")
     if ws.get("gstNo") != gst:
@@ -38,8 +44,26 @@ def main() -> int:
     if not ws.get("created"):
         fails.append("expected first open to create workspace")
 
-    # Second open should not re-create.
-    ws2 = open_workspace(gst)
+    # Wrong PIN must never open.
+    try:
+        open_workspace(gst, create=False, pin="1111")
+        fails.append("wrong PIN opened workspace")
+    except PermissionError:
+        pass
+    except Exception as exc:
+        fails.append(f"wrong PIN raised {type(exc).__name__}: {exc}")
+
+    # Session + wrong PIN must still reject.
+    try:
+        open_workspace(gst, create=False, pin="9999", session_token=ws.get("sessionToken"))
+        fails.append("session+wrong PIN opened workspace")
+    except PermissionError:
+        pass
+    except Exception as exc:
+        fails.append(f"session+wrong PIN raised {type(exc).__name__}: {exc}")
+
+    # Second open with correct PIN should not re-create.
+    ws2 = open_workspace(gst, create=False, pin=pin)
     if ws2.get("created"):
         fails.append("second open incorrectly marked created")
     if (ws2.get("company") or {}).get("companyName") != "GST Smoke Co":
@@ -108,12 +132,11 @@ def main() -> int:
         fails.append("ledger basis not documented as latest_per_quotation_number")
 
     # Workspace lists the customer.
-    hub = open_workspace(gst)
+    hub = open_workspace(gst, create=False, pin=pin)
     names = [c.get("name") for c in hub.get("customers") or []]
-    if cust not in names:
-        fails.append(f"workspace customers missing {cust}: {names}")
-    if int(hub.get("customerCount") or 0) < 1:
-        fails.append("customerCount < 1")
+    # Hub lists are lazy — customerCount comes from the company index.
+    if int(hub.get("customerCount") or 0) < 1 and cust not in names:
+        fails.append(f"workspace customers missing {cust}: count={hub.get('customerCount')} names={names}")
 
     _report(fails)
     return 1 if fails else 0
