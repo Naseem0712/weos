@@ -3,7 +3,7 @@
   "title": "29mm SERIES Premium",
   "displayName": "29mm SERIES Premium",
   "family": "sliding",
-  "productId": "29mm_sliding",
+  "productId": "29mm_premium",
   "sections": [
     {
       "id": "29mm_premium__2_track",
@@ -121,5 +121,6 @@
       "use": "V1 H0"
     }
   ],
-  "designOptions": []
+  "designOptions": [],
+  "engineProductId": "29mm_sliding"
 }

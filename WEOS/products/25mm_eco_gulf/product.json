@@ -219,6 +219,6 @@
     "source": "excel_section_catalogue",
     "productId": "29mm_sliding"
   },
-  "hiddenReason": "Duplicate 25mm series — keep 25mm_prestige only",
-  "hiddenAt": "2026-11-15T18:08:55.619718+00:00"
+  "hiddenReason": "Superseded by Excel profile series — soft-hidden to avoid duplicate Product Library rows",
+  "hiddenAt": "2026-11-26T22:20:30.506187+00:00"
 }

@@ -149,7 +149,8 @@
       ]
     },
     "source": "excel_section_catalogue",
-    "productId": "29mm_sliding"
+    "productId": "29mm_premium",
+    "engineProductId": "29mm_sliding"
   },
   "setup": {
     "type": "sliding",

@@ -565,10 +565,13 @@ def _starter_glass_specs() -> list[dict[str, Any]]:
     DGU = leaves + ₹150 (+ Argon ₹50); laminated = leaves + ₹250.
     """
     starters: list[dict[str, Any]] = []
-    # Single clear (annealed 5) + toughened clear at common thicknesses
+    # Single clear annealed — must carry a ₹/sft rate so default cart glass is never ₹0.
+    # Annealed is cheaper than clear tuff (80); editable in Glass Library.
     starters.append({
         "makeup": "single", "thicknessMm": 5.0, "colour": "clear", "toughened": False,
         "name": "5mm Clear", "id": "5mm_clear",
+        "rate": 55.0, "rateUnit": "sqft",
+        "rateBreakdown": {"leafRate": 55.0, "formula": "annealed clear leaf ₹/sft (editable)"},
     })
     for thk in (5.0, 6.0, 8.0, 10.0, 12.0):
         rate = clear_tuff_rate(thk)
@@ -652,7 +655,8 @@ def default_product_glass_options() -> list[dict[str, Any]]:
     # Legacy-compatible singles first
     options.append({
         "id": "5mm_clear", "label": "5mm Clear", "thicknessMm": 5,
-        "makeup": "single", "colour": "clear", "toughened": False, "rateMultiplier": 1.0,
+        "makeup": "single", "colour": "clear", "toughened": False,
+        "rate": 55.0, "rateUnit": "sqft", "rateMultiplier": 1.0,
     })
     for thk in (5.0, 6.0, 8.0, 10.0, 12.0):
         oid = f"{int(thk)}mm_toughened" if thk != 5 else "5mm_clear_toughened"

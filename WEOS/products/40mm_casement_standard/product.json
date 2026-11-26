@@ -150,7 +150,8 @@
       ]
     },
     "source": "excel_section_catalogue",
-    "productId": "casement_stub"
+    "productId": "40mm_casement_standard",
+    "engineProductId": "casement_stub"
   },
   "setup": {
     "type": "casement",

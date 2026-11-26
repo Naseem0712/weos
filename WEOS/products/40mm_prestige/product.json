@@ -188,7 +188,8 @@
       ]
     },
     "source": "excel_section_catalogue",
-    "productId": "29mm_sliding"
+    "productId": "40mm_prestige",
+    "engineProductId": "29mm_sliding"
   },
   "setup": {
     "type": "sliding",

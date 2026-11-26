@@ -3,7 +3,7 @@
   "title": "25mm SERIES - Prestige",
   "displayName": "25mm SERIES - Prestige",
   "family": "sliding",
-  "productId": "29mm_sliding",
+  "productId": "25mm_prestige",
   "sections": [
     {
       "id": "25mm_prestige__2_track",
@@ -167,5 +167,6 @@
       "use": "V2 H2"
     }
   ],
-  "designOptions": []
+  "designOptions": [],
+  "engineProductId": "29mm_sliding"
 }

@@ -1257,6 +1257,42 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
         except Exception as exc:  # keep the manual-rate result even if drawing fails
             _log.warning("stub preview render failed for %s: %s", product_id, exc)
         _apply_mesh_addon_to_result(result, line)
+        # Excel series products were historically flagged stub (manual rate) even
+        # when Series Setup has live Al/coat/glass/HW rates — overlay design cost.
+        try:
+            from WEOS.factory.design_cost import compute_design_cost
+            from WEOS.factory.product_setup import setup_has_profile_rates
+
+            if setup_has_profile_rates(product.get("setup")) or product.get("ratesEditable"):
+                design = compute_design_cost(line, product=product)
+                if (
+                    isinstance(design, dict)
+                    and design.get("ok")
+                    and float(design.get("total") or 0) > 0
+                ):
+                    result["designCost"] = design
+                    result["status"] = "active"
+                    price = dict(result.get("price") or {})
+                    design_total = float(design["total"])
+                    unit = float(design.get("unitTotal") or (design_total / max(qty, 1)))
+                    price.update({
+                        "unitTotal": round(unit, 2),
+                        "total": round(design_total, 2),
+                        "subtotal": round(design_total, 2),
+                        "costEngine": design.get("costEngine") or "live",
+                        "breakdown": design.get("breakdown"),
+                        "aluminiumCost": design.get("aluminiumCost"),
+                        "coatingCost": design.get("coatingCost"),
+                        "glassCost": design.get("glassCost"),
+                        "hardwareCost": design.get("hardwareCost"),
+                        "labourAmount": design.get("labourAmount"),
+                        "installationAmount": design.get("installationAmount"),
+                        "wastageCost": design.get("wastageCost"),
+                    })
+                    result["price"] = price
+                    result["costBreakdown"] = design.get("breakdown")
+        except Exception:
+            pass
         return apply_selling_to_line_result(result, line)
 
     # Thread the FULL window configuration (system / fold / grid / shutter counts /
@@ -1453,6 +1489,40 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
     }
     _augment_weight_with_louvers(result_base, lo.get("panelFill"), width=width, height=height, qty=qty)
     _apply_mesh_addon_to_result(result_base, line)
+    # Overlay design-driven Al / coating / glass / HW when legacy quotation is empty
+    # or weaker — same source as /api/quote/live so Recalculate / cart match the canvas.
+    try:
+        from WEOS.factory.design_cost import compute_design_cost
+
+        design = compute_design_cost(line, product=product)
+        if (
+            isinstance(design, dict)
+            and design.get("ok")
+            and design.get("costEngine") == "live"
+            and float(design.get("total") or 0) > 0
+        ):
+            result_base["designCost"] = design
+            price = dict(result_base.get("price") or {})
+            legacy_total = float(price.get("total") or 0)
+            design_total = float(design.get("total") or 0)
+            if legacy_total <= 0 or design_total >= legacy_total * 0.25:
+                unit = float(design.get("unitTotal") or (design_total / max(qty, 1)))
+                price["unitTotal"] = round(unit, 2)
+                price["total"] = round(design_total, 2)
+                price["subtotal"] = round(design_total, 2)
+                price["costEngine"] = "live"
+                price["breakdown"] = design.get("breakdown")
+                price["aluminiumCost"] = design.get("aluminiumCost")
+                price["coatingCost"] = design.get("coatingCost")
+                price["glassCost"] = design.get("glassCost")
+                price["hardwareCost"] = design.get("hardwareCost")
+                price["labourAmount"] = design.get("labourAmount")
+                price["installationAmount"] = design.get("installationAmount")
+                price["wastageCost"] = design.get("wastageCost")
+                result_base["price"] = price
+                result_base["costBreakdown"] = design.get("breakdown")
+    except Exception:
+        pass
     return apply_selling_to_line_result(result_base, line)
 
 

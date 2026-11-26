@@ -3,7 +3,7 @@
   "title": "35mm SERIES - Prestige",
   "displayName": "35mm SERIES - Prestige",
   "family": "sliding",
-  "productId": "29mm_sliding",
+  "productId": "35mm_prestige",
   "sections": [
     {
       "id": "35mm_prestige__2_track",
@@ -144,5 +144,6 @@
       "use": "V1"
     }
   ],
-  "designOptions": []
+  "designOptions": [],
+  "engineProductId": "29mm_sliding"
 }

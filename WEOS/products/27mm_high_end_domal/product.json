@@ -5,7 +5,7 @@
   "category": "Windows",
   "units": "mm",
   "version": 1,
-  "status": "active",
+  "status": "hidden",
   "description": "Series setup from catalogue profiles — Al ₹450/kg, coatings aligned. Weights/dims preserved. Rates editable in Series Setup.",
   "tagline": "27MM High end & Domal",
   "warranty": "",
@@ -2127,5 +2127,7 @@
       "railCount": 2,
       "costEngine": "stub"
     }
-  }
+  },
+  "hiddenReason": "Superseded by Excel profile series — soft-hidden to avoid duplicate Product Library rows",
+  "hiddenAt": "2026-11-26T22:20:30.533865+00:00"
 }

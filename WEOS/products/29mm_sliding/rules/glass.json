@@ -14,8 +14,13 @@
       "makeup": "single",
       "colour": "clear",
       "toughened": false,
-      "rateMultiplier": 1.0,
+      "rate": 55.0,
       "rateUnit": "sqft",
+      "rateMultiplier": 1.0,
+      "rateBreakdown": {
+        "leafRate": 55.0,
+        "formula": "annealed clear leaf ₹/sft (editable)"
+      },
       "argon": false,
       "overallMm": 5.0
     },

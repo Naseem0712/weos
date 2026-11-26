@@ -133,6 +133,6 @@
     "source": "excel_section_catalogue",
     "productId": "35mm_sliding"
   },
-  "hiddenReason": "Duplicate 35mm gulf — keep 35mm_gulf / 35mm_prestige",
-  "hiddenAt": "2026-11-15T18:08:55.624673+00:00"
+  "hiddenReason": "Superseded by Excel profile series — soft-hidden to avoid duplicate Product Library rows",
+  "hiddenAt": "2026-11-26T22:20:30.639807+00:00"
 }

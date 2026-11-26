@@ -268,7 +268,9 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
     from WEOS.factory.line_kind import is_louver_cart_line, is_railing_cart_line, line_world
 
     if not is_railing_cart_line(payload) and not is_louver_cart_line(payload) and line_world(payload) == "window":
-        payload.setdefault("glass", line.get("glass") or "5mm_clear")
+        # Match cart UI default (toughened with a commercial rate). Avoid annealed
+        # 5mm_clear when callers omit glass — that id historically had a null rate.
+        payload.setdefault("glass", line.get("glass") or "8mm_toughened")
         payload.setdefault("colour", line.get("colour") or "white")
         payload.setdefault("handle", line.get("handle") or "standard")
     calc = calculate_line(payload, include_preview=False)

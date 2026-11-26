@@ -480,7 +480,8 @@ def parse_sliding_sheet(ws) -> list[dict[str, Any]]:
                 "title": col0.strip(),
                 "displayName": col0.strip(),
                 "family": "sliding",
-                "productId": SERIES_PRODUCT_MAP.get(sid) or "29mm_sliding",
+                "productId": sid,
+                "engineProductId": SERIES_PRODUCT_MAP.get(sid) or "29mm_sliding",
                 "sections": [],
                 "designOptions": [],
             }
@@ -551,7 +552,8 @@ def parse_casement_sheet(ws) -> list[dict[str, Any]]:
                 "title": col0.strip(),
                 "displayName": col0.strip(),
                 "family": "casement",
-                "productId": "casement_stub",
+                "productId": sid,
+                "engineProductId": "casement_stub",
                 "sections": [],
                 "designOptions": [],
             }
@@ -1154,24 +1156,26 @@ def _write_product(series: Mapping[str, Any], setup: Mapping[str, Any], *, famil
     meta_path = pdir / "product.json"
     meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     qpath = pdir / "rules" / "quotation.json"
-    if not qpath.is_file():
-        qpath.write_text(
-            json.dumps(
-                {
-                    "currency": "INR",
-                    "labourPerOpening": 0,
-                    "markupPercent": 15,
-                    "gstPercent": 18,
-                    "stub": True,
-                    "manualRatePerOpening": 0,
-                    "rates": {},
-                    "ratesEditable": True,
-                },
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
+    # Keep quotation.stub so generate_job uses renderable stub geometry; live
+    # Al/coat/glass/HW still come from design_cost overlay (ratesEditable + setup).
+    qpath.write_text(
+        json.dumps(
+            {
+                "currency": "INR",
+                "labourPerOpening": 0,
+                "markupPercent": 15,
+                "gstPercent": 18,
+                "stub": True,
+                "manualRatePerOpening": 0,
+                "rates": {},
+                "ratesEditable": True,
+                "costEngine": "live",
+            },
+            indent=2,
         )
+        + "\n",
+        encoding="utf-8",
+    )
     return meta_path
 
 
@@ -1489,6 +1493,14 @@ def import_profile_hardware_excel(
     hidden_engines = _hide_catalog_engines()
     hidden_casements = _hide_non_excel_casements()
 
+    consolidation: dict[str, Any] = {}
+    try:
+        from WEOS.factory.series_consolidation import consolidate_series
+
+        consolidation = consolidate_series(persist=False)
+    except Exception as exc:
+        consolidation = {"ok": False, "error": str(exc)}
+
     # Durable snapshot when DB available
     persisted = False
     persist_error = None
@@ -1514,9 +1526,14 @@ def import_profile_hardware_excel(
         "hiddenDummies": hidden,
         "hiddenEngines": hidden_engines,
         "hiddenCasements": hidden_casements,
+        "consolidation": consolidation,
         "brandDefaults": {"indian": "HIVIC", "imported": "CMECH", "ette": "ETTE"},
         "ratesEditable": True,
-        "editRatesIn": ["Admin · Product Library · Series Setup", "Admin · Hardware Library"],
+        "editRatesIn": [
+            "Admin · Product Library · Series Setup",
+            "Admin · Hardware Library",
+            "WEOS/products/sections/profiles_catalogue.json",
+        ],
         "persisted": persisted,
         "persistError": persist_error,
         "series": [{"id": s["id"], "title": s["title"], "family": s.get("family"), "sections": len(s.get("sections") or [])} for s in series],

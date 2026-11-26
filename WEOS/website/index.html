@@ -2245,7 +2245,9 @@ textarea{max-width:100%}
         <div class="row" style="justify-content:flex-end;align-items:center;margin-top:.55rem">
           <div class="row" style="gap:.5rem;align-items:center">
             <input id="adminSearch" placeholder="Search products…" style="min-width:220px"/>
-            <label class="btn sec sm" style="margin:0" title="Import DETA windows section catalogue (.xlsx) — saved to the database">Import from Excel<input id="adminSectionsFile" type="file" accept=".xlsx" hidden/></label>
+            <label class="btn sec sm" style="margin:0" title="Import DETA windows section catalogue (.xlsx) — saved to the database">Sections Excel<input id="adminSectionsFile" type="file" accept=".xlsx" hidden/></label>
+            <label class="btn sec sm" style="margin:0" title="Import profile + hardwares Excel → series rates, powder, weight, hardware library (editable in Series Setup)">Profiles + HW Excel<input id="adminProfilesHwFile" type="file" accept=".xlsx" hidden/></label>
+            <button class="btn ghost sm" id="btnConsolidateSeries" type="button" title="Hide orphan/duplicate series; rebuild profiles catalogue">Dedupe series</button>
             <button class="btn sec sm" id="btnAdminNew2">New Product</button>
           </div>
         </div>
@@ -13131,6 +13133,32 @@ if ($('adminSectionsFile')) $('adminSectionsFile').onchange = async (ev) => {
   } catch(e){ toast('Import failed: ' + (e.message||e)); }
   ev.target.value = '';
 };
+if ($('adminProfilesHwFile')) $('adminProfilesHwFile').onchange = async (ev) => {
+  const f = ev.target.files[0]; if (!f) return;
+  const fd = new FormData(); fd.append('file', f);
+  toast('Importing profiles + hardware…');
+  try {
+    const res = await fetch(API_BASE + '/api/profiles/import-hardware', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) { toast(data.detail || 'Import failed'); return; }
+    const n = data.seriesCount != null ? data.seriesCount : (data.products || []).length;
+    const hw = data.hardwareCount != null ? data.hardwareCount : 0;
+    const hid = (data.hiddenDummies || []).length + ((data.consolidation && data.consolidation.hiddenCount) || 0);
+    toast(`Profiles: ${n} series · ${hw} hardware · ${hid} hidden dups` + (data.persisted ? ' · saved' : ''));
+    await loadProducts();
+    try { await initAdmin(); } catch (_) {}
+  } catch (e) { toast('Import failed: ' + (e.message || e)); }
+  ev.target.value = '';
+};
+if ($('btnConsolidateSeries')) $('btnConsolidateSeries').onclick = async () => {
+  if (!confirm('Hide orphan/duplicate series (soft-hide, no quote wipe) and rebuild profiles catalogue?')) return;
+  try {
+    const data = await api('/api/profiles/consolidate', { method: 'POST', body: {} });
+    toast(`Deduped · ${data.hiddenCount || 0} hidden · ${(data.canonical || []).length} canonical series`);
+    await loadProducts();
+    try { await initAdmin(); } catch (_) {}
+  } catch (e) { toast('Consolidate failed: ' + (e.message || e)); }
+};
 if ($('lineLocation')) {
   const applyLoc = () => {
     // Location stays on the form draft until Add to cart / Update commits it.
@@ -14502,16 +14530,20 @@ function renderAdminList() {
   const q = (($('adminSearch') && $('adminSearch').value) || '').trim().toLowerCase();
   const cat = (($('libCat') && $('libCat').value) || '').trim();
   const list = state.products.filter(p => {
+    const st = String(p.status || '').toLowerCase();
+    // Soft-hidden / archived engines & orphan series stay off the library grid
+    // (still loadable via the product select for quote history).
+    if (!q && (st === 'hidden' || st === 'archived' || st === 'deleted')) return false;
     if (cat && String(p.category||'') !== cat) return false;
     if (!q) return true;
-    return (`${p.displayName} ${p.id} ${p.category||''}`).toLowerCase().includes(q);
+    return (`${p.displayName} ${p.id} ${p.category||''} ${st}`).toLowerCase().includes(q);
   });
   if ($('adminCount')) $('adminCount').textContent = `(${list.length}/${state.products.length})`;
   box.innerHTML = list.map(p => `
     <div class="card prod ${p.id===state.selectedProduct?'':''}" data-aid="${p.id}" style="cursor:pointer;${p.id===state.selectedProduct?'outline:2px solid var(--green)':''}">
       <img class="ph" src="${p.heroImage||'/static/products/placeholder.svg'}" alt="" style="height:70px"/>
       <div style="padding-top:.4rem"><strong style="font-size:.85rem">${p.displayName}</strong>
-      <div class="muted" style="font-size:.72rem">${p.id}</div>
+      <div class="muted" style="font-size:.72rem">${p.id}${p.status && p.status!=='active' ? ' · '+p.status : ''}</div>
       <span class="pill ${p.manufacturingReady?'':'stub'}" style="font-size:.6rem">${p.manufacturingReady?'ready':'catalogue'}</span></div>
     </div>`).join('') || '<p class="muted">No products match</p>';
   box.querySelectorAll('[data-aid]').forEach(el => el.onclick = async () => {

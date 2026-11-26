@@ -6,5 +6,6 @@
   "stub": true,
   "manualRatePerOpening": 0,
   "rates": {},
-  "ratesEditable": true
+  "ratesEditable": true,
+  "costEngine": "live"
 }

@@ -175,7 +175,8 @@
       ]
     },
     "source": "excel_section_catalogue",
-    "productId": "casement_stub"
+    "productId": "50mm_casement_prestige",
+    "engineProductId": "casement_stub"
   },
   "setup": {
     "type": "casement",

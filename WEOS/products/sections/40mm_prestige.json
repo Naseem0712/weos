@@ -3,7 +3,7 @@
   "title": "40mm SERIES - Prestige",
   "displayName": "40mm SERIES - Prestige",
   "family": "sliding",
-  "productId": "29mm_sliding",
+  "productId": "40mm_prestige",
   "sections": [
     {
       "id": "40mm_prestige__2_track_all_side",
@@ -190,5 +190,6 @@
       "use": "V1"
     }
   ],
-  "designOptions": []
+  "designOptions": [],
+  "engineProductId": "29mm_sliding"
 }

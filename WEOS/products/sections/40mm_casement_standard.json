@@ -3,7 +3,7 @@
   "title": "40MM Standerd",
   "displayName": "40MM Standerd",
   "family": "casement",
-  "productId": "casement_stub",
+  "productId": "40mm_casement_standard",
   "sections": [
     {
       "id": "40mm_casement_standard__outer_frame",
@@ -151,5 +151,6 @@
   "designOptions": [
     "20% extra",
     "40% extra"
-  ]
+  ],
+  "engineProductId": "casement_stub"
 }

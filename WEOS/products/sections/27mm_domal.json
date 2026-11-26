@@ -3,7 +3,7 @@
   "title": "27mm SERIES Domal",
   "displayName": "27mm SERIES Domal",
   "family": "sliding",
-  "productId": "29mm_sliding",
+  "productId": "27mm_domal",
   "sections": [
     {
       "id": "27mm_domal__2_track",
@@ -121,5 +121,6 @@
       "use": "V1 H0"
     }
   ],
-  "designOptions": []
+  "designOptions": [],
+  "engineProductId": "29mm_sliding"
 }

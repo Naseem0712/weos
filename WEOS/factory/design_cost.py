@@ -1160,7 +1160,12 @@ def _glass_cost(line: Mapping[str, Any], *, width_mm: float, height_mm: float, q
     kind = None
     g: Mapping[str, Any] | None = None
     try:
-        from WEOS.factory.glass_catalogue import cart_glass_options, commercial_rate_for_spec, get_glass
+        from WEOS.factory.glass_catalogue import (
+            cart_glass_options,
+            clear_tuff_rate,
+            commercial_rate_for_spec,
+            get_glass,
+        )
 
         g = get_glass(gid) if gid else None
         if isinstance(g, Mapping):
@@ -1177,6 +1182,17 @@ def _glass_cost(line: Mapping[str, Any], *, width_mm: float, height_mm: float, q
                 rate = _f(priced.get("rate"), rate)
                 if isinstance(priced.get("rateBreakdown"), Mapping):
                     breakdown = dict(priced["rateBreakdown"])
+            # Never leave catalogue glass at ₹0 — fall back to commercial leaf rates.
+            if rate <= 0:
+                thk = _f(thickness_mm) or 5.0
+                leaf = clear_tuff_rate(thk)
+                if leaf:
+                    tough = bool(g.get("toughened"))
+                    rate = float(leaf) if tough else round(float(leaf) * 0.7, 2)
+                    breakdown = {
+                        "leafRate": rate,
+                        "formula": "fallback clear-tuff leaf" if tough else "fallback annealed (~70% of tuff)",
+                    }
         if rate <= 0 and gid:
             for opt in cart_glass_options(merge_library=True):
                 if str(opt.get("id") or "") == gid:
@@ -1193,6 +1209,12 @@ def _glass_cost(line: Mapping[str, Any], *, width_mm: float, height_mm: float, q
                         rate = _f(priced.get("rate"), rate)
                         if isinstance(priced.get("rateBreakdown"), Mapping):
                             breakdown = dict(priced["rateBreakdown"])
+                    if rate <= 0:
+                        thk = _f(thickness_mm) or 5.0
+                        leaf = clear_tuff_rate(thk)
+                        if leaf:
+                            tough = bool(opt.get("toughened"))
+                            rate = float(leaf) if tough else round(float(leaf) * 0.7, 2)
                     break
     except Exception:
         pass

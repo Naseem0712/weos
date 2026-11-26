@@ -11,7 +11,7 @@
       "title": "25mm SERIES - Prestige",
       "displayName": "25mm SERIES - Prestige",
       "family": "sliding",
-      "productId": "29mm_sliding",
+      "productId": "25mm_prestige",
       "sections": [
         {
           "id": "25mm_prestige__2_track",
@@ -175,14 +175,15 @@
           "use": "V2 H2"
         }
       ],
-      "designOptions": []
+      "designOptions": [],
+      "engineProductId": "29mm_sliding"
     },
     {
       "id": "27mm_domal",
       "title": "27mm SERIES Domal",
       "displayName": "27mm SERIES Domal",
       "family": "sliding",
-      "productId": "29mm_sliding",
+      "productId": "27mm_domal",
       "sections": [
         {
           "id": "27mm_domal__2_track",
@@ -300,14 +301,15 @@
           "use": "V1 H0"
         }
       ],
-      "designOptions": []
+      "designOptions": [],
+      "engineProductId": "29mm_sliding"
     },
     {
       "id": "29mm_premium",
       "title": "29mm SERIES Premium",
       "displayName": "29mm SERIES Premium",
       "family": "sliding",
-      "productId": "29mm_sliding",
+      "productId": "29mm_premium",
       "sections": [
         {
           "id": "29mm_premium__2_track",
@@ -425,14 +427,15 @@
           "use": "V1 H0"
         }
       ],
-      "designOptions": []
+      "designOptions": [],
+      "engineProductId": "29mm_sliding"
     },
     {
       "id": "35mm_prestige",
       "title": "35mm SERIES - Prestige",
       "displayName": "35mm SERIES - Prestige",
       "family": "sliding",
-      "productId": "29mm_sliding",
+      "productId": "35mm_prestige",
       "sections": [
         {
           "id": "35mm_prestige__2_track",
@@ -573,14 +576,15 @@
           "use": "V1"
         }
       ],
-      "designOptions": []
+      "designOptions": [],
+      "engineProductId": "29mm_sliding"
     },
     {
       "id": "35mm_gulf",
       "title": "35mm SERIES - gulf",
       "displayName": "35mm SERIES - gulf",
       "family": "sliding",
-      "productId": "29mm_sliding",
+      "productId": "35mm_gulf",
       "sections": [
         {
           "id": "35mm_gulf__2_track_top_bottom",
@@ -813,14 +817,15 @@
           "use": "v2, h2"
         }
       ],
-      "designOptions": []
+      "designOptions": [],
+      "engineProductId": "29mm_sliding"
     },
     {
       "id": "40mm_prestige",
       "title": "40mm SERIES - Prestige",
       "displayName": "40mm SERIES - Prestige",
       "family": "sliding",
-      "productId": "29mm_sliding",
+      "productId": "40mm_prestige",
       "sections": [
         {
           "id": "40mm_prestige__2_track_all_side",
@@ -1007,14 +1012,15 @@
           "use": "V1"
         }
       ],
-      "designOptions": []
+      "designOptions": [],
+      "engineProductId": "29mm_sliding"
     },
     {
       "id": "40mm_casement_standard",
       "title": "40MM Standerd",
       "displayName": "40MM Standerd",
       "family": "casement",
-      "productId": "casement_stub",
+      "productId": "40mm_casement_standard",
       "sections": [
         {
           "id": "40mm_casement_standard__outer_frame",
@@ -1162,14 +1168,15 @@
       "designOptions": [
         "20% extra",
         "40% extra"
-      ]
+      ],
+      "engineProductId": "casement_stub"
     },
     {
       "id": "50mm_casement_prestige",
       "title": "50mm SERIES - Prestige",
       "displayName": "50mm SERIES - Prestige",
       "family": "casement",
-      "productId": "casement_stub",
+      "productId": "50mm_casement_prestige",
       "sections": [
         {
           "id": "50mm_casement_prestige__outer_frame",
@@ -1360,7 +1367,8 @@
           "use": "v2, h2"
         }
       ],
-      "designOptions": []
+      "designOptions": [],
+      "engineProductId": "casement_stub"
     }
   ]
 }

@@ -3,7 +3,7 @@
   "title": "50mm SERIES - Prestige",
   "displayName": "50mm SERIES - Prestige",
   "family": "casement",
-  "productId": "casement_stub",
+  "productId": "50mm_casement_prestige",
   "sections": [
     {
       "id": "50mm_casement_prestige__outer_frame",
@@ -194,5 +194,6 @@
       "use": "v2, h2"
     }
   ],
-  "designOptions": []
+  "designOptions": [],
+  "engineProductId": "casement_stub"
 }

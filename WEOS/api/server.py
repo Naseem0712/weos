@@ -4391,6 +4391,113 @@ async def api_import_profile_hardware(file: UploadFile | None = File(None)) -> d
         Path(tmp_path).unlink(missing_ok=True)
 
 
+@app.get("/api/profiles/catalogue")
+def api_profiles_catalogue() -> dict[str, Any]:
+    """Editable profiles catalogue index (series + section rates / dims / powder)."""
+    from WEOS.factory.series_consolidation import build_profiles_catalogue, consolidate_series
+    from WEOS.factory.section_catalogue import sections_dir
+    import json as _json
+
+    path = sections_dir() / "profiles_catalogue.json"
+    if not path.is_file():
+        consolidate_series(persist=False)
+    if path.is_file():
+        try:
+            return _json.loads(path.read_text(encoding="utf-8-sig"))
+        except Exception:
+            pass
+    return build_profiles_catalogue()
+
+
+@app.post("/api/profiles/consolidate")
+def api_profiles_consolidate() -> dict[str, Any]:
+    """Soft-hide orphan/duplicate series and rebuild the profiles catalogue index."""
+    from WEOS.factory.series_consolidation import consolidate_series
+
+    return consolidate_series(persist=True)
+
+
+@app.put("/api/sections/{series_id}")
+async def api_put_section_series(series_id: str, request: Request) -> dict[str, Any]:
+    """Update one series section catalogue (rates, dims, powder, weight, names).
+
+    Body is the full series JSON (or ``{sections: [...]}`` patch). Writes
+    ``products/sections/<id>.json``, refreshes catalogue.json + profiles index,
+    and syncs the Product Library catalogue block — quote history is preserved.
+    """
+    from WEOS.factory.section_catalogue import (
+        catalogue_path,
+        get_series,
+        load_catalogue,
+        persist_catalogue,
+        sections_dir,
+        sync_catalogue_to_library,
+    )
+    from WEOS.factory.series_consolidation import build_profiles_catalogue
+    import json as _json
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON object required")
+    try:
+        existing = get_series(series_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    updated = dict(existing)
+    for key in (
+        "title",
+        "displayName",
+        "family",
+        "sections",
+        "designOptions",
+        "productId",
+        "engineProductId",
+    ):
+        if key in body:
+            updated[key] = body[key]
+    updated["id"] = series_id
+    updated["productId"] = series_id
+    # Persist series file + fold into catalogue.json
+    cat = load_catalogue()
+    series_list = list(cat.get("series") or [])
+    found = False
+    for i, s in enumerate(series_list):
+        if isinstance(s, dict) and s.get("id") == series_id:
+            series_list[i] = updated
+            found = True
+            break
+    if not found:
+        series_list.append(updated)
+    cat["series"] = series_list
+    cat["seriesCount"] = len(series_list)
+    cat["sectionCount"] = sum(len(s.get("sections") or []) for s in series_list if isinstance(s, dict))
+    persist_catalogue(cat)
+    try:
+        sync_catalogue_to_library()
+    except Exception:
+        pass
+    profiles = build_profiles_catalogue()
+    try:
+        from WEOS.db.product_store import snapshot_all, snapshot_dir
+
+        snapshot_dir("sections")
+        snapshot_all()
+        persisted = True
+    except Exception:
+        persisted = False
+    return {
+        "ok": True,
+        "series": updated,
+        "profilesCatalogueSeries": profiles.get("seriesCount"),
+        "persisted": persisted,
+        "path": str(sections_dir() / f"{series_id}.json"),
+        "cataloguePath": str(catalogue_path()),
+    }
+
+
 @app.get("/api/agent")
 def api_agent_status() -> dict[str, Any]:
     from WEOS.learning.commercial_agent import agent_status

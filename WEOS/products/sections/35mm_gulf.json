@@ -3,7 +3,7 @@
   "title": "35mm SERIES - gulf",
   "displayName": "35mm SERIES - gulf",
   "family": "sliding",
-  "productId": "29mm_sliding",
+  "productId": "35mm_gulf",
   "sections": [
     {
       "id": "35mm_gulf__2_track_top_bottom",
@@ -236,5 +236,6 @@
       "use": "v2, h2"
     }
   ],
-  "designOptions": []
+  "designOptions": [],
+  "engineProductId": "29mm_sliding"
 }

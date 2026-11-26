@@ -16,12 +16,16 @@
   "brand": "",
   "toughened": false,
   "toughenedLabel": "Non-toughened",
-  "rate": null,
+  "rate": 55.0,
   "rateUnit": "sqft",
   "densityKgPerM3": 2500.0,
   "makeupLabel": "5mm",
   "display_label": "5 mm",
-  "specLine": "5mm · Clear · Non-toughened",
+  "specLine": "5mm · Clear · Non-toughened · @ ₹55/sqft",
   "status": "active",
-  "updatedAt": "2026-11-15T18:09:29.983871+00:00"
+  "updatedAt": "2026-11-26T22:19:18.733991+00:00",
+  "rateBreakdown": {
+    "leafRate": 55.0,
+    "formula": "annealed clear leaf ₹/sft (editable)"
+  }
 }

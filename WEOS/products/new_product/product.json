@@ -28,6 +28,6 @@
   "brand": "woodenmax",
   "catalogue": {},
   "setup": {},
-  "hiddenReason": "Superseded by profile and hardwares weos.xlsx import",
-  "hiddenAt": "2026-11-15T18:08:55.625668+00:00"
+  "hiddenReason": "Superseded by Excel profile series — soft-hidden to avoid duplicate Product Library rows",
+  "hiddenAt": "2026-11-26T22:20:30.689643+00:00"
 }

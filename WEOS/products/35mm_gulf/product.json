@@ -214,7 +214,8 @@
       ]
     },
     "source": "excel_section_catalogue",
-    "productId": "29mm_sliding"
+    "productId": "35mm_gulf",
+    "engineProductId": "29mm_sliding"
   },
   "setup": {
     "type": "sliding",

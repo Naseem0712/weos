@@ -36,7 +36,8 @@ SERIES_ID_ALIASES: dict[str, str] = {
     "35mm-gulf-slim-series": "35mm_gulf_slim",
 }
 
-# Map catalogue series → existing WEOS product ids (when manufacturing rules exist)
+# Map catalogue series → manufacturing *engine* product ids (linkedProductId).
+# Selectable Product Library id is the series id itself (productId == series id).
 SERIES_PRODUCT_MAP: dict[str, str] = {
     "29mm_premium_euro": "29mm_sliding",
     "35mm_gulf_slim": "35mm_sliding",
@@ -617,7 +618,10 @@ def _library_catalogue_block(series: Mapping[str, Any]) -> dict[str, Any]:
             ],
         },
         "source": "excel_section_catalogue",
-        "productId": series.get("productId") or SERIES_PRODUCT_MAP.get(str(series.get("id") or "")),
+        # Selectable Product Library product is the series itself; engine is separate.
+        "productId": str(series.get("id") or series.get("productId") or ""),
+        "engineProductId": series.get("engineProductId")
+        or SERIES_PRODUCT_MAP.get(str(series.get("id") or "")),
     }
 
 
@@ -674,6 +678,9 @@ def sync_catalogue_to_library() -> dict[str, Any]:
             meta["catalogue"] = catalogue_block
             meta["sectionSeries"] = sid
             meta.setdefault("linkedProductId", SERIES_PRODUCT_MAP.get(sid))
+            # Never leave Excel series pointing at the engine as their productId.
+            if isinstance(meta.get("catalogue"), dict):
+                meta["catalogue"]["productId"] = sid
             # Catalogue series are sliding windows — never leave productType as the
             # opaque "section_series" (that blocked system inference → live preview).
             pt = str(meta.get("productType") or "").strip().lower()
@@ -781,12 +788,14 @@ def list_series() -> list[dict[str, Any]]:
     doc = load_catalogue()
     out = []
     for s in doc.get("series") or []:
+        sid = s["id"]
         out.append(
             {
-                "id": s["id"],
+                "id": sid,
                 "title": s.get("title"),
                 "displayName": s.get("displayName") or s.get("title"),
-                "productId": s.get("productId") or SERIES_PRODUCT_MAP.get(s["id"]),
+                "productId": sid,
+                "engineProductId": s.get("engineProductId") or SERIES_PRODUCT_MAP.get(sid),
                 "sectionCount": len(s.get("sections") or []),
                 "usages": sorted({sec.get("usage") for sec in (s.get("sections") or [])}),
             }
