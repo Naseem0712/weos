@@ -2108,7 +2108,9 @@ textarea{max-width:100%}
                   <option value="rft">Per Running Ft</option>
                 </select>
               </div>
-              <div class="kpi grow"><label class="l">Your selling rate</label><input id="lineSellRate" type="number" step="0.01" placeholder="e.g. 950"/></div>
+              <div class="kpi grow"><label class="l">Actual cost / unit</label><div class="big" style="font-size:1rem" id="lineCostRate">₹ —</div></div>
+              <div class="kpi grow"><label class="l">Profit %</label><input id="lineProfitPct" type="number" step="0.1" min="0" placeholder="e.g. 100" title="Selling rate = cost × (1 + profit%/100)"/></div>
+              <div class="kpi grow"><label class="l">Your selling rate</label><input id="lineSellRate" type="number" step="0.1" placeholder="e.g. 950.0"/></div>
               <div class="kpi" style="grid-column:1 / -1"><label class="l">Sell amount</label><div class="big" style="font-size:1.1rem" id="liveSell">₹ —</div></div>
             </div>
             <div class="live-actions">
@@ -4735,6 +4737,53 @@ function money(n, code) {
   const body = v.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return currencyPrefix(meta.iso || code) + ' ' + body;
 }
+/** Money-per-unit rates: exactly one digit after the decimal (123.4). */
+function rateMoney(n, code) {
+  if (n == null || n === '') return '—';
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '—';
+  const meta = currencyMeta(code);
+  const locale = meta.locale || 'en-IN';
+  const body = v.toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return currencyPrefix(meta.iso || code) + ' ' + body;
+}
+function roundRate1(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return null;
+  return Math.round(v * 10) / 10;
+}
+function formatRateInput(n) {
+  const r = roundRate1(n);
+  return r == null ? '' : String(r);
+}
+/** Apply cart profit % onto the existing selling-rate field: rate = cost × (1 + pct/100). */
+function applyProfitPercentToSellRate(opts) {
+  const o = opts || {};
+  const pctEl = $('lineProfitPct');
+  const rateEl = $('lineSellRate');
+  if (!pctEl || !rateEl) return null;
+  const pctRaw = pctEl.value;
+  if (pctRaw === '' || pctRaw == null) return null;
+  const pct = Number(pctRaw);
+  if (!Number.isFinite(pct) || pct < 0) return null;
+  let unitCost = Number(o.unitCost != null ? o.unitCost : state._lastUnitCost);
+  if (!(unitCost > 0)) return null;
+  const computed = roundRate1(unitCost * (1 + pct / 100));
+  rateEl.value = formatRateInput(computed);
+  if (state.draft) state.draft.sellingRate = computed;
+  if (typeof currentLineDraft === 'function') {
+    try {
+      const d = currentLineDraft();
+      if (d) d.sellingRate = computed;
+    } catch (_) {}
+  }
+  // Persist onto selected cart line when editing
+  const ln = state.lines && state.lines[state.selectedLine];
+  if (ln && typeof applyQuoteLineRate === 'function') {
+    applyQuoteLineRate(ln, computed, ($('lineSaleUnit') && $('lineSaleUnit').value) || ln.saleUnit);
+  }
+  return computed;
+}
 function isRailCartLine(ln) {
   const w = productWorldOf(null, ln);
   return w === 'railing' || w === 'staircase_railing';
@@ -4851,7 +4900,7 @@ function applyQuoteLineRate(ln, rateRaw, saleUnit) {
   clearLinePriceStamp(ln);
   if (saleUnit) ln.saleUnit = saleUnit;
   const raw = (rateRaw === '' || rateRaw == null) ? null : Number(rateRaw);
-  ln.sellingRate = (raw != null && Number.isFinite(raw) && raw >= 0) ? raw : null;
+  ln.sellingRate = (raw != null && Number.isFinite(raw) && raw >= 0) ? roundRate1(raw) : null;
   if (ln.options && ln.options.railingQuote) delete ln.options.railingQuote.sellingTotal;
   if (ln.options && ln.options.showerQuote) delete ln.options.showerQuote.sellingTotal;
   if (ln.options && ln.options.ventilatorQuote) delete ln.options.ventilatorQuote.sellingTotal;
@@ -4864,12 +4913,12 @@ function applyQuoteLineAmount(ln, amountRaw) {
   clearLinePriceStamp(ln);
   const billable = lineBillableQty(ln);
   if (billable > 0) {
-    ln.sellingRate = Math.round((amt / billable) * 100) / 100;
+    ln.sellingRate = roundRate1(amt / billable);
     ln.saleUnit = ln.saleUnit || 'sqft';
   } else {
     const qty = Math.max(1, Number(ln.qty || 1) || 1);
     ln.saleUnit = 'opening';
-    ln.sellingRate = Math.round((amt / qty) * 100) / 100;
+    ln.sellingRate = roundRate1(amt / qty);
   }
   if (ln.options && ln.options.railingQuote) delete ln.options.railingQuote.sellingTotal;
   if (ln.options && ln.options.showerQuote) delete ln.options.showerQuote.sellingTotal;
@@ -7904,6 +7953,33 @@ async function refreshLivePrice() {
       }
     }
     $('liveCost').textContent = costN > 0 ? money(costN) : '₹ —';
+    // Actual cost/unit for profit-% → selling rate (same selling-rate field, not a second engine).
+    try {
+      const billable1 = lineBillableQty(Object.assign({}, draft, { qty: Math.max(1, Number(draft.qty) || 1) }));
+      const unitCost = Number(
+        design.costPerUnit != null ? design.costPerUnit
+          : (design.suggestedSellRate != null ? design.suggestedSellRate
+            : (billable1 > 0 ? costN / billable1 : 0))
+      ) || 0;
+      state._lastUnitCost = unitCost > 0 ? roundRate1(unitCost) : null;
+      if ($('lineCostRate')) {
+        $('lineCostRate').textContent = state._lastUnitCost != null
+          ? (rateMoney(state._lastUnitCost) + ' / ' + String(draft.saleUnit || design.saleUnit || 'sqft'))
+          : '₹ —';
+      }
+      // When profit % is set, keep selling rate = cost × (1 + pct/100).
+      if ($('lineProfitPct') && $('lineProfitPct').value !== '' && document.activeElement !== $('lineSellRate')) {
+        const computed = applyProfitPercentToSellRate({ unitCost: state._lastUnitCost });
+        if (computed != null) draft.sellingRate = computed;
+      } else if ($('lineSellRate') && $('lineSellRate').value !== '' && document.activeElement !== $('lineSellRate')) {
+        const rounded = roundRate1($('lineSellRate').value);
+        if (rounded != null && String($('lineSellRate').value) !== formatRateInput(rounded)) {
+          $('lineSellRate').value = formatRateInput(rounded);
+        }
+      }
+    } catch (_) {
+      if ($('lineCostRate')) $('lineCostRate').textContent = '₹ —';
+    }
     updateStickyProfit(costN,sellN,explicitRate);
     if ($('liveCostBreak')) {
       const showBreak = costN > 0 || perWin > 0 || profitAmt > 0;
@@ -8093,7 +8169,7 @@ function renderCart() {
       <td>${cancelled?'<span class="cart-cancelled-mark">CANCELLED</span>':''}<span class="${cancelled?'cart-strike':''}">${cartLineProductLabel(ln)}</span>${ln.locationName||ln.positionName?`<div class="muted" style="font-size:.72rem">${esc(ln.locationName||ln.positionName)}</div>`:''}${shArea?`<div class="muted" style="font-size:.72rem">${esc(shArea)} sft</div>`:''}${showHeaders?'':`<div class="muted" style="font-size:.68rem">${esc(g)}</div>`}${addonBits}</td>
       <td><input data-f="width" data-i="${i}" type="number" value="${ln.width != null ? ln.width : ''}" style="width:70px"/>×<input data-f="height" data-i="${i}" type="number" value="${ln.height != null ? ln.height : ''}" style="width:70px"/></td>
       <td><input data-f="qty" data-i="${i}" type="number" min="1" value="${ln.qty != null ? ln.qty : ''}" style="width:56px"/></td>
-      <td><input data-f="sellingRate" data-i="${i}" type="number" min="0" step="0.01" value="${rateVal}" style="width:72px" ${cancelled?'disabled':''} title="Rate ₹ / ${(ln.saleUnit||'sqft')}"/></td>
+      <td><input data-f="sellingRate" data-i="${i}" type="number" min="0" step="0.1" value="${rateVal === '' ? '' : formatRateInput(rateVal)}" style="width:72px" ${cancelled?'disabled':''} title="Rate ₹ / ${(ln.saleUnit||'sqft')} (1 decimal)"/></td>
       <td style="font-size:.8rem">${ln.glass||''}<br>${ln.colour||''}</td>
       <td style="white-space:nowrap;font-weight:600" class="${cancelled?'cart-strike':''}">${amtTxt}</td>
       <td class="actions-inline">
@@ -8166,7 +8242,7 @@ function renderCart() {
         })() +
         '<div class="qlc-pricing" onclick="event.stopPropagation()">' +
           '<div><label class="l">Area</label><div class="qlc-area">' + (area > 0 ? (area + ' sft') : '\u2014') + '</div></div>' +
-          '<div><label class="l">Rate ' + esc(curSym) + '/' + esc(unit) + '</label><input data-ql-rate="' + i + '" type="number" min="0" step="0.01" placeholder="e.g. 950" value="' + rateVal + '" ' + (cancelled ? 'disabled' : '') + '/></div>' +
+          '<div><label class="l">Rate ' + esc(curSym) + '/' + esc(unit) + '</label><input data-ql-rate="' + i + '" type="number" min="0" step="0.1" placeholder="e.g. 950.0" value="' + (rateVal === '' ? '' : formatRateInput(rateVal)) + '" ' + (cancelled ? 'disabled' : '') + '/></div>' +
           '<div><label class="l">Line amount ' + esc(curSym) + '</label><input data-ql-amt="' + i + '" type="number" min="0" step="0.01" placeholder="auto" value="' + amtVal + '" ' + (cancelled ? 'disabled' : '') + '/></div>' +
           '<div><label class="l">Sale unit</label><select data-ql-unit="' + i + '" ' + (cancelled ? 'disabled' : '') + '>' +
             ['sqft','sqm','opening','rft'].map(u => '<option value="' + u + '"' + (unit === u ? ' selected' : '') + '>' + (u === 'sqft' ? 'Per Sq.Ft.' : u === 'sqm' ? 'Per Sq.M.' : u === 'opening' ? 'Per Opening' : 'Per RFT') + '</option>').join('') +
@@ -13281,7 +13357,7 @@ function stampSelectedDraftAmount() {
   }
   updateLiveCartTotal();
 }
-['lineW','lineH','lineQty','lineColour','lineGlass','lineProduct','lineSeries','lineSaleUnit','lineSellRate','lineHandle','lineDesc','cartCustomer','lineTrack','partSize','lineFrameMaterial','lineReinfPresent','lineReinfMaterial','lineHwBrand','lineWheel','lineMeshWheel','lineSideStayInch','lineTopHungStayInch','lineHingeQty'].forEach(id => {
+['lineW','lineH','lineQty','lineColour','lineGlass','lineProduct','lineSeries','lineSaleUnit','lineSellRate','lineProfitPct','lineHandle','lineDesc','cartCustomer','lineTrack','partSize','lineFrameMaterial','lineReinfPresent','lineReinfMaterial','lineHwBrand','lineWheel','lineMeshWheel','lineSideStayInch','lineTopHungStayInch','lineHingeQty'].forEach(id => {
   const el = $(id); if (!el) return;
   el.addEventListener('focus', () => {
     if (id === 'lineProduct' || id === 'lineSeries') {
@@ -13292,6 +13368,16 @@ function stampSelectedDraftAmount() {
     if (id === 'lineProduct') {
       // Select fires change for the real switch; avoid double rebuild on input.
       return;
+    }
+    if (id === 'lineProfitPct') {
+      applyProfitPercentToSellRate({ unitCost: state._lastUnitCost });
+      stampSelectedDraftAmount();
+      scheduleLivePrice();
+      return;
+    }
+    if (id === 'lineSellRate' && $('lineSellRate') && $('lineSellRate').value !== '') {
+      const rounded = roundRate1($('lineSellRate').value);
+      if (rounded != null) $('lineSellRate').value = formatRateInput(rounded);
     }
     if (['lineW','lineH','lineQty','lineSaleUnit','lineSellRate'].includes(id)) stampSelectedDraftAmount();
     if (isRailingMode() || isShowerMode() || isVentMode()) {
@@ -13324,6 +13410,10 @@ function stampSelectedDraftAmount() {
       forceCanvasRebuild('series-change');
     }
     if (id === 'lineFrameMaterial') applyFrameMaterialUi();
+    if (id === 'lineProfitPct') {
+      applyProfitPercentToSellRate({ unitCost: state._lastUnitCost });
+      stampSelectedDraftAmount();
+    }
     if (['lineW','lineH','lineQty','lineSaleUnit','lineSellRate'].includes(id)) stampSelectedDraftAmount();
     const ln = state.lines[state.selectedLine];
     if (ln && id === 'lineGlass') {

@@ -303,8 +303,15 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
         "wastageM": waste_m if waste_m > 0 else None,
         "wastagePercent": waste_pct if waste_pct > 0 else None,
         "stockStdM": stock_std,
+        # Rules: purchase includes balance; expose bar nest for materials print.
+        "purchasedMetres": design.get("purchasedMetres"),
+        "balanceMetres": design.get("balanceMetres"),
+        "balanceCost": design.get("balanceCost"),
+        "nestGroups": design.get("nestGroups") if isinstance(design.get("nestGroups"), list) else None,
         "costEngine": design.get("costEngine"),
         "designCost": design.get("total") if design.get("ok") else None,
+        "aluminiumCost": design.get("aluminiumCost"),
+        "coatingCost": design.get("coatingCost"),
         "costBreakdown": design.get("breakdown") if isinstance(design.get("breakdown"), Mapping) else None,
     }
 
@@ -442,7 +449,7 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
         if pcs is not None and pcs != "":
             bits.append(f"{esc(pcs)} {esc(h.get('unit') or 'PC')}")
         if h.get("unitRate") is not None and _f(h.get("unitRate")) > 0:
-            bits.append(f"₹{esc(round(_f(h.get('unitRate')), 2))}")
+            bits.append(f"₹{esc(round(_f(h.get('unitRate')), 1))}")
         if h.get("amount") is not None and _f(h.get("amount")) > 0:
             bits.append(f"= ₹{esc(round(_f(h.get('amount')), 2))}")
         return " · ".join(bits)
@@ -475,7 +482,7 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
         if g.get("areaSft") is not None:
             g_bits.append(f"{esc(g.get('areaSft'))} sft")
         if g.get("unitRate") is not None and _f(g.get("unitRate")) > 0:
-            g_bits.append(f"₹{esc(round(_f(g.get('unitRate')), 2))}/sft")
+            g_bits.append(f"₹{esc(round(_f(g.get('unitRate')), 1))}/sft")
         inter = ln.get("interlocks") if isinstance(ln.get("interlocks"), Mapping) else {}
         inter_note = ""
         if inter:
@@ -486,6 +493,17 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
                 f" · glass reducer {esc(inter.get('glassReducerPcs'))} pcs"
                 f" ({esc(inter.get('rule'))})</p>"
             )
+        purch_note = ""
+        if ln.get("purchasedMetres") is not None or ln.get("aluminiumCost") is not None:
+            purch_note = (
+                f"<p class=muted style=margin:.25rem 0 0>Purchase (balance included): "
+                f"{esc(round(_f(ln.get('purchasedMetres')), 3))} m bought"
+                f" · Al ₹{esc(round(_f(ln.get('aluminiumCost')), 2))}"
+                f" · powder ₹{esc(round(_f(ln.get('coatingCost')), 2))}"
+                f" · balance {esc(round(_f(ln.get('balanceMetres')), 3))} m"
+                f" (₹{esc(round(_f(ln.get('balanceCost')), 2))})</p>"
+            )
+            inter_note = (inter_note or "") + purch_note
         waste_note = ""
         if ln.get("wastageM") is not None:
             waste_note = (

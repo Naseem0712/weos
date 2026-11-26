@@ -668,6 +668,38 @@ def default_track_options() -> list[dict[str, Any]]:
     return [normalize_track_option({"id": x}) for x in TRACK_OPTION_IDS]
 
 
+def anti_dust_pad_qty(
+    *,
+    glass_count: float | int = 2,
+    mesh_count: float | int = 0,
+    track_count: float | int | None = None,
+) -> int:
+    """Anti-dust pad counts from WEOS window rules layout table.
+
+    2-track/2 shutters = 2; 4 shutters = 4; 3-track/3 glass = 4;
+    2 glass + 1 mesh = 4; 4 glass + 2 mesh = 6.
+    """
+    g = max(int(round(float(glass_count or 0))), 0)
+    m = max(int(round(float(mesh_count or 0))), 0)
+    tc = float(track_count or 0)
+    if g == 2 and m == 1:
+        return 4
+    if g == 4 and m == 2:
+        return 6
+    if g == 4 and m == 0:
+        return 4
+    if g == 3 and m == 0:
+        return 4
+    if g == 2 and m == 0:
+        return 2
+    if g + m <= 0:
+        return 0
+    # Fallback: 2-track style for 2 leaves, else scale with leaf count
+    if tc and tc < 2.5 and g + m == 2:
+        return 2
+    return max(2, g + m)
+
+
 def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
     """Structured per-shutter hardware (connectors, EPDM, wings, brush, lock, wheels)."""
     r = raw if isinstance(raw, Mapping) else {}
@@ -712,6 +744,9 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
         if isinstance(r.get("meshWheels"), Mapping)
         else (r.get("mesh_wheels") if isinstance(r.get("mesh_wheels"), Mapping) else {})
     )
+    interlock_caps = r.get("interlockCaps") if isinstance(r.get("interlockCaps"), Mapping) else {}
+    lock_guides = r.get("lockGuides") if isinstance(r.get("lockGuides"), Mapping) else {}
+    anti_dust = r.get("antiDustPads") if isinstance(r.get("antiDustPads"), Mapping) else {}
     lock_type = _str(lock.get("type") or "single_point").lower().replace("-", "_").replace(" ", "_")
     if lock_type in ("single", "sp"):
         lock_type = "single_point"
@@ -738,15 +773,15 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
         "shutterConnectors": qty_rate("shutterConnectors", 0, 4, name="Shutter connectors"),
         "epdm": {
             "ratePerM": _num(epdm.get("ratePerM") or epdm.get("rate")) or 0.0,
-            # height×4 + width×4 (m) — computed at quote time
-            "formula": _str(epdm.get("formula") or "height_m*4 + width_m*4"),
+            # 2(H+W) per shutter (rules); leaf width used at quote time
+            "formula": _str(epdm.get("formula") or "2*(height_m + leaf_width_m)*glass_shutters"),
             "brand": _brand(epdm, name="EPDM"),
             "origin": _str(epdm.get("origin") or "indian"),
             "notes": _str(epdm.get("notes")),
         },
         "brush": {
             "ratePerM": _num(brush.get("ratePerM") or brush.get("rate")) or 0.0,
-            "formula": _str(brush.get("formula") or "height_m*4 + width_m*4"),
+            "formula": _str(brush.get("formula") or "2*(height_m + leaf_width_m)*all_shutters"),
             "brand": _brand(brush, name="Brush"),
             "origin": _str(brush.get("origin") or "indian"),
             "notes": _str(brush.get("notes")),
@@ -766,7 +801,36 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
             "unit": _str(lock.get("unit") or "SET").upper(),
             "brand": _brand(lock, name="Lock"),
             "origin": _str(lock.get("origin") or "indian"),
-            "notes": _str(lock.get("notes")),
+            "notes": _str(lock.get("notes") or "1 handle/lock per glass + mesh shutter"),
+            "qtyPerShutter": _num(lock.get("qtyPerShutter") if lock.get("qtyPerShutter") is not None else 1) or 1.0,
+        },
+        "interlockCaps": {
+            "qtyPerShutter": _num(
+                interlock_caps.get("qtyPerShutter") if interlock_caps.get("qtyPerShutter") is not None else 2
+            ) or 2.0,
+            "rate": _num(interlock_caps.get("rate")) or 0.0,
+            "unit": _str(interlock_caps.get("unit") or "PC").upper(),
+            "brand": _brand(interlock_caps, name="Interlock cap"),
+            "origin": _str(interlock_caps.get("origin") or "indian"),
+            "notes": _str(interlock_caps.get("notes") or "2 caps per shutter (glass + mesh)"),
+        },
+        "lockGuides": {
+            "qtyPerShutter": _num(
+                lock_guides.get("qtyPerShutter") if lock_guides.get("qtyPerShutter") is not None else 1
+            ) or 1.0,
+            "rate": _num(lock_guides.get("rate")) or 0.0,
+            "unit": _str(lock_guides.get("unit") or "PC").upper(),
+            "brand": _brand(lock_guides, name="Lock guide"),
+            "origin": _str(lock_guides.get("origin") or "indian"),
+            "notes": _str(lock_guides.get("notes") or "1 guide per shutter"),
+        },
+        "antiDustPads": {
+            "rate": _num(anti_dust.get("rate")) or 0.0,
+            "unit": _str(anti_dust.get("unit") or "PC").upper(),
+            "brand": _brand(anti_dust, name="Anti-dust pad"),
+            "origin": _str(anti_dust.get("origin") or "indian"),
+            "notes": _str(anti_dust.get("notes") or "Layout table: 2G=2, 3G=4, 4G=4, 2G+1M=4, 4G+2M=6"),
+            "qtyOverride": _num(anti_dust.get("qty") or anti_dust.get("qtyOverride")),
         },
         # Glass shutter wheels — capacity should cover shutter glass weight
         "wheels": _wheel_block(wheels, default_name="Wheels"),
@@ -2590,6 +2654,160 @@ def derive_sliding_track_fill(
     }
 
 
+def _pick_track_rail_section(
+    setup: Mapping[str, Any] | None,
+    *,
+    prefer: str | None = None,
+) -> dict[str, Any]:
+    """Pick catalogue track-rail section (kept separate from outer track).
+
+    Prefers aluminium rail unless ``prefer`` asks for ss/stainless.
+    """
+    want = _str(prefer).lower()
+    prefer_ss = any(k in want for k in ("ss", "stainless", "steel"))
+    candidates: list[dict[str, Any]] = []
+    try:
+        for sec in flatten_setup_sections(setup or {}):
+            if not isinstance(sec, Mapping):
+                continue
+            nm = _str(sec.get("name")).lower()
+            use = _str(sec.get("use")).lower()
+            if "rail" not in nm and "rail" not in use:
+                continue
+            if "handrail" in nm or "bottom rail" in nm:
+                continue
+            if "track" in nm or "rail" in nm:
+                candidates.append(normalize_section(sec))
+    except Exception:
+        candidates = []
+    if not candidates:
+        return normalize_section({})
+    def score(s: Mapping[str, Any]) -> tuple[int, int]:
+        nm = _str(s.get("name")).lower()
+        is_ss = 1 if any(k in nm for k in ("ss", "stainless", "steel")) else 0
+        is_al = 1 if any(k in nm for k in ("alum", "aluminium", "aluminum")) else 0
+        if prefer_ss:
+            return (is_ss, is_al)
+        return (is_al, 1 - is_ss)
+    candidates.sort(key=score, reverse=True)
+    return candidates[0]
+
+
+def derive_sliding_track_rail_cuts(
+    setup: Mapping[str, Any] | None,
+    *,
+    width_mm: float,
+    track_count: Any = None,
+    colour: str | None = None,
+    rail_material: str | None = None,
+) -> dict[str, Any]:
+    """Separate track-rail runs (rules: keep rail apart from outer aluminium track).
+
+    Qty = rail count from selected track system; each run length = opening width.
+    Billed in the rail product's listed unit (₹/rft or ₹/kg×weight).
+    """
+    if not isinstance(setup, Mapping):
+        return {"lines": [], "cutSpecs": [], "rails": 0}
+    fill = derive_sliding_track_fill(
+        setup, width_mm=width_mm, height_mm=0.0, track_count=track_count
+    )
+    rails = int(fill.get("rails") or rail_count_for_track_option(track_count) or 0)
+    if rails <= 0:
+        return {"lines": [], "cutSpecs": [], "rails": 0}
+    sec = _pick_track_rail_section(setup, prefer=rail_material)
+    # Also accept sliding.outerTrack.bottomRails / explicit trackRail section
+    sl = setup.get("sliding") if isinstance(setup.get("sliding"), Mapping) else {}
+    ot = sl.get("outerTrack") if isinstance(sl.get("outerTrack"), Mapping) else {}
+    if not _str(sec.get("name")) and isinstance(ot.get("bottomRails"), Mapping):
+        sec = normalize_section(ot.get("bottomRails"))
+    if not _str(sec.get("name")) and not _num(sec.get("rate")):
+        # No catalogue rail — skip rather than invent a zero row
+        return {"lines": [], "cutSpecs": [], "rails": rails, "missingSection": True}
+    L_m = max(float(width_mm or 0), 0.0) / 1000.0
+    if L_m <= 0:
+        return {"lines": [], "cutSpecs": [], "rails": rails}
+    display = _str(sec.get("name")) or "Track rail"
+    lines = [{
+        "category": "profile",
+        "name": display,
+        "catalogueName": display,
+        "use": "track_rail",
+        "qty": float(rails),
+        "pcs": rails,
+        "lengthM": round(L_m, 4),
+        "metres": round(L_m * rails, 4),
+        "unit": "RM",
+        "section": sec,
+        "colour": _str(colour),
+        "sides": "track rail",
+        "remarks": f"{rails} rail run(s) × width (separate from outer track)",
+    }]
+    cut_specs = [{
+        "lengthM": L_m,
+        "qty": rails,
+        "section": sec,
+        "use": "track_rail",
+        "name": display,
+    } for _ in range(rails)]
+    return {
+        "lines": lines,
+        "cutSpecs": cut_specs,
+        "rails": rails,
+        "section": sec,
+        "lengthM": round(L_m, 4),
+    }
+
+
+def derive_sliding_meeting_cuts(
+    setup: Mapping[str, Any] | None,
+    *,
+    height_mm: float,
+    glass_count: float = 4.0,
+    opening: str | None = None,
+    colour: str | None = None,
+) -> dict[str, Any]:
+    """Centre-meeting vertical for 4-glass centre-closing (rules)."""
+    if not isinstance(setup, Mapping):
+        return {"lines": [], "cutSpecs": []}
+    g = max(int(round(float(glass_count or 0))), 0)
+    op = _str(opening).lower().replace("-", "_").replace(" ", "_")
+    if op in ("centre", "center_opening", "centre_opening", ""):
+        op = "center" if (op.startswith("cent") or (not op and g == 4)) else op
+    if g != 4 or op != "center":
+        return {"lines": [], "cutSpecs": [], "enabled": False}
+    sl = setup.get("sliding") if isinstance(setup.get("sliding"), Mapping) else {}
+    meeting = sl.get("meeting") if isinstance(sl.get("meeting"), Mapping) else {}
+    sec = normalize_section(meeting.get("section") if isinstance(meeting.get("section"), Mapping) else {})
+    if not _str(sec.get("name")) and not _num(sec.get("rate")):
+        # Fall back to renf / slim interlock as meeting section
+        sh = sl.get("shutters") if isinstance(sl.get("shutters"), Mapping) else {}
+        sec = normalize_section(sh.get("interlockRenf") or sh.get("interlockSlim") or {})
+    h_m = max(float(height_mm or 0), 0.0) / 1000.0
+    if h_m <= 0 or (not _str(sec.get("name")) and not _num(sec.get("rate"))):
+        return {"lines": [], "cutSpecs": [], "enabled": True, "missingSection": True}
+    display = _str(sec.get("name")) or "Meeting section"
+    lines = [{
+        "category": "profile",
+        "name": display,
+        "catalogueName": display,
+        "use": "meeting",
+        "qty": 1.0,
+        "pcs": 1,
+        "lengthM": round(h_m, 4),
+        "metres": round(h_m, 4),
+        "unit": "RM",
+        "section": sec,
+        "colour": _str(colour),
+        "sides": "centre meeting",
+        "remarks": "4 glass centre closing — 1 vertical meeting",
+    }]
+    return {
+        "lines": lines,
+        "cutSpecs": [{"lengthM": h_m, "section": sec, "use": "meeting", "name": display}],
+        "enabled": True,
+    }
+
+
 def derive_sliding_hardware_lines(
     setup: Mapping[str, Any] | None,
     *,
@@ -2614,7 +2832,17 @@ def derive_sliding_hardware_lines(
         return []
 
     def _pack_configured(p: Mapping[str, Any]) -> bool:
-        for key in ("trackConnectors", "shutterConnectors", "wheels", "meshWheels", "lock", "wings"):
+        for key in (
+            "trackConnectors",
+            "shutterConnectors",
+            "wheels",
+            "meshWheels",
+            "lock",
+            "wings",
+            "interlockCaps",
+            "lockGuides",
+            "antiDustPads",
+        ):
             block = p.get(key) if isinstance(p.get(key), Mapping) else {}
             if float(block.get("rate") or 0) > 0:
                 return True
@@ -2630,10 +2858,20 @@ def derive_sliding_hardware_lines(
         return []
     shutters = max(float(shutter_count or 1), 1.0)
     mesh_n = max(float(mesh_count or 0), 0.0)
+    total_leaves = shutters + mesh_n
     w_m = max(float(width_mm or 0), 0.0) / 1000.0
     h_m = max(float(height_mm or 0), 0.0) / 1000.0
-    perimeter = (h_m * 4.0) + (w_m * 4.0)  # EPDM / brush rule
+    # Rules: shutter perimeter = 2(H + leaf_W); leaf_W ≈ opening_W / glass count.
+    leaf_w_m = w_m / shutters if shutters > 0 else w_m
+    glass_peri = 2.0 * (h_m + leaf_w_m)  # one glass shutter
+    mesh_leaf_w = w_m / max(shutters, 1.0)  # mesh overlaps glass run — same nominal leaf
+    mesh_peri = 2.0 * (h_m + mesh_leaf_w)
     same_shutter = _str((sl.get("shutters") or {}).get("mode")) == "all_sides_same"
+    track_c = None
+    try:
+        track_c = (derive_sliding_track_fill(setup) or {}).get("rails")
+    except Exception:
+        track_c = None
     lines: list[dict[str, Any]] = []
 
     def add(
@@ -2700,20 +2938,21 @@ def derive_sliding_hardware_lines(
     epdm = pack.get("epdm") or {}
     add(
         "EPDM dual-side",
-        perimeter * shutters,
+        glass_peri * shutters,
         float(epdm.get("ratePerM") or 0),
         "RM",
-        "height×4 + width×4 × glass shutters",
+        "2(H+leafW) × glass shutters (rules glazing EPDM)",
         brand=_str(epdm.get("brand")),
         origin=_str(epdm.get("origin") or "indian"),
     )
     brush = pack.get("brush") or {}
+    brush_m = (glass_peri * shutters) + (mesh_peri * mesh_n)
     add(
         "Brush",
-        perimeter * shutters,
+        brush_m,
         float(brush.get("ratePerM") or 0),
         "RM",
-        "same as EPDM",
+        "sum of glass + mesh shutter perimeters",
         brand=_str(brush.get("brand")),
         origin=_str(brush.get("origin") or "indian"),
     )
@@ -2728,15 +2967,55 @@ def derive_sliding_hardware_lines(
         brand=_str(wings.get("brand")),
         origin=_str(wings.get("origin") or "indian"),
     )
+    # Handles/locks: 1 per glass + mesh shutter (rules: 2G+mesh → 3)
     lock = pack.get("lock") or {}
+    lock_qty = float(lock.get("qtyPerShutter") or 1) * total_leaves
     add(
-        f"Lock ({lock.get('type') or 'single_point'})",
-        1.0,
+        f"Lock / handle ({lock.get('type') or 'single_point'})",
+        lock_qty,
         float(lock.get("rate") or 0),
         lock.get("unit") or "SET",
-        "per opening",
+        f"1 per shutter · {total_leaves:g} leaf(ves)",
         brand=_str(lock.get("brand")),
         origin=_str(lock.get("origin") or "indian"),
+    )
+    caps = pack.get("interlockCaps") if isinstance(pack.get("interlockCaps"), Mapping) else {}
+    add(
+        "Interlock caps",
+        float(caps.get("qtyPerShutter") or 2) * total_leaves,
+        float(caps.get("rate") or 0),
+        caps.get("unit") or "PC",
+        f"2 per shutter · {total_leaves:g} leaf(ves)",
+        brand=_str(caps.get("brand")),
+        origin=_str(caps.get("origin") or "indian"),
+        source="sliding.hardwarePack.interlockCaps",
+    )
+    guides = pack.get("lockGuides") if isinstance(pack.get("lockGuides"), Mapping) else {}
+    add(
+        "Lock guides",
+        float(guides.get("qtyPerShutter") or 1) * total_leaves,
+        float(guides.get("rate") or 0),
+        guides.get("unit") or "PC",
+        f"1 per shutter · {total_leaves:g} leaf(ves)",
+        brand=_str(guides.get("brand")),
+        origin=_str(guides.get("origin") or "indian"),
+        source="sliding.hardwarePack.lockGuides",
+    )
+    dust = pack.get("antiDustPads") if isinstance(pack.get("antiDustPads"), Mapping) else {}
+    dust_qty = _num(dust.get("qtyOverride"))
+    if dust_qty is None or dust_qty <= 0:
+        dust_qty = float(
+            anti_dust_pad_qty(glass_count=shutters, mesh_count=mesh_n, track_count=track_c)
+        )
+    add(
+        "Anti-dust pads",
+        float(dust_qty),
+        float(dust.get("rate") or 0),
+        dust.get("unit") or "PC",
+        "layout table (rules)",
+        brand=_str(dust.get("brand")),
+        origin=_str(dust.get("origin") or "indian"),
+        source="sliding.hardwarePack.antiDustPads",
     )
     wheels = pack.get("wheels") or {}
     wname = _str(wheels.get("name") or "Wheels")
@@ -3251,6 +3530,21 @@ def apply_setup_bom(
             track_count=track_c,
         )
         colour_ctx = _str(context.get("colour") or context.get("color") or "")
+        rail_mat = _str(context.get("trackRailMaterial") or context.get("railMaterial") or "")
+        track_rail = derive_sliding_track_rail_cuts(
+            setup,
+            width_mm=width_mm,
+            track_count=track_c,
+            colour=colour_ctx,
+            rail_material=rail_mat or None,
+        )
+        meeting_pack = derive_sliding_meeting_cuts(
+            setup,
+            height_mm=height_mm,
+            glass_count=shutters,
+            opening=_str(opening) or None,
+            colour=colour_ctx,
+        )
         shutter_frames = derive_sliding_shutter_frame_cuts(
             setup,
             width_mm=width_mm,
@@ -3319,7 +3613,7 @@ def apply_setup_bom(
         costing = (setup.get("casement") or {}).get("costing") or {}
     elif isinstance(setup.get("sliding"), Mapping):
         costing = (setup.get("sliding") or {}).get("costing") or {}
-    return {
+    out: dict[str, Any] = {
         "members": members,
         "hardware": hw,
         "leafWeightKg": leaf_kg,
@@ -3335,3 +3629,7 @@ def apply_setup_bom(
         "costing": costing if isinstance(costing, Mapping) else {},
         "costEngine": (costing.get("costEngine") if isinstance(costing, Mapping) else None) or "stub",
     }
+    if stype == "sliding":
+        out["trackRail"] = locals().get("track_rail") or {"lines": [], "rails": 0}
+        out["meeting"] = locals().get("meeting_pack") or {"lines": []}
+    return out

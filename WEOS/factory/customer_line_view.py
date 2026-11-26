@@ -374,7 +374,7 @@ def public_product_row(index: int, line: Mapping[str, Any] | None) -> dict[str, 
     rate_label = ""
     rate_n = _money(rate)
     if rate_n is not None and rate_n > 0:
-        rate_label = f"{rate_n:,.2f}" + (f" / {sale_unit}" if sale_unit else "")
+        rate_label = f"{rate_n:,.1f}" + (f" / {sale_unit}" if sale_unit else "")
     addons = line_addons_for_display(line)
     return {
         "serial": serial or design_serial_label(index, None),

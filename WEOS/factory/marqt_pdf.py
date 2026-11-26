@@ -1538,7 +1538,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         if line_cancelled:
             c.setFillColorRGB(0.72, 0.12, 0.12)
         c.drawRightString(col_qty, y, str(qty))
-        rate_str = f"{float(rate):,.2f}" if rate is not None else "—"
+        rate_str = f"{float(rate):,.1f}" if rate is not None else "—"
         c.drawRightString(col_rate, y, rate_str)
         set_font(c, 8, bold=True)
         amt_str = f"{float(amount):,.2f}"

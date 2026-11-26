@@ -59,6 +59,28 @@ def main() -> None:
     long = pack_std_length_wastage([1.5], std_m=3.0, reuse=True)
     _ok(long["wastageMetres"] == 0 and long["remnantsOut"], f"1.5m leftover = remnant {long}")
 
+    # ── Purchase basis (rules: balance value in purchase) ─────────────
+    from WEOS.factory.design_cost import nest_cuts_by_section
+
+    nest = nest_cuts_by_section(
+        [
+            {"lengthM": 3.048, "key": "ov", "stdM": 4.8768, "aluminiumPerM": 100, "coatingPerM": 10},
+            {"lengthM": 3.048, "key": "ov", "stdM": 4.8768, "aluminiumPerM": 100, "coatingPerM": 10},
+        ],
+        reuse=True,
+        default_std_m=4.8768,
+        coat_full_bars=True,
+    )
+    _ok(
+        abs(nest["aluminiumCost"] - nest["purchasedMetres"] * 100) < 0.02,
+        f"Al charges purchased bars {nest['aluminiumCost']} vs purch {nest['purchasedMetres']}",
+    )
+    _ok(nest["wastageCost"] == 0, f"no double-count wastage money {nest['wastageCost']}")
+    _ok(
+        abs(nest["coatingCost"] - nest["purchasedMetres"] * 10) < 0.02,
+        f"coat full bars {nest['coatingCost']}",
+    )
+
     # ── Interlock assignment ─────────────────────────────────────────
     a2 = assign_sliding_interlocks(glass_count=2)
     _ok(a2["slim"] == 1 and a2["renf"] == 1 and a2["glassReducerPcs"] == 2, f"2 glass {a2}")
@@ -206,6 +228,42 @@ def main() -> None:
     _ok(sc_mesh.get("shutterGlassWeightKg", 0) > 0, f"design shutter weight {sc_mesh.get('shutterGlassWeightKg')}")
     hw_names = " ".join(str(h.get("name") or "").lower() for h in (sc_mesh.get("hardware") or []))
     _ok("mesh" in hw_names or "wheel" in hw_names, f"sliding HW includes wheels {hw_names[:200]}")
+    hw_by = {str(h.get("name") or "").lower(): h for h in (sc_mesh.get("hardware") or [])}
+    # Rules: 2 glass + mesh → 6 caps, 3 locks, 3 guides, 4 anti-dust, 6 wheels
+    from WEOS.factory.product_setup import anti_dust_pad_qty
+
+    _ok(anti_dust_pad_qty(glass_count=2, mesh_count=1) == 4, "anti-dust 2G+1M=4")
+    def _hw_qty(*needles: str, exclude: tuple[str, ...] = ()) -> float:
+        total = 0.0
+        for h in sc_mesh.get("hardware") or []:
+            nm = str(h.get("name") or "").lower()
+            if any(x in nm for x in exclude):
+                continue
+            if all(n in nm for n in needles):
+                total += float(h.get("qty") or 0)
+        return total
+
+    lock_q = _hw_qty("lock", "handle") or _hw_qty("lock / handle")
+    if lock_q <= 0:
+        lock_q = sum(
+            float(h.get("qty") or 0)
+            for h in (sc_mesh.get("hardware") or [])
+            if "lock / handle" in str(h.get("name") or "").lower()
+            or (
+                "lock (" in str(h.get("name") or "").lower()
+                and "guide" not in str(h.get("name") or "").lower()
+                and "interlock" not in str(h.get("name") or "").lower()
+            )
+        )
+    cap_q = _hw_qty("interlock", "cap")
+    guide_q = _hw_qty("lock", "guide")
+    dust_q = _hw_qty("dust")
+    _ok(lock_q == 3, f"locks/handles 2G+1M → 3 got {lock_q}")
+    _ok(cap_q == 6, f"interlock caps 2G+1M → 6 got {cap_q}")
+    _ok(guide_q == 3, f"lock guides 2G+1M → 3 got {guide_q}")
+    _ok(dust_q == 4, f"anti-dust 2G+1M → 4 got {dust_q}")
+    uses_rail = {str(p.get("use")) for p in (sc_mesh.get("profiles") or [])}
+    _ok("track_rail" in uses_rail, f"track rail separate from outer track {uses_rail}")
 
     # ── Casement: top hung stay-only + side swing stay XOR hinge ─────
     case_mix = compute_casement_design_cost(

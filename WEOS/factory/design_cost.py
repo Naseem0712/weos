@@ -504,10 +504,18 @@ def nest_cuts_by_section(
     charge_full_when_split: bool = False,
     wastage_threshold_m: float = WASTAGE_THRESHOLD_M,
     default_std_m: float = 3.0,
+    coat_full_bars: bool = True,
 ) -> dict[str, Any]:
     """Nest cuts grouped by section key; share remnant pool across groups/lines.
 
     Each cut spec: ``{lengthM, key, stdM?, aluminiumPerM, coatingPerM, ...}``.
+
+    Costing follows WEOS window rules:
+    - Aluminium charges **purchased** bar metres (balance/offcut value included).
+    - Powder coating uses full stock length when ``coat_full_bars`` (default),
+      otherwise cut (net) length only.
+    - Monetary wastage is not added again on top of purchased Al (balance already
+      sits inside purchase); scrap metres stay in the wastage report.
     """
     pool: MutableMapping[str, list[float]] = remnant_pool if remnant_pool is not None else {}
     by_key: dict[str, list[Mapping[str, Any]]] = {}
@@ -526,6 +534,8 @@ def nest_cuts_by_section(
     total_coat = 0.0
     total_net_m = 0.0
     total_purch_m = 0.0
+    total_balance_m = 0.0
+    total_balance_cost = 0.0
     remnants_created: list[dict[str, Any]] = []
 
     for key, specs in by_key.items():
@@ -574,40 +584,60 @@ def nest_cuts_by_section(
             })
         waste_m = _f(pack.get("wastageMetres"))
         net_m = _f(pack.get("netMetres"))
-        rate_combo = al_m + coat_m
-        waste_cost = waste_m * rate_combo
-        al_cost = net_m * al_m
-        coat_cost = net_m * coat_m
+        purch_m = _f(pack.get("purchasedMetres"))
+        remnant_m = _f(pack.get("remnantMetres"))
+        balance_m = max(purch_m - net_m, 0.0)  # scrap + reusable offcut in purchase
+        # Rules: balance value included in purchase value.
+        al_cost = purch_m * al_m
+        coat_basis_m = purch_m if coat_full_bars else net_m
+        coat_cost = coat_basis_m * coat_m
+        # Informational scrap value only — not added again on top of purchased Al.
+        bal_cost = balance_m * al_m
+        waste_cost = waste_m * al_m
         total_waste_m += waste_m
         total_waste_cost += waste_cost
         total_al += al_cost
         total_coat += coat_cost
         total_net_m += net_m
-        total_purch_m += _f(pack.get("purchasedMetres"))
+        total_purch_m += purch_m
+        total_balance_m += balance_m
+        total_balance_cost += bal_cost
         groups.append({
             "key": key,
             "pack": pack,
             "aluminiumCost": round(al_cost, 2),
             "coatingCost": round(coat_cost, 2),
             "wastageCost": round(waste_cost, 2),
+            "balanceMetres": round(balance_m, 4),
+            "balanceCost": round(bal_cost, 2),
+            "coatBasisMetres": round(coat_basis_m, 4),
+            "coatFullBars": bool(coat_full_bars),
             "aluminiumPerM": round(al_m, 4),
             "coatingPerM": round(coat_m, 4),
+            "bars": int(pack.get("bars") or 0),
+            "sectionName": _str(specs[0].get("sectionName") or specs[0].get("name")) if specs else key,
         })
 
     return {
         "groups": groups,
         "aluminiumCost": round(total_al, 2),
         "coatingCost": round(total_coat, 2),
-        "wastageCost": round(total_waste_cost, 2),
+        # Monetary wastage already inside purchased Al; keep 0 so callers don't double-count.
+        "wastageCost": 0.0,
+        "wastageScrapCost": round(total_waste_cost, 2),
+        "balanceMetres": round(total_balance_m, 4),
+        "balanceCost": round(total_balance_cost, 2),
         "wastageMetres": round(total_waste_m, 4),
         "netMetres": round(total_net_m, 4),
         "purchasedMetres": round(total_purch_m, 4),
+        "coatFullBars": bool(coat_full_bars),
         "remnantsCreated": remnants_created,
         "remnantPool": {k: [round(_f(x), 4) for x in v] for k, v in pool.items()},
         "wastage": {
             "netMetres": round(total_net_m, 4),
             "purchasedMetres": round(total_purch_m, 4),
             "wastageMetres": round(total_waste_m, 4),
+            "balanceMetres": round(total_balance_m, 4),
             "remnantMetres": round(sum(_f(r.get("lengthM")) for r in remnants_created), 4),
             "wastagePercent": round(
                 (total_waste_m / total_purch_m * 100.0) if total_purch_m > 0 else 0.0,
@@ -616,6 +646,8 @@ def nest_cuts_by_section(
             "wastageThresholdM": round(wastage_threshold_m, 4),
             "wastageThresholdFt": round(wastage_threshold_m / 0.3048, 2),
             "reuse": bool(reuse),
+            "coatFullBars": bool(coat_full_bars),
+            "purchaseIncludesBalance": True,
         },
     }
 
@@ -1148,8 +1180,107 @@ def derive_casement_profile_cuts(
     }
 
 
+def _glass_order_area_sft(
+    line: Mapping[str, Any],
+    *,
+    width_mm: float,
+    height_mm: float,
+) -> dict[str, Any]:
+    """Glass order area from pane dims after series deductions (rules book).
+
+    Sliding: N glass panes share opening width; each pane uses insertion/overlap
+    from product glass rules when available. Mesh does not add glass area.
+    Fallback: opening W×H (matches nominal 2-pane = opening area example).
+    """
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    shutters = max(
+        _f(
+            line.get("glassShutters")
+            or opts.get("glassCount")
+            or opts.get("glassShutters")
+            or line.get("shutterCount")
+            or 0
+        ),
+        0.0,
+    )
+    opening_sft = (max(width_mm, 0) * max(height_mm, 0) / 1_000_000.0) * 10.7639
+    if shutters < 1:
+        return {
+            "areaSft": round(opening_sft, 4),
+            "paneCount": 1,
+            "paneWidthMm": round(width_mm, 1),
+            "paneHeightMm": round(height_mm, 1),
+            "basis": "opening",
+        }
+
+    pane_w = max(width_mm, 0.0) / shutters
+    pane_h = max(height_mm, 0.0)
+    glass_rules = None
+    try:
+        from WEOS.factory.quote_item_snapshot import product_id_of
+        from WEOS.factory.product_loader import load_product
+
+        pid = product_id_of(line) if line else None
+        if pid:
+            prod = load_product(pid, strict=False)
+            glass_rules = (prod or {}).get("glass") if isinstance(prod, Mapping) else None
+            if not isinstance(glass_rules, Mapping):
+                eng = (prod or {}).get("engineering") if isinstance(prod, Mapping) else {}
+                glass_rules = eng.get("glass") if isinstance(eng, Mapping) else None
+    except Exception:
+        glass_rules = None
+
+    total_sft = 0.0
+    sized_w = pane_w
+    sized_h = pane_h
+    basis = "pane_share"
+    if isinstance(glass_rules, Mapping):
+        try:
+            from WEOS.factory.glass_sizing import preview_from_profile
+
+            # End shutters: handle side + interlock; middle: interlock both sides.
+            for i in range(int(round(shutters))):
+                left_il = i > 0
+                right_il = i < int(round(shutters)) - 1
+                if int(round(shutters)) == 2:
+                    left_il = i == 1
+                    right_il = i == 0
+                sized = preview_from_profile(
+                    glass_rules,
+                    clear_width_mm=pane_w,
+                    clear_height_mm=pane_h,
+                    interlock_left=left_il,
+                    interlock_right=right_il,
+                    label=f"pane{i + 1}",
+                )
+                total_sft += _f(sized.get("areaSqft"))
+                sized_w = _f(sized.get("glassWidthMm"), pane_w)
+                sized_h = _f(sized.get("glassHeightMm"), pane_h)
+            if total_sft > 0:
+                basis = "pane_after_deductions"
+                return {
+                    "areaSft": round(total_sft, 4),
+                    "paneCount": int(round(shutters)),
+                    "paneWidthMm": round(sized_w, 1),
+                    "paneHeightMm": round(sized_h, 1),
+                    "basis": basis,
+                }
+        except Exception:
+            pass
+
+    # Without insertion rules: equal panes sum to opening area (rules worked example).
+    return {
+        "areaSft": round(opening_sft, 4),
+        "paneCount": int(round(shutters)),
+        "paneWidthMm": round(pane_w, 1),
+        "paneHeightMm": round(pane_h, 1),
+        "basis": basis,
+    }
+
+
 def _glass_cost(line: Mapping[str, Any], *, width_mm: float, height_mm: float, qty: float) -> dict[str, Any]:
-    area_sft = (max(width_mm, 0) * max(height_mm, 0) / 1_000_000.0) * 10.7639
+    order = _glass_order_area_sft(line, width_mm=width_mm, height_mm=height_mm)
+    area_sft = _f(order.get("areaSft"))
     rate = 0.0
     name = _str(line.get("glass") or line.get("glassName") or "Glass")
     breakdown = None
@@ -1225,9 +1356,15 @@ def _glass_cost(line: Mapping[str, Any], *, width_mm: float, height_mm: float, q
         "name": name,
         "packName": pack_name or name,
         "areaSft": round(area_sft * q, 3),
-        "widthMm": round(width_mm, 1),
-        "heightMm": round(height_mm, 1),
-        "sizeLabel": f"{round(width_mm):g}×{round(height_mm):g} mm",
+        "widthMm": round(_f(order.get("paneWidthMm"), width_mm), 1),
+        "heightMm": round(_f(order.get("paneHeightMm"), height_mm), 1),
+        "sizeLabel": (
+            f"{round(_f(order.get('paneWidthMm'), width_mm)):g}×"
+            f"{round(_f(order.get('paneHeightMm'), height_mm)):g} mm"
+            f" × {int(order.get('paneCount') or 1)} pane(s)"
+        ),
+        "paneCount": order.get("paneCount"),
+        "areaBasis": order.get("basis"),
         "qty": q,
         "thicknessMm": _f(thickness_mm) if thickness_mm is not None else None,
         "colour": glass_colour or None,
@@ -1311,19 +1448,23 @@ def compute_casement_design_cost(
     if isinstance(line.get("_remnantPool"), dict):
         remnant_pool = {str(k): list(v) for k, v in line["_remnantPool"].items() if isinstance(v, list)}
 
+    coat_full = True
+    if costing.get("coatFullBars") is False or costing.get("coatCutsOnly") is True:
+        coat_full = False
     nest = nest_cuts_by_section(
         cuts.get("cutSpecs") or [],
         remnant_pool=remnant_pool,
         reuse=reuse,
         charge_full_when_split=charge_full,
         default_std_m=std_m,
+        coat_full_bars=coat_full,
     )
     waste = nest.get("wastage") or {}
     al_amt = _f(nest.get("aluminiumCost"))
     coat_amt = _f(nest.get("coatingCost"))
-    wastage_cost = _f(nest.get("wastageCost"))
+    wastage_cost = _f(nest.get("wastageCost"))  # 0 — balance already in purchased Al
     profile_net = al_amt + coat_amt
-    profile_purchased = profile_net + wastage_cost
+    profile_purchased = profile_net  # purchase basis (Al + coat)
 
     # Hardware from pack — only operable doors (side-swing ≠ top-hung).
     # Fixed-only layouts must not invent a phantom leaf via ``or 1``.
@@ -1404,9 +1545,9 @@ def compute_casement_design_cost(
     if costing.get("soldPerRft"):
         sale_unit = "rft"
         peri_ft = (2.0 * (W + H) / 304.8) or 1.0
-        suggested_rate = round(unit_total / peri_ft, 2) if peri_ft else None
+        suggested_rate = round(unit_total / peri_ft, 1) if peri_ft else None
     elif area_sft > 0:
-        suggested_rate = round(unit_total / area_sft, 2)
+        suggested_rate = round(unit_total / area_sft, 1)
 
     engine = "live" if (profile_net > 0 or hw_amt > 0 or glass_amt > 0 or mesh_amt > 0 or labour_amt > 0 or install_amt > 0) else "stub"
     try:
@@ -1454,6 +1595,14 @@ def compute_casement_design_cost(
         "glass": glass,
         "mesh": mesh_pack.get("mesh"),
         "meshLines": mesh_pack.get("meshLines") or [],
+        "suggestedSellRate": suggested_rate,
+        "costPerUnit": suggested_rate,
+        "saleUnit": sale_unit,
+        "areaSft": round(area_sft, 3),
+        "nestGroups": nest.get("groups") or [],
+        "purchasedMetres": nest.get("purchasedMetres"),
+        "balanceMetres": nest.get("balanceMetres"),
+        "balanceCost": nest.get("balanceCost"),
         "counts": counts,
         "sideSwingOpenHw": _str(
             ((norm.get("casement") or {}).get("hardwarePack") or {}).get("openHardware") or "hinges"
@@ -1466,14 +1615,12 @@ def compute_casement_design_cost(
             if isinstance(((norm.get("casement") or {}).get("hardwarePack") or {}).get("topHungStay"), Mapping)
             else None
         ),
-        "suggestedSellRate": suggested_rate,
-        "saleUnit": sale_unit,
-        "areaSft": round(area_sft, 3),
         "breakdown": {
             "aluminium": round(al_amt, 2),
             "coating": round(coat_amt, 2),
             "profiles": round(profile_net, 2),
             "wastage": round(wastage_cost, 2),
+            "balance": round(_f(nest.get("balanceCost")), 2),
             "hardware": round(hw_amt, 2),
             "glass": round(glass_amt, 2),
             "mesh": round(mesh_amt, 2),
@@ -1890,6 +2037,10 @@ def compute_sliding_design_cost(
                 "pcsHorizontal": s.get("pcsHorizontal"),
             })
 
+    # Separate track rail (rules: keep rail apart from outer aluminium track)
+    rail_pack = bom.get("trackRail") if isinstance(bom.get("trackRail"), Mapping) else {}
+    _append_bom_profile_lines(rail_pack.get("lines") or [], default_use="track_rail")
+
     # Shutter frames from Excel V/H / V2 H2
     shutter_pack = bom.get("shutterFrames") if isinstance(bom.get("shutterFrames"), Mapping) else {}
     _append_bom_profile_lines(shutter_pack.get("lines") or [], default_use="shutter")
@@ -1897,6 +2048,10 @@ def compute_sliding_design_cost(
     # Interlocks (slim / renf / mesh-slim) + glass reducer 1/interlock
     inter_pack = bom.get("interlocks") if isinstance(bom.get("interlocks"), Mapping) else {}
     _append_bom_profile_lines(inter_pack.get("lines") or [], default_use="interlock")
+
+    # 4-glass centre meeting vertical
+    meeting_pack = bom.get("meeting") if isinstance(bom.get("meeting"), Mapping) else {}
+    _append_bom_profile_lines(meeting_pack.get("lines") or [], default_use="meeting")
 
     # Member cuts (legacy wFactor/hFactor) — metres already billed
     for m in bom.get("members") or []:
@@ -2059,17 +2214,21 @@ def compute_sliding_design_cost(
         if _f(pl.get("amount")) <= 0:
             pl["amount"] = round(_f(pl.get("aluminiumAmount")) + _f(pl.get("coatingAmount")), 2)
 
+    coat_full = True
+    if costing.get("coatFullBars") is False or costing.get("coatCutsOnly") is True:
+        coat_full = False
     nest = nest_cuts_by_section(
         cut_specs,
         remnant_pool=remnant_pool,
         reuse=reuse,
         default_std_m=5.85,
+        coat_full_bars=coat_full,
     )
     al_amt = _f(nest.get("aluminiumCost"))
     coat_amt = _f(nest.get("coatingCost"))
-    wastage_cost = _f(nest.get("wastageCost"))
+    wastage_cost = _f(nest.get("wastageCost"))  # 0 — balance already in purchased Al
     profile_net = al_amt + coat_amt
-    profile_amt = profile_net + wastage_cost
+    profile_amt = profile_net
     waste = nest.get("wastage") or {}
 
     material_sub = profile_amt + hw_amt + glass_amt + mesh_amt
@@ -2078,7 +2237,7 @@ def compute_sliding_design_cost(
     profit_amt = cost_before * (profit_pct / 100.0) if profit_pct else 0.0
     unit_total = cost_before + profit_amt
     engine = "live" if (profile_amt > 0 or hw_amt > 0 or mesh_amt > 0 or labour_amt > 0 or install_amt > 0) else "stub"
-    suggested = round(unit_total / area_sft, 2) if area_sft > 0 else None
+    suggested = round(unit_total / area_sft, 1) if area_sft > 0 else None
     try:
         coat_mult = coating_multiplier_for_colour(colour)
         finish_family = finish_family_for_colour(colour)
@@ -2129,13 +2288,19 @@ def compute_sliding_design_cost(
         "selectedWheel": wheel_meta.get("selectedWheel"),
         "selectedMeshWheel": wheel_meta.get("selectedMeshWheel"),
         "suggestedSellRate": suggested,
+        "costPerUnit": suggested,  # actual cost ₹ / sale unit (sft) before cart profit %
         "saleUnit": "sqft",
         "areaSft": round(area_sft, 3),
+        "nestGroups": nest.get("groups") or [],
+        "purchasedMetres": nest.get("purchasedMetres"),
+        "balanceMetres": nest.get("balanceMetres"),
+        "balanceCost": nest.get("balanceCost"),
         "breakdown": {
             "aluminium": round(al_amt, 2),
             "coating": round(coat_amt, 2),
             "profiles": round(profile_net, 2),
             "wastage": round(wastage_cost, 2),
+            "balance": round(_f(nest.get("balanceCost")), 2),
             "hardware": round(hw_amt, 2),
             "glass": round(glass_amt, 2),
             "mesh": round(mesh_amt, 2),

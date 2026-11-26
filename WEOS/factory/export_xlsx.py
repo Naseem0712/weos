@@ -272,7 +272,7 @@ def _line_rate(line: Mapping[str, Any]) -> float | None:
         for key in ("sellingRate", "sellingPerUnit", "customerRate", "unitRate"):
             n = _num(src.get(key))
             if n is not None:
-                return n
+                return round(float(n), 1)
     amt = None
     try:
         from WEOS.factory.customer_line_view import customer_line_amount
@@ -284,7 +284,7 @@ def _line_rate(line: Mapping[str, Any]) -> float | None:
     uq = _unit_qty(line, qty=qty, rate=None, amount=None)
     if amt is not None and qty and uq:
         try:
-            return round(float(amt) / (qty * uq), 2)
+            return round(float(amt) / (qty * uq), 1)
         except ZeroDivisionError:
             return None
     return None
@@ -564,7 +564,7 @@ def export_quote_xlsx(
             ws.cell(r, 4, specs).alignment = st["wrap"]
             qcell = ws.cell(r, 5, qty)
             _qty_fmt(qcell)
-            rcell = ws.cell(r, 6, round(float(rate), 2) if rate is not None else None)
+            rcell = ws.cell(r, 6, round(float(rate), 1) if rate is not None else None)
             _money_fmt(rcell)
             acell = ws.cell(r, 7, f"=IF(OR(E{r}=\"\",F{r}=\"\",K{r}=\"\"),\"\",ROUND(E{r}*K{r}*F{r},2))")
             _money_fmt(acell)
