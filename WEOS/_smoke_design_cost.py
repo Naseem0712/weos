@@ -585,6 +585,62 @@ def main() -> None:
     _ok("outer_frame" in uses40 and "door" in uses40, f"40mm case uses {uses40}")
     _ok(any("outer" in n for n in names40) and any("shutter" in n or "door" in n for n in names40), f"40mm case names {names40}")
 
+    # Fixed lite must cost LESS than Door (no door Al/HW); hinge qty applies
+    def _case_role(role: str, hinge_qty: int = 4):
+        return compute_casement_design_cost(
+            {
+                "width": 1536,
+                "height": 1500,
+                "qty": 1,
+                "glass": "8mm_toughened",
+                "colour": "white",
+                "hingeQty": hinge_qty,
+                "sideSwingOpenHw": "hinges",
+                "casementLayout": {
+                    "bands": [{
+                        "heightMm": 1500,
+                        "panels": [
+                            {"role": "openable", "widthMm": 512},
+                            {"role": "openable", "widthMm": 512},
+                            {"role": role, "widthMm": 512},
+                        ],
+                    }]
+                },
+            },
+            product=p40c,
+            setup=p40c.get("setup"),
+        )
+
+    c_fix = _case_role("fix")
+    c_door = _case_role("door")
+    _ok(
+        float(c_door.get("total") or 0) > float(c_fix.get("total") or 0),
+        f"door > fixed total {c_door.get('total')} vs {c_fix.get('total')}",
+    )
+    _ok(
+        float((c_door.get("breakdown") or {}).get("hardware") or 0)
+        > float((c_fix.get("breakdown") or {}).get("hardware") or 0),
+        "door HW > fixed HW",
+    )
+    clip_names = {
+        str(p.get("name") or "").lower()
+        for p in (c_fix.get("profiles") or [])
+        if str(p.get("use")) == "glass_clip"
+    }
+    _ok(
+        not any("shutter" in n or "no need" in n for n in clip_names),
+        f"fixed clips not shutter {clip_names}",
+    )
+    hw2 = _case_role("door", 2)
+    hw6 = _case_role("door", 6)
+    def _hinge_qty(pack):
+        for h in pack.get("hardware") or []:
+            nm = str(h.get("name") or "").lower()
+            if "stander" in nm or "standerd" in nm or "hinge" in nm:
+                return float(h.get("qty") or 0)
+        return 0.0
+    _ok(_hinge_qty(hw6) > _hinge_qty(hw2), f"hinge qty 6>2 {_hinge_qty(hw6)} vs {_hinge_qty(hw2)}")
+
     # ── Series/section IDs + clear roles + remnant series isolation ──
     from WEOS.factory.section_catalogue import (
         CANONICAL_SERIES_IDS,

@@ -433,6 +433,18 @@ def _setup_section_from_row(sec: Mapping[str, Any]) -> dict[str, Any]:
     rate_unit = str(sec.get("rateUnit") or "kg").lower()
     if rate_unit not in ("kg", "rft", "rmt", "pc"):
         rate_unit = "kg"
+    # Glass clips are light extrusions; Excel sometimes tags ₹/rft which makes
+    # Fixed lites cost more than Door shutters. Prefer kg×weight (default ₹450/kg).
+    role = str(sec.get("role") or "").strip().lower()
+    wt = sec.get("weightKgPerMtr")
+    try:
+        wt_f = float(wt) if wt is not None else 0.0
+    except (TypeError, ValueError):
+        wt_f = 0.0
+    if role == "clip" and wt_f > 0 and rate_unit in ("rft", "ft", "rmt", "m"):
+        rate_unit = "kg"
+        if rate is None or float(rate or 0) < 300:
+            rate = 450.0
     # Re-parse use text when pcs missing (legacy imports)
     use_raw = sec.get("use") or sec.get("usageLabel") or ""
     parsed = parse_use_bom_counts(use_raw, section_name=str(sec.get("name") or ""))
@@ -1252,6 +1264,29 @@ def _build_casement_setup(series: Mapping[str, Any], hw_items: Sequence[Mapping[
                 return s
         return None
 
+    def find_clip(*needles: str) -> Mapping[str, Any] | None:
+        """True glass-clip rows only — never 'Shutter SG (no Need Clip)'."""
+        for s in sections:
+            nl = (s.get("name") or "").lower()
+            role = _section_role(s)
+            if role not in ("clip", "other", ""):
+                continue
+            if "shutter" in nl or "door" in nl or "no need" in nl:
+                continue
+            if "clip" not in nl and role != "clip":
+                continue
+            if needles and not all(n in nl for n in needles):
+                continue
+            return s
+        # Role-only fallback (catalogue id …__clip_sg)
+        for s in sections:
+            if _section_role(s) == "clip":
+                nl = (s.get("name") or "").lower()
+                if needles and not all(n in nl for n in needles):
+                    continue
+                return s
+        return None
+
     outer = find("outer", "frame") or find("outer") or find_role("outer_frame")
     outer_grill = find("grill")
     mull_slim = find("mullion", "slim") or find("mullion") or find_role("mullion")
@@ -1268,8 +1303,9 @@ def _build_casement_setup(series: Mapping[str, Any], hw_items: Sequence[Mapping[
         or find_role("glass_shutter")
     )
     door_big = find("door", "big") or find("shutter") or find_role("door") or find_role("glass_shutter")
-    clip_sg = find("clip", "sg") or find("clip") or find_role("clip")
-    clip_dg = find("clip", "dg")
+    # Prefer role=clip — never bind Fixed lite clips to a shutter/door section
+    clip_sg = find_clip("sg") or find_clip() or find_role("clip")
+    clip_dg = find_clip("dg") or find_clip("dgu")
 
     # Hardware
     def pick(*needles: str, system_has: str | None = None) -> Mapping[str, Any] | None:

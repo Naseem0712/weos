@@ -147,6 +147,7 @@ def generate_job(
     frame_material: str | None = None,
     casement_layout: Mapping[str, Any] | None = None,
     casement_panels: Sequence[Mapping[str, Any]] | None = None,
+    hinges_per_door: int | None = None,
 ) -> JobResult:
     from WEOS.factory.layout_options import resolve_mesh_track, resolve_shutter_config
 
@@ -276,6 +277,7 @@ def generate_job(
         mullion_gap_mm=mullion_gap_mm,
         casement_layout=casement_layout,
         casement_panels=casement_panels,
+        hinges_per_door=hinges_per_door,
     )
     params = geometry_as_engine_dict(product)
     params["track_count"] = float(mesh_res["trackCount"])
@@ -306,6 +308,7 @@ def generate_job(
             mullion_gap_mm=mullion_gap_mm,
             casement_layout=casement_layout,
             casement_panels=casement_panels,
+            hinges_per_door=hinges_per_door,
         )
     except Exception:
         visual_layout = layout

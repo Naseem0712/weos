@@ -353,6 +353,8 @@ class PreviewRequest(BaseModel):
     casementLayout: dict[str, Any] | None = None
     sashOverlapMm: float | None = None
     mullionGapMm: float | None = None
+    hingeQty: int | None = None
+    sideSwingOpenHw: str | None = None
     topShape: str | None = None
     curveRiseMm: float | None = None
 
@@ -1671,6 +1673,12 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
                     frame_material=getattr(body, "frameMaterial", None),
                     casement_layout=getattr(body, "casementLayout", None),
                     casement_panels=getattr(body, "casementPanels", None),
+                    hinges_per_door=(
+                        0
+                        if str(getattr(body, "sideSwingOpenHw", "") or "").lower()
+                        in ("stay", "friction_stay", "friction", "stays")
+                        else getattr(body, "hingeQty", None)
+                    ),
                 )
                 break
             except Exception as exc:  # try next engine id

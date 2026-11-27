@@ -255,6 +255,9 @@ def _section_rate_per_m(sec: Mapping[str, Any] | None) -> float:
     - ``rmt`` / ``m`` → rate as ₹/m
     - ``rft`` / ``ft`` → rate / 0.3048 → ₹/m
     Coating is separate via ``_coating_per_m``.
+
+    Glass clips (``role=clip``): never bill Fixed lites above Door using a
+    mistaken ₹/rft tag — fall back to kg×weight (default ₹450/kg).
     """
     if not isinstance(sec, Mapping):
         return 0.0
@@ -264,6 +267,11 @@ def _section_rate_per_m(sec: Mapping[str, Any] | None) -> float:
     # A missing unit used to default to rft here, which either under-counted or
     # zeroed Al when weight×kg rates were expected.
     unit = _str(s.get("rateUnit") or "kg").lower()
+    role = _str(s.get("role") or "").lower()
+    wt = _section_weight_kg_per_m(s)
+    if role == "clip" and wt > 0 and unit in ("rft", "ft", "feet", "foot", "rmt", "rm", "m", "mt"):
+        kg_rate = rate if rate >= 300 else 450.0
+        return kg_rate * wt
     if rate <= 0:
         return 0.0
     if unit in ("kg", "per_kg", "kgm", "rs_kg", "inr_kg"):
@@ -827,6 +835,23 @@ def _resolve_casement_layout_from_line(
     }
 
 
+def _is_real_clip_section(sec: Mapping[str, Any] | None) -> bool:
+    """True glass-clip card — reject shutter/door rows matched via 'Need Clip' text."""
+    if not isinstance(sec, Mapping):
+        return False
+    nl = _str(sec.get("name")).lower()
+    role = _str(sec.get("role") or "").lower()
+    if role in ("glass_shutter", "door", "outer_track", "outer_frame", "mullion", "interlock"):
+        return False
+    if "shutter" in nl or "door" in nl or "no need" in nl:
+        return False
+    if role == "clip":
+        return True
+    if "clip" in nl:
+        return True
+    return False
+
+
 def _clip_section_from_catalogue(series_id: str | None, *, kind: str) -> dict[str, Any]:
     """Load Clip SG / Clip DG from products/sections/<series>.json when setup is empty."""
     sid = _str(series_id)
@@ -842,7 +867,7 @@ def _clip_section_from_catalogue(series_id: str | None, *, kind: str) -> dict[st
     alt = ("clip", "dgu") if kind != "sg" else ("clip", "single")
     found = None
     for s in doc.get("sections") or []:
-        if not isinstance(s, Mapping):
+        if not isinstance(s, Mapping) or not _is_real_clip_section(s):
             continue
         nl = _str(s.get("name")).lower()
         if all(n in nl for n in needles) or all(n in nl for n in alt):
@@ -850,23 +875,33 @@ def _clip_section_from_catalogue(series_id: str | None, *, kind: str) -> dict[st
             break
     if found is None and kind == "sg":
         for s in doc.get("sections") or []:
-            if isinstance(s, Mapping) and "clip" in _str(s.get("name")).lower():
+            if isinstance(s, Mapping) and _is_real_clip_section(s):
                 found = s
                 break
     if not found:
         return {}
+    rate_unit = _str(found.get("rateUnit") or "kg").lower() or "kg"
+    rate = found.get("rate")
+    # Prefer kg×weight for light clips so Fixed never exceeds Door Al/m
+    if rate_unit in ("rft", "ft") and _f(found.get("weightKgPerMtr")) > 0:
+        rate_unit = "kg"
+        if _f(rate) < 300:
+            rate = 450.0
     return normalize_section({
         "name": found.get("name"),
         "wMm": found.get("widthMm"),
         "hMm": found.get("sectionDepthMm"),
         "wallMm": found.get("wallThicknessMm"),
         "weightKgPerM": found.get("weightKgPerMtr"),
-        "rate": found.get("rate"),
-        "rateUnit": found.get("rateUnit") or "rft",
+        "rate": rate,
+        "rateUnit": rate_unit,
         "coatingCost": found.get("coatingCost"),
         "coatingUnit": found.get("coatingUnit") or "rft",
         "stdLength": found.get("standardLength"),
         "use": found.get("use"),
+        "role": found.get("role") or "clip",
+        "sectionId": found.get("sectionId") or found.get("id"),
+        "seriesId": found.get("seriesId") or sid,
     })
 
 
@@ -897,12 +932,14 @@ def _resolve_casement_clip_section(
         glass.get("sgClip" if active == "sg" else "dgClip"),
         glass.get("sgClip") if active == "sg" else glass.get("dgClip"),
     ):
-        if isinstance(cand, Mapping) and (
+        if isinstance(cand, Mapping) and _is_real_clip_section(cand) and (
             _str(cand.get("name"))
             or _f(cand.get("weightKgPerM")) > 0
             or _f(cand.get("rate")) > 0
         ):
-            return normalize_section(cand)
+            out = normalize_section(cand)
+            out["role"] = out.get("role") or "clip"
+            return out
     return _clip_section_from_catalogue(series_id, kind="sg" if active == "sg" else "dg")
 
 

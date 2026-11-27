@@ -458,7 +458,7 @@ def _build_shutters(
                 nom_x0 if hinge_side == "left" else nom_x1,
                 toward_frame=-1.0 if hinge_side == "left" else 1.0,
             )
-            hinges.extend(_hinge_knuckle_rects(hx, y0, band_h, fw, 3))
+            hinges.extend(_hinge_knuckle_rects(hx, y0, band_h, fw, 3))  # legacy path; banded uses hinges_per_door
 
         depth = depths[i]
         if is_fixed:
@@ -562,6 +562,7 @@ def _build_casement_leaves(
     fixed_set: set[int],
     index_offset: int = 0,
     band_index: int = 0,
+    hinges_per_door: int = 3,
 ) -> tuple[list[ShutterPanel], list[Rect], list[Rect], list[Rect]]:
     """Casement partitions: mullions + sashes that overlap frame/mullion by sash_overlap.
 
@@ -712,7 +713,14 @@ def _build_casement_leaves(
                     cx0 if hinge_side == "left" else cx1,
                     toward_frame=-1.0 if hinge_side == "left" else 1.0,
                 )
-                hinges.extend(_hinge_knuckle_rects(hx, outer.y0, outer.height, fw, 3))
+                # 0 = stay / floor-spring path (no knuckle glyphs)
+                try:
+                    hq = int(hinges_per_door) if hinges_per_door is not None else 3
+                except (TypeError, ValueError):
+                    hq = 3
+                if hq > 0:
+                    hq = max(2, min(8, hq))
+                    hinges.extend(_hinge_knuckle_rects(hx, outer.y0, outer.height, fw, hq))
             open_dir = 1 if handle_side != "left" else -1
             open_seen += 1
 
@@ -761,6 +769,7 @@ def _build_casement_banded(
     handle_level: float,
     handle_length: float | None,
     fixed_set: set[int],
+    hinges_per_door: int = 3,
 ) -> tuple[list[ShutterPanel], list[Rect], list[Rect], list[Rect]]:
     """Stack horizontal casement bands (top→bottom) with horizontal mullions / transoms.
 
@@ -827,6 +836,7 @@ def _build_casement_banded(
             fixed_set=fixed_set,
             index_offset=global_i,
             band_index=bi,
+            hinges_per_door=hinges_per_door,
         )
         all_panels.extend(leaves)
         all_handles.extend(handles)
@@ -1147,6 +1157,7 @@ def compute_two_track_layout(
     mullion_gap_mm: float | None = None,
     casement_layout: Mapping[str, Any] | None = None,
     casement_panels: Sequence[Mapping[str, Any]] | None = None,
+    hinges_per_door: int | None = None,
 ) -> SlidingLayout:
     """Core sliding formulas from profile geometry + optional fix partitions / mesh.
 
@@ -1255,6 +1266,16 @@ def compute_two_track_layout(
         cell_n = casement_cell_count(bands)
         if cell_n > 0:
             g_count = cell_n
+        hq = 3
+        try:
+            hq = int(hinges_per_door) if hinges_per_door is not None else 3
+        except (TypeError, ValueError):
+            hq = 3
+        # 0 = stay path (no glyphs); otherwise clamp 2–8 for BOM/drawing parity
+        if hq > 0:
+            hq = max(2, min(8, hq))
+        else:
+            hq = 0
         shutters, handles, hinges, casement_mullions = _build_casement_banded(
             sliding_area,
             frame_width=fw,
@@ -1266,6 +1287,7 @@ def compute_two_track_layout(
             handle_level=h_level,
             handle_length=handle_length,
             fixed_set=fixed_set,
+            hinges_per_door=hq,
         )
     else:
         shutters, handles, hinges = _build_shutters(

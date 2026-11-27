@@ -4659,7 +4659,14 @@ function updateStickyProfit(cost, sell, hasRate) {
  const c=Number(cost),v=Number(sell);
  panel.classList.remove('profit-loss','profit-low','profit-ok');
  if(!Number.isFinite(c)||c<=0){node.textContent='Cost pending';return;}
- const sale=hasRate&&Number.isFinite(v)?Math.max(0,v):0;
+ // No selling rate yet — never claim "-100% loss" against ₹0 sell.
+ if(!hasRate || !Number.isFinite(v) || v <= 0){
+   const target=c*1.2;
+   panel.classList.add('profit-low');
+   node.textContent='Enter selling rate · cost '+money(c)+' · 20% target '+money(target);
+   return;
+ }
+ const sale=Math.max(0,v);
  const profit=sale-c,shortfall=Math.max(0,c*1.2-sale);
  const percent=c>0?(profit/c*100):0;
  const loss=profit<0;
@@ -7910,7 +7917,8 @@ async function refreshLivePrice() {
   }
   // Respect a deliberately cleared selling-rate field; never borrow an older rate.
   const localSell = lineLiveAmount(Object.assign({}, state.lines[state.selectedLine] || {}, draft));
-  setSellDisplay(money(localSell || 0));
+  const explicitRate0 = draft.sellingRate != null && Number(draft.sellingRate) >= 0 && $('lineSellRate') && $('lineSellRate').value !== '';
+  setSellDisplay(explicitRate0 && localSell > 0 ? money(localSell) : (currencyPrefix() + ' —'));
   try {
     const body = { ...draft, customer: $('cartCustomer').value || null, lookupSavedRate: true };
     const live = await api('/api/quote/live', { method:'POST', body });
@@ -7924,7 +7932,8 @@ async function refreshLivePrice() {
       (live.lineCalc && live.lineCalc.price && live.lineCalc.price.total) ||
       0
     ) || 0;
-    const explicitRate = draft.sellingRate != null;
+    const explicitRate = draft.sellingRate != null && Number(draft.sellingRate) >= 0
+      && $('lineSellRate') && String($('lineSellRate').value).trim() !== '';
     const sellN = explicitRate ? Number(localSell || 0) : 0;
     const design = live.designCost || live.cost || {};
     const perWin = Number(design.perWindowCost != null ? design.perWindowCost : (live.cost && live.cost.unitTotal)) || 0;
@@ -8027,20 +8036,28 @@ async function refreshLivePrice() {
     const m = live.metrics || {};
     $('liveMeta').textContent = `${m.areaSqft||'—'} sft · ${draft.width}×${draft.height} mm · qty ${draft.qty}` +
       (live.rateSource === 'customer_saved' ? ' · rate from customer history' : '');
-    if (live.selling) {
+    if (explicitRate && sellN > 0) {
       setSellDisplay(money(sellN));
+    } else if (!explicitRate && state._lastUnitCost != null && Number(state._lastUnitCost) > 0) {
+      // Suggest sell from live cost/unit × billable — do not show ₹0 as if priced.
+      const billable1 = lineBillableQty(Object.assign({}, draft, { qty: Math.max(1, Number(draft.qty) || 1) }));
+      const suggestAmt = Number(state._lastUnitCost) * Math.max(billable1, 1);
+      setSellDisplay(suggestAmt > 0 ? ('~ ' + money(suggestAmt)) : (currencyPrefix() + ' —'));
+      if ($('liveMargin')) {
+        $('liveMargin').textContent = 'Suggested from cost — enter selling rate (or profit %) to lock price';
+      }
     } else {
-      setSellDisplay(money(sellN));
+      setSellDisplay(currencyPrefix() + ' —');
     }
     // Live price is display-only for the form draft. Quote lines update only via
     // Add to cart / Update (never from preview price refresh).
     updateLiveCartTotal();
-    if (live.margin) {
+    if (live.margin && explicitRate && sellN > 0) {
       $('liveMargin').textContent = `Margin ${money(live.margin.marginAmount)} (${live.margin.marginPercent}%) · bump sell rate to raise profit`;
+    } else if (!explicitRate) {
+      $('liveMargin').textContent = 'Enter selling rate (or profit %) to lock price — cost shown above';
     } else {
-      $('liveMargin').textContent = sellN > 0
-        ? ''
-        : 'Enter selling rate (or set labour ₹/sft + profit % in Series Setup)';
+      $('liveMargin').textContent = '';
     }
   } catch(e) {
     if (requestId !== (state.livePriceRequestId || 0)) return;
@@ -8048,8 +8065,8 @@ async function refreshLivePrice() {
     $('liveCost').textContent = '₹ —';
     if ($('liveCostBreak')) $('liveCostBreak').style.display = 'none';
     if ($('liveCostParts')) $('liveCostParts').style.display = 'none';
-    updateStickyProfit(NaN, localSell, draft.sellingRate != null);
-    setSellDisplay(money(localSell || 0));
+    updateStickyProfit(NaN, localSell, false);
+    setSellDisplay(currencyPrefix() + ' —');
   }
 }
 
@@ -8661,6 +8678,10 @@ async function refreshPreview() {
       trackCount: productHasTracks(selectedProductMeta(), ln, ln.system) ? (ln.trackCount != null ? ln.trackCount : 2) : null,
       casementPanels: (ln.system === 'casement') ? (ln.casementPanels || state.draftCasementPanels || null) : null,
       casementLayout: (ln.system === 'casement') ? (ln.casementLayout || state.draftCasementLayout || null) : null,
+      hingeQty: (ln.system === 'casement')
+        ? (ln.hingeQty != null ? ln.hingeQty : (parseInt(($('lineHingeQty') && $('lineHingeQty').value) || '3', 10) || 3))
+        : null,
+      sideSwingOpenHw: (ln.system === 'casement') ? (ln.sideSwingOpenHw || null) : null,
       sashOverlapMm: ln.sashOverlapMm != null ? ln.sashOverlapMm : (ln.system === 'casement' ? 20 : null),
       mullionGapMm: ln.mullionGapMm != null ? ln.mullionGapMm : (ln.system === 'casement' ? (casementMullionFaceMm(ln) || 60) : null),
       mullionSize: ln.mullionSize || (ln.casementLayout && ln.casementLayout.mullionSize) || null,
@@ -13443,6 +13464,10 @@ function stampSelectedDraftAmount() {
   el.addEventListener('change', () => {
     if (typeof applyHardwareClarityUi === 'function') applyHardwareClarityUi(state._lastHwClarity);
     scheduleLivePrice();
+    // Hinge count must redraw knuckle glyphs on the elevation
+    if (id === 'lineHingeQty' || id === 'sideOpenStay' || id === 'sideOpenHinge') {
+      if (typeof refreshPreview === 'function') refreshPreview();
+    }
   });
 });
 function applyMeshNameVisibility() {
