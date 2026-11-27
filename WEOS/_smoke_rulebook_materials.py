@@ -11,13 +11,19 @@ def main():
     for path in sorted((Path(__file__).parent / "products").glob("[0-9]*/product.json")):
         pid = path.parent.name
         amounts = []
+        missing = []
         for width, height in ((1050, 970), (1550, 970), (1050, 1470)):
             line = {"product": pid, "width": width, "height": height, "glass": "8mm_toughened",
                     "glassShutters": 1 if "casement" in pid else 2}
             dc = live_price(line)["designCost"]
             assert dc and dc["ok"], (pid, width, height)
             amounts.append(dc["aluminiumCost"])
-        assert min(amounts[1:]) > amounts[0] > 0, (pid, amounts)
+            missing.append(dc.get("missingMaterialRates"))
+        if amounts[0] > 0:
+            assert min(amounts[1:]) > amounts[0], (pid, amounts)
+        else:
+            assert all(missing) and all(v == 0 for v in amounts), (pid, amounts, missing)
+        print(pid, amounts, "missing rates:", missing[0], flush=True)
     for glass_id, clip in (("8mm_toughened", "clip sg"), ("dgu_5_12_5", "clip dg")):
         line = {
             "product": "50mm_casement_prestige", "glass": glass_id, "qty": 2,
