@@ -2026,8 +2026,16 @@ textarea{max-width:100%}
                 <div><label class="l">Fold R</label><input id="gtFoldRight" type="number" min="0" value="2" style="width:52px"/></div>
               </div>
               <div class="rt-row">
-                <div><label class="l">W (ft)</label><input id="gtWidthFt" type="number" step="0.01" value="13" style="width:64px"/></div>
-                <div><label class="l">H (ft)</label><input id="gtHeightFt" type="number" step="0.01" value="8" style="width:64px"/></div>
+                <div><label class="l">Unit</label>
+                  <select id="gtSizeUnit" style="width:72px" title="Size input unit (stored as mm)">
+                    <option value="ft" selected>ft</option>
+                    <option value="mm">mm</option>
+                    <option value="in">in</option>
+                    <option value="m">m</option>
+                  </select>
+                </div>
+                <div><label class="l" id="gtWidthLbl">W (ft)</label><input id="gtWidth" type="number" step="any" value="13" style="width:72px"/></div>
+                <div><label class="l" id="gtHeightLbl">H (ft)</label><input id="gtHeight" type="number" step="any" value="8" style="width:72px"/></div>
                 <div><label class="l">Qty</label><input id="gtQty" type="number" min="1" value="1" style="width:48px"/></div>
               </div>
               <div class="rt-row">
@@ -2040,6 +2048,14 @@ textarea{max-width:100%}
               <div class="rt-row" id="gtLouverRow">
                 <div class="grow"><label class="l">Louver / blade</label><select id="gtLouverSec" style="width:100%;min-width:140px"></select></div>
                 <div class="grow"><label class="l">Support rod</label><select id="gtSupportSec" style="width:100%;min-width:120px"></select></div>
+              </div>
+              <div id="gtPatternBlock" style="display:none;margin:.25rem 0;padding:.35rem;border:1px dashed #cbd5e1;border-radius:6px">
+                <div class="row" style="justify-content:space-between;align-items:center;margin:0 0 .25rem">
+                  <label class="l" style="margin:0">Louver pattern (repeat)</label>
+                  <button type="button" class="btn sm" id="gtPatternAdd">+ row</button>
+                </div>
+                <div id="gtPatternRows"></div>
+                <div class="muted" style="font-size:.68rem;margin-top:.2rem">Section + clear gap after each blade; sequence repeats across the leaf.</div>
               </div>
               <div class="rt-row" id="gtGrillRow" style="display:none">
                 <div class="grow"><label class="l">Grill bar</label><select id="gtGrillSec" style="width:100%;min-width:140px"></select></div>
@@ -2055,8 +2071,8 @@ textarea{max-width:100%}
                 <div class="grow"><label class="l">Track round Ø</label><select id="gtTrackBarSec" style="width:100%;min-width:120px"></select></div>
               </div>
               <div class="rt-row" id="gtSlideSplitRow" style="display:none">
-                <div><label class="l">Slide main mm</label><input id="gtSlideMainMm" type="number" step="1" min="0" value="" placeholder="auto" style="width:72px" title="Main sliding leaf clear width (mm). Leave blank to use fold L/R equal split."/></div>
-                <div><label class="l">Swing leaf mm</label><input id="gtSwingLeafMm" type="number" step="1" min="0" value="0" style="width:72px" title="Optional small swing leaf beside sliding"/></div>
+                <div><label class="l" id="gtSlideMainLbl">Slide main</label><input id="gtSlideMain" type="number" step="any" min="0" value="" placeholder="auto" style="width:72px" title="Main sliding leaf width. Leave blank for fold L/R split."/></div>
+                <div><label class="l" id="gtSwingLeafLbl">Swing leaf</label><input id="gtSwingLeaf" type="number" step="any" min="0" value="0" style="width:72px" title="Optional small swing leaf beside sliding"/></div>
                 <div><label class="l">Handle</label>
                   <select id="gtHandleSide" style="width:64px">
                     <option value="R" selected>Right</option>
@@ -2065,23 +2081,24 @@ textarea{max-width:100%}
                 </div>
               </div>
               <div class="rt-row">
-                <div><label class="l">Side wall mm</label><input id="gtSideWallMm" type="number" step="1" min="50" value="230" style="width:64px" title="Brick/concrete side wall width (both sides). Walls drawn H+100."/></div>
+                <div><label class="l" id="gtSideWallLbl">Side wall</label><input id="gtSideWall" type="number" step="any" min="0" value="0.755" style="width:64px" title="Brick/concrete side wall width (both sides). Walls drawn H+100. Default ~230 mm."/></div>
                 <div><label class="l">Mid pillar</label>
                   <select id="gtMidPillarEn" style="width:64px">
                     <option value="0" selected>Off</option>
                     <option value="1">On</option>
                   </select>
                 </div>
-                <div><label class="l">Pillar mm</label><input id="gtMidPillarMm" type="number" step="1" min="50" value="230" style="width:64px"/></div>
+                <div><label class="l" id="gtMidPillarLbl">Pillar</label><input id="gtMidPillar" type="number" step="any" min="0" value="0.755" style="width:64px"/></div>
               </div>
               <div class="rt-row">
                 <div><label class="l">Gap mode</label>
                   <select id="gtGapMode" style="width:110px">
                     <option value="fixed_gap" selected>Clear gap</option>
                     <option value="equal_spacing">Equal spacing</option>
+                    <option value="pattern">Pattern</option>
                   </select>
                 </div>
-                <div><label class="l">Clear gap mm</label><input id="gtGap" type="number" step="1" value="25" style="width:64px"/></div>
+                <div><label class="l" id="gtGapLbl">Clear gap</label><input id="gtGap" type="number" step="any" value="0.082" style="width:64px" title="Default ~25 mm in feet"/></div>
                 <div><label class="l">Blades</label><input id="gtBladeCount" type="number" min="1" step="1" value="" style="width:52px;background:#f1f5f9" title="Computed for clear gap; editable for equal spacing"/></div>
               </div>
               <div class="rt-row">
@@ -12353,22 +12370,107 @@ async function ensureGateSectionOptions() {
     return [];
   }
 }
+function gateSizeUnit() {
+  return (($('gtSizeUnit') && $('gtSizeUnit').value) || 'ft').toLowerCase();
+}
+function gateToMm(v, unit) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return NaN;
+  const u = (unit || gateSizeUnit()).toLowerCase();
+  if (u === 'mm') return n;
+  if (u === 'in' || u === 'inch' || u === 'inches') return n * 25.4;
+  if (u === 'm' || u === 'meter' || u === 'metre') return n * 1000;
+  return n * 304.8; // ft
+}
+function gateFromMm(mm, unit) {
+  const n = Number(mm);
+  if (!Number.isFinite(n)) return '';
+  const u = (unit || gateSizeUnit()).toLowerCase();
+  if (u === 'mm') return Math.round(n * 100) / 100;
+  if (u === 'in' || u === 'inch' || u === 'inches') return Math.round((n / 25.4) * 1000) / 1000;
+  if (u === 'm' || u === 'meter' || u === 'metre') return Math.round((n / 1000) * 10000) / 10000;
+  return Math.round((n / 304.8) * 1000) / 1000;
+}
+function syncGateUnitLabels() {
+  const u = gateSizeUnit();
+  const tag = u === 'mm' ? 'mm' : (u === 'in' ? 'in' : (u === 'm' ? 'm' : 'ft'));
+  [['gtWidthLbl','W'],['gtHeightLbl','H'],['gtGapLbl','Clear gap'],['gtSideWallLbl','Side wall'],['gtMidPillarLbl','Pillar'],['gtSlideMainLbl','Slide main'],['gtSwingLeafLbl','Swing leaf']].forEach(([id, base]) => {
+    if ($(id)) $(id).textContent = base + ' (' + tag + ')';
+  });
+  document.querySelectorAll('#gtPatternRows [data-gap-lbl]').forEach(el => { el.textContent = 'Gap (' + tag + ')'; });
+}
+function gatePatternRows() {
+  const host = $('gtPatternRows');
+  if (!host) return [];
+  return Array.from(host.querySelectorAll('[data-pattern-row]')).map(row => {
+    const sec = row.querySelector('[data-pat-sec]');
+    const gap = row.querySelector('[data-pat-gap]');
+    return {
+      sectionId: (sec && sec.value) || '',
+      gapAfterMm: gateToMm(gap && gap.value, gateSizeUnit()),
+    };
+  }).filter(r => r.sectionId);
+}
+function addGatePatternRow(prefSec, prefGapDisp) {
+  const host = $('gtPatternRows');
+  if (!host) return;
+  const secs = (state._gateSecs || []).filter(s => String(s.material || '').toLowerCase().startsWith('al'));
+  const opts = (secs.length ? secs : (state._gateSecs || [])).map(s => {
+    const id = s.sectionId || s.id;
+    const label = (s.name || id) + (s.weightKgPerM != null ? ` · ${s.weightKgPerM} kg/m` : '');
+    return `<option value="${id}">${label}</option>`;
+  }).join('');
+  const row = document.createElement('div');
+  row.className = 'rt-row';
+  row.setAttribute('data-pattern-row', '1');
+  row.innerHTML = `<div class="grow"><label class="l">Section</label><select data-pat-sec style="width:100%;min-width:140px">${opts}</select></div>`
+    + `<div><label class="l" data-gap-lbl>Gap</label><input data-pat-gap type="number" step="any" value="${prefGapDisp != null ? prefGapDisp : gateFromMm(30)}" style="width:64px"/></div>`
+    + `<div style="align-self:end"><button type="button" class="btn sm sec" data-pat-del>×</button></div>`;
+  host.appendChild(row);
+  if (prefSec) {
+    const sel = row.querySelector('[data-pat-sec]');
+    if (sel) sel.value = prefSec;
+  }
+  const del = row.querySelector('[data-pat-del]');
+  if (del) del.onclick = () => { row.remove(); if (state.gateMode) gateCalc(); };
+  row.querySelectorAll('select,input').forEach(el => {
+    el.addEventListener('change', () => { if (state.gateMode) gateCalc(); });
+  });
+  syncGateUnitLabels();
+}
+function ensureGatePatternDefaults() {
+  const host = $('gtPatternRows');
+  if (!host || host.children.length) return;
+  const al = (state._gateSecs || []).filter(s => String(s.material || '').toLowerCase().startsWith('al'));
+  const pick = (w, h) => {
+    const hit = al.find(s => Math.abs(Number(s.widthMm) - w) < 0.8 && Math.abs(Number(s.heightMm) - h) < 0.8);
+    return hit ? hit.sectionId : (al[0] && al[0].sectionId);
+  };
+  addGatePatternRow(pick(25, 25), gateFromMm(30));
+  addGatePatternRow(pick(50, 25) || pick(50, 50), gateFromMm(50));
+  addGatePatternRow(pick(100, 25) || pick(100, 50), gateFromMm(25));
+}
 function syncGateUiRows() {
   const bay = ($('gtBayType') && $('gtBayType').value) || '';
   const grill = bay === 'fixed_grill';
   const sliding = bay.indexOf('sliding') >= 0;
   const louverish = !grill;
-  const equal = (($('gtGapMode') && $('gtGapMode').value) || '') === 'equal_spacing';
+  const gapMode = (($('gtGapMode') && $('gtGapMode').value) || '');
+  const equal = gapMode === 'equal_spacing';
+  const pattern = gapMode === 'pattern';
   if ($('gtGrillRow')) $('gtGrillRow').style.display = grill ? '' : 'none';
   if ($('gtLouverRow')) $('gtLouverRow').style.display = louverish ? '' : 'none';
+  if ($('gtPatternBlock')) $('gtPatternBlock').style.display = (louverish && pattern) ? '' : 'none';
+  if (louverish && pattern) ensureGatePatternDefaults();
   if ($('gtTrackRow')) $('gtTrackRow').style.display = sliding ? '' : 'none';
   if ($('gtSlideSplitRow')) $('gtSlideSplitRow').style.display = sliding ? '' : 'none';
-  if ($('gtMidPillarMm')) $('gtMidPillarMm').disabled = (($('gtMidPillarEn') && $('gtMidPillarEn').value) || '0') !== '1';
-  if ($('gtGap')) $('gtGap').disabled = equal;
+  if ($('gtMidPillar')) $('gtMidPillar').disabled = (($('gtMidPillarEn') && $('gtMidPillarEn').value) || '0') !== '1';
+  if ($('gtGap')) $('gtGap').disabled = equal || pattern;
   if ($('gtBladeCount')) {
     $('gtBladeCount').readOnly = !equal;
     $('gtBladeCount').style.background = equal ? '#fff' : '#f1f5f9';
   }
+  syncGateUnitLabels();
 }
 function gateCfgFromUi() {
   const n = (id, d) => {
@@ -12382,21 +12484,33 @@ function gateCfgFromUi() {
   let trackDia = 20;
   const m = /round[_ ]?(\d+)/i.exec(trackBarId) || /Ø(\d+)/i.exec(($('gtTrackBarSec') && $('gtTrackBarSec').selectedOptions[0] && $('gtTrackBarSec').selectedOptions[0].text) || '');
   if (m) trackDia = parseFloat(m[1]) || 20;
-  const gapMode = s('gtGapMode') || 'fixed_gap';
-  const gapMm = n('gtGap', 25);
+  const gapModeRaw = s('gtGapMode') || 'fixed_gap';
+  const gapMode = gapModeRaw === 'pattern' ? 'fixed_gap' : gapModeRaw;
+  const unit = gateSizeUnit();
+  const widthMm = gateToMm(n('gtWidth', unit === 'ft' ? 13 : (unit === 'mm' ? 3962 : 156)), unit);
+  const heightMm = gateToMm(n('gtHeight', unit === 'ft' ? 8 : (unit === 'mm' ? 2438 : 96)), unit);
+  const gapMm = gateToMm(n('gtGap', unit === 'ft' ? 25 / 304.8 : 25), unit);
   const bladeEl = $('gtBladeCount');
   const bladeN = bladeEl && bladeEl.value !== '' ? parseInt(bladeEl.value, 10) : NaN;
+  const slideMainEl = $('gtSlideMain');
+  const slideMainMm = (slideMainEl && slideMainEl.value !== '') ? gateToMm(slideMainEl.value, unit) : undefined;
+  const pattern = gapModeRaw === 'pattern' ? gatePatternRows() : [];
   return {
     bayType: bay,
     foldLeft: n('gtFoldLeft', 2),
     foldRight: n('gtFoldRight', 2),
-    widthFt: n('gtWidthFt', 13),
-    heightFt: n('gtHeightFt', 8),
+    sizeUnit: unit,
+    widthMm,
+    heightMm,
+    widthFt: widthMm / 304.8,
+    heightFt: heightMm / 304.8,
     louverGapMm: gapMm,
     grillSpacingMm: gapMm,
     louverSpacingMode: gapMode,
     spacingMode: gapMode,
     bladeCount: Number.isFinite(bladeN) && bladeN > 0 ? bladeN : undefined,
+    louverPattern: pattern.length ? pattern : undefined,
+    patternMode: pattern.length ? 'repeat' : 'uniform',
     louverOrientation: 'vertical',
     grillStyle: s('gtGrillStyle') || 'straight',
     grillOrientation: 'vertical',
@@ -12410,17 +12524,12 @@ function gateCfgFromUi() {
     trackChannelSectionId: s('gtTrackChSec') || undefined,
     trackBarSectionId: trackBarId || undefined,
     trackBarDiaMm: trackDia,
-    slidingMainWidthMm: (() => {
-      const el = $('gtSlideMainMm');
-      if (!el || el.value === '') return undefined;
-      const v = parseFloat(el.value);
-      return Number.isFinite(v) && v > 0 ? v : undefined;
-    })(),
-    swingLeafWidthMm: n('gtSwingLeafMm', 0),
+    slidingMainWidthMm: Number.isFinite(slideMainMm) && slideMainMm > 0 ? slideMainMm : undefined,
+    swingLeafWidthMm: gateToMm(n('gtSwingLeaf', 0), unit) || 0,
     handleSide: s('gtHandleSide') || 'R',
-    sideWallWidthMm: n('gtSideWallMm', 230),
+    sideWallWidthMm: gateToMm(n('gtSideWall', unit === 'ft' ? 230 / 304.8 : 230), unit),
     midPillarEnabled: (($('gtMidPillarEn') && $('gtMidPillarEn').value) || '0') === '1',
-    midPillarWidthMm: n('gtMidPillarMm', 230),
+    midPillarWidthMm: gateToMm(n('gtMidPillar', unit === 'ft' ? 230 / 304.8 : 230), unit),
     msRatePerKg: n('gtMsRate', 150),
     msBarWeightKg: n('gtMsBarKg', 25),
     msStockFt: n('gtMsStock', 20),
@@ -13146,7 +13255,29 @@ if ($('btnGateCalc')) $('btnGateCalc').onclick = gateCalc;
 if ($('btnGateAdd')) $('btnGateAdd').onclick = gateAdd;
 if ($('gtBayType')) $('gtBayType').addEventListener('change', () => { syncGateUiRows(); });
 if ($('gtGapMode')) $('gtGapMode').addEventListener('change', () => { syncGateUiRows(); });
-['gtBayType','gtFoldLeft','gtFoldRight','gtWidthFt','gtHeightFt','gtGap','gtGapMode','gtBladeCount','gtQty','gtMsRate','gtMsBarKg','gtMsStock','gtAlRate','gtCoat','gtFab','gtHwPkg','gtFrameSec','gtWallPostSec','gtLeafSec','gtLouverSec','gtSupportSec','gtGrillSec','gtGrillStyle','gtTrackChSec','gtTrackBarSec','gtSlideMainMm','gtSwingLeafMm','gtHandleSide','gtSideWallMm','gtMidPillarEn','gtMidPillarMm'].forEach(id => {
+if ($('gtPatternAdd')) $('gtPatternAdd').onclick = () => { addGatePatternRow(); if (state.gateMode) gateCalc(); };
+if ($('gtSizeUnit')) $('gtSizeUnit').addEventListener('change', () => {
+  // Convert currently displayed values from previous unit → mm → new unit
+  const prev = state._gateSizeUnit || 'ft';
+  const next = gateSizeUnit();
+  const ids = ['gtWidth','gtHeight','gtGap','gtSideWall','gtMidPillar','gtSlideMain','gtSwingLeaf'];
+  ids.forEach(id => {
+    const el = $(id);
+    if (!el || el.value === '') return;
+    const mm = gateToMm(el.value, prev);
+    if (Number.isFinite(mm)) el.value = String(gateFromMm(mm, next));
+  });
+  document.querySelectorAll('#gtPatternRows [data-pat-gap]').forEach(el => {
+    if (!el.value) return;
+    const mm = gateToMm(el.value, prev);
+    if (Number.isFinite(mm)) el.value = String(gateFromMm(mm, next));
+  });
+  state._gateSizeUnit = next;
+  syncGateUnitLabels();
+  if (state.gateMode) gateCalc();
+});
+state._gateSizeUnit = gateSizeUnit();
+['gtBayType','gtFoldLeft','gtFoldRight','gtWidth','gtHeight','gtSizeUnit','gtGap','gtGapMode','gtBladeCount','gtQty','gtMsRate','gtMsBarKg','gtMsStock','gtAlRate','gtCoat','gtFab','gtHwPkg','gtFrameSec','gtWallPostSec','gtLeafSec','gtLouverSec','gtSupportSec','gtGrillSec','gtGrillStyle','gtTrackChSec','gtTrackBarSec','gtSlideMain','gtSwingLeaf','gtHandleSide','gtSideWall','gtMidPillarEn','gtMidPillar'].forEach(id => {
   const el = $(id);
   if (!el) return;
   el.addEventListener('change', () => {

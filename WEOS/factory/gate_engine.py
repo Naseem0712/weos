@@ -777,6 +777,43 @@ def _leaf_frame_cuts(
     ]
 
 
+def _parse_louver_pattern(cfg: Mapping[str, Any], default_sec: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Build repeating pattern slots: each has section + clear gapAfter (face-to-face)."""
+    raw = cfg.get("louverPattern") or cfg.get("bladePattern") or cfg.get("pattern")
+    if not isinstance(raw, (list, tuple)) or not raw:
+        return []
+    slots: list[dict[str, Any]] = []
+    for row in raw:
+        if not isinstance(row, Mapping):
+            continue
+        sid = _s(row.get("sectionId") or row.get("section_id"))
+        sec = get_structural_section(sid) if sid else None
+        if not sec:
+            sec = dict(default_sec)
+            sid = _s(sec.get("sectionId"))
+        else:
+            sec = dict(sec)
+            if cfg.get("alRatePerBar") is not None and str(sec.get("material") or "").lower().startswith("al"):
+                sec["purchaseRate"] = _f(cfg.get("alRatePerBar"))
+                sec["purchaseRateUnit"] = "full_length"
+            if cfg.get("msRatePerKg") is not None and not str(sec.get("material") or "").lower().startswith("al"):
+                sec = _apply_ms_rates(sec, cfg)
+        face = _section_face(sec, _f(row.get("sizeMm") or row.get("faceMm"), 25))
+        depth = _f(sec.get("depthMm") or sec.get("heightMm") or row.get("depthMm"), face)
+        gap_after = _f(row.get("gapAfterMm") or row.get("gapMm") or row.get("gap"), _f(cfg.get("louverGapMm"), 25))
+        slots.append({
+            "sectionId": sid,
+            "section": sec,
+            "shape": "round" if str(sec.get("shape") or "").endswith("round") else "rect",
+            "sizeMm": face,
+            "depthMm": depth,
+            "thicknessMm": _f(sec.get("thicknessMm"), 1.2),
+            "gapAfterMm": gap_after,
+            "depthOffsetMm": _f(row.get("depthOffsetMm")),
+        })
+    return slots
+
+
 def _louver_fill_cuts(
     *,
     leaf_id: str,
@@ -796,38 +833,96 @@ def _louver_fill_cuts(
     usable = clear_w if orient == "vertical" else clear_h
     blade_len = clear_h if orient == "vertical" else clear_w
 
-    if spacing_mode == "equal_spacing" and cfg.get("bladeCount"):
-        pack = equal_spacing_layout(usable_mm=usable, face_mm=face, blade_count=_i(cfg.get("bladeCount")))
-    else:
-        pack = fixed_gap_blade_count(usable_mm=usable, face_mm=face, gap_mm=gap)
-
-    # Also run panel_fills for drawable geometry (aligned to pack count when possible)
-    fill = normalize_panel_fill({
-        "fillType": "louvers",
-        "orientation": orient,
-        "gapMm": pack.get("actualGapMm", gap),
-        "bladeWidthMm": face,
-        "bladeDepthMm": _f(louver_sec.get("depthMm") or louver_sec.get("heightMm"), face),
-        "bladeThicknessMm": _f(louver_sec.get("thicknessMm"), 1.2),
-        "patternMode": "uniform",
-    })
-    layout = compute_louver_layout(x0=0, y0=0, x1=clear_w, y1=clear_h, fill=fill)
-    # Prefer fixed-gap count from acceptance formula when uniform
-    n = int(pack.get("bladeCount") or layout.get("bladeCount") or 0)
+    pattern_slots = _parse_louver_pattern(cfg, louver_sec)
+    section_by_id: dict[str, Mapping[str, Any]] = {}
     cuts: list[dict[str, Any]] = []
-    for i in range(n):
-        cuts.append(_cut_row(
-            design_id=f"{leaf_id}-louver-{i+1}",
-            bay_id=bay_id,
-            leaf_id=leaf_id,
-            role="louver_blade",
-            section=louver_sec,
-            cut_mm=blade_len,
-            pcs=1,
-            end_cut="butt",
-            joint="between",
-            note=f"clear gap {pack.get('actualGapMm')} mm · margin {pack.get('marginMm')} mm",
-        ))
+    pack: dict[str, Any] | None = None
+
+    if pattern_slots:
+        # Multi-section repeating pattern — BOM from each canvas blade's own section
+        fill = normalize_panel_fill({
+            "fillType": "louvers",
+            "orientation": orient,
+            "patternMode": "repeat",
+            "pattern": [
+                {
+                    "sectionId": s["sectionId"],
+                    "sizeMm": s["sizeMm"],
+                    "depthMm": s["depthMm"],
+                    "thicknessMm": s["thicknessMm"],
+                    "gapAfterMm": s["gapAfterMm"],
+                    "shape": s.get("shape") or "rect",
+                    "depthOffsetMm": s.get("depthOffsetMm") or 0,
+                }
+                for s in pattern_slots
+            ],
+            "gapMm": pattern_slots[0]["gapAfterMm"],
+            "bladeWidthMm": pattern_slots[0]["sizeMm"],
+            "bladeDepthMm": pattern_slots[0]["depthMm"],
+            "bladeThicknessMm": pattern_slots[0]["thicknessMm"],
+        })
+        for s in pattern_slots:
+            section_by_id[_s(s["sectionId"])] = s["section"]
+        layout = compute_louver_layout(x0=0, y0=0, x1=clear_w, y1=clear_h, fill=fill)
+        n = int(layout.get("bladeCount") or 0)
+        counts: dict[str, int] = {}
+        for i, blade in enumerate(layout.get("blades") or []):
+            sid = _s(blade.get("sectionId") or pattern_slots[i % len(pattern_slots)]["sectionId"])
+            sec = section_by_id.get(sid) or get_structural_section(sid) or louver_sec
+            section_by_id[sid] = sec
+            counts[sid] = counts.get(sid, 0) + 1
+            cuts.append(_cut_row(
+                design_id=f"{leaf_id}-louver-{i+1}",
+                bay_id=bay_id,
+                leaf_id=leaf_id,
+                role="louver_blade",
+                section=sec,
+                cut_mm=_f(blade.get("lengthMm"), blade_len),
+                pcs=1,
+                end_cut="butt",
+                joint="between",
+                note=f"pattern blade · face {_section_face(sec, 25):g} · gap after clear",
+            ))
+        pack = {
+            "mode": "repeat_pattern",
+            "bladeCount": n,
+            "marginMm": layout.get("marginMm"),
+            "actualGapMm": layout.get("gapMm"),
+            "countsBySectionId": counts,
+        }
+        face = _f((layout.get("blades") or [{}])[0].get("sizeMm"), face) if n else face
+    else:
+        if spacing_mode == "equal_spacing" and cfg.get("bladeCount"):
+            pack = equal_spacing_layout(usable_mm=usable, face_mm=face, blade_count=_i(cfg.get("bladeCount")))
+        else:
+            pack = fixed_gap_blade_count(usable_mm=usable, face_mm=face, gap_mm=gap)
+
+        fill = normalize_panel_fill({
+            "fillType": "louvers",
+            "orientation": orient,
+            "gapMm": pack.get("actualGapMm", gap),
+            "bladeWidthMm": face,
+            "bladeDepthMm": _f(louver_sec.get("depthMm") or louver_sec.get("heightMm"), face),
+            "bladeThicknessMm": _f(louver_sec.get("thicknessMm"), 1.2),
+            "patternMode": "uniform",
+            "sectionId": louver_sec.get("sectionId"),
+        })
+        layout = compute_louver_layout(x0=0, y0=0, x1=clear_w, y1=clear_h, fill=fill)
+        n = int(pack.get("bladeCount") or layout.get("bladeCount") or 0)
+        for i in range(n):
+            cuts.append(_cut_row(
+                design_id=f"{leaf_id}-louver-{i+1}",
+                bay_id=bay_id,
+                leaf_id=leaf_id,
+                role="louver_blade",
+                section=louver_sec,
+                cut_mm=blade_len,
+                pcs=1,
+                end_cut="butt",
+                joint="between",
+                note=f"clear gap {pack.get('actualGapMm')} mm · margin {pack.get('marginMm')} mm",
+            ))
+        section_by_id[_s(louver_sec.get("sectionId"))] = louver_sec
 
     # Support rods: horizontal through vertical blades (or vice versa)
     insertion = _f(cfg.get("supportInsertionMm"), DEFAULT_SUPPORT_INSERTION_MM)
@@ -856,9 +951,9 @@ def _louver_fill_cuts(
     meta = {
         "orientation": orient,
         "bladeCount": n,
-        "gapMm": pack.get("actualGapMm"),
-        "marginMm": pack.get("marginMm"),
-        "spacingMode": pack.get("mode"),
+        "gapMm": (pack or {}).get("actualGapMm", gap),
+        "marginMm": (pack or {}).get("marginMm"),
+        "spacingMode": (pack or {}).get("mode") or spacing_mode,
         "bladeFaceMm": face,
         "bladeLengthMm": round(blade_len, 1),
         "clearWidthMm": round(clear_w, 1),
@@ -867,6 +962,13 @@ def _louver_fill_cuts(
         "supportCutMm": round(rod_cut, 1),
         "layout": layout,
         "pack": pack,
+        "patternMode": "repeat" if pattern_slots else "uniform",
+        "pattern": [
+            {"sectionId": s["sectionId"], "sizeMm": s["sizeMm"], "gapAfterMm": s["gapAfterMm"]}
+            for s in pattern_slots
+        ] if pattern_slots else None,
+        "countsBySectionId": (pack or {}).get("countsBySectionId"),
+        "fillType": "louvers",
     }
     return cuts, meta
 
@@ -1486,7 +1588,7 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "masonry": masonry_out,
     })
 
-    sections_map = {
+    sections_map: dict[str, Any] = {
         frame.get("sectionId"): frame,
         wall_post_sec.get("sectionId"): wall_post_sec,
         leaf_frame_sec.get("sectionId"): leaf_frame_sec,
@@ -1497,6 +1599,19 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
         track_bar_sec.get("sectionId"): track_bar_sec,
         handle_sec.get("sectionId"): handle_sec,
     }
+    # Include every cut's section (multi-section louver pattern) so nest/cost use real kg/m
+    for cut in cuts:
+        sid = _s(cut.get("sectionId"))
+        if sid and sid not in sections_map:
+            hit = get_structural_section(sid)
+            if hit:
+                if str(hit.get("material") or "").lower().startswith("al") and c.get("alRatePerBar") is not None:
+                    hit = dict(hit)
+                    hit["purchaseRate"] = _f(c.get("alRatePerBar"))
+                    hit["purchaseRateUnit"] = "full_length"
+                elif c.get("msRatePerKg") is not None:
+                    hit = _apply_ms_rates(hit, c)
+                sections_map[sid] = hit
     kerf = _f(c.get("kerfMm"), DEFAULT_KERF_MM)
     trim = _f(c.get("trimMm"), DEFAULT_TRIM_MM)
     nests = _nest_by_section(cuts, sections=sections_map, kerf_mm=kerf, trim_mm=trim, qty=qty)
@@ -1718,15 +1833,16 @@ def _svg_mitred_hollow_frame(
     h_mm: float,
     face_mm: float,
     role: str = "frame",
-    fill: str = "#cbd5e1",
-    stroke: str = "#0f172a",
+    fill: str = "none",
+    stroke: str = "#111111",
+    sw: float = 1.15,
 ) -> None:
-    """Draw hollow section frame with visible 45° mitre corner lines (fabrication view)."""
+    """Line-only hollow section frame with 45° mitre corners (window CAD style)."""
     f = max(face_mm, 1.0)
-    # Outer + inner rectangles
+    # Outer + inner rectangles — stroke only
     parts.append(
         f'<rect x="{sx(x_mm):.2f}" y="{sy(y_mm):.2f}" width="{abs(sx(x_mm+w_mm)-sx(x_mm)):.2f}" '
-        f'height="{abs(sy(y_mm+h_mm)-sy(y_mm)):.2f}" fill="none" stroke="{stroke}" stroke-width="1.6" '
+        f'height="{abs(sy(y_mm+h_mm)-sy(y_mm)):.2f}" fill="none" stroke="{stroke}" stroke-width="{sw:.2f}" '
         f'data-role="{escape(role)}" data-mitre="1"/>'
     )
     ix, iy = x_mm + f, y_mm + f
@@ -1734,34 +1850,24 @@ def _svg_mitred_hollow_frame(
     if iw > 1 and ih > 1:
         parts.append(
             f'<rect x="{sx(ix):.2f}" y="{sy(iy):.2f}" width="{abs(sx(ix+iw)-sx(ix)):.2f}" '
-            f'height="{abs(sy(iy+ih)-sy(iy)):.2f}" fill="#f8fafc" stroke="{stroke}" stroke-width="1.1" '
+            f'height="{abs(sy(iy+ih)-sy(iy)):.2f}" fill="none" stroke="{stroke}" stroke-width="{max(sw*0.85, 0.7):.2f}" '
             f'data-role="{escape(role)}_inner"/>'
         )
-    # Four hollow walls as filled bands (section face width)
-    # Top rail
-    parts.append(
-        f'<path d="M {sx(x_mm):.2f} {sy(y_mm):.2f} L {sx(x_mm+w_mm):.2f} {sy(y_mm):.2f} '
-        f'L {sx(x_mm+w_mm-f):.2f} {sy(y_mm+f):.2f} L {sx(x_mm+f):.2f} {sy(y_mm+f):.2f} Z" '
-        f'fill="{fill}" stroke="{stroke}" stroke-width="0.7" data-role="{escape(role)}_head" data-mitre="1"/>'
-    )
-    # Bottom rail
-    parts.append(
-        f'<path d="M {sx(x_mm):.2f} {sy(y_mm+h_mm):.2f} L {sx(x_mm+w_mm):.2f} {sy(y_mm+h_mm):.2f} '
-        f'L {sx(x_mm+w_mm-f):.2f} {sy(y_mm+h_mm-f):.2f} L {sx(x_mm+f):.2f} {sy(y_mm+h_mm-f):.2f} Z" '
-        f'fill="{fill}" stroke="{stroke}" stroke-width="0.7" data-role="{escape(role)}_sill" data-mitre="1"/>'
-    )
-    # Left jamb
-    parts.append(
-        f'<path d="M {sx(x_mm):.2f} {sy(y_mm):.2f} L {sx(x_mm+f):.2f} {sy(y_mm+f):.2f} '
-        f'L {sx(x_mm+f):.2f} {sy(y_mm+h_mm-f):.2f} L {sx(x_mm):.2f} {sy(y_mm+h_mm):.2f} Z" '
-        f'fill="{fill}" stroke="{stroke}" stroke-width="0.7" data-role="{escape(role)}_jamb_L" data-mitre="1"/>'
-    )
-    # Right jamb
-    parts.append(
-        f'<path d="M {sx(x_mm+w_mm):.2f} {sy(y_mm):.2f} L {sx(x_mm+w_mm):.2f} {sy(y_mm+h_mm):.2f} '
-        f'L {sx(x_mm+w_mm-f):.2f} {sy(y_mm+h_mm-f):.2f} L {sx(x_mm+w_mm-f):.2f} {sy(y_mm+f):.2f} Z" '
-        f'fill="{fill}" stroke="{stroke}" stroke-width="0.7" data-role="{escape(role)}_jamb_R" data-mitre="1"/>'
-    )
+    # Profile edge paths (no fill) — head / sill / jambs
+    for d, role_s in (
+        (f"M {sx(x_mm):.2f} {sy(y_mm):.2f} L {sx(x_mm+w_mm):.2f} {sy(y_mm):.2f} "
+         f"L {sx(x_mm+w_mm-f):.2f} {sy(y_mm+f):.2f} L {sx(x_mm+f):.2f} {sy(y_mm+f):.2f} Z", f"{role}_head"),
+        (f"M {sx(x_mm):.2f} {sy(y_mm+h_mm):.2f} L {sx(x_mm+w_mm):.2f} {sy(y_mm+h_mm):.2f} "
+         f"L {sx(x_mm+w_mm-f):.2f} {sy(y_mm+h_mm-f):.2f} L {sx(x_mm+f):.2f} {sy(y_mm+h_mm-f):.2f} Z", f"{role}_sill"),
+        (f"M {sx(x_mm):.2f} {sy(y_mm):.2f} L {sx(x_mm+f):.2f} {sy(y_mm+f):.2f} "
+         f"L {sx(x_mm+f):.2f} {sy(y_mm+h_mm-f):.2f} L {sx(x_mm):.2f} {sy(y_mm+h_mm):.2f} Z", f"{role}_jamb_L"),
+        (f"M {sx(x_mm+w_mm):.2f} {sy(y_mm):.2f} L {sx(x_mm+w_mm):.2f} {sy(y_mm+h_mm):.2f} "
+         f"L {sx(x_mm+w_mm-f):.2f} {sy(y_mm+h_mm-f):.2f} L {sx(x_mm+w_mm-f):.2f} {sy(y_mm+f):.2f} Z", f"{role}_jamb_R"),
+    ):
+        parts.append(
+            f'<path d="{d}" fill="none" stroke="{stroke}" stroke-width="{max(sw*0.7, 0.65):.2f}" '
+            f'data-role="{escape(role_s)}" data-mitre="1"/>'
+        )
     # Explicit 45° mitre corner marks
     for ox, oy, ix_, iy_ in (
         (x_mm, y_mm, x_mm + f, y_mm + f),
@@ -1771,7 +1877,7 @@ def _svg_mitred_hollow_frame(
     ):
         parts.append(
             f'<line x1="{sx(ox):.2f}" y1="{sy(oy):.2f}" x2="{sx(ix_):.2f}" y2="{sy(iy_):.2f}" '
-            f'stroke="#111827" stroke-width="1.15" data-mitre-line="1"/>'
+            f'stroke="{stroke}" stroke-width="{max(sw*0.9, 0.8):.2f}" data-mitre-line="1"/>'
         )
 
 
@@ -1785,24 +1891,32 @@ def _svg_gate_hinges(
     h_mm: float,
     y0_mm: float = 0.0,
     count: int = 3,
+    stile_mm: float = 75.0,
     thicker: bool = True,
 ) -> None:
-    """Thicker/taller hinges on elevation (fold/swing) — not window casement size."""
+    """Casement-style hinges: same placement + stadium glyph, slightly taller, line-only."""
     try:
-        from WEOS.factory.geometry import casement_hinge_svg, hinge_centers_mm
+        from WEOS.factory.geometry import (
+            casement_hinge_svg,
+            hinge_capsule_size_mm,
+            hinge_centers_mm,
+        )
     except Exception:
         return
     centers = hinge_centers_mm(h_mm, count=max(count, 2))
-    # Gate hinges ~1.6× casement footprint
-    hw = max(28.0 * scale, 10.0) if thicker else max(18.0 * scale, 8.0)
-    hh = max(52.0 * scale, 16.0) if thicker else max(32.0 * scale, 12.0)
+    # Casement sizing in model-mm, then to SVG px; bump height ~18% for gates
+    tw, th = hinge_capsule_size_mm(h_mm, max(stile_mm, 20.0), orientation="vertical")
+    th = th * (1.18 if thicker else 1.0)
+    hw = max(tw * scale, 6.0)
+    hh = max(th * scale, 14.0)
     for cy_from_top in centers:
         cy = sy(y0_mm + cy_from_top)
         cx = sx(x_mm)
         parts.append(
             casement_hinge_svg(
-                cx, cy, w=hw, h=hh, stroke="#0f172a", stroke_width=0.85,
-                extra_attrs='data-gate-hinge="1"',
+                cx, cy, w=hw, h=hh, stroke="#111111", stroke_width=0.7,
+                fill="none", segments=3,
+                extra_attrs='data-gate-hinge="1" data-hinge="1"',
             )
         )
 
@@ -1869,17 +1983,16 @@ def _svg_handle_2d(
     stub_mm: float = HANDLE_STUB_MM,
     side: str = "R",
 ) -> None:
-    """Full 2D pipe pull handle on stile centreline (vertical + end stubs)."""
+    """Full 2D pipe pull handle on stile centreline — line-only."""
     f = max(face_mm, 10.0)
     stub = max(stub_mm, 40.0)
-    # Vertical bar centred on x_mm
+    stroke = "#111111"
     vx0 = x_mm - f / 2.0
     parts.append(
         f'<rect x="{sx(vx0):.2f}" y="{sy(y_mm):.2f}" width="{max(abs(sx(vx0+f)-sx(vx0)), 1):.2f}" '
-        f'height="{abs(sy(y_mm+height_mm)-sy(y_mm)):.2f}" fill="#94a3b8" stroke="#0f172a" '
-        f'stroke-width="1.1" data-role="handle" data-face-mm="{f:g}"/>'
+        f'height="{abs(sy(y_mm+height_mm)-sy(y_mm)):.2f}" fill="none" stroke="{stroke}" '
+        f'stroke-width="1.0" data-role="handle" data-face-mm="{f:g}"/>'
     )
-    # End stubs toward leaf interior (away from outer edge sense)
     inward = -1.0 if side == "R" else 1.0
     for yy in (y_mm, y_mm + height_mm - f):
         sx0 = x_mm
@@ -1887,9 +2000,50 @@ def _svg_handle_2d(
         x_lo, x_hi = (sx0, sx1) if sx0 < sx1 else (sx1, sx0)
         parts.append(
             f'<rect x="{sx(x_lo):.2f}" y="{sy(yy):.2f}" width="{max(abs(sx(x_hi)-sx(x_lo)), 1):.2f}" '
-            f'height="{max(abs(sy(yy+f)-sy(yy)), 1):.2f}" fill="#94a3b8" stroke="#0f172a" '
-            f'stroke-width="1.0" data-role="handle_stub"/>'
+            f'height="{max(abs(sy(yy+f)-sy(yy)), 1):.2f}" fill="none" stroke="{stroke}" '
+            f'stroke-width="0.95" data-role="handle_stub"/>'
         )
+
+
+def _svg_dim_h(parts: list[str], *, sx, sy, x0: float, x1: float, y: float, text: str, font: float = 11.0) -> None:
+    """Window-style horizontal dimension (maroon thin ticks)."""
+    stroke = "#8b1e1a"
+    parts.append(
+        f'<line x1="{sx(x0):.2f}" y1="{sy(y):.2f}" x2="{sx(x1):.2f}" y2="{sy(y):.2f}" '
+        f'stroke="{stroke}" stroke-width="0.7" data-dim="1"/>'
+    )
+    for xx in (x0, x1):
+        parts.append(
+            f'<line x1="{sx(xx):.2f}" y1="{sy(y) - 3.5:.2f}" x2="{sx(xx):.2f}" y2="{sy(y) + 3.5:.2f}" '
+            f'stroke="{stroke}" stroke-width="0.7" data-dim="1"/>'
+        )
+    mid = (x0 + x1) / 2.0
+    parts.append(
+        f'<text x="{sx(mid):.2f}" y="{sy(y) - 6:.2f}" text-anchor="middle" '
+        f'font-family="Segoe UI, Arial, sans-serif" font-size="{font:.0f}" fill="{stroke}" data-dim="1">'
+        f'{escape(text)}</text>'
+    )
+
+
+def _svg_dim_v(parts: list[str], *, sx, sy, y0: float, y1: float, x: float, text: str, font: float = 11.0) -> None:
+    """Window-style vertical dimension."""
+    stroke = "#8b1e1a"
+    parts.append(
+        f'<line x1="{sx(x):.2f}" y1="{sy(y0):.2f}" x2="{sx(x):.2f}" y2="{sy(y1):.2f}" '
+        f'stroke="{stroke}" stroke-width="0.7" data-dim="1"/>'
+    )
+    for yy in (y0, y1):
+        parts.append(
+            f'<line x1="{sx(x)-3.5:.2f}" y1="{sy(yy):.2f}" x2="{sx(x)+3.5:.2f}" y2="{sy(yy):.2f}" '
+            f'stroke="{stroke}" stroke-width="0.7" data-dim="1"/>'
+        )
+    mid = (y0 + y1) / 2.0
+    parts.append(
+        f'<text x="{sx(x)-8:.2f}" y="{sy(mid):.2f}" text-anchor="middle" '
+        f'transform="rotate(-90 {sx(x)-8:.2f} {sy(mid):.2f})" '
+        f'font-family="Segoe UI, Arial, sans-serif" font-size="{font:.0f}" fill="{stroke}" data-dim="1">'
+        f'{escape(text)}</text>'
+    )
 
 
 def _svg_grill_fill(
@@ -1931,8 +2085,8 @@ def _svg_grill_fill(
             cy = y0 + pitch * (i + 0.5) - face / 2.0
             parts.append(
                 f'<rect x="{sx(x0):.2f}" y="{sy(cy):.2f}" width="{abs(sx(x0+clear_w)-sx(x0)):.2f}" '
-                f'height="{max(abs(sy(cy+face)-sy(cy)), 0.8):.2f}" fill="#64748b" stroke="#1e293b" '
-                f'stroke-width="0.55" data-role="grill_bar"/>'
+                f'height="{max(abs(sy(cy+face)-sy(cy)), 0.8):.2f}" fill="none" stroke="#111111" '
+                f'stroke-width="0.7" data-role="grill_bar"/>'
             )
     else:
         pitch = clear_w / max(n, 1)
@@ -1940,9 +2094,54 @@ def _svg_grill_fill(
             cx = x0 + pitch * (i + 0.5) - face / 2.0
             parts.append(
                 f'<rect x="{sx(cx):.2f}" y="{sy(y0):.2f}" width="{max(abs(sx(cx+face)-sx(cx)), 0.8):.2f}" '
-                f'height="{abs(sy(y0+clear_h)-sy(y0)):.2f}" fill="#64748b" stroke="#1e293b" '
-                f'stroke-width="0.55" data-role="grill_bar"/>'
+                f'height="{abs(sy(y0+clear_h)-sy(y0)):.2f}" fill="none" stroke="#111111" '
+                f'stroke-width="0.7" data-role="grill_bar"/>'
             )
+
+
+def _svg_louver_from_layout(
+    parts: list[str],
+    *,
+    sx,
+    sy,
+    x0: float,
+    y0: float,
+    layout: Mapping[str, Any] | None,
+    fallback_face: float = 25.0,
+    fallback_gap: float = 25.0,
+    fallback_count: int = 0,
+    clear_w: float = 0.0,
+    clear_h: float = 0.0,
+) -> None:
+    """Draw louvers from panel_fills layout (multi-section aware) — line-only."""
+    stroke = "#111111"
+    blades = list((layout or {}).get("blades") or [])
+    if blades:
+        for b in blades:
+            bx0 = x0 + _f(b.get("x0"))
+            by0 = y0 + _f(b.get("y0"))
+            bx1 = x0 + _f(b.get("x1"))
+            by1 = y0 + _f(b.get("y1"))
+            parts.append(
+                f'<rect x="{sx(min(bx0, bx1)):.2f}" y="{sy(min(by0, by1)):.2f}" '
+                f'width="{max(abs(sx(bx1)-sx(bx0)), 0.7):.2f}" '
+                f'height="{max(abs(sy(by1)-sy(by0)), 0.7):.2f}" fill="none" stroke="{stroke}" '
+                f'stroke-width="0.7" data-role="louver_blade" data-section="{escape(_s(b.get("sectionId")))}"/>'
+            )
+        return
+    # Uniform fallback
+    bc = max(int(fallback_count), 0)
+    bf = max(fallback_face, 2.0)
+    gap = max(fallback_gap, 0.0)
+    margin = _f((layout or {}).get("marginMm"))
+    cursor = x0 + margin
+    for _ in range(bc):
+        parts.append(
+            f'<rect x="{sx(cursor):.2f}" y="{sy(y0):.2f}" width="{max(abs(sx(cursor+bf)-sx(cursor)), 0.7):.2f}" '
+            f'height="{abs(sy(y0+clear_h)-sy(y0)):.2f}" fill="none" stroke="{stroke}" '
+            f'stroke-width="0.7" data-role="louver_blade"/>'
+        )
+        cursor += bf + gap
 
 
 def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> str:
@@ -2026,12 +2225,12 @@ def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> 
     if wp >= 1:
         _svg_mitred_hollow_frame(
             parts, sx=sx, sy=sy, x_mm=0, y_mm=0, w_mm=post_face, h_mm=H, face_mm=min(post_face * 0.35, 18),
-            role="wall_post", fill="#94a3b8",
+            role="wall_post",
         )
     if wp >= 2:
         _svg_mitred_hollow_frame(
             parts, sx=sx, sy=sy, x_mm=W - post_face, y_mm=0, w_mm=post_face, h_mm=H, face_mm=min(post_face * 0.35, 18),
-            role="wall_post", fill="#94a3b8",
+            role="wall_post",
         )
 
     n = len(leaves) or (left + right)
@@ -2051,7 +2250,7 @@ def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> 
             leaf_h = _f(leaf.get("outerHeightMm"), H)
             _svg_mitred_hollow_frame(
                 parts, sx=sx, sy=sy, x_mm=lx, y_mm=0, w_mm=leaf_w, h_mm=leaf_h, face_mm=lf,
-                role="moving_leaf_frame", fill="#94a3b8",
+                role="moving_leaf_frame",
             )
             clear_x = lx + lf
             clear_y = lf
@@ -2064,30 +2263,27 @@ def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> 
                     clear_w=clear_w, clear_h=clear_h, meta=fill,
                 )
             else:
-                bc = int(fill.get("bladeCount") or q.get("bladeCountPerLeaf") or 0)
-                gap = _f(fill.get("gapMm") or q.get("louverGapMm"), 25)
-                bf = _f(fill.get("bladeFaceMm") or fill.get("bladeWidthMm"), 25)
-                margin = _f(fill.get("marginMm"))
-                cursor = clear_x + margin
-                for _b in range(bc):
-                    parts.append(
-                        f'<rect x="{sx(cursor):.2f}" y="{sy(clear_y):.2f}" width="{max((sx(cursor+bf)-sx(cursor)), 0.8):.2f}" '
-                        f'height="{abs(sy(clear_y+clear_h)-sy(clear_y)):.2f}" fill="#cbd5e1" stroke="#1e293b" '
-                        f'stroke-width="0.55" data-role="louver_blade"/>'
-                    )
-                    cursor += bf + gap
+                lay = fill.get("layout") if isinstance(fill.get("layout"), Mapping) else None
+                _svg_louver_from_layout(
+                    parts, sx=sx, sy=sy, x0=clear_x, y0=clear_y,
+                    layout=lay or fill,
+                    fallback_face=_f(fill.get("bladeFaceMm") or fill.get("bladeWidthMm"), 25),
+                    fallback_gap=_f(fill.get("gapMm") or q.get("louverGapMm"), 25),
+                    fallback_count=int(fill.get("bladeCount") or q.get("bladeCountPerLeaf") or 0),
+                    clear_w=clear_w, clear_h=clear_h,
+                )
 
             if bay_type.startswith("sliding") and _s(leaf.get("role"), "sliding") == "sliding":
                 for wx_mm in (lx + WHEEL_INSET_MM, lx + leaf_w - WHEEL_INSET_MM):
                     wr = max(14.0 * scale, 5.0)
                     parts.append(
                         f'<circle cx="{sx(wx_mm):.2f}" cy="{sy(H - 8):.2f}" r="{wr:.2f}" '
-                        f'fill="#1e293b" stroke="#0f172a" stroke-width="1" data-role="wheel" '
+                        f'fill="none" stroke="#111111" stroke-width="1" data-role="wheel" '
                         f'data-inset-mm="{WHEEL_INSET_MM:g}"/>'
                     )
                     parts.append(
                         f'<circle cx="{sx(wx_mm):.2f}" cy="{sy(H - 8):.2f}" r="{wr*0.35:.2f}" '
-                        f'fill="#94a3b8" data-role="wheel_hub"/>'
+                        f'fill="none" stroke="#111111" stroke-width="0.7" data-role="wheel_hub"/>'
                     )
 
             hnd = leaf.get("handle") if isinstance(leaf.get("handle"), Mapping) else None
@@ -2143,11 +2339,12 @@ def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> 
                 _svg_gate_hinges(
                     parts, sx=sx, sy=sy, scale=scale, x_mm=hx, h_mm=H,
                     count=_i(joint.get("count"), 3), thicker=True,
+                    stile_mm=max(leaf_face, post_face, 40.0),
                 )
     else:
         _svg_mitred_hollow_frame(
             parts, sx=sx, sy=sy, x_mm=0, y_mm=0, w_mm=W, h_mm=H, face_mm=face,
-            role="outer_frame", fill="#94a3b8",
+            role="outer_frame",
         )
         clear_x, clear_y = face, face
         clear_w, clear_h = max(W - 2 * face, 0), max(H - 2 * face, 0)
@@ -2159,21 +2356,16 @@ def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> 
                 clear_w=clear_w, clear_h=clear_h, meta=grill or fill0 or {},
             )
         elif isinstance(fill0, Mapping):
-            bc = int(fill0.get("bladeCount") or 0)
-            gap = _f(fill0.get("gapMm"), 25)
-            bf = _f(fill0.get("bladeFaceMm") or fill0.get("bladeWidthMm"), 25)
-            margin = _f(fill0.get("marginMm"))
-            cursor = clear_x + margin
-            for _b in range(bc):
-                parts.append(
-                    f'<rect x="{sx(cursor):.2f}" y="{sy(clear_y):.2f}" '
-                    f'width="{max(abs(sx(cursor+bf)-sx(cursor)), 0.8):.2f}" '
-                    f'height="{abs(sy(clear_y+clear_h)-sy(clear_y)):.2f}" fill="#cbd5e1" '
-                    f'stroke="#1e293b" stroke-width="0.55" data-role="louver_blade"/>'
-                )
-                cursor += bf + gap
+            lay = fill0.get("layout") if isinstance(fill0.get("layout"), Mapping) else fill0
+            _svg_louver_from_layout(
+                parts, sx=sx, sy=sy, x0=clear_x, y0=clear_y, layout=lay,
+                fallback_face=_f(fill0.get("bladeFaceMm"), 25),
+                fallback_gap=_f(fill0.get("gapMm"), 25),
+                fallback_count=int(fill0.get("bladeCount") or 0),
+                clear_w=clear_w, clear_h=clear_h,
+            )
 
-    # Sliding floor track — half buried; length 2W+1ft on pocket side
+    # Sliding floor track — line-only; length 2W+1ft on pocket side
     if track and bay_type.startswith("sliding"):
         ch_d = _f(track.get("channelDepthMm"), 75)
         ch_f = _f(track.get("channelFaceMm"), 38)
@@ -2183,35 +2375,40 @@ def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> 
         above = ch_d - buried
         tw = track_len * scale
         gy = sy(H)
+        stroke = "#111111"
         parts.append(
             f'<line x1="{sx(content_x0)-4:.2f}" y1="{gy:.2f}" x2="{sx(content_x1)+4:.2f}" y2="{gy:.2f}" '
-            f'stroke="#78716c" stroke-width="1.2" stroke-dasharray="6 4" data-role="ground_line"/>'
+            f'stroke="#78716c" stroke-width="0.9" stroke-dasharray="6 4" data-role="ground_line"/>'
         )
         parts.append(
             f'<rect x="{sx(track_x0):.2f}" y="{gy:.2f}" width="{tw:.2f}" height="{buried*scale:.2f}" '
-            f'fill="#a8a29e" stroke="#57534e" stroke-width="0.8" data-role="track_c_channel_buried" '
+            f'fill="none" stroke="{stroke}" stroke-width="0.85" data-role="track_c_channel_buried" '
             f'data-track-len-mm="{track_len:g}" data-track-x0-mm="{track_x0:g}"/>'
         )
         parts.append(
             f'<rect x="{sx(track_x0):.2f}" y="{gy - above*scale:.2f}" width="{tw:.2f}" height="{above*scale:.2f}" '
-            f'fill="#64748b" stroke="#0f172a" stroke-width="1" data-role="track_c_channel"/>'
+            f'fill="none" stroke="{stroke}" stroke-width="1" data-role="track_c_channel"/>'
         )
         parts.append(
             f'<rect x="{sx(track_x0):.2f}" y="{gy - above*scale - bar_d*scale:.2f}" width="{tw:.2f}" '
             f'height="{max(bar_d*scale, 2):.2f}" rx="{max(bar_d*scale/2, 1):.2f}" '
-            f'fill="#1e293b" stroke="#0f172a" stroke-width="0.8" data-role="track_round_bar" '
+            f'fill="none" stroke="{stroke}" stroke-width="0.85" data-role="track_round_bar" '
             f'data-dia-mm="{bar_d:g}"/>'
         )
         parts.append(
             f'<text x="{sx(track_x0 + track_len/2):.2f}" y="{gy + buried*scale + 12:.2f}" text-anchor="middle" '
-            f'font-family="Arial" font-size="10" fill="#57534e">'
+            f'font-family="Segoe UI, Arial, sans-serif" font-size="10" fill="#475569">'
             f'Track {mm_n(track_len)} · 2×W+1ft · pocket {_s(track.get("pocketSide"))} · '
             f'C-ch {ch_f:g}×{ch_d:g} + Ø{bar_d:g}</text>'
         )
 
+    # Window-style overall dimensions
+    _svg_dim_h(parts, sx=sx, sy=sy, x0=0, x1=W, y=-28, text=str(mm_n(W)), font=11)
+    _svg_dim_v(parts, sx=sx, sy=sy, y0=0, y1=H, x=-28 - side_w * 0.15, text=str(mm_n(H)), font=11)
+
     footer_y = vb_h - 12
     parts.append(
-        f'<text x="{pad:g}" y="{footer_y:g}" font-family="Arial" font-size="10" fill="#475569">'
+        f'<text x="{pad:g}" y="{footer_y:g}" font-family="Segoe UI, Arial, sans-serif" font-size="10" fill="#475569">'
         f'Blades/leaf={q.get("bladeCountPerLeaf")} · gap={q.get("louverGapMm")} mm · '
         f'MS bars={((q.get("bars") or {}).get("ms"))} · Al bars={((q.get("bars") or {}).get("aluminium"))} · '
         f'Fe {((q.get("weight") or {}).get("ironKg"))} kg · Al {((q.get("weight") or {}).get("aluminiumKg"))} kg'

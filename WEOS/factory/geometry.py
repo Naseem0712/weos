@@ -255,20 +255,34 @@ def casement_hinge_svg(
     stroke: str = HINGE_STROKE,
     stroke_width: float = 0.55,
     extra_attrs: str = "",
+    fill: str | None = None,
+    segments: int = 3,
 ) -> str:
-    """2D stadium hinge: round heads + horizontal barrel split (shared SVG glyph).
+    """2D stadium hinge: round heads + horizontal barrel splits (shared SVG glyph).
 
     ``(cx, cy)`` is the hinge centre in the same SVG space as ``w`` / ``h``.
     Place that centre with ``hinge_gap_axis`` (sash outer / stile gap).
+
+    Default ``segments=3`` → two divider lines between knuckle bars (casement
+    look: ~33 mm bars in a 100 mm hinge). Set ``fill="none"`` for line-only.
     """
     g = hinge_capsule_geom(cx, cy, w, h)
     extra = f" {extra_attrs.strip()}" if extra_attrs and extra_attrs.strip() else ""
     sw = max(float(stroke_width), 0.35)
-    return (
+    fill_v = HINGE_FILL if fill is None else str(fill)
+    segs = max(int(segments), 2)
+    parts = [
         f'<rect x="{g["x"]:.2f}" y="{g["y"]:.2f}" width="{g["w"]:.2f}" height="{g["h"]:.2f}" '
-        f'rx="{g["rx"]:.2f}" fill="{HINGE_FILL}" stroke="{stroke}" stroke-width="{sw:.2f}" '
-        f'data-hinge="1" data-hinge-split="h"{extra}/>'
-        f'<line x1="{g["x1"]:.2f}" y1="{g["y1"]:.2f}" x2="{g["x2"]:.2f}" y2="{g["y2"]:.2f}" '
-        f'stroke="{stroke}" stroke-width="{max(sw * 0.7, 0.35):.2f}" data-hinge-split="h"/>'
-    )
+        f'rx="{g["rx"]:.2f}" fill="{fill_v}" stroke="{stroke}" stroke-width="{sw:.2f}" '
+        f'data-hinge="1" data-hinge-split="h" data-hinge-segments="{segs}"{extra}/>'
+    ]
+    # Divider lines between knuckle bars (segments=3 → 2 mid lines)
+    for i in range(1, segs):
+        yy = g["y"] + g["h"] * (i / segs)
+        parts.append(
+            f'<line x1="{g["x1"]:.2f}" y1="{yy:.2f}" x2="{g["x2"]:.2f}" y2="{yy:.2f}" '
+            f'stroke="{stroke}" stroke-width="{max(sw * 0.7, 0.35):.2f}" data-hinge-split="h" '
+            f'data-hinge-bar="{i}"/>'
+        )
+    return "".join(parts)
 

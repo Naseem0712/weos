@@ -90,7 +90,8 @@ def _normalize_blade_slot(raw: Any, *, defaults: Mapping[str, Any] | None = None
     if gap_after is None:
         gap_after = _num(d, "gapMm", default=20.0) or 20.0
     offset = _num(r, "depthOffsetMm", "offsetMm", "staggerMm", default=0.0) or 0.0
-    return {
+    sid = str(r.get("sectionId") or r.get("section_id") or d.get("sectionId") or "").strip()
+    out = {
         "shape": shape,
         "sizeMm": float(size),
         "depthMm": float(depth),
@@ -98,6 +99,9 @@ def _normalize_blade_slot(raw: Any, *, defaults: Mapping[str, Any] | None = None
         "gapAfterMm": float(gap_after),
         "depthOffsetMm": float(offset),
     }
+    if sid:
+        out["sectionId"] = sid
+    return out
 
 
 def normalize_panel_fill(raw: Any) -> dict[str, Any]:
@@ -298,7 +302,7 @@ def compute_louver_layout(
             by0, by1 = cursor, cursor + size
             # Stagger: shift along depth axis visualized as X inset
             ox = offset
-            blades.append({
+            brec = {
                 "index": i + 1,
                 "x0": x0 + max(ox, 0.0), "y0": by0,
                 "x1": x1 + min(ox, 0.0), "y1": by1,
@@ -309,7 +313,10 @@ def compute_louver_layout(
                 "thicknessMm": thk,
                 "depthOffsetMm": offset,
                 "lengthMm": round(w, 1),
-            })
+            }
+            if slot.get("sectionId"):
+                brec["sectionId"] = slot.get("sectionId")
+            blades.append(brec)
             if i < n - 1:
                 gy0, gy1 = by1, by1 + gap
                 gaps.append({
@@ -322,7 +329,7 @@ def compute_louver_layout(
         else:
             bx0, bx1 = cursor, cursor + size
             oy = offset
-            blades.append({
+            brec = {
                 "index": i + 1,
                 "x0": bx0, "y0": y0 + max(oy, 0.0),
                 "x1": bx1, "y1": y1 + min(oy, 0.0),
@@ -333,7 +340,10 @@ def compute_louver_layout(
                 "thicknessMm": thk,
                 "depthOffsetMm": offset,
                 "lengthMm": round(h, 1),
-            })
+            }
+            if slot.get("sectionId"):
+                brec["sectionId"] = slot.get("sectionId")
+            blades.append(brec)
             if i < n - 1:
                 gx0, gx1 = bx1, bx1 + gap
                 gaps.append({

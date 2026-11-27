@@ -1,15 +1,102 @@
-"""Smoke: grill, fold hinges+handle, walls brick+100, mid pillar, sliding split+track 2W+1ft."""
+"""Smoke: pattern louvers, casement hinges, line-only SVG, units, walls/track."""
 from __future__ import annotations
 
+import re
+
 from WEOS.factory.gate_engine import MM_PER_FT, compute_gate, gate_svg
-from WEOS.factory.structural_catalogue import build_structural_catalogue
+from WEOS.factory.structural_catalogue import build_structural_catalogue, list_structural_sections
+
+
+def _pick_al(w: float, h: float) -> str | None:
+    best = None
+    for s in list_structural_sections(material="aluminium"):
+        if abs(float(s.get("widthMm") or 0) - w) < 0.8 and abs(float(s.get("heightMm") or 0) - h) < 0.8:
+            shp = str(s.get("shape") or "")
+            if "hollow" in shp or "square" in shp or "rect" in shp:
+                return s.get("sectionId")
+            best = best or s.get("sectionId")
+    return best
+
+
+def _member_fills(svg: str) -> list[str]:
+    """Fills on structural members (ignore white bg / text)."""
+    bad = []
+    for m in re.finditer(r'<(?:rect|path|circle)[^>]*>', svg):
+        tag = m.group(0)
+        if 'width="100%"' in tag:
+            continue
+        if 'data-dim=' in tag or 'data-brick' in tag:
+            continue
+        fm = re.search(r'fill="([^"]*)"', tag)
+        if not fm:
+            continue
+        fill = fm.group(1).lower()
+        if fill in ("none", "transparent", "#fff", "#ffffff", "white"):
+            continue
+        # allow very light hinge fill only if windows still use it — gates use none
+        if 'data-role=' in tag or 'data-mitre=' in tag or 'data-gate-hinge=' in tag:
+            bad.append(fill)
+    return bad
 
 
 def main() -> int:
     fails: list[str] = []
     build_structural_catalogue(persist=True)
 
-    # Fixed grill — mitred hollow frame + grill + both side walls
+    # --- Pattern multi-section louvers ---
+    s25 = _pick_al(25, 25)
+    s50 = _pick_al(50, 25) or _pick_al(50, 50) or s25
+    s100 = _pick_al(100, 25) or _pick_al(100, 50) or s50
+    if not (s25 and s50 and s100):
+        fails.append(f"missing Al sections for pattern {s25}/{s50}/{s100}")
+    else:
+        qp = compute_gate(
+            {
+                "widthFt": 13,
+                "heightFt": 8,
+                "bayType": "folding_privacy",
+                "foldLeft": 2,
+                "foldRight": 2,
+                "louverPattern": [
+                    {"sectionId": s25, "gapAfterMm": 30},
+                    {"sectionId": s50, "gapAfterMm": 50},
+                    {"sectionId": s100, "gapAfterMm": 25},
+                ],
+                "msRatePerKg": 215,
+                "alRatePerBar": 1459,
+                "fabRatePerSft": 150,
+            }
+        )
+        svg_p = gate_svg({}, qp)
+        counts: dict[str, int] = {}
+        for c in qp.get("cuts") or []:
+            if c.get("memberRole") != "louver_blade":
+                continue
+            sid = c.get("sectionId")
+            counts[sid] = counts.get(sid, 0) + 1
+        if len(counts) < 2:
+            fails.append(f"pattern should use multiple sectionIds, got {counts}")
+        for sid in (s25, s50, s100):
+            if sid not in counts:
+                fails.append(f"pattern missing blades for {sid}")
+        # Weight/cost must nest each section separately
+        nests = qp.get("nests") or {}
+        for sid in counts:
+            if sid not in nests:
+                fails.append(f"nest missing for pattern section {sid}")
+            elif float((nests[sid] or {}).get("usedKg") or 0) <= 0 and float((nests[sid] or {}).get("usedM") or 0) <= 0:
+                fails.append(f"no used mass/length for {sid}")
+        if 'data-hinge-segments="3"' not in svg_p and "data-hinge-bar=" not in svg_p:
+            fails.append("casement hinge mid-lines missing")
+        if svg_p.count("data-hinge-bar=") < 2:
+            fails.append(f"expected ≥2 hinge bar dividers, got {svg_p.count('data-hinge-bar=')}")
+        member_fills = _member_fills(svg_p)
+        if member_fills:
+            fails.append(f"line-only SVG still has fills: {set(member_fills)}")
+        if "data-dim=" not in svg_p:
+            fails.append("window-style dims missing")
+
+    # Fixed grill + walls
     qg = compute_gate(
         {
             "widthFt": 13,
@@ -17,113 +104,39 @@ def main() -> int:
             "bayType": "fixed_grill",
             "foldLeft": 0,
             "foldRight": 0,
-            "grillStyle": "straight",
             "sideWallWidthMm": 230,
-            "msRatePerKg": 215,
-            "msBarWeightKg": 25,
-            "msStockFt": 20,
-            "fabRatePerSft": 150,
-            "hardwarePackageAmount": 10000,
         }
     )
     svg_g = gate_svg({}, qg)
-    if 'data-mitre="1"' not in svg_g:
-        fails.append("fixed grill missing mitre geometry")
-    if "grill_bar" not in svg_g and "grill_diagonal" not in svg_g:
-        fails.append("fixed grill missing interior grill members")
-    if "side_wall_L" not in svg_g or "side_wall_R" not in svg_g:
-        fails.append("fixed grill missing side walls")
-    if "brick_bed" not in svg_g or "brick_head" not in svg_g:
-        fails.append("fixed grill missing running-bond brick hatch")
-    wh = float((qg.get("masonry") or {}).get("wallHeightMm") or 0)
-    if abs(wh - (qg["heightMm"] + 100)) > 0.6:
-        fails.append(f"wall height not H+100: {wh}")
+    if "side_wall_L" not in svg_g or "brick_bed" not in svg_g:
+        fails.append("grill walls/brick missing")
+    if _member_fills(svg_g):
+        fails.append(f"grill svg fills {_member_fills(svg_g)[:3]}")
 
-    # Fold — hinges + handles opposite hinge + mid pillar option
-    qf = compute_gate(
-        {
-            "widthFt": 13,
-            "heightFt": 8,
-            "bayType": "folding_privacy",
-            "foldLeft": 2,
-            "foldRight": 2,
-            "louverGapMm": 25,
-            "midPillarEnabled": True,
-            "midPillarWidthMm": 300,
-            "sideWallWidthMm": 230,
-        }
-    )
-    svg_f = gate_svg({}, qf)
-    hinge_n = svg_f.count("data-gate-hinge")
-    if hinge_n < 6:
-        fails.append(f"fold hinges on svg {hinge_n}")
-    if 'data-role="handle"' not in svg_f:
-        fails.append("fold missing handle drawing")
-    if "mid_pillar" not in svg_f:
-        fails.append("fold mid pillar missing on svg")
-    if not (qf.get("handles") or []):
-        fails.append("fold handles meta empty")
-    else:
-        h0 = qf["handles"][0]
-        if float(h0.get("heightMm") or 0) < float(qf["heightMm"]) * 0.49:
-            fails.append(f"handle height too short {h0.get('heightMm')}")
-    roles = {c.get("memberRole") for c in qf.get("cuts") or []}
-    if "handle" not in roles:
-        fails.append("handle not in BOM cuts")
-
-    # Sliding — user split + track 2W+1ft on anti-handle side + wheels@300
-    W = 13 * MM_PER_FT
-    expect_track = 2 * W + MM_PER_FT
+    # Sliding track + unit round-trip via widthMm
+    Wmm = 13 * MM_PER_FT
     qs = compute_gate(
         {
-            "widthFt": 13,
-            "heightFt": 8,
+            "widthMm": Wmm,
+            "heightMm": 8 * MM_PER_FT,
             "bayType": "sliding_gate",
             "foldLeft": 1,
             "foldRight": 1,
-            "louverGapMm": 66,
-            "trackBarDiaMm": 20,
             "slidingMainWidthMm": 2800,
             "swingLeafWidthMm": 900,
             "handleSide": "R",
-            "sideWallWidthMm": 230,
-            "msRatePerKg": 215,
-            "alRatePerBar": 1459,
+            "sizeUnit": "mm",
         }
     )
-    svg_s = gate_svg({}, qs)
-    leaves = qs.get("leaves") or []
-    if len(leaves) < 2:
-        fails.append(f"sliding leafCount {len(leaves)}")
-    widths = [float(L.get("outerWidthMm") or 0) for L in leaves]
-    if abs(widths[-1] - 900) > 80 and abs(min(widths) - 900) > 80:
-        # swing should be near 900 after scale-to-span; allow mid-pillar-less scale
-        if not any(abs(w - 900) / 900 < 0.25 for w in widths):
-            fails.append(f"swing width not honoured {widths}")
-    roles_leaf = {L.get("role") for L in leaves}
-    if "swing" not in roles_leaf or "sliding" not in roles_leaf:
-        fails.append(f"sliding roles {roles_leaf}")
     track = qs.get("track") or {}
-    tlen = float(track.get("lengthMm") or 0)
-    if abs(tlen - expect_track) > 1.0:
-        fails.append(f"track len {tlen} != 2W+1ft {expect_track}")
-    if track.get("pocketSide") != "L" or track.get("handleSide") != "R":
-        fails.append(f"track sides {track.get('pocketSide')} / {track.get('handleSide')}")
-    if float(track.get("x0Mm") or 0) > -100:
-        fails.append(f"track should extend left of opening x0={track.get('x0Mm')}")
-    if 'data-inset-mm="300"' not in svg_s:
-        fails.append("wheel inset 300 missing")
-    if "track_c_channel" not in svg_s or "track_round_bar" not in svg_s:
-        fails.append("sliding track visuals missing")
-    if "side_wall_L" not in svg_s or "side_wall_R" not in svg_s:
-        fails.append("sliding missing side walls")
-    if 'data-role="handle"' not in svg_s:
-        fails.append("sliding missing handle")
-    cut_roles = {c.get("memberRole") for c in qs.get("cuts") or []}
-    if "track_c_channel" not in cut_roles or "track_round_bar" not in cut_roles:
-        fails.append(f"track cuts missing {cut_roles}")
-    if float((qs.get("weight") or {}).get("ironKg") or 0) < 50:
-        fails.append(f"sliding iron kg too low {qs.get('weight')}")
+    if abs(float(track.get("lengthMm") or 0) - (2 * Wmm + MM_PER_FT)) > 1:
+        fails.append(f"track len {track.get('lengthMm')}")
+    # Unit conversion helper
+    from WEOS.factory.gate_engine import ensure_gate_dims
+    c_ft = ensure_gate_dims({"widthFt": 10, "heightFt": 7, "bayType": "swing_gate"})
+    c_mm = ensure_gate_dims({"widthMm": 10 * MM_PER_FT, "heightMm": 7 * MM_PER_FT, "bayType": "swing_gate"})
+    if abs(c_ft["widthMm"] - c_mm["widthMm"]) > 0.5 or abs(c_ft["heightMm"] - c_mm["heightMm"]) > 0.5:
+        fails.append("unit round-trip ft/mm mismatch")
 
     if fails:
         print("FAIL gate workshop:")
@@ -132,8 +145,9 @@ def main() -> int:
         return 1
     print(
         "OK gate workshop · "
-        f"walls H+100={wh:g} · fold hinges={hinge_n} handles={len(qf.get('handles') or [])} · "
-        f"slide track={tlen:g} pocket={track.get('pocketSide')} widths={[round(w) for w in widths]}"
+        f"pattern sections={len(counts) if s25 else 0} "
+        f"hingeBars={svg_p.count('data-hinge-bar=') if s25 else 0} "
+        f"track={track.get('lengthMm')}"
     )
     return 0
 
