@@ -310,7 +310,7 @@ def normalize_section(raw: Any) -> dict[str, Any]:
                 bom_hint = _str(parsed.get("bomHint"))
         except Exception:
             pass
-    return {
+    out = {
         "name": _str(r.get("name")),
         "use": use_txt,
         # FACE×DEPTH: wMm = face (elevation), hMm = depth (BOM/3D only)
@@ -334,6 +334,26 @@ def normalize_section(raw: Any) -> dict[str, Any]:
         "glassType": _str(r.get("glassType")),  # '', 'sg' or 'dg'
         "notes": _str(r.get("notes")),
     }
+    # Stable catalogue ids + clear role (outer_track / glass_shutter / …)
+    section_id = _str(r.get("sectionId") or r.get("id"))
+    series_id = _str(r.get("seriesId") or r.get("series"))
+    role = _str(r.get("role")).lower().replace(" ", "_")
+    if section_id:
+        out["sectionId"] = section_id
+        out["id"] = section_id
+    if series_id:
+        out["seriesId"] = series_id
+    if role:
+        out["role"] = role
+        out["roleLabel"] = _str(r.get("roleLabel")) or role.replace("_", " ").title()
+    orientation = _str(r.get("orientation"))
+    if orientation:
+        out["orientation"] = orientation
+    usage = _str(r.get("usage"))
+    if usage:
+        out["usage"] = usage
+        out["usageLabel"] = _str(r.get("usageLabel")) or usage.replace("_", " ").title()
+    return out
 
 
 def normalize_hardware(raw: Any) -> dict[str, Any]:

@@ -1,7 +1,9 @@
 """Windows section catalogue — Excel → series-wise JSON (profile library data layer).
 
-Engineering usage (track / sash / interlock / meeting) is inferred from catalogue
-``name`` text and stored on each section so quotation/PDF can annotate like MAR-QT.
+Stable ``seriesId`` + ``sectionId`` identify every card. Clear ``role`` values
+(outer_track / outer_frame / glass_shutter / mesh_shutter / …) bind costing so
+outer sections never bill as shutters. Fine-grained ``usage`` keeps track
+orientation for BOM fill.
 """
 
 from __future__ import annotations
@@ -36,6 +38,33 @@ SERIES_ID_ALIASES: dict[str, str] = {
     "35mm-gulf-slim-series": "35mm_gulf_slim",
 }
 
+# Canonical active series (Product Library / costing). Archived Excel series stay
+# in SERIES_PRODUCT_MAP for import history but are not re-seeded as live products.
+CANONICAL_SERIES_IDS: tuple[str, ...] = (
+    "25mm_prestige",
+    "27mm_domal",
+    "29mm_premium",
+    "35mm_gulf",
+    "35mm_prestige",
+    "40mm_prestige",
+    "40mm_casement_standard",
+    "50mm_casement_prestige",
+)
+
+# Clear roles for costing / materials / remnant keys.
+SECTION_ROLES: tuple[str, ...] = (
+    "outer_track",
+    "outer_frame",
+    "glass_shutter",
+    "mesh_shutter",
+    "interlock",
+    "meeting",
+    "mullion",
+    "door",
+    "clip",
+    "other",
+)
+
 # Map catalogue series → manufacturing *engine* product ids (linkedProductId).
 # Selectable Product Library id is the series id itself (productId == series id).
 SERIES_PRODUCT_MAP: dict[str, str] = {
@@ -55,6 +84,24 @@ SERIES_PRODUCT_MAP: dict[str, str] = {
     "40mm_casement_standard": "casement_stub",
     "50mm_casement_prestige": "casement_stub",
     "bathroom_ventilator": "casement_stub",
+}
+
+# Legacy usage → clear role (when role missing on older JSON).
+_USAGE_TO_ROLE: dict[str, str] = {
+    "track": "outer_track",
+    "track_horizontal": "outer_track",
+    "track_vertical": "outer_track",
+    "track_add": "outer_track",
+    "frame": "outer_frame",
+    "sash": "glass_shutter",
+    "mesh": "mesh_shutter",
+    "interlock": "interlock",
+    "meeting": "meeting",
+    "door": "door",
+    "mullion": "mullion",
+    "clip": "clip",
+    "other": "other",
+    "unknown": "other",
 }
 
 
@@ -104,7 +151,11 @@ def _parse_height_limit_mm(val: Any) -> float | None:
 
 
 def infer_usage(name: str | None) -> str:
-    """Map catalogue section name → usage role (frame/track/sash/interlock/…)."""
+    """Map catalogue section name → fine-grained usage (track orientation / sash / …).
+
+    Prefer :func:`infer_role` for costing bind rules. ``usage`` keeps horizontal /
+    vertical track subtypes for BOM side fill.
+    """
     n = (name or "").lower()
     if not n:
         return "unknown"
@@ -112,6 +163,13 @@ def infer_usage(name: str | None) -> str:
         return "meeting"
     if "interlock" in n or "renf" in n or re.search(r"\bint\.?\b", n):
         return "interlock"
+    if "mullion" in n:
+        return "mullion"
+    # Standalone glass clip row — not "Shutter SG (no Need Clip)"
+    if "clip" in n and "shutter" not in n and "no need" not in n:
+        return "clip"
+    if "door" in n and "track" not in n and "trck" not in n:
+        return "door"
     if "reducer" in n:
         return "other"
     if "mesh" in n and any(k in n for k in ("adapt", "adept", "adepet", "adeptor", "adepetr")):
@@ -141,6 +199,197 @@ def infer_usage(name: str | None) -> str:
     if "frame" in n or "outer" in n:
         return "frame"
     return "other"
+
+
+def infer_role(name: str | None, *, usage: str | None = None) -> str:
+    """Clear costing role: outer_track / glass_shutter / mesh_shutter / …"""
+    u = (usage or infer_usage(name) or "").strip().lower()
+    if u in _USAGE_TO_ROLE:
+        # Prefer name-based overrides for mullion / door / clip when usage was "other"
+        if u == "other":
+            n = (name or "").lower()
+            if "mullion" in n:
+                return "mullion"
+            if "clip" in n:
+                return "clip"
+            if "door" in n:
+                return "door"
+        return _USAGE_TO_ROLE[u]
+    n = (name or "").lower()
+    if not n:
+        return "other"
+    if "meeting" in n:
+        return "meeting"
+    if "interlock" in n or "renf" in n:
+        return "interlock"
+    if "mullion" in n:
+        return "mullion"
+    if "clip" in n:
+        return "clip"
+    if "door" in n and "track" not in n:
+        return "door"
+    if "mesh" in n and "track" not in n and "trck" not in n:
+        if any(k in n for k in ("adapt", "adept", "adepet", "adeptor", "adepetr")):
+            return "other"
+        return "mesh_shutter"
+    if "track" in n or "trck" in n or "domal" in n:
+        return "outer_track"
+    if "frame" in n or (n.startswith("outer") and "track" not in n):
+        return "outer_frame"
+    if any(k in n for k in ("handle", "hnadle", "shutter", "sash")):
+        return "glass_shutter"
+    if any(k in n for k in ("top", "bottom", "horizon")) and "track" not in n:
+        return "glass_shutter"
+    return "other"
+
+
+def infer_orientation(name: str | None, *, usage: str | None = None) -> str | None:
+    """Track / frame side hint: vertical | horizontal | all | add."""
+    u = (usage or "").strip().lower()
+    if u == "track_vertical":
+        return "vertical"
+    if u == "track_horizontal":
+        return "horizontal"
+    if u == "track_add":
+        return "add"
+    n = (name or "").lower()
+    if not n:
+        return None
+    if "track" not in n and "trck" not in n and "frame" not in n:
+        return None
+    if any(k in n for k in ("vertical", "left", "right", "jamb")) and not any(
+        k in n for k in ("top", "bottom", "horizon")
+    ):
+        return "vertical"
+    if any(k in n for k in ("horiz", "top", "bottom", "tp ")):
+        return "horizontal"
+    if "add" in n or re.search(r"\b4\s*(?:track|trck)", n):
+        return "add"
+    if "all" in n:
+        return "all"
+    return "all"
+
+
+def role_label(role: str | None) -> str:
+    return {
+        "outer_track": "Outer track",
+        "outer_frame": "Outer frame",
+        "glass_shutter": "Glass shutter",
+        "mesh_shutter": "Mesh shutter",
+        "interlock": "Interlock",
+        "meeting": "Meeting",
+        "mullion": "Mullion",
+        "door": "Door / leaf",
+        "clip": "Glass clip",
+        "other": "Section",
+    }.get((role or "").strip().lower(), role or "Section")
+
+
+def section_id_for(series_id: str, name: str | None) -> str:
+    """Stable human-readable section id: ``{seriesId}__{slug(name)}``."""
+    sid = str(series_id or "").strip() or "series"
+    return f"{sid}__{_slug(name or 'section')}"
+
+
+def annotate_section_card(
+    sec: Mapping[str, Any] | None,
+    *,
+    series_id: str | None = None,
+) -> dict[str, Any]:
+    """Ensure seriesId + sectionId + role on a catalogue / setup section card."""
+    row = dict(sec) if isinstance(sec, Mapping) else {}
+    sid = str(
+        series_id
+        or row.get("seriesId")
+        or row.get("series")
+        or ""
+    ).strip()
+    name = str(row.get("name") or "").strip() or None
+    # Derive series from existing id prefix when missing
+    existing_id = str(row.get("sectionId") or row.get("id") or "").strip()
+    if not sid and "__" in existing_id:
+        sid = existing_id.split("__", 1)[0]
+    # Always re-derive usage/role from the section name so stale tags cannot
+    # leave outer_track on a shutter (or clip on "no Need Clip" shutters).
+    usage = infer_usage(name) or str(row.get("usage") or "").strip().lower() or "unknown"
+    role = infer_role(name, usage=usage)
+    if role not in SECTION_ROLES:
+        role = "other"
+    orientation = row.get("orientation")
+    if orientation in (None, ""):
+        orientation = infer_orientation(name, usage=usage)
+    sec_id = existing_id or (section_id_for(sid, name) if sid else section_id_for("section", name))
+    # Keep id prefix aligned with series
+    if sid and not sec_id.startswith(f"{sid}__"):
+        sec_id = section_id_for(sid, name)
+    row["id"] = sec_id
+    row["sectionId"] = sec_id
+    if sid:
+        row["seriesId"] = sid
+    row["usage"] = usage
+    row["usageLabel"] = _usage_label(usage)
+    row["role"] = role
+    row["roleLabel"] = role_label(role)
+    if orientation:
+        row["orientation"] = orientation
+    elif "orientation" in row and not orientation:
+        row.pop("orientation", None)
+    return row
+
+
+def annotate_series_sections(series: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Copy series dict with every section card annotated (ids + roles)."""
+    s = dict(series) if isinstance(series, Mapping) else {}
+    sid = str(s.get("id") or s.get("seriesId") or "").strip()
+    if sid:
+        s["id"] = sid
+        s["seriesId"] = sid
+    secs = []
+    for sec in s.get("sections") or []:
+        if isinstance(sec, Mapping):
+            secs.append(annotate_section_card(sec, series_id=sid))
+    s["sections"] = secs
+    return s
+
+
+def refresh_catalogue_ids_roles(
+    *,
+    series_ids: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Persist seriesId/sectionId/role on catalogue.json + per-series JSON."""
+    doc = load_catalogue()
+    wanted = {str(x) for x in series_ids} if series_ids else None
+    new_series: list[dict[str, Any]] = []
+    touched = 0
+    for series in doc.get("series") or []:
+        if not isinstance(series, Mapping):
+            continue
+        sid = str(series.get("id") or "")
+        if wanted is not None and sid not in wanted:
+            new_series.append(dict(series))
+            continue
+        annotated = annotate_series_sections(series)
+        new_series.append(annotated)
+        touched += 1
+    out = dict(doc)
+    out["series"] = new_series
+    out["sectionCount"] = sum(len(s.get("sections") or []) for s in new_series)
+    out["seriesCount"] = len(new_series)
+    path = persist_catalogue(out)
+    # Mirror under WEOS/sections when present (legacy path used by some tools)
+    legacy = PACKAGE_ROOT / "sections" / "catalogue.json"
+    try:
+        if legacy.parent.is_dir():
+            legacy.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "path": str(path),
+        "seriesTouched": touched,
+        "seriesCount": out["seriesCount"],
+        "sectionCount": out["sectionCount"],
+    }
 
 
 def parse_track_count(name: str | None) -> float | None:
@@ -303,16 +552,25 @@ def is_center_opening_only(name: str | None) -> bool:
 
 def _usage_label(usage: str) -> str:
     return {
-        "track": "Track / Outer frame",
-        "track_horizontal": "Track — horizontal",
-        "track_vertical": "Track — vertical",
-        "track_add": "Add track",
-        "sash": "Sash / Shutter",
+        "track": "Outer track",
+        "track_horizontal": "Outer track — horizontal",
+        "track_vertical": "Outer track — vertical",
+        "track_add": "Outer track — add",
+        "sash": "Glass shutter",
+        "mesh": "Mesh shutter",
         "interlock": "Interlock",
         "meeting": "Meeting section",
-        "frame": "Frame",
+        "frame": "Outer frame",
+        "mullion": "Mullion",
+        "door": "Door / leaf",
+        "clip": "Glass clip",
         "other": "Section",
         "unknown": "Section",
+        # Also accept clear roles if passed as usage
+        "outer_track": "Outer track",
+        "outer_frame": "Outer frame",
+        "glass_shutter": "Glass shutter",
+        "mesh_shutter": "Mesh shutter",
     }.get(usage, usage)
 
 
@@ -435,30 +693,31 @@ def parse_excel(path: str | Path | None = None) -> dict[str, Any]:
             design_opt = _clean_text(cells[6]) if len(cells) > 6 else None
             # DETA sheet columns align with written FACE×DEPTH order (col0=face, col1=depth)
             # even when the header text says "section depth" / "width".
-            section = {
-                "id": f"{current['id']}__{_slug(name or 'section')}",
-                "name": name or "Unnamed",
-                "usage": usage,
-                "usageLabel": _usage_label(usage),
-                "widthMm": float(cells[0]),
-                "sectionDepthMm": float(cells[1]),
-                "standardLength": _clean_text(cells[3]) if len(cells) > 3 else None,
-                "weightKgPerMtrRaw": _clean_text(weight_raw),
-                "weightKgPerMtr": _parse_weight_kg_m(weight_raw),
-                "heightLimit": _clean_text(cells[5]) if len(cells) > 5 else None,
-                "heightLimitMm": _parse_height_limit_mm(cells[5] if len(cells) > 5 else None),
-                "wallThicknessMm": (
-                    float(cells[7])
-                    if len(cells) > 7 and cells[7] is not None and str(cells[7]).strip() != ""
-                    else None
-                ),
-                "designNote": design_opt,
-                # Excel data model: track count (2 / 2.5 / 3), glass availability
-                # (sg=single, dg/gd=DGU), and center-opening-only meeting sections.
-                "trackCount": parse_track_count(name),
-                "glassOptions": parse_glass_options(name),
-                "centerOpeningOnly": is_center_opening_only(name),
-            }
+            section = annotate_section_card(
+                {
+                    "name": name or "Unnamed",
+                    "usage": usage,
+                    "widthMm": float(cells[0]),
+                    "sectionDepthMm": float(cells[1]),
+                    "standardLength": _clean_text(cells[3]) if len(cells) > 3 else None,
+                    "weightKgPerMtrRaw": _clean_text(weight_raw),
+                    "weightKgPerMtr": _parse_weight_kg_m(weight_raw),
+                    "heightLimit": _clean_text(cells[5]) if len(cells) > 5 else None,
+                    "heightLimitMm": _parse_height_limit_mm(cells[5] if len(cells) > 5 else None),
+                    "wallThicknessMm": (
+                        float(cells[7])
+                        if len(cells) > 7 and cells[7] is not None and str(cells[7]).strip() != ""
+                        else None
+                    ),
+                    "designNote": design_opt,
+                    # Excel data model: track count (2 / 2.5 / 3), glass availability
+                    # (sg=single, dg/gd=DGU), and center-opening-only meeting sections.
+                    "trackCount": parse_track_count(name),
+                    "glassOptions": parse_glass_options(name),
+                    "centerOpeningOnly": is_center_opening_only(name),
+                },
+                series_id=current["id"],
+            )
             current["sections"].append(section)
             if design_opt and design_opt not in current["designOptions"]:
                 current["designOptions"].append(design_opt)
@@ -514,27 +773,35 @@ def _library_catalogue_block(series: Mapping[str, Any]) -> dict[str, Any]:
     """Build an editable catalogue block for a Product Library entry from a series."""
     sections = list(series.get("sections") or [])
     profiles = []
+    series_id = str(series.get("id") or series.get("seriesId") or "")
     for sec in sections:
-        name = sec.get("name")
-        tc = sec.get("trackCount")
+        annotated = annotate_section_card(sec, series_id=series_id)
+        name = annotated.get("name")
+        tc = annotated.get("trackCount")
         if tc is None:
             tc = parse_track_count(name)
-        gopts = list(sec.get("glassOptions") or []) or parse_glass_options(name)
+        gopts = list(annotated.get("glassOptions") or []) or parse_glass_options(name)
         profiles.append(
             {
+                "id": annotated.get("sectionId") or annotated.get("id"),
+                "sectionId": annotated.get("sectionId") or annotated.get("id"),
+                "seriesId": annotated.get("seriesId") or series_id,
                 "name": name,
-                "usage": sec.get("usage"),
-                "usageLabel": sec.get("usageLabel"),
-                "sectionDepthMm": sec.get("sectionDepthMm"),
-                "widthMm": sec.get("widthMm"),
-                "weightKgPerMtr": sec.get("weightKgPerMtr"),
-                "standardLength": sec.get("standardLength"),
-                "wallThicknessMm": sec.get("wallThicknessMm"),
+                "usage": annotated.get("usage"),
+                "usageLabel": annotated.get("usageLabel"),
+                "role": annotated.get("role"),
+                "roleLabel": annotated.get("roleLabel"),
+                "orientation": annotated.get("orientation"),
+                "sectionDepthMm": annotated.get("sectionDepthMm"),
+                "widthMm": annotated.get("widthMm"),
+                "weightKgPerMtr": annotated.get("weightKgPerMtr"),
+                "standardLength": annotated.get("standardLength"),
+                "wallThicknessMm": annotated.get("wallThicknessMm"),
                 "trackCount": tc,
                 "glassOptions": gopts,
                 "centerOpeningOnly": bool(
-                    sec.get("centerOpeningOnly")
-                    if sec.get("centerOpeningOnly") is not None
+                    annotated.get("centerOpeningOnly")
+                    if annotated.get("centerOpeningOnly") is not None
                     else is_center_opening_only(name)
                 ),
             }
@@ -550,12 +817,23 @@ def _library_catalogue_block(series: Mapping[str, Any]) -> dict[str, Any]:
     tracks: list[dict[str, Any]] = []
     seen_tc: set[float] = set()
     for sec in sections:
-        usage = str(sec.get("usage") or "")
-        if usage and usage not in ("track", "track_horizontal", "track_vertical", "frame"):
+        annotated = annotate_section_card(sec, series_id=series_id)
+        usage = str(annotated.get("usage") or "")
+        role = str(annotated.get("role") or "")
+        if role not in ("outer_track", "outer_frame") and usage not in (
+            "track",
+            "track_horizontal",
+            "track_vertical",
+            "track_add",
+            "frame",
+        ):
             continue
-        tc = sec.get("trackCount")
+        tc = annotated.get("trackCount")
         if tc is None:
-            tc = parse_track_count(sec.get("name"))
+            tc = parse_track_count(annotated.get("name"))
+        if tc is None and role == "outer_frame":
+            # Casement outer frame is not a track-count option
+            continue
         if tc is None:
             continue
         try:
@@ -568,10 +846,12 @@ def _library_catalogue_block(series: Mapping[str, Any]) -> dict[str, Any]:
         tracks.append(
             {
                 "count": tc_f,
-                "name": sec.get("name"),
-                "sectionDepthMm": sec.get("sectionDepthMm"),
-                "widthMm": sec.get("widthMm"),
-                "sectionId": sec.get("id"),
+                "name": annotated.get("name"),
+                "sectionDepthMm": annotated.get("sectionDepthMm"),
+                "widthMm": annotated.get("widthMm"),
+                "sectionId": annotated.get("sectionId") or annotated.get("id"),
+                "seriesId": annotated.get("seriesId") or series_id,
+                "role": annotated.get("role") or "outer_track",
                 # mesh needs 2.5 or 3 track (single 2-track has no room for a mesh sash)
                 "meshCapable": tc_f >= 2.5,
             }
@@ -579,8 +859,16 @@ def _library_catalogue_block(series: Mapping[str, Any]) -> dict[str, Any]:
     tracks.sort(key=lambda t: t["count"])
     track_counts = [t["count"] for t in tracks]
 
-    # Shared sash / shutter frame (same across all tracks).
-    shared_sash = next((s for s in sections if s.get("usage") == "sash"), None)
+    # Shared glass shutter frame (same across all tracks) — never mesh / outer.
+    shared_sash = next(
+        (
+            s
+            for s in sections
+            if annotate_section_card(s, series_id=series_id).get("role") == "glass_shutter"
+            or s.get("usage") == "sash"
+        ),
+        None,
+    )
 
     # Glass types available anywhere in the series (sg=single, dg/gd=DGU).
     glass_types: list[str] = []
@@ -875,8 +1163,16 @@ def specs_summary_for_series(
         return {}
 
     by_usage: dict[str, list[dict[str, Any]]] = {}
+    sid = str(series.get("id") or series_id or "")
     for sec in series.get("sections") or []:
-        by_usage.setdefault(sec.get("usage") or "other", []).append(sec)
+        if not isinstance(sec, Mapping):
+            continue
+        annotated = annotate_section_card(sec, series_id=sid)
+        for key in (
+            annotated.get("usage") or "other",
+            annotated.get("role") or "other",
+        ):
+            by_usage.setdefault(str(key), []).append(annotated)
 
     fam = str(glass_family or "").strip().lower()
     if fam in ("sg", "laminated", "lami"):
@@ -891,7 +1187,10 @@ def specs_summary_for_series(
                 if not isinstance(sec, Mapping):
                     continue
                 # Prefer the track count the cart actually uses.
-                if track_count is not None and u.startswith("track"):
+                role = str(sec.get("role") or "")
+                if track_count is not None and (
+                    str(u).startswith("track") or role in ("outer_track", "outer_frame")
+                ):
                     stc = sec.get("trackCount")
                     if stc is None:
                         stc = parse_track_count(sec.get("name"))
@@ -912,9 +1211,9 @@ def specs_summary_for_series(
         ranked.sort(key=lambda x: -x[0])
         return ranked[0][1]
 
-    track = pick(("track", "track_horizontal", "track_vertical", "frame"))
-    frame = pick(("frame", "track"))
-    sash = pick(("sash",))
+    track = pick(("outer_track", "track", "track_horizontal", "track_vertical", "track_add", "frame", "outer_frame"))
+    frame = pick(("outer_frame", "frame", "outer_track", "track"))
+    sash = pick(("glass_shutter", "sash", "door"))
     interlock = pick(("interlock",))
     meeting = pick(("meeting",))
 

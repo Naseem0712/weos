@@ -9,7 +9,7 @@
       "id": "25mm_prestige__2_track",
       "name": "2 track",
       "usage": "track",
-      "usageLabel": "Track / Outer frame",
+      "usageLabel": "Outer track",
       "widthMm": 40.0,
       "sectionDepthMm": 50.99,
       "standardLength": "16",
@@ -26,13 +26,18 @@
       "rateUnit": "kg",
       "coatingCost": 18.0,
       "coatingUnit": "rft",
-      "use": "V2 H2"
+      "use": "V2 H2",
+      "sectionId": "25mm_prestige__2_track",
+      "seriesId": "25mm_prestige",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "all"
     },
     {
       "id": "25mm_prestige__3_track",
       "name": "3 Track",
       "usage": "track",
-      "usageLabel": "Track / Outer frame",
+      "usageLabel": "Outer track",
       "widthMm": 40.0,
       "sectionDepthMm": 85.8,
       "standardLength": "16",
@@ -49,13 +54,18 @@
       "rateUnit": "kg",
       "coatingCost": 24.0,
       "coatingUnit": "rft",
-      "use": "V2 H2"
+      "use": "V2 H2",
+      "sectionId": "25mm_prestige__3_track",
+      "seriesId": "25mm_prestige",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "all"
     },
     {
       "id": "25mm_prestige__2_5_track",
       "name": "2.5 track",
       "usage": "track",
-      "usageLabel": "Track / Outer frame",
+      "usageLabel": "Outer track",
       "widthMm": 46.89,
       "sectionDepthMm": 73.32,
       "standardLength": "16",
@@ -72,13 +82,18 @@
       "rateUnit": "kg",
       "coatingCost": 20.0,
       "coatingUnit": "rft",
-      "use": "V2 H2"
+      "use": "V2 H2",
+      "sectionId": "25mm_prestige__2_5_track",
+      "seriesId": "25mm_prestige",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "all"
     },
     {
       "id": "25mm_prestige__handle_side_top_bottom",
       "name": "handle side, top, bottom",
       "usage": "sash",
-      "usageLabel": "Sash / Shutter",
+      "usageLabel": "Glass shutter",
       "widthMm": 63.0,
       "sectionDepthMm": 25.32,
       "standardLength": "16",
@@ -95,7 +110,11 @@
       "rateUnit": "kg",
       "coatingCost": 13.0,
       "coatingUnit": "rft",
-      "use": "V1 H2"
+      "use": "V1 H2",
+      "sectionId": "25mm_prestige__handle_side_top_bottom",
+      "seriesId": "25mm_prestige",
+      "role": "glass_shutter",
+      "roleLabel": "Glass shutter"
     },
     {
       "id": "25mm_prestige__interlock_slim",
@@ -118,7 +137,11 @@
       "rateUnit": "kg",
       "coatingCost": 9.0,
       "coatingUnit": "rft",
-      "use": "V1 H0"
+      "use": "V1 H0",
+      "sectionId": "25mm_prestige__interlock_slim",
+      "seriesId": "25mm_prestige",
+      "role": "interlock",
+      "roleLabel": "Interlock"
     },
     {
       "id": "25mm_prestige__renforcment_interlock",
@@ -141,13 +164,17 @@
       "rateUnit": "kg",
       "coatingCost": 15.0,
       "coatingUnit": "rft",
-      "use": "V1 H0"
+      "use": "V1 H0",
+      "sectionId": "25mm_prestige__renforcment_interlock",
+      "seriesId": "25mm_prestige",
+      "role": "interlock",
+      "roleLabel": "Interlock"
     },
     {
       "id": "25mm_prestige__2_5_track_mesh_shutter",
       "name": "2.5 track mesh shutter",
       "usage": "mesh",
-      "usageLabel": "Sash / Shutter",
+      "usageLabel": "Mesh shutter",
       "widthMm": 41.6,
       "sectionDepthMm": 17.0,
       "standardLength": "16",
@@ -164,9 +191,15 @@
       "rateUnit": "kg",
       "coatingCost": 9.0,
       "coatingUnit": "rft",
-      "use": "V2 H2"
+      "use": "V2 H2",
+      "sectionId": "25mm_prestige__2_5_track_mesh_shutter",
+      "seriesId": "25mm_prestige",
+      "role": "mesh_shutter",
+      "roleLabel": "Mesh shutter",
+      "orientation": "all"
     }
   ],
   "designOptions": [],
-  "engineProductId": "29mm_sliding"
+  "engineProductId": "29mm_sliding",
+  "seriesId": "25mm_prestige"
 }

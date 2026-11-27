@@ -585,6 +585,173 @@ def main() -> None:
     _ok("outer_frame" in uses40 and "door" in uses40, f"40mm case uses {uses40}")
     _ok(any("outer" in n for n in names40) and any("shutter" in n or "door" in n for n in names40), f"40mm case names {names40}")
 
+    # ── Series/section IDs + clear roles + remnant series isolation ──
+    from WEOS.factory.section_catalogue import (
+        CANONICAL_SERIES_IDS,
+        annotate_section_card,
+        infer_role,
+        load_catalogue,
+    )
+    from WEOS.factory.remnant_stock import leftovers_for_nesting, remnant_key
+    from WEOS.factory.design_cost import _section_pool_key, nest_cuts_by_section
+    from WEOS.factory.materials_list import materials_rows_for_line
+
+    cat = load_catalogue()
+    series_ids = {s.get("id") for s in (cat.get("series") or [])}
+    for sid in CANONICAL_SERIES_IDS:
+        _ok(sid in series_ids, f"canonical series present {sid}")
+    for series in cat.get("series") or []:
+        sid = series.get("id")
+        if sid not in CANONICAL_SERIES_IDS:
+            continue
+        for sec in series.get("sections") or []:
+            a = annotate_section_card(sec, series_id=sid)
+            _ok(a.get("seriesId") == sid, f"seriesId on {a.get('id')}")
+            _ok(str(a.get("sectionId") or "").startswith(f"{sid}__"), f"sectionId {a.get('sectionId')}")
+            _ok(
+                a.get("role")
+                in (
+                    "outer_track",
+                    "outer_frame",
+                    "glass_shutter",
+                    "mesh_shutter",
+                    "interlock",
+                    "meeting",
+                    "mullion",
+                    "door",
+                    "clip",
+                    "other",
+                ),
+                f"role clear {a.get('role')} on {a.get('name')}",
+            )
+
+    _ok(infer_role("2 track") == "outer_track", "role outer_track")
+    _ok(infer_role("handle side") == "glass_shutter", "role glass_shutter")
+    _ok(infer_role("mesh shutter") == "mesh_shutter", "role mesh_shutter")
+    _ok(infer_role("Outer Frame") == "outer_frame", "role outer_frame")
+    _ok(infer_role("Mullion Slim") == "mullion", "role mullion")
+
+    k25 = remnant_key(series_id="25mm_prestige", section_id="25mm_prestige__2_track", colour="white")
+    k35 = remnant_key(series_id="35mm_gulf", section_id="35mm_gulf__2_track_top_bottom", colour="white")
+    _ok(k25 != k35, f"different series remnant keys {k25} vs {k35}")
+    _ok("25mm_prestige" in k25 and "35mm_gulf" in k35, f"keys carry seriesId {k25} {k35}")
+
+    # 35mm nest must not consume a 25mm remnant pool entry
+    pool = {k25: [2.0]}
+    nest_other = nest_cuts_by_section(
+        [
+            {
+                "lengthM": 1.0,
+                "key": k35,
+                "stdM": 3.0,
+                "aluminiumPerM": 100,
+                "coatingPerM": 10,
+                "seriesId": "35mm_gulf",
+                "sectionId": "35mm_gulf__2_track_top_bottom",
+                "sectionName": "2 track",
+                "colour": "white",
+            }
+        ],
+        remnant_pool=dict(pool),
+        reuse=True,
+        default_std_m=3.0,
+    )
+    left25 = (nest_other.get("remnantPool") or {}).get(k25)
+    _ok(left25 == [2.0] or left25 is None, f"25mm remnant untouched by 35mm nest {left25}")
+    hits = leftovers_for_nesting(
+        series_id="35mm_gulf",
+        section_id="35mm_gulf__2_track_top_bottom",
+        colour="white",
+    )
+    _ok(
+        all(str(h.get("seriesId") or h.get("series") or "").lower() != "25mm_prestige" for h in hits),
+        f"no cross-series leftovers {hits}",
+    )
+
+    outer_on_shutter = [
+        p
+        for p in (c25.get("profiles") or [])
+        if str(p.get("role") or "") == "outer_track" and "shutter" in str(p.get("use") or "")
+    ]
+    _ok(not outer_on_shutter, f"outer_track not applied as shutter {outer_on_shutter}")
+    track_uses = [p for p in (c25.get("profiles") or []) if str(p.get("use")) == "track"]
+    _ok(
+        all(
+            str(p.get("sectionId") or "").startswith("25mm_prestige") or not p.get("sectionId")
+            for p in track_uses
+        ),
+        f"track sectionIds bound to series {[p.get('sectionId') for p in track_uses]}",
+    )
+    shutter_uses = [
+        p
+        for p in (c25.get("profiles") or [])
+        if "shutter" in str(p.get("use") or "")
+    ]
+    _ok(
+        all(str(p.get("role") or "") != "outer_track" for p in shutter_uses),
+        f"shutter rows not outer_track {[p.get('role') for p in shutter_uses]}",
+    )
+
+    mats_line = materials_rows_for_line(
+        {
+            "product": "25mm_prestige",
+            "productId": "25mm_prestige",
+            "sectionSeries": "25mm_prestige",
+            "width": 1800,
+            "height": 1500,
+            "qty": 1,
+            "glass": "8mm_toughened",
+            "colour": "white",
+            "glassShutters": 2,
+            "trackCount": 2,
+            "system": "sliding",
+        }
+    )
+    mat_rows = mats_line.get("materials") or []
+    _ok(any(r.get("sectionId") for r in mat_rows), f"materials sectionId {mat_rows[:2]}")
+    _ok(any(r.get("role") for r in mat_rows), f"materials role {mat_rows[:2]}")
+    _ok(any(r.get("seriesId") == "25mm_prestige" for r in mat_rows), f"materials seriesId {mat_rows[:1]}")
+    html_ids = materials_list_html(
+        {
+            "customer": "Smoke",
+            "date": "2026-11-27",
+            "lines": [
+                {
+                    "serial": "1",
+                    "product": "25mm Prestige",
+                    "width": 1800,
+                    "height": 1500,
+                    "qty": 1,
+                    "colour": "White",
+                    "materials": mat_rows,
+                    "hardware": [],
+                    "glass": {},
+                }
+            ],
+            "profileSummary": [],
+            "hardwareSummary": [],
+            "glassSummary": [],
+            "purchaseList": [],
+        }
+    )
+    _ok(
+        "outer_track" in html_ids or "Outer track" in html_ids or "25mm_prestige__" in html_ids,
+        "materials html shows role/sectionId",
+    )
+
+    pk = _section_pool_key(
+        {
+            "name": "2 track",
+            "seriesId": "25mm_prestige",
+            "sectionId": "25mm_prestige__2_track",
+            "role": "outer_track",
+        },
+        series="25mm_prestige",
+        colour="white",
+        use="outer_track",
+    )
+    _ok(pk == k25, f"pool key sectionId-based {pk}")
+
     print("Design cost / interlock / materials / stock smoke passed.")
 
 

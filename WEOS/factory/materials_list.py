@@ -113,6 +113,10 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
         materials.append({
             "kind": "profile",
             "name": _str(p.get("catalogueName") or p.get("name")),
+            "seriesId": _str(p.get("seriesId") or design.get("seriesId") or product.get("id") or ""),
+            "sectionId": _str(p.get("sectionId") or ""),
+            "role": _str(p.get("role") or p.get("use") or ""),
+            "roleLabel": _str(p.get("roleLabel") or ""),
             "qty": p.get("qty"),
             "pcs": pcs,
             "unit": p.get("unit") or "RM",
@@ -513,8 +517,18 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
 
     rows_html = []
     for ln in pack.get("lines") or []:
+        def _id_role_bits(m: Mapping[str, Any]) -> str:
+            bits: list[str] = []
+            if m.get("role") or m.get("roleLabel"):
+                bits.append(esc(m.get("roleLabel") or m.get("role")))
+            if m.get("sectionId"):
+                bits.append(esc(m.get("sectionId")))
+            if m.get("seriesId"):
+                bits.append(esc(m.get("seriesId")))
+            return (" [" + " · ".join(bits) + "]") if bits else ""
+
         mats = "".join(
-            f"<li><strong>{esc(m.get('name'))}</strong>"
+            f"<li><strong>{esc(m.get('name'))}</strong>{_id_role_bits(m)}"
             f"{(' — ' + _mat_bits(m)) if _mat_bits(m) else ''}"
             f"</li>"
             for m in (ln.get("materials") or [])

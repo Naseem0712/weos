@@ -1338,7 +1338,15 @@
             "bomHint": "all_sides_same_v2h2",
             "side": "",
             "glassType": "",
-            "notes": "v2, h2"
+            "notes": "v2, h2",
+            "sectionId": "50mm_casement_prestige__outer_frame",
+            "id": "50mm_casement_prestige__outer_frame",
+            "seriesId": "50mm_casement_prestige",
+            "role": "outer_frame",
+            "roleLabel": "Outer frame",
+            "orientation": "all",
+            "usage": "frame",
+            "usageLabel": "Outer frame"
           },
           "grills": {
             "name": "Outer frame With grills",
@@ -1361,7 +1369,15 @@
             "bomHint": "all_sides_same_v2h2",
             "side": "",
             "glassType": "",
-            "notes": "v2, h2"
+            "notes": "v2, h2",
+            "sectionId": "50mm_casement_prestige__outer_frame_with_grills",
+            "id": "50mm_casement_prestige__outer_frame_with_grills",
+            "seriesId": "50mm_casement_prestige",
+            "role": "outer_frame",
+            "roleLabel": "Outer frame",
+            "orientation": "all",
+            "usage": "frame",
+            "usageLabel": "Outer frame"
           },
           "grills_mesh": {
             "name": "Outer frame With grills",
@@ -1384,7 +1400,15 @@
             "bomHint": "all_sides_same_v2h2",
             "side": "",
             "glassType": "",
-            "notes": "v2, h2"
+            "notes": "v2, h2",
+            "sectionId": "50mm_casement_prestige__outer_frame_with_grills",
+            "id": "50mm_casement_prestige__outer_frame_with_grills",
+            "seriesId": "50mm_casement_prestige",
+            "role": "outer_frame",
+            "roleLabel": "Outer frame",
+            "orientation": "all",
+            "usage": "frame",
+            "usageLabel": "Outer frame"
           }
         },
         "allSides": {
@@ -1408,7 +1432,15 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2"
+          "notes": "v2, h2",
+          "sectionId": "50mm_casement_prestige__outer_frame",
+          "id": "50mm_casement_prestige__outer_frame",
+          "seriesId": "50mm_casement_prestige",
+          "role": "outer_frame",
+          "roleLabel": "Outer frame",
+          "orientation": "all",
+          "usage": "frame",
+          "usageLabel": "Outer frame"
         },
         "notes": "Outer frame all sides same (variant changes section)."
       },
@@ -1435,7 +1467,14 @@
           "bomHint": "unspecified",
           "side": "",
           "glassType": "",
-          "notes": "free"
+          "notes": "free",
+          "sectionId": "50mm_casement_prestige__mullion_slim",
+          "id": "50mm_casement_prestige__mullion_slim",
+          "seriesId": "50mm_casement_prestige",
+          "role": "mullion",
+          "roleLabel": "Mullion",
+          "usage": "mullion",
+          "usageLabel": "Mullion"
         },
         "big": {
           "name": "mullion Big",
@@ -1458,7 +1497,14 @@
           "bomHint": "unspecified",
           "side": "",
           "glassType": "",
-          "notes": "free"
+          "notes": "free",
+          "sectionId": "50mm_casement_prestige__mullion_big",
+          "id": "50mm_casement_prestige__mullion_big",
+          "seriesId": "50mm_casement_prestige",
+          "role": "mullion",
+          "roleLabel": "Mullion",
+          "usage": "mullion",
+          "usageLabel": "Mullion"
         },
         "notes": ""
       },
@@ -1486,7 +1532,14 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2"
+          "notes": "v2, h2",
+          "sectionId": "50mm_casement_prestige__door_slim",
+          "id": "50mm_casement_prestige__door_slim",
+          "seriesId": "50mm_casement_prestige",
+          "role": "door",
+          "roleLabel": "Door / leaf",
+          "usage": "door",
+          "usageLabel": "Door / leaf"
         },
         "big": {
           "name": "Door big",
@@ -1509,7 +1562,14 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2"
+          "notes": "v2, h2",
+          "sectionId": "50mm_casement_prestige__door_big",
+          "id": "50mm_casement_prestige__door_big",
+          "seriesId": "50mm_casement_prestige",
+          "role": "door",
+          "roleLabel": "Door / leaf",
+          "usage": "door",
+          "usageLabel": "Door / leaf"
         },
         "allSides": {
           "name": "Door Slim",
@@ -1532,7 +1592,14 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2"
+          "notes": "v2, h2",
+          "sectionId": "50mm_casement_prestige__door_slim",
+          "id": "50mm_casement_prestige__door_slim",
+          "seriesId": "50mm_casement_prestige",
+          "role": "door",
+          "roleLabel": "Door / leaf",
+          "usage": "door",
+          "usageLabel": "Door / leaf"
         },
         "vertical": {
           "name": "",
@@ -1695,7 +1762,14 @@
         "bomHint": "all_sides_same_v2h2",
         "side": "",
         "glassType": "",
-        "notes": "v2, h2"
+        "notes": "v2, h2",
+        "sectionId": "50mm_casement_prestige__door_slim",
+        "id": "50mm_casement_prestige__door_slim",
+        "seriesId": "50mm_casement_prestige",
+        "role": "door",
+        "roleLabel": "Door / leaf",
+        "usage": "door",
+        "usageLabel": "Door / leaf"
       },
       "glass": {
         "sgClip": {
@@ -1719,7 +1793,14 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2"
+          "notes": "v2, h2",
+          "sectionId": "50mm_casement_prestige__clip_sg",
+          "id": "50mm_casement_prestige__clip_sg",
+          "seriesId": "50mm_casement_prestige",
+          "role": "clip",
+          "roleLabel": "Glass clip",
+          "usage": "clip",
+          "usageLabel": "Glass clip"
         },
         "dgClip": {
           "name": "clip dg",
@@ -1742,7 +1823,14 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2"
+          "notes": "v2, h2",
+          "sectionId": "50mm_casement_prestige__clip_dg",
+          "id": "50mm_casement_prestige__clip_dg",
+          "seriesId": "50mm_casement_prestige",
+          "role": "clip",
+          "roleLabel": "Glass clip",
+          "usage": "clip",
+          "usageLabel": "Glass clip"
         }
       },
       "glassClips": {
@@ -1771,7 +1859,14 @@
             "bomHint": "all_sides_same_v2h2",
             "side": "",
             "glassType": "",
-            "notes": "v2, h2"
+            "notes": "v2, h2",
+            "sectionId": "50mm_casement_prestige__clip_sg",
+            "id": "50mm_casement_prestige__clip_sg",
+            "seriesId": "50mm_casement_prestige",
+            "role": "clip",
+            "roleLabel": "Glass clip",
+            "usage": "clip",
+            "usageLabel": "Glass clip"
           },
           "notes": "Single glass up to 12mm"
         },
@@ -1798,7 +1893,14 @@
             "bomHint": "all_sides_same_v2h2",
             "side": "",
             "glassType": "",
-            "notes": "v2, h2"
+            "notes": "v2, h2",
+            "sectionId": "50mm_casement_prestige__clip_dg",
+            "id": "50mm_casement_prestige__clip_dg",
+            "seriesId": "50mm_casement_prestige",
+            "role": "clip",
+            "roleLabel": "Glass clip",
+            "usage": "clip",
+            "usageLabel": "Glass clip"
           },
           "notes": "Series-dependent DGU clip"
         }

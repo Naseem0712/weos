@@ -9,7 +9,7 @@
       "id": "35mm_gulf__2_track_top_bottom",
       "name": "2 track top, bottom",
       "usage": "track_horizontal",
-      "usageLabel": "Track — horizontal",
+      "usageLabel": "Outer track — horizontal",
       "widthMm": 31.2,
       "sectionDepthMm": 95.3,
       "standardLength": "16",
@@ -26,13 +26,18 @@
       "rateUnit": "kg",
       "coatingCost": 30.0,
       "coatingUnit": "rft",
-      "use": "V2"
+      "use": "V2",
+      "sectionId": "35mm_gulf__2_track_top_bottom",
+      "seriesId": "35mm_gulf",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "horizontal"
     },
     {
       "id": "35mm_gulf__2_track_vertical_left_right",
       "name": "2 track vertical left right",
       "usage": "track_vertical",
-      "usageLabel": "Track — vertical",
+      "usageLabel": "Outer track — vertical",
       "widthMm": 24.24,
       "sectionDepthMm": 101.0,
       "standardLength": "16",
@@ -49,13 +54,18 @@
       "rateUnit": "kg",
       "coatingCost": 30.0,
       "coatingUnit": "rft",
-      "use": "H2"
+      "use": "H2",
+      "sectionId": "35mm_gulf__2_track_vertical_left_right",
+      "seriesId": "35mm_gulf",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "vertical"
     },
     {
       "id": "35mm_gulf__3_track_top_bottom",
       "name": "3 track top, bottom",
       "usage": "track_horizontal",
-      "usageLabel": "Track — horizontal",
+      "usageLabel": "Outer track — horizontal",
       "widthMm": 31.0,
       "sectionDepthMm": 145.2,
       "standardLength": "16",
@@ -72,13 +82,18 @@
       "rateUnit": "kg",
       "coatingCost": 45.0,
       "coatingUnit": "rft",
-      "use": "V2"
+      "use": "V2",
+      "sectionId": "35mm_gulf__3_track_top_bottom",
+      "seriesId": "35mm_gulf",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "horizontal"
     },
     {
       "id": "35mm_gulf__3_track_vertical_left_right",
       "name": "3 track vertical left right",
       "usage": "track_vertical",
-      "usageLabel": "Track — vertical",
+      "usageLabel": "Outer track — vertical",
       "widthMm": 24.24,
       "sectionDepthMm": 151.3,
       "standardLength": "16",
@@ -95,13 +110,18 @@
       "rateUnit": "kg",
       "coatingCost": 45.0,
       "coatingUnit": "rft",
-      "use": "H2"
+      "use": "H2",
+      "sectionId": "35mm_gulf__3_track_vertical_left_right",
+      "seriesId": "35mm_gulf",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "vertical"
     },
     {
       "id": "35mm_gulf__hnadle_side",
       "name": "Hnadle side",
       "usage": "sash",
-      "usageLabel": "Section",
+      "usageLabel": "Glass shutter",
       "widthMm": 58.8,
       "sectionDepthMm": 35.0,
       "standardLength": "16",
@@ -118,13 +138,17 @@
       "rateUnit": "kg",
       "coatingCost": 14.0,
       "coatingUnit": "rft",
-      "use": "V1"
+      "use": "V1",
+      "sectionId": "35mm_gulf__hnadle_side",
+      "seriesId": "35mm_gulf",
+      "role": "glass_shutter",
+      "roleLabel": "Glass shutter"
     },
     {
       "id": "35mm_gulf__top_bottom",
       "name": "Top, Bottom",
       "usage": "sash",
-      "usageLabel": "Sash / Shutter",
+      "usageLabel": "Glass shutter",
       "widthMm": 58.0,
       "sectionDepthMm": 31.5,
       "standardLength": "16",
@@ -141,7 +165,11 @@
       "rateUnit": "kg",
       "coatingCost": 14.0,
       "coatingUnit": "rft",
-      "use": "H2"
+      "use": "H2",
+      "sectionId": "35mm_gulf__top_bottom",
+      "seriesId": "35mm_gulf",
+      "role": "glass_shutter",
+      "roleLabel": "Glass shutter"
     },
     {
       "id": "35mm_gulf__slim_interlock",
@@ -164,7 +192,11 @@
       "rateUnit": "kg",
       "coatingCost": 18.0,
       "coatingUnit": "rft",
-      "use": "V1"
+      "use": "V1",
+      "sectionId": "35mm_gulf__slim_interlock",
+      "seriesId": "35mm_gulf",
+      "role": "interlock",
+      "roleLabel": "Interlock"
     },
     {
       "id": "35mm_gulf__renf_interlock",
@@ -187,7 +219,11 @@
       "rateUnit": "kg",
       "coatingCost": 26.0,
       "coatingUnit": "rft",
-      "use": "V1"
+      "use": "V1",
+      "sectionId": "35mm_gulf__renf_interlock",
+      "seriesId": "35mm_gulf",
+      "role": "interlock",
+      "roleLabel": "Interlock"
     },
     {
       "id": "35mm_gulf__glass_reducer_per_pc_1",
@@ -210,7 +246,11 @@
       "rateUnit": "kg",
       "coatingCost": 6.0,
       "coatingUnit": "rft",
-      "use": "V1"
+      "use": "V1",
+      "sectionId": "35mm_gulf__glass_reducer_per_pc_1",
+      "seriesId": "35mm_gulf",
+      "role": "other",
+      "roleLabel": "Section"
     },
     {
       "id": "35mm_gulf__mesh_adepetr",
@@ -233,9 +273,14 @@
       "rateUnit": "rft",
       "coatingCost": 9.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "35mm_gulf__mesh_adepetr",
+      "seriesId": "35mm_gulf",
+      "role": "other",
+      "roleLabel": "Section"
     }
   ],
   "designOptions": [],
-  "engineProductId": "29mm_sliding"
+  "engineProductId": "29mm_sliding",
+  "seriesId": "35mm_gulf"
 }

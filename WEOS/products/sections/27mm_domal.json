@@ -9,7 +9,7 @@
       "id": "27mm_domal__2_track",
       "name": "2 track",
       "usage": "track",
-      "usageLabel": "Track / Outer frame",
+      "usageLabel": "Outer track",
       "widthMm": 45.0,
       "sectionDepthMm": 45.0,
       "standardLength": "12, 16",
@@ -26,13 +26,18 @@
       "rateUnit": "kg",
       "coatingCost": 18.0,
       "coatingUnit": "rft",
-      "use": "V2 H2"
+      "use": "V2 H2",
+      "sectionId": "27mm_domal__2_track",
+      "seriesId": "27mm_domal",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "all"
     },
     {
       "id": "27mm_domal__4_track",
       "name": "4 track",
       "usage": "track_add",
-      "usageLabel": "Add track",
+      "usageLabel": "Outer track — add",
       "widthMm": 49.0,
       "sectionDepthMm": 131.5,
       "standardLength": "12, 16",
@@ -49,13 +54,18 @@
       "rateUnit": "kg",
       "coatingCost": 35.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "27mm_domal__4_track",
+      "seriesId": "27mm_domal",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "add"
     },
     {
       "id": "27mm_domal__3_trck",
       "name": "3 Trck",
       "usage": "track",
-      "usageLabel": "Track / Outer frame",
+      "usageLabel": "Outer track",
       "widthMm": 45.0,
       "sectionDepthMm": 74.8,
       "standardLength": "12, 16",
@@ -72,13 +82,18 @@
       "rateUnit": "kg",
       "coatingCost": 24.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "27mm_domal__3_trck",
+      "seriesId": "27mm_domal",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "all"
     },
     {
       "id": "27mm_domal__shutter_all_side",
       "name": "shutter all side",
       "usage": "sash",
-      "usageLabel": "Sash / Shutter",
+      "usageLabel": "Glass shutter",
       "widthMm": 65.2,
       "sectionDepthMm": 27.2,
       "standardLength": "12, 16",
@@ -95,7 +110,11 @@
       "rateUnit": "kg",
       "coatingCost": 14.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "27mm_domal__shutter_all_side",
+      "seriesId": "27mm_domal",
+      "role": "glass_shutter",
+      "roleLabel": "Glass shutter"
     },
     {
       "id": "27mm_domal__interlock",
@@ -118,9 +137,14 @@
       "rateUnit": "kg",
       "coatingCost": 8.0,
       "coatingUnit": "rft",
-      "use": "V1 H0"
+      "use": "V1 H0",
+      "sectionId": "27mm_domal__interlock",
+      "seriesId": "27mm_domal",
+      "role": "interlock",
+      "roleLabel": "Interlock"
     }
   ],
   "designOptions": [],
-  "engineProductId": "29mm_sliding"
+  "engineProductId": "29mm_sliding",
+  "seriesId": "27mm_domal"
 }

@@ -9,7 +9,7 @@
       "id": "40mm_casement_standard__outer_frame",
       "name": "Outer Frame",
       "usage": "frame",
-      "usageLabel": "Frame",
+      "usageLabel": "Outer frame",
       "widthMm": 38.6,
       "sectionDepthMm": 40.0,
       "standardLength": "12, 16",
@@ -26,13 +26,18 @@
       "rateUnit": "kg",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "40mm_casement_standard__outer_frame",
+      "seriesId": "40mm_casement_standard",
+      "role": "outer_frame",
+      "roleLabel": "Outer frame",
+      "orientation": "all"
     },
     {
       "id": "40mm_casement_standard__mullion",
       "name": "Mullion",
-      "usage": "other",
-      "usageLabel": "Section",
+      "usage": "mullion",
+      "usageLabel": "Mullion",
       "widthMm": 53.5,
       "sectionDepthMm": 40.0,
       "standardLength": "12, 16",
@@ -49,13 +54,17 @@
       "rateUnit": "kg",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "free"
+      "use": "free",
+      "sectionId": "40mm_casement_standard__mullion",
+      "seriesId": "40mm_casement_standard",
+      "role": "mullion",
+      "roleLabel": "Mullion"
     },
     {
       "id": "40mm_casement_standard__shutter_sg_no_need_clip",
       "name": "Shutter SG (no Need Clip)",
       "usage": "sash",
-      "usageLabel": "Section",
+      "usageLabel": "Glass shutter",
       "widthMm": 40.0,
       "sectionDepthMm": 50.8,
       "standardLength": "12, 16",
@@ -74,13 +83,17 @@
       "rateUnit": "kg",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "v2, h2,"
+      "use": "v2, h2,",
+      "sectionId": "40mm_casement_standard__shutter_sg_no_need_clip",
+      "seriesId": "40mm_casement_standard",
+      "role": "glass_shutter",
+      "roleLabel": "Glass shutter"
     },
     {
       "id": "40mm_casement_standard__mullion_big",
       "name": "Mullion Big",
-      "usage": "other",
-      "usageLabel": "Section",
+      "usage": "mullion",
+      "usageLabel": "Mullion",
       "widthMm": 70.0,
       "sectionDepthMm": 40.0,
       "standardLength": "12,16",
@@ -97,13 +110,17 @@
       "rateUnit": "kg",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "free"
+      "use": "free",
+      "sectionId": "40mm_casement_standard__mullion_big",
+      "seriesId": "40mm_casement_standard",
+      "role": "mullion",
+      "roleLabel": "Mullion"
     },
     {
       "id": "40mm_casement_standard__shutter",
       "name": "Shutter",
       "usage": "sash",
-      "usageLabel": "Sash / Shutter",
+      "usageLabel": "Glass shutter",
       "widthMm": 70.1,
       "sectionDepthMm": 40.0,
       "standardLength": "12, 16",
@@ -120,13 +137,17 @@
       "rateUnit": "kg",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "40mm_casement_standard__shutter",
+      "seriesId": "40mm_casement_standard",
+      "role": "glass_shutter",
+      "roleLabel": "Glass shutter"
     },
     {
       "id": "40mm_casement_standard__clip_sg",
       "name": "Clip SG",
-      "usage": "other",
-      "usageLabel": "Section",
+      "usage": "clip",
+      "usageLabel": "Glass clip",
       "widthMm": 18.5,
       "sectionDepthMm": 32.5,
       "standardLength": "12, 16",
@@ -145,12 +166,17 @@
       "rateUnit": "rft",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "40mm_casement_standard__clip_sg",
+      "seriesId": "40mm_casement_standard",
+      "role": "clip",
+      "roleLabel": "Glass clip"
     }
   ],
   "designOptions": [
     "20% extra",
     "40% extra"
   ],
-  "engineProductId": "casement_stub"
+  "engineProductId": "casement_stub",
+  "seriesId": "40mm_casement_standard"
 }

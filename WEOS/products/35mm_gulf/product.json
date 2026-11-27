@@ -259,7 +259,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "V2"
+              "notes": "V2",
+              "sectionId": "35mm_gulf__2_track_top_bottom",
+              "id": "35mm_gulf__2_track_top_bottom",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "horizontal",
+              "usage": "track_horizontal",
+              "usageLabel": "Outer track — horizontal"
             },
             "vertical": {
               "name": "2 track vertical left right",
@@ -282,7 +290,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "H2"
+              "notes": "H2",
+              "sectionId": "35mm_gulf__2_track_vertical_left_right",
+              "id": "35mm_gulf__2_track_vertical_left_right",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "vertical",
+              "usage": "track_vertical",
+              "usageLabel": "Outer track — vertical"
             },
             "top": {
               "name": "2 track top, bottom",
@@ -305,7 +321,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "V2"
+              "notes": "V2",
+              "sectionId": "35mm_gulf__2_track_top_bottom",
+              "id": "35mm_gulf__2_track_top_bottom",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "horizontal",
+              "usage": "track_horizontal",
+              "usageLabel": "Outer track — horizontal"
             },
             "bottom": {
               "name": "2 track top, bottom",
@@ -328,7 +352,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "V2"
+              "notes": "V2",
+              "sectionId": "35mm_gulf__2_track_top_bottom",
+              "id": "35mm_gulf__2_track_top_bottom",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "horizontal",
+              "usage": "track_horizontal",
+              "usageLabel": "Outer track — horizontal"
             },
             "leftVertical": {
               "name": "2 track vertical left right",
@@ -351,7 +383,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "H2"
+              "notes": "H2",
+              "sectionId": "35mm_gulf__2_track_vertical_left_right",
+              "id": "35mm_gulf__2_track_vertical_left_right",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "vertical",
+              "usage": "track_vertical",
+              "usageLabel": "Outer track — vertical"
             },
             "rightVertical": {
               "name": "2 track vertical left right",
@@ -374,7 +414,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "H2"
+              "notes": "H2",
+              "sectionId": "35mm_gulf__2_track_vertical_left_right",
+              "id": "35mm_gulf__2_track_vertical_left_right",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "vertical",
+              "usage": "track_vertical",
+              "usageLabel": "Outer track — vertical"
             }
           },
           "notes": "",
@@ -408,7 +456,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "V2"
+              "notes": "V2",
+              "sectionId": "35mm_gulf__3_track_top_bottom",
+              "id": "35mm_gulf__3_track_top_bottom",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "horizontal",
+              "usage": "track_horizontal",
+              "usageLabel": "Outer track — horizontal"
             },
             "vertical": {
               "name": "3 track vertical left right",
@@ -431,7 +487,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "H2"
+              "notes": "H2",
+              "sectionId": "35mm_gulf__3_track_vertical_left_right",
+              "id": "35mm_gulf__3_track_vertical_left_right",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "vertical",
+              "usage": "track_vertical",
+              "usageLabel": "Outer track — vertical"
             },
             "top": {
               "name": "3 track top, bottom",
@@ -454,7 +518,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "V2"
+              "notes": "V2",
+              "sectionId": "35mm_gulf__3_track_top_bottom",
+              "id": "35mm_gulf__3_track_top_bottom",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "horizontal",
+              "usage": "track_horizontal",
+              "usageLabel": "Outer track — horizontal"
             },
             "bottom": {
               "name": "3 track top, bottom",
@@ -477,7 +549,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "V2"
+              "notes": "V2",
+              "sectionId": "35mm_gulf__3_track_top_bottom",
+              "id": "35mm_gulf__3_track_top_bottom",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "horizontal",
+              "usage": "track_horizontal",
+              "usageLabel": "Outer track — horizontal"
             },
             "leftVertical": {
               "name": "3 track vertical left right",
@@ -500,7 +580,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "H2"
+              "notes": "H2",
+              "sectionId": "35mm_gulf__3_track_vertical_left_right",
+              "id": "35mm_gulf__3_track_vertical_left_right",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "vertical",
+              "usage": "track_vertical",
+              "usageLabel": "Outer track — vertical"
             },
             "rightVertical": {
               "name": "3 track vertical left right",
@@ -523,7 +611,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "H2"
+              "notes": "H2",
+              "sectionId": "35mm_gulf__3_track_vertical_left_right",
+              "id": "35mm_gulf__3_track_vertical_left_right",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "vertical",
+              "usage": "track_vertical",
+              "usageLabel": "Outer track — vertical"
             }
           },
           "notes": "",
@@ -1018,7 +1114,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "H2"
+          "notes": "H2",
+          "sectionId": "35mm_gulf__top_bottom",
+          "id": "35mm_gulf__top_bottom",
+          "seriesId": "35mm_gulf",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "bottom": {
           "name": "Top, Bottom",
@@ -1041,7 +1144,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "H2"
+          "notes": "H2",
+          "sectionId": "35mm_gulf__top_bottom",
+          "id": "35mm_gulf__top_bottom",
+          "seriesId": "35mm_gulf",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "handleSide": {
           "name": "Hnadle side",
@@ -1064,7 +1174,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1"
+          "notes": "V1",
+          "sectionId": "35mm_gulf__hnadle_side",
+          "id": "35mm_gulf__hnadle_side",
+          "seriesId": "35mm_gulf",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "interlockSide": {
           "name": "",
@@ -1110,7 +1227,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1"
+          "notes": "V1",
+          "sectionId": "35mm_gulf__slim_interlock",
+          "id": "35mm_gulf__slim_interlock",
+          "seriesId": "35mm_gulf",
+          "role": "interlock",
+          "roleLabel": "Interlock",
+          "usage": "interlock",
+          "usageLabel": "Interlock"
         },
         "interlockRenf": {
           "name": "Renf Interlock",
@@ -1133,7 +1257,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1"
+          "notes": "V1",
+          "sectionId": "35mm_gulf__renf_interlock",
+          "id": "35mm_gulf__renf_interlock",
+          "seriesId": "35mm_gulf",
+          "role": "interlock",
+          "roleLabel": "Interlock",
+          "usage": "interlock",
+          "usageLabel": "Interlock"
         },
         "glassReducer": {
           "name": "Glass reducer per pc 1",
@@ -1156,7 +1287,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1"
+          "notes": "V1",
+          "sectionId": "35mm_gulf__glass_reducer_per_pc_1",
+          "id": "35mm_gulf__glass_reducer_per_pc_1",
+          "seriesId": "35mm_gulf",
+          "role": "other",
+          "roleLabel": "Section",
+          "usage": "other",
+          "usageLabel": "Section"
         },
         "notes": ""
       },
@@ -1213,7 +1351,14 @@
             "bomHint": "all_sides_same_v2h2",
             "side": "",
             "glassType": "",
-            "notes": "v2, h2"
+            "notes": "v2, h2",
+            "sectionId": "35mm_gulf__mesh_adepetr",
+            "id": "35mm_gulf__mesh_adepetr",
+            "seriesId": "35mm_gulf",
+            "role": "other",
+            "roleLabel": "Section",
+            "usage": "other",
+            "usageLabel": "Section"
           }
         },
         "meshSection": {
@@ -2820,7 +2965,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "H2"
+              "notes": "H2",
+              "sectionId": "35mm_gulf__2_track_vertical_left_right",
+              "id": "35mm_gulf__2_track_vertical_left_right",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "vertical",
+              "usage": "track_vertical",
+              "usageLabel": "Outer track — vertical"
             },
             "trackOption": "2",
             "railCount": 2
@@ -2850,7 +3003,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "V2"
+              "notes": "V2",
+              "sectionId": "35mm_gulf__2_track_top_bottom",
+              "id": "35mm_gulf__2_track_top_bottom",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "horizontal",
+              "usage": "track_horizontal",
+              "usageLabel": "Outer track — horizontal"
             },
             "trackOption": "2",
             "railCount": 2
@@ -2880,7 +3041,15 @@
               "bomHint": "split_vh",
               "side": "",
               "glassType": "",
-              "notes": "V2"
+              "notes": "V2",
+              "sectionId": "35mm_gulf__2_track_top_bottom",
+              "id": "35mm_gulf__2_track_top_bottom",
+              "seriesId": "35mm_gulf",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "horizontal",
+              "usage": "track_horizontal",
+              "usageLabel": "Outer track — horizontal"
             },
             "trackOption": "2",
             "railCount": 2

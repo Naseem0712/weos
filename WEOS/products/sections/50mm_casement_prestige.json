@@ -9,7 +9,7 @@
       "id": "50mm_casement_prestige__outer_frame",
       "name": "Outer frame",
       "usage": "frame",
-      "usageLabel": "Frame",
+      "usageLabel": "Outer frame",
       "widthMm": 46.0,
       "sectionDepthMm": 50.0,
       "standardLength": "12, 16",
@@ -26,13 +26,18 @@
       "rateUnit": "kg",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "50mm_casement_prestige__outer_frame",
+      "seriesId": "50mm_casement_prestige",
+      "role": "outer_frame",
+      "roleLabel": "Outer frame",
+      "orientation": "all"
     },
     {
       "id": "50mm_casement_prestige__outer_frame_with_grills",
       "name": "Outer frame With grills",
       "usage": "frame",
-      "usageLabel": "Frame",
+      "usageLabel": "Outer frame",
       "widthMm": 45.6,
       "sectionDepthMm": 85.5,
       "standardLength": "12, 16",
@@ -49,13 +54,18 @@
       "rateUnit": "kg",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "50mm_casement_prestige__outer_frame_with_grills",
+      "seriesId": "50mm_casement_prestige",
+      "role": "outer_frame",
+      "roleLabel": "Outer frame",
+      "orientation": "all"
     },
     {
       "id": "50mm_casement_prestige__mullion_slim",
       "name": "Mullion Slim",
-      "usage": "other",
-      "usageLabel": "Section",
+      "usage": "mullion",
+      "usageLabel": "Mullion",
       "widthMm": 67.0,
       "sectionDepthMm": 50.0,
       "standardLength": "12, 16",
@@ -72,13 +82,17 @@
       "rateUnit": "kg",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "free"
+      "use": "free",
+      "sectionId": "50mm_casement_prestige__mullion_slim",
+      "seriesId": "50mm_casement_prestige",
+      "role": "mullion",
+      "roleLabel": "Mullion"
     },
     {
       "id": "50mm_casement_prestige__mullion_big",
       "name": "mullion Big",
-      "usage": "other",
-      "usageLabel": "Section",
+      "usage": "mullion",
+      "usageLabel": "Mullion",
       "widthMm": 86.0,
       "sectionDepthMm": 50.0,
       "standardLength": "12, 16",
@@ -95,13 +109,17 @@
       "rateUnit": "kg",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "free"
+      "use": "free",
+      "sectionId": "50mm_casement_prestige__mullion_big",
+      "seriesId": "50mm_casement_prestige",
+      "role": "mullion",
+      "roleLabel": "Mullion"
     },
     {
       "id": "50mm_casement_prestige__door_slim",
       "name": "Door Slim",
-      "usage": "other",
-      "usageLabel": "Sash / Shutter",
+      "usage": "door",
+      "usageLabel": "Door / leaf",
       "widthMm": 62.4,
       "sectionDepthMm": 58.5,
       "standardLength": "12, 16",
@@ -118,13 +136,17 @@
       "rateUnit": "kg",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "50mm_casement_prestige__door_slim",
+      "seriesId": "50mm_casement_prestige",
+      "role": "door",
+      "roleLabel": "Door / leaf"
     },
     {
       "id": "50mm_casement_prestige__door_big",
       "name": "Door big",
-      "usage": "other",
-      "usageLabel": "Sash / Shutter",
+      "usage": "door",
+      "usageLabel": "Door / leaf",
       "widthMm": 78.6,
       "sectionDepthMm": 58.2,
       "standardLength": "12, 16",
@@ -141,13 +163,17 @@
       "rateUnit": "kg",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "50mm_casement_prestige__door_big",
+      "seriesId": "50mm_casement_prestige",
+      "role": "door",
+      "roleLabel": "Door / leaf"
     },
     {
       "id": "50mm_casement_prestige__clip_sg",
       "name": "clip sg",
-      "usage": "other",
-      "usageLabel": "Section",
+      "usage": "clip",
+      "usageLabel": "Glass clip",
       "widthMm": 25.5,
       "sectionDepthMm": 35.4,
       "standardLength": "12, 16",
@@ -166,13 +192,17 @@
       "rateUnit": "rft",
       "coatingCost": 6.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "50mm_casement_prestige__clip_sg",
+      "seriesId": "50mm_casement_prestige",
+      "role": "clip",
+      "roleLabel": "Glass clip"
     },
     {
       "id": "50mm_casement_prestige__clip_dg",
       "name": "clip dg",
-      "usage": "other",
-      "usageLabel": "Section",
+      "usage": "clip",
+      "usageLabel": "Glass clip",
       "widthMm": 25.5,
       "sectionDepthMm": 21.5,
       "standardLength": "12, 16",
@@ -191,9 +221,14 @@
       "rateUnit": "rft",
       "coatingCost": 6.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "50mm_casement_prestige__clip_dg",
+      "seriesId": "50mm_casement_prestige",
+      "role": "clip",
+      "roleLabel": "Glass clip"
     }
   ],
   "designOptions": [],
-  "engineProductId": "casement_stub"
+  "engineProductId": "casement_stub",
+  "seriesId": "50mm_casement_prestige"
 }

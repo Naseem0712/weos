@@ -9,7 +9,7 @@
       "id": "29mm_premium__2_track",
       "name": "2 track",
       "usage": "track",
-      "usageLabel": "Track / Outer frame",
+      "usageLabel": "Outer track",
       "widthMm": 51.21,
       "sectionDepthMm": 39.69,
       "standardLength": "16",
@@ -26,13 +26,18 @@
       "rateUnit": "kg",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "29mm_premium__2_track",
+      "seriesId": "29mm_premium",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "all"
     },
     {
       "id": "29mm_premium__3_track",
       "name": "3 track",
       "usage": "track",
-      "usageLabel": "Track / Outer frame",
+      "usageLabel": "Outer track",
       "widthMm": 39.69,
       "sectionDepthMm": 88.94,
       "standardLength": "16",
@@ -49,13 +54,18 @@
       "rateUnit": "kg",
       "coatingCost": 30.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "29mm_premium__3_track",
+      "seriesId": "29mm_premium",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "all"
     },
     {
       "id": "29mm_premium__shutter",
       "name": "Shutter",
       "usage": "sash",
-      "usageLabel": "Sash / Shutter",
+      "usageLabel": "Glass shutter",
       "widthMm": 63.07,
       "sectionDepthMm": 29.0,
       "standardLength": "16",
@@ -72,7 +82,11 @@
       "rateUnit": "kg",
       "coatingCost": 16.0,
       "coatingUnit": "rft",
-      "use": "V1 H2"
+      "use": "V1 H2",
+      "sectionId": "29mm_premium__shutter",
+      "seriesId": "29mm_premium",
+      "role": "glass_shutter",
+      "roleLabel": "Glass shutter"
     },
     {
       "id": "29mm_premium__slim_interlock",
@@ -95,7 +109,11 @@
       "rateUnit": "kg",
       "coatingCost": 16.0,
       "coatingUnit": "rft",
-      "use": "V1 H0"
+      "use": "V1 H0",
+      "sectionId": "29mm_premium__slim_interlock",
+      "seriesId": "29mm_premium",
+      "role": "interlock",
+      "roleLabel": "Interlock"
     },
     {
       "id": "29mm_premium__renforsments_interlock",
@@ -118,9 +136,14 @@
       "rateUnit": "kg",
       "coatingCost": 24.0,
       "coatingUnit": "rft",
-      "use": "V1 H0"
+      "use": "V1 H0",
+      "sectionId": "29mm_premium__renforsments_interlock",
+      "seriesId": "29mm_premium",
+      "role": "interlock",
+      "roleLabel": "Interlock"
     }
   ],
   "designOptions": [],
-  "engineProductId": "29mm_sliding"
+  "engineProductId": "29mm_sliding",
+  "seriesId": "29mm_premium"
 }

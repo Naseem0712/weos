@@ -17,7 +17,7 @@
           "id": "25mm_prestige__2_track",
           "name": "2 track",
           "usage": "track",
-          "usageLabel": "Track / Outer frame",
+          "usageLabel": "Outer track",
           "widthMm": 40.0,
           "sectionDepthMm": 50.99,
           "standardLength": "16",
@@ -34,13 +34,18 @@
           "rateUnit": "kg",
           "coatingCost": 18.0,
           "coatingUnit": "rft",
-          "use": "V2 H2"
+          "use": "V2 H2",
+          "sectionId": "25mm_prestige__2_track",
+          "seriesId": "25mm_prestige",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "all"
         },
         {
           "id": "25mm_prestige__3_track",
           "name": "3 Track",
           "usage": "track",
-          "usageLabel": "Track / Outer frame",
+          "usageLabel": "Outer track",
           "widthMm": 40.0,
           "sectionDepthMm": 85.8,
           "standardLength": "16",
@@ -57,13 +62,18 @@
           "rateUnit": "kg",
           "coatingCost": 24.0,
           "coatingUnit": "rft",
-          "use": "V2 H2"
+          "use": "V2 H2",
+          "sectionId": "25mm_prestige__3_track",
+          "seriesId": "25mm_prestige",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "all"
         },
         {
           "id": "25mm_prestige__2_5_track",
           "name": "2.5 track",
           "usage": "track",
-          "usageLabel": "Track / Outer frame",
+          "usageLabel": "Outer track",
           "widthMm": 46.89,
           "sectionDepthMm": 73.32,
           "standardLength": "16",
@@ -80,13 +90,18 @@
           "rateUnit": "kg",
           "coatingCost": 20.0,
           "coatingUnit": "rft",
-          "use": "V2 H2"
+          "use": "V2 H2",
+          "sectionId": "25mm_prestige__2_5_track",
+          "seriesId": "25mm_prestige",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "all"
         },
         {
           "id": "25mm_prestige__handle_side_top_bottom",
           "name": "handle side, top, bottom",
           "usage": "sash",
-          "usageLabel": "Sash / Shutter",
+          "usageLabel": "Glass shutter",
           "widthMm": 63.0,
           "sectionDepthMm": 25.32,
           "standardLength": "16",
@@ -103,7 +118,11 @@
           "rateUnit": "kg",
           "coatingCost": 13.0,
           "coatingUnit": "rft",
-          "use": "V1 H2"
+          "use": "V1 H2",
+          "sectionId": "25mm_prestige__handle_side_top_bottom",
+          "seriesId": "25mm_prestige",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter"
         },
         {
           "id": "25mm_prestige__interlock_slim",
@@ -126,7 +145,11 @@
           "rateUnit": "kg",
           "coatingCost": 9.0,
           "coatingUnit": "rft",
-          "use": "V1 H0"
+          "use": "V1 H0",
+          "sectionId": "25mm_prestige__interlock_slim",
+          "seriesId": "25mm_prestige",
+          "role": "interlock",
+          "roleLabel": "Interlock"
         },
         {
           "id": "25mm_prestige__renforcment_interlock",
@@ -149,13 +172,17 @@
           "rateUnit": "kg",
           "coatingCost": 15.0,
           "coatingUnit": "rft",
-          "use": "V1 H0"
+          "use": "V1 H0",
+          "sectionId": "25mm_prestige__renforcment_interlock",
+          "seriesId": "25mm_prestige",
+          "role": "interlock",
+          "roleLabel": "Interlock"
         },
         {
           "id": "25mm_prestige__2_5_track_mesh_shutter",
           "name": "2.5 track mesh shutter",
           "usage": "mesh",
-          "usageLabel": "Sash / Shutter",
+          "usageLabel": "Mesh shutter",
           "widthMm": 41.6,
           "sectionDepthMm": 17.0,
           "standardLength": "16",
@@ -172,11 +199,17 @@
           "rateUnit": "kg",
           "coatingCost": 9.0,
           "coatingUnit": "rft",
-          "use": "V2 H2"
+          "use": "V2 H2",
+          "sectionId": "25mm_prestige__2_5_track_mesh_shutter",
+          "seriesId": "25mm_prestige",
+          "role": "mesh_shutter",
+          "roleLabel": "Mesh shutter",
+          "orientation": "all"
         }
       ],
       "designOptions": [],
-      "engineProductId": "29mm_sliding"
+      "engineProductId": "29mm_sliding",
+      "seriesId": "25mm_prestige"
     },
     {
       "id": "27mm_domal",
@@ -189,7 +222,7 @@
           "id": "27mm_domal__2_track",
           "name": "2 track",
           "usage": "track",
-          "usageLabel": "Track / Outer frame",
+          "usageLabel": "Outer track",
           "widthMm": 45.0,
           "sectionDepthMm": 45.0,
           "standardLength": "12, 16",
@@ -206,13 +239,18 @@
           "rateUnit": "kg",
           "coatingCost": 18.0,
           "coatingUnit": "rft",
-          "use": "V2 H2"
+          "use": "V2 H2",
+          "sectionId": "27mm_domal__2_track",
+          "seriesId": "27mm_domal",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "all"
         },
         {
           "id": "27mm_domal__4_track",
           "name": "4 track",
           "usage": "track_add",
-          "usageLabel": "Add track",
+          "usageLabel": "Outer track — add",
           "widthMm": 49.0,
           "sectionDepthMm": 131.5,
           "standardLength": "12, 16",
@@ -229,13 +267,18 @@
           "rateUnit": "kg",
           "coatingCost": 35.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "27mm_domal__4_track",
+          "seriesId": "27mm_domal",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "add"
         },
         {
           "id": "27mm_domal__3_trck",
           "name": "3 Trck",
           "usage": "track",
-          "usageLabel": "Track / Outer frame",
+          "usageLabel": "Outer track",
           "widthMm": 45.0,
           "sectionDepthMm": 74.8,
           "standardLength": "12, 16",
@@ -252,13 +295,18 @@
           "rateUnit": "kg",
           "coatingCost": 24.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "27mm_domal__3_trck",
+          "seriesId": "27mm_domal",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "all"
         },
         {
           "id": "27mm_domal__shutter_all_side",
           "name": "shutter all side",
           "usage": "sash",
-          "usageLabel": "Sash / Shutter",
+          "usageLabel": "Glass shutter",
           "widthMm": 65.2,
           "sectionDepthMm": 27.2,
           "standardLength": "12, 16",
@@ -275,7 +323,11 @@
           "rateUnit": "kg",
           "coatingCost": 14.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "27mm_domal__shutter_all_side",
+          "seriesId": "27mm_domal",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter"
         },
         {
           "id": "27mm_domal__interlock",
@@ -298,11 +350,16 @@
           "rateUnit": "kg",
           "coatingCost": 8.0,
           "coatingUnit": "rft",
-          "use": "V1 H0"
+          "use": "V1 H0",
+          "sectionId": "27mm_domal__interlock",
+          "seriesId": "27mm_domal",
+          "role": "interlock",
+          "roleLabel": "Interlock"
         }
       ],
       "designOptions": [],
-      "engineProductId": "29mm_sliding"
+      "engineProductId": "29mm_sliding",
+      "seriesId": "27mm_domal"
     },
     {
       "id": "29mm_premium",
@@ -315,7 +372,7 @@
           "id": "29mm_premium__2_track",
           "name": "2 track",
           "usage": "track",
-          "usageLabel": "Track / Outer frame",
+          "usageLabel": "Outer track",
           "widthMm": 51.21,
           "sectionDepthMm": 39.69,
           "standardLength": "16",
@@ -332,13 +389,18 @@
           "rateUnit": "kg",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "29mm_premium__2_track",
+          "seriesId": "29mm_premium",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "all"
         },
         {
           "id": "29mm_premium__3_track",
           "name": "3 track",
           "usage": "track",
-          "usageLabel": "Track / Outer frame",
+          "usageLabel": "Outer track",
           "widthMm": 39.69,
           "sectionDepthMm": 88.94,
           "standardLength": "16",
@@ -355,13 +417,18 @@
           "rateUnit": "kg",
           "coatingCost": 30.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "29mm_premium__3_track",
+          "seriesId": "29mm_premium",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "all"
         },
         {
           "id": "29mm_premium__shutter",
           "name": "Shutter",
           "usage": "sash",
-          "usageLabel": "Sash / Shutter",
+          "usageLabel": "Glass shutter",
           "widthMm": 63.07,
           "sectionDepthMm": 29.0,
           "standardLength": "16",
@@ -378,7 +445,11 @@
           "rateUnit": "kg",
           "coatingCost": 16.0,
           "coatingUnit": "rft",
-          "use": "V1 H2"
+          "use": "V1 H2",
+          "sectionId": "29mm_premium__shutter",
+          "seriesId": "29mm_premium",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter"
         },
         {
           "id": "29mm_premium__slim_interlock",
@@ -401,7 +472,11 @@
           "rateUnit": "kg",
           "coatingCost": 16.0,
           "coatingUnit": "rft",
-          "use": "V1 H0"
+          "use": "V1 H0",
+          "sectionId": "29mm_premium__slim_interlock",
+          "seriesId": "29mm_premium",
+          "role": "interlock",
+          "roleLabel": "Interlock"
         },
         {
           "id": "29mm_premium__renforsments_interlock",
@@ -424,11 +499,16 @@
           "rateUnit": "kg",
           "coatingCost": 24.0,
           "coatingUnit": "rft",
-          "use": "V1 H0"
+          "use": "V1 H0",
+          "sectionId": "29mm_premium__renforsments_interlock",
+          "seriesId": "29mm_premium",
+          "role": "interlock",
+          "roleLabel": "Interlock"
         }
       ],
       "designOptions": [],
-      "engineProductId": "29mm_sliding"
+      "engineProductId": "29mm_sliding",
+      "seriesId": "29mm_premium"
     },
     {
       "id": "35mm_prestige",
@@ -441,7 +521,7 @@
           "id": "35mm_prestige__2_track",
           "name": "2 Track",
           "usage": "track",
-          "usageLabel": "Track / Outer frame",
+          "usageLabel": "Outer track",
           "widthMm": 47.2,
           "sectionDepthMm": 94.25,
           "standardLength": "16",
@@ -458,13 +538,18 @@
           "rateUnit": "kg",
           "coatingCost": 30.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "35mm_prestige__2_track",
+          "seriesId": "35mm_prestige",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "all"
         },
         {
           "id": "35mm_prestige__3_track",
           "name": "3 track",
           "usage": "track",
-          "usageLabel": "Track / Outer frame",
+          "usageLabel": "Outer track",
           "widthMm": 48.2,
           "sectionDepthMm": 139.0,
           "standardLength": "16",
@@ -481,13 +566,18 @@
           "rateUnit": "kg",
           "coatingCost": 40.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "35mm_prestige__3_track",
+          "seriesId": "35mm_prestige",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "all"
         },
         {
           "id": "35mm_prestige__4_track",
           "name": "4 track",
           "usage": "track_add",
-          "usageLabel": "Add track",
+          "usageLabel": "Outer track — add",
           "widthMm": 48.2,
           "sectionDepthMm": null,
           "standardLength": "16",
@@ -504,13 +594,18 @@
           "rateUnit": "kg",
           "coatingCost": 52.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "35mm_prestige__4_track",
+          "seriesId": "35mm_prestige",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "add"
         },
         {
           "id": "35mm_prestige__hnadle_side",
           "name": "hnadle side",
           "usage": "sash",
-          "usageLabel": "Section",
+          "usageLabel": "Glass shutter",
           "widthMm": 75.2,
           "sectionDepthMm": 35.2,
           "standardLength": "16",
@@ -527,13 +622,17 @@
           "rateUnit": "kg",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "35mm_prestige__hnadle_side",
+          "seriesId": "35mm_prestige",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter"
         },
         {
           "id": "35mm_prestige__mesh_shutter",
           "name": "mesh shutter",
           "usage": "mesh",
-          "usageLabel": "Sash / Shutter",
+          "usageLabel": "Mesh shutter",
           "widthMm": 75.2,
           "sectionDepthMm": 35.2,
           "standardLength": "16",
@@ -550,7 +649,11 @@
           "rateUnit": "kg",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "35mm_prestige__mesh_shutter",
+          "seriesId": "35mm_prestige",
+          "role": "mesh_shutter",
+          "roleLabel": "Mesh shutter"
         },
         {
           "id": "35mm_prestige__interlock",
@@ -573,11 +676,16 @@
           "rateUnit": "kg",
           "coatingCost": 11.0,
           "coatingUnit": "rft",
-          "use": "V1"
+          "use": "V1",
+          "sectionId": "35mm_prestige__interlock",
+          "seriesId": "35mm_prestige",
+          "role": "interlock",
+          "roleLabel": "Interlock"
         }
       ],
       "designOptions": [],
-      "engineProductId": "29mm_sliding"
+      "engineProductId": "29mm_sliding",
+      "seriesId": "35mm_prestige"
     },
     {
       "id": "35mm_gulf",
@@ -590,7 +698,7 @@
           "id": "35mm_gulf__2_track_top_bottom",
           "name": "2 track top, bottom",
           "usage": "track_horizontal",
-          "usageLabel": "Track — horizontal",
+          "usageLabel": "Outer track — horizontal",
           "widthMm": 31.2,
           "sectionDepthMm": 95.3,
           "standardLength": "16",
@@ -607,13 +715,18 @@
           "rateUnit": "kg",
           "coatingCost": 30.0,
           "coatingUnit": "rft",
-          "use": "V2"
+          "use": "V2",
+          "sectionId": "35mm_gulf__2_track_top_bottom",
+          "seriesId": "35mm_gulf",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "horizontal"
         },
         {
           "id": "35mm_gulf__2_track_vertical_left_right",
           "name": "2 track vertical left right",
           "usage": "track_vertical",
-          "usageLabel": "Track — vertical",
+          "usageLabel": "Outer track — vertical",
           "widthMm": 24.24,
           "sectionDepthMm": 101.0,
           "standardLength": "16",
@@ -630,13 +743,18 @@
           "rateUnit": "kg",
           "coatingCost": 30.0,
           "coatingUnit": "rft",
-          "use": "H2"
+          "use": "H2",
+          "sectionId": "35mm_gulf__2_track_vertical_left_right",
+          "seriesId": "35mm_gulf",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "vertical"
         },
         {
           "id": "35mm_gulf__3_track_top_bottom",
           "name": "3 track top, bottom",
           "usage": "track_horizontal",
-          "usageLabel": "Track — horizontal",
+          "usageLabel": "Outer track — horizontal",
           "widthMm": 31.0,
           "sectionDepthMm": 145.2,
           "standardLength": "16",
@@ -653,13 +771,18 @@
           "rateUnit": "kg",
           "coatingCost": 45.0,
           "coatingUnit": "rft",
-          "use": "V2"
+          "use": "V2",
+          "sectionId": "35mm_gulf__3_track_top_bottom",
+          "seriesId": "35mm_gulf",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "horizontal"
         },
         {
           "id": "35mm_gulf__3_track_vertical_left_right",
           "name": "3 track vertical left right",
           "usage": "track_vertical",
-          "usageLabel": "Track — vertical",
+          "usageLabel": "Outer track — vertical",
           "widthMm": 24.24,
           "sectionDepthMm": 151.3,
           "standardLength": "16",
@@ -676,13 +799,18 @@
           "rateUnit": "kg",
           "coatingCost": 45.0,
           "coatingUnit": "rft",
-          "use": "H2"
+          "use": "H2",
+          "sectionId": "35mm_gulf__3_track_vertical_left_right",
+          "seriesId": "35mm_gulf",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "vertical"
         },
         {
           "id": "35mm_gulf__hnadle_side",
           "name": "Hnadle side",
           "usage": "sash",
-          "usageLabel": "Section",
+          "usageLabel": "Glass shutter",
           "widthMm": 58.8,
           "sectionDepthMm": 35.0,
           "standardLength": "16",
@@ -699,13 +827,17 @@
           "rateUnit": "kg",
           "coatingCost": 14.0,
           "coatingUnit": "rft",
-          "use": "V1"
+          "use": "V1",
+          "sectionId": "35mm_gulf__hnadle_side",
+          "seriesId": "35mm_gulf",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter"
         },
         {
           "id": "35mm_gulf__top_bottom",
           "name": "Top, Bottom",
           "usage": "sash",
-          "usageLabel": "Sash / Shutter",
+          "usageLabel": "Glass shutter",
           "widthMm": 58.0,
           "sectionDepthMm": 31.5,
           "standardLength": "16",
@@ -722,7 +854,11 @@
           "rateUnit": "kg",
           "coatingCost": 14.0,
           "coatingUnit": "rft",
-          "use": "H2"
+          "use": "H2",
+          "sectionId": "35mm_gulf__top_bottom",
+          "seriesId": "35mm_gulf",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter"
         },
         {
           "id": "35mm_gulf__slim_interlock",
@@ -745,7 +881,11 @@
           "rateUnit": "kg",
           "coatingCost": 18.0,
           "coatingUnit": "rft",
-          "use": "V1"
+          "use": "V1",
+          "sectionId": "35mm_gulf__slim_interlock",
+          "seriesId": "35mm_gulf",
+          "role": "interlock",
+          "roleLabel": "Interlock"
         },
         {
           "id": "35mm_gulf__renf_interlock",
@@ -768,7 +908,11 @@
           "rateUnit": "kg",
           "coatingCost": 26.0,
           "coatingUnit": "rft",
-          "use": "V1"
+          "use": "V1",
+          "sectionId": "35mm_gulf__renf_interlock",
+          "seriesId": "35mm_gulf",
+          "role": "interlock",
+          "roleLabel": "Interlock"
         },
         {
           "id": "35mm_gulf__glass_reducer_per_pc_1",
@@ -791,7 +935,11 @@
           "rateUnit": "kg",
           "coatingCost": 6.0,
           "coatingUnit": "rft",
-          "use": "V1"
+          "use": "V1",
+          "sectionId": "35mm_gulf__glass_reducer_per_pc_1",
+          "seriesId": "35mm_gulf",
+          "role": "other",
+          "roleLabel": "Section"
         },
         {
           "id": "35mm_gulf__mesh_adepetr",
@@ -814,11 +962,16 @@
           "rateUnit": "rft",
           "coatingCost": 9.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "35mm_gulf__mesh_adepetr",
+          "seriesId": "35mm_gulf",
+          "role": "other",
+          "roleLabel": "Section"
         }
       ],
       "designOptions": [],
-      "engineProductId": "29mm_sliding"
+      "engineProductId": "29mm_sliding",
+      "seriesId": "35mm_gulf"
     },
     {
       "id": "40mm_prestige",
@@ -831,7 +984,7 @@
           "id": "40mm_prestige__2_track_all_side",
           "name": "2 track All Side",
           "usage": "track",
-          "usageLabel": "Track / Outer frame",
+          "usageLabel": "Outer track",
           "widthMm": 50.0,
           "sectionDepthMm": 108.0,
           "standardLength": "16",
@@ -848,13 +1001,18 @@
           "rateUnit": "kg",
           "coatingCost": 30.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "40mm_prestige__2_track_all_side",
+          "seriesId": "40mm_prestige",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "all"
         },
         {
           "id": "40mm_prestige__3_track_all_side",
           "name": "3 track All Side",
           "usage": "track",
-          "usageLabel": "Track / Outer frame",
+          "usageLabel": "Outer track",
           "widthMm": 50.0,
           "sectionDepthMm": 161.4,
           "standardLength": "16",
@@ -871,13 +1029,18 @@
           "rateUnit": "kg",
           "coatingCost": 45.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "40mm_prestige__3_track_all_side",
+          "seriesId": "40mm_prestige",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "all"
         },
         {
           "id": "40mm_prestige__4_track_all_side",
           "name": "4 track All Side",
           "usage": "track_add",
-          "usageLabel": "Add track",
+          "usageLabel": "Outer track — add",
           "widthMm": 50.0,
           "sectionDepthMm": 214.79,
           "standardLength": "16",
@@ -894,13 +1057,18 @@
           "rateUnit": "kg",
           "coatingCost": 65.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "40mm_prestige__4_track_all_side",
+          "seriesId": "40mm_prestige",
+          "role": "outer_track",
+          "roleLabel": "Outer track",
+          "orientation": "add"
         },
         {
           "id": "40mm_prestige__hnadle_side_vertical",
           "name": "Hnadle side Vertical",
           "usage": "sash",
-          "usageLabel": "Section",
+          "usageLabel": "Glass shutter",
           "widthMm": 61.5,
           "sectionDepthMm": 41.6,
           "standardLength": "16",
@@ -917,13 +1085,17 @@
           "rateUnit": "kg",
           "coatingCost": 23.0,
           "coatingUnit": "rft",
-          "use": "V1"
+          "use": "V1",
+          "sectionId": "40mm_prestige__hnadle_side_vertical",
+          "seriesId": "40mm_prestige",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter"
         },
         {
           "id": "40mm_prestige__top_bottom_horizonatal",
           "name": "Top Bottom Horizonatal",
           "usage": "sash",
-          "usageLabel": "Sash / Shutter",
+          "usageLabel": "Glass shutter",
           "widthMm": 77.5,
           "sectionDepthMm": 37.4,
           "standardLength": "16",
@@ -940,7 +1112,11 @@
           "rateUnit": "kg",
           "coatingCost": 23.0,
           "coatingUnit": "rft",
-          "use": "H2"
+          "use": "H2",
+          "sectionId": "40mm_prestige__top_bottom_horizonatal",
+          "seriesId": "40mm_prestige",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter"
         },
         {
           "id": "40mm_prestige__slim_interlock",
@@ -963,7 +1139,11 @@
           "rateUnit": "kg",
           "coatingCost": 16.0,
           "coatingUnit": "rft",
-          "use": "V1"
+          "use": "V1",
+          "sectionId": "40mm_prestige__slim_interlock",
+          "seriesId": "40mm_prestige",
+          "role": "interlock",
+          "roleLabel": "Interlock"
         },
         {
           "id": "40mm_prestige__renforcment_interlock",
@@ -986,7 +1166,11 @@
           "rateUnit": "kg",
           "coatingCost": 26.0,
           "coatingUnit": "rft",
-          "use": "V1"
+          "use": "V1",
+          "sectionId": "40mm_prestige__renforcment_interlock",
+          "seriesId": "40mm_prestige",
+          "role": "interlock",
+          "roleLabel": "Interlock"
         },
         {
           "id": "40mm_prestige__meeting_section",
@@ -1009,11 +1193,16 @@
           "rateUnit": "kg",
           "coatingCost": 16.0,
           "coatingUnit": "rft",
-          "use": "V1"
+          "use": "V1",
+          "sectionId": "40mm_prestige__meeting_section",
+          "seriesId": "40mm_prestige",
+          "role": "meeting",
+          "roleLabel": "Meeting"
         }
       ],
       "designOptions": [],
-      "engineProductId": "29mm_sliding"
+      "engineProductId": "29mm_sliding",
+      "seriesId": "40mm_prestige"
     },
     {
       "id": "40mm_casement_standard",
@@ -1026,7 +1215,7 @@
           "id": "40mm_casement_standard__outer_frame",
           "name": "Outer Frame",
           "usage": "frame",
-          "usageLabel": "Frame",
+          "usageLabel": "Outer frame",
           "widthMm": 38.6,
           "sectionDepthMm": 40.0,
           "standardLength": "12, 16",
@@ -1043,13 +1232,18 @@
           "rateUnit": "kg",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "40mm_casement_standard__outer_frame",
+          "seriesId": "40mm_casement_standard",
+          "role": "outer_frame",
+          "roleLabel": "Outer frame",
+          "orientation": "all"
         },
         {
           "id": "40mm_casement_standard__mullion",
           "name": "Mullion",
-          "usage": "other",
-          "usageLabel": "Section",
+          "usage": "mullion",
+          "usageLabel": "Mullion",
           "widthMm": 53.5,
           "sectionDepthMm": 40.0,
           "standardLength": "12, 16",
@@ -1066,13 +1260,17 @@
           "rateUnit": "kg",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "free"
+          "use": "free",
+          "sectionId": "40mm_casement_standard__mullion",
+          "seriesId": "40mm_casement_standard",
+          "role": "mullion",
+          "roleLabel": "Mullion"
         },
         {
           "id": "40mm_casement_standard__shutter_sg_no_need_clip",
           "name": "Shutter SG (no Need Clip)",
           "usage": "sash",
-          "usageLabel": "Section",
+          "usageLabel": "Glass shutter",
           "widthMm": 40.0,
           "sectionDepthMm": 50.8,
           "standardLength": "12, 16",
@@ -1091,13 +1289,17 @@
           "rateUnit": "kg",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "v2, h2,"
+          "use": "v2, h2,",
+          "sectionId": "40mm_casement_standard__shutter_sg_no_need_clip",
+          "seriesId": "40mm_casement_standard",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter"
         },
         {
           "id": "40mm_casement_standard__mullion_big",
           "name": "Mullion Big",
-          "usage": "other",
-          "usageLabel": "Section",
+          "usage": "mullion",
+          "usageLabel": "Mullion",
           "widthMm": 70.0,
           "sectionDepthMm": 40.0,
           "standardLength": "12,16",
@@ -1114,13 +1316,17 @@
           "rateUnit": "kg",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "free"
+          "use": "free",
+          "sectionId": "40mm_casement_standard__mullion_big",
+          "seriesId": "40mm_casement_standard",
+          "role": "mullion",
+          "roleLabel": "Mullion"
         },
         {
           "id": "40mm_casement_standard__shutter",
           "name": "Shutter",
           "usage": "sash",
-          "usageLabel": "Sash / Shutter",
+          "usageLabel": "Glass shutter",
           "widthMm": 70.1,
           "sectionDepthMm": 40.0,
           "standardLength": "12, 16",
@@ -1137,13 +1343,17 @@
           "rateUnit": "kg",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "40mm_casement_standard__shutter",
+          "seriesId": "40mm_casement_standard",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter"
         },
         {
           "id": "40mm_casement_standard__clip_sg",
           "name": "Clip SG",
-          "usage": "other",
-          "usageLabel": "Section",
+          "usage": "clip",
+          "usageLabel": "Glass clip",
           "widthMm": 18.5,
           "sectionDepthMm": 32.5,
           "standardLength": "12, 16",
@@ -1162,14 +1372,19 @@
           "rateUnit": "rft",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "40mm_casement_standard__clip_sg",
+          "seriesId": "40mm_casement_standard",
+          "role": "clip",
+          "roleLabel": "Glass clip"
         }
       ],
       "designOptions": [
         "20% extra",
         "40% extra"
       ],
-      "engineProductId": "casement_stub"
+      "engineProductId": "casement_stub",
+      "seriesId": "40mm_casement_standard"
     },
     {
       "id": "50mm_casement_prestige",
@@ -1182,7 +1397,7 @@
           "id": "50mm_casement_prestige__outer_frame",
           "name": "Outer frame",
           "usage": "frame",
-          "usageLabel": "Frame",
+          "usageLabel": "Outer frame",
           "widthMm": 46.0,
           "sectionDepthMm": 50.0,
           "standardLength": "12, 16",
@@ -1199,13 +1414,18 @@
           "rateUnit": "kg",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "50mm_casement_prestige__outer_frame",
+          "seriesId": "50mm_casement_prestige",
+          "role": "outer_frame",
+          "roleLabel": "Outer frame",
+          "orientation": "all"
         },
         {
           "id": "50mm_casement_prestige__outer_frame_with_grills",
           "name": "Outer frame With grills",
           "usage": "frame",
-          "usageLabel": "Frame",
+          "usageLabel": "Outer frame",
           "widthMm": 45.6,
           "sectionDepthMm": 85.5,
           "standardLength": "12, 16",
@@ -1222,13 +1442,18 @@
           "rateUnit": "kg",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "50mm_casement_prestige__outer_frame_with_grills",
+          "seriesId": "50mm_casement_prestige",
+          "role": "outer_frame",
+          "roleLabel": "Outer frame",
+          "orientation": "all"
         },
         {
           "id": "50mm_casement_prestige__mullion_slim",
           "name": "Mullion Slim",
-          "usage": "other",
-          "usageLabel": "Section",
+          "usage": "mullion",
+          "usageLabel": "Mullion",
           "widthMm": 67.0,
           "sectionDepthMm": 50.0,
           "standardLength": "12, 16",
@@ -1245,13 +1470,17 @@
           "rateUnit": "kg",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "free"
+          "use": "free",
+          "sectionId": "50mm_casement_prestige__mullion_slim",
+          "seriesId": "50mm_casement_prestige",
+          "role": "mullion",
+          "roleLabel": "Mullion"
         },
         {
           "id": "50mm_casement_prestige__mullion_big",
           "name": "mullion Big",
-          "usage": "other",
-          "usageLabel": "Section",
+          "usage": "mullion",
+          "usageLabel": "Mullion",
           "widthMm": 86.0,
           "sectionDepthMm": 50.0,
           "standardLength": "12, 16",
@@ -1268,13 +1497,17 @@
           "rateUnit": "kg",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "free"
+          "use": "free",
+          "sectionId": "50mm_casement_prestige__mullion_big",
+          "seriesId": "50mm_casement_prestige",
+          "role": "mullion",
+          "roleLabel": "Mullion"
         },
         {
           "id": "50mm_casement_prestige__door_slim",
           "name": "Door Slim",
-          "usage": "other",
-          "usageLabel": "Sash / Shutter",
+          "usage": "door",
+          "usageLabel": "Door / leaf",
           "widthMm": 62.4,
           "sectionDepthMm": 58.5,
           "standardLength": "12, 16",
@@ -1291,13 +1524,17 @@
           "rateUnit": "kg",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "50mm_casement_prestige__door_slim",
+          "seriesId": "50mm_casement_prestige",
+          "role": "door",
+          "roleLabel": "Door / leaf"
         },
         {
           "id": "50mm_casement_prestige__door_big",
           "name": "Door big",
-          "usage": "other",
-          "usageLabel": "Sash / Shutter",
+          "usage": "door",
+          "usageLabel": "Door / leaf",
           "widthMm": 78.6,
           "sectionDepthMm": 58.2,
           "standardLength": "12, 16",
@@ -1314,13 +1551,17 @@
           "rateUnit": "kg",
           "coatingCost": 22.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "50mm_casement_prestige__door_big",
+          "seriesId": "50mm_casement_prestige",
+          "role": "door",
+          "roleLabel": "Door / leaf"
         },
         {
           "id": "50mm_casement_prestige__clip_sg",
           "name": "clip sg",
-          "usage": "other",
-          "usageLabel": "Section",
+          "usage": "clip",
+          "usageLabel": "Glass clip",
           "widthMm": 25.5,
           "sectionDepthMm": 35.4,
           "standardLength": "12, 16",
@@ -1339,13 +1580,17 @@
           "rateUnit": "rft",
           "coatingCost": 6.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "50mm_casement_prestige__clip_sg",
+          "seriesId": "50mm_casement_prestige",
+          "role": "clip",
+          "roleLabel": "Glass clip"
         },
         {
           "id": "50mm_casement_prestige__clip_dg",
           "name": "clip dg",
-          "usage": "other",
-          "usageLabel": "Section",
+          "usage": "clip",
+          "usageLabel": "Glass clip",
           "widthMm": 25.5,
           "sectionDepthMm": 21.5,
           "standardLength": "12, 16",
@@ -1364,11 +1609,16 @@
           "rateUnit": "rft",
           "coatingCost": 6.0,
           "coatingUnit": "rft",
-          "use": "v2, h2"
+          "use": "v2, h2",
+          "sectionId": "50mm_casement_prestige__clip_dg",
+          "seriesId": "50mm_casement_prestige",
+          "role": "clip",
+          "roleLabel": "Glass clip"
         }
       ],
       "designOptions": [],
-      "engineProductId": "casement_stub"
+      "engineProductId": "casement_stub",
+      "seriesId": "50mm_casement_prestige"
     }
   ]
 }

@@ -329,16 +329,24 @@ def find_excel_path(explicit: str | Path | None = None) -> Path:
 
 def _usage_label(usage: str) -> str:
     return {
-        "track": "Track / Outer frame",
-        "track_horizontal": "Track — horizontal",
-        "track_vertical": "Track — vertical",
-        "track_add": "Add track",
-        "sash": "Sash / Shutter",
+        "track": "Outer track",
+        "track_horizontal": "Outer track — horizontal",
+        "track_vertical": "Outer track — vertical",
+        "track_add": "Outer track — add",
+        "sash": "Glass shutter",
+        "mesh": "Mesh shutter",
         "interlock": "Interlock",
         "meeting": "Meeting section",
-        "frame": "Frame",
+        "frame": "Outer frame",
+        "mullion": "Mullion",
+        "door": "Door / leaf",
+        "clip": "Glass clip",
         "other": "Section",
         "unknown": "Section",
+        "outer_track": "Outer track",
+        "outer_frame": "Outer frame",
+        "glass_shutter": "Glass shutter",
+        "mesh_shutter": "Mesh shutter",
     }.get(usage, usage)
 
 
@@ -385,34 +393,37 @@ def _section_record(
     ru = str(rate_unit or "kg").lower()
     if ru not in ("kg", "rft", "rmt", "pc"):
         ru = "kg"
-    return {
-        "id": f"{series_id}__{_slug(name)}",
-        "name": name,
-        "usage": usage,
-        "usageLabel": _usage_label(usage),
-        # FACE×DEPTH: widthMm/wMm = face (elevation); sectionDepthMm/hMm = depth
-        "widthMm": face,
-        "sectionDepthMm": depth,
-        "standardLength": std_length,
-        "weightKgPerMtrRaw": f"{weight} kg/m" if weight is not None else None,
-        "weightKgPerMtr": weight,
-        "heightLimit": None,
-        "heightLimitMm": None,
-        "wallThicknessMm": wall,
-        "designNote": notes or use or None,
-        "trackCount": parse_track_count(name),
-        "glassOptions": parse_glass_options(name),
-        "centerOpeningOnly": is_center_opening_only(name),
-        "rate": rate,
-        "rateUnit": ru,
-        "coatingCost": coating,
-        "coatingUnit": "rft",
-        "use": use,
-        "pcsVertical": pcs_vertical,
-        "pcsHorizontal": pcs_horizontal,
-        "allSidesSame": bool(all_sides_same) if all_sides_same is not None else None,
-        "bomHint": bom_hint,
-    }
+    from WEOS.factory.section_catalogue import annotate_section_card
+
+    return annotate_section_card(
+        {
+            "name": name,
+            "usage": usage,
+            # FACE×DEPTH: widthMm/wMm = face (elevation); sectionDepthMm/hMm = depth
+            "widthMm": face,
+            "sectionDepthMm": depth,
+            "standardLength": std_length,
+            "weightKgPerMtrRaw": f"{weight} kg/m" if weight is not None else None,
+            "weightKgPerMtr": weight,
+            "heightLimit": None,
+            "heightLimitMm": None,
+            "wallThicknessMm": wall,
+            "designNote": notes or use or None,
+            "trackCount": parse_track_count(name),
+            "glassOptions": parse_glass_options(name),
+            "centerOpeningOnly": is_center_opening_only(name),
+            "rate": rate,
+            "rateUnit": ru,
+            "coatingCost": coating,
+            "coatingUnit": "rft",
+            "use": use,
+            "pcsVertical": pcs_vertical,
+            "pcsHorizontal": pcs_horizontal,
+            "allSidesSame": bool(all_sides_same) if all_sides_same is not None else None,
+            "bomHint": bom_hint,
+        },
+        series_id=series_id,
+    )
 
 
 def _setup_section_from_row(sec: Mapping[str, Any]) -> dict[str, Any]:
@@ -434,7 +445,7 @@ def _setup_section_from_row(sec: Mapping[str, Any]) -> dict[str, Any]:
     all_same = sec.get("allSidesSame")
     if all_same is None:
         all_same = parsed.get("allSidesSame")
-    return {
+    out = {
         "name": sec.get("name") or "",
         "use": use_raw or parsed.get("use") or "",
         "wMm": face,   # elevation face
@@ -454,6 +465,24 @@ def _setup_section_from_row(sec: Mapping[str, Any]) -> dict[str, Any]:
         "bomHint": sec.get("bomHint") or parsed.get("bomHint"),
         "notes": sec.get("designNote") or "",
     }
+    # Preserve stable ids + clear role so costing/remnants never cross-bind
+    section_id = str(sec.get("sectionId") or sec.get("id") or "").strip()
+    series_id = str(sec.get("seriesId") or "").strip()
+    role = str(sec.get("role") or "").strip()
+    if section_id:
+        out["sectionId"] = section_id
+        out["id"] = section_id
+    if series_id:
+        out["seriesId"] = series_id
+    if role:
+        out["role"] = role
+        out["roleLabel"] = str(sec.get("roleLabel") or role.replace("_", " ").title())
+    if sec.get("orientation"):
+        out["orientation"] = sec.get("orientation")
+    if sec.get("usage"):
+        out["usage"] = sec.get("usage")
+        out["usageLabel"] = sec.get("usageLabel") or _usage_label(str(sec.get("usage")))
+    return out
 
 
 def parse_sliding_sheet(ws) -> list[dict[str, Any]]:
@@ -781,14 +810,31 @@ def _is_mesh_adapter_name(nl: str) -> bool:
     return any(k in nl for k in ("adapt", "adept", "adepet", "adeptor", "adepetr"))
 
 
+def _section_role(sec: Mapping[str, Any] | None) -> str:
+    if not isinstance(sec, Mapping):
+        return ""
+    role = str(sec.get("role") or "").strip().lower()
+    if role:
+        return role
+    usage = str(sec.get("usage") or "").strip().lower()
+    from WEOS.factory.section_catalogue import _USAGE_TO_ROLE, infer_role
+
+    if usage in _USAGE_TO_ROLE:
+        return _USAGE_TO_ROLE[usage]
+    return infer_role(str(sec.get("name") or ""), usage=usage)
+
+
 def _is_mesh_section(sec: Mapping[str, Any] | None) -> bool:
     if not isinstance(sec, Mapping):
         return False
-    usage = str(sec.get("usage") or "").lower()
     nl = _section_name_l(sec)
     if _is_mesh_adapter_name(nl):
         return False
-    if usage == "mesh":
+    role = _section_role(sec)
+    if role == "mesh_shutter":
+        return True
+    usage = str(sec.get("usage") or "").lower()
+    if usage in ("mesh", "mesh_shutter"):
         return True
     if "mesh" in nl:
         return True
@@ -796,15 +842,21 @@ def _is_mesh_section(sec: Mapping[str, Any] | None) -> bool:
 
 
 def _is_track_section(sec: Mapping[str, Any] | None) -> bool:
+    """Outer track / outer frame only — never glass or mesh shutters."""
     if not isinstance(sec, Mapping):
+        return False
+    if _is_mesh_section(sec):
+        return False
+    role = _section_role(sec)
+    if role in ("outer_track", "outer_frame"):
+        return True
+    if role in ("glass_shutter", "mesh_shutter", "interlock", "meeting", "mullion", "door", "clip"):
         return False
     usage = str(sec.get("usage") or "").lower()
     nl = _section_name_l(sec)
-    if _is_mesh_section(sec):
-        return False
-    if usage.startswith("track"):
+    if usage.startswith("track") or usage in ("frame", "outer_track", "outer_frame"):
         return True
-    return ("track" in nl or "trck" in nl) and "mesh" not in nl
+    return ("track" in nl or "trck" in nl) and "mesh" not in nl and "shutter" not in nl
 
 
 def _is_glass_sash_section(sec: Mapping[str, Any] | None) -> bool:
@@ -813,13 +865,20 @@ def _is_glass_sash_section(sec: Mapping[str, Any] | None) -> bool:
         return False
     if _is_mesh_section(sec) or _is_track_section(sec):
         return False
+    role = _section_role(sec)
+    if role == "glass_shutter":
+        return True
+    if role in ("outer_track", "outer_frame", "mesh_shutter", "interlock", "meeting", "mullion", "clip"):
+        return False
     usage = str(sec.get("usage") or "").lower()
     nl = _section_name_l(sec)
     if "interlock" in nl or "reducer" in nl or "meeting" in nl:
         return False
     if "adapt" in nl or "adept" in nl:
         return False
-    if usage in ("sash", "door", "leaf"):
+    if usage in ("sash", "door", "leaf", "glass_shutter"):
+        return True
+    if role == "door":
         return True
     if "handle" in nl or "hnadle" in nl:
         return True
@@ -846,6 +905,9 @@ def _rail_count_for_tc(tc: float) -> int:
 
 def _classify_track_row(sec: Mapping[str, Any]) -> str:
     """vertical | horizontal | all — how this track row maps onto outer frame sides."""
+    orient = str(sec.get("orientation") or "").lower()
+    if orient in ("vertical", "horizontal", "all", "add"):
+        return "add" if orient == "add" else orient
     usage = str(sec.get("usage") or "").lower()
     nl = _section_name_l(sec)
     if "vertical" in usage or (
@@ -861,12 +923,19 @@ def _classify_track_row(sec: Mapping[str, Any]) -> str:
 
 
 def _build_sliding_setup(series: Mapping[str, Any], hw_items: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    sections = list(series.get("sections") or [])
+    from WEOS.factory.section_catalogue import annotate_section_card
+
+    series_id = str(series.get("id") or series.get("seriesId") or "")
+    sections = [
+        annotate_section_card(s, series_id=series_id)
+        for s in (series.get("sections") or [])
+        if isinstance(s, Mapping)
+    ]
     tracks = [s for s in sections if _is_track_section(s)]
     shutters = [s for s in sections if _is_glass_sash_section(s)]
     interlocks = [
         s for s in sections
-        if str(s.get("usage") or "").lower() == "interlock"
+        if _section_role(s) == "interlock" or str(s.get("usage") or "").lower() == "interlock"
         or "interlock" in _section_name_l(s)
     ]
     meetings = [
@@ -1161,7 +1230,14 @@ def _build_sliding_setup(series: Mapping[str, Any], hw_items: Sequence[Mapping[s
 
 
 def _build_casement_setup(series: Mapping[str, Any], hw_items: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    sections = list(series.get("sections") or [])
+    from WEOS.factory.section_catalogue import annotate_section_card
+
+    series_id = str(series.get("id") or series.get("seriesId") or "")
+    sections = [
+        annotate_section_card(s, series_id=series_id)
+        for s in (series.get("sections") or [])
+        if isinstance(s, Mapping)
+    ]
 
     def find(*needles: str) -> Mapping[str, Any] | None:
         for s in sections:
@@ -1170,17 +1246,29 @@ def _build_casement_setup(series: Mapping[str, Any], hw_items: Sequence[Mapping[
                 return s
         return None
 
-    outer = find("outer", "frame") or find("outer")
+    def find_role(role: str) -> Mapping[str, Any] | None:
+        for s in sections:
+            if _section_role(s) == role:
+                return s
+        return None
+
+    outer = find("outer", "frame") or find("outer") or find_role("outer_frame")
     outer_grill = find("grill")
-    mull_slim = find("mullion", "slim") or find("mullion")
-    mull_big = find("mullion", "big") or find("mullion")
+    mull_slim = find("mullion", "slim") or find("mullion") or find_role("mullion")
+    mull_big = find("mullion", "big") or find("mullion") or find_role("mullion")
     if mull_slim and mull_big and mull_slim is mull_big:
-        mulls = [s for s in sections if "mullion" in (s.get("name") or "").lower()]
+        mulls = [s for s in sections if "mullion" in (s.get("name") or "").lower() or _section_role(s) == "mullion"]
         if len(mulls) >= 2:
             mull_slim, mull_big = mulls[0], mulls[1]
-    door_slim = find("door", "slim") or find("shutter", "sg") or find("shutter")
-    door_big = find("door", "big") or find("shutter")
-    clip_sg = find("clip", "sg") or find("clip")
+    door_slim = (
+        find("door", "slim")
+        or find("shutter", "sg")
+        or find("shutter")
+        or find_role("door")
+        or find_role("glass_shutter")
+    )
+    door_big = find("door", "big") or find("shutter") or find_role("door") or find_role("glass_shutter")
+    clip_sg = find("clip", "sg") or find("clip") or find_role("clip")
     clip_dg = find("clip", "dg")
 
     # Hardware
@@ -1327,15 +1415,19 @@ def rebuild_setups_from_catalogue(
             continue
         if wanted is not None and sid not in wanted:
             continue
-        # Refresh usage tags from names so handle/hnadle/mesh classify correctly
+        # Refresh usage + clear role + stable ids so outer never binds to shutters
+        from WEOS.factory.section_catalogue import annotate_section_card
+
         secs = []
         for sec in series.get("sections") or []:
             if not isinstance(sec, Mapping):
                 continue
             row = dict(sec)
             row["usage"] = infer_usage(str(row.get("name") or ""))
-            secs.append(row)
+            secs.append(annotate_section_card(row, series_id=sid))
         series_fix = dict(series)
+        series_fix["id"] = sid
+        series_fix["seriesId"] = sid
         series_fix["sections"] = secs
         fam = str(series_fix.get("family") or "sliding").lower()
         if fam == "casement":
@@ -1428,14 +1520,18 @@ def rebuild_setups_from_catalogue(
             if wanted is not None and sid not in wanted:
                 new_series.append(series)
                 continue
+            from WEOS.factory.section_catalogue import annotate_section_card
+
             secs = []
             for sec in series.get("sections") or []:
                 if not isinstance(sec, Mapping):
                     continue
                 row = dict(sec)
                 row["usage"] = infer_usage(str(row.get("name") or ""))
-                secs.append(row)
+                secs.append(annotate_section_card(row, series_id=sid))
             row = dict(series)
+            row["id"] = sid
+            row["seriesId"] = sid
             row["sections"] = secs
             new_series.append(row)
         cat2["series"] = new_series

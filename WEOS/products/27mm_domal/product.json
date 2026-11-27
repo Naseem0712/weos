@@ -194,7 +194,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "27mm_domal__2_track",
+              "id": "27mm_domal__2_track",
+              "seriesId": "27mm_domal",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "vertical": {
               "name": "2 track",
@@ -217,7 +225,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "27mm_domal__2_track",
+              "id": "27mm_domal__2_track",
+              "seriesId": "27mm_domal",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "top": {
               "name": "2 track",
@@ -240,7 +256,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "27mm_domal__2_track",
+              "id": "27mm_domal__2_track",
+              "seriesId": "27mm_domal",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "bottom": {
               "name": "2 track",
@@ -263,7 +287,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "27mm_domal__2_track",
+              "id": "27mm_domal__2_track",
+              "seriesId": "27mm_domal",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "leftVertical": {
               "name": "",
@@ -343,7 +375,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "27mm_domal__3_trck",
+              "id": "27mm_domal__3_trck",
+              "seriesId": "27mm_domal",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "vertical": {
               "name": "3 Trck",
@@ -366,7 +406,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "27mm_domal__3_trck",
+              "id": "27mm_domal__3_trck",
+              "seriesId": "27mm_domal",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "top": {
               "name": "3 Trck",
@@ -389,7 +437,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "27mm_domal__3_trck",
+              "id": "27mm_domal__3_trck",
+              "seriesId": "27mm_domal",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "bottom": {
               "name": "3 Trck",
@@ -412,7 +468,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "27mm_domal__3_trck",
+              "id": "27mm_domal__3_trck",
+              "seriesId": "27mm_domal",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "leftVertical": {
               "name": "",
@@ -492,7 +556,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "27mm_domal__4_track",
+              "id": "27mm_domal__4_track",
+              "seriesId": "27mm_domal",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "add",
+              "usage": "track_add",
+              "usageLabel": "Outer track — add"
             },
             "vertical": {
               "name": "4 track",
@@ -515,7 +587,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "27mm_domal__4_track",
+              "id": "27mm_domal__4_track",
+              "seriesId": "27mm_domal",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "add",
+              "usage": "track_add",
+              "usageLabel": "Outer track — add"
             },
             "top": {
               "name": "4 track",
@@ -538,7 +618,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "27mm_domal__4_track",
+              "id": "27mm_domal__4_track",
+              "seriesId": "27mm_domal",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "add",
+              "usage": "track_add",
+              "usageLabel": "Outer track — add"
             },
             "bottom": {
               "name": "4 track",
@@ -561,7 +649,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "27mm_domal__4_track",
+              "id": "27mm_domal__4_track",
+              "seriesId": "27mm_domal",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "add",
+              "usage": "track_add",
+              "usageLabel": "Outer track — add"
             },
             "leftVertical": {
               "name": "",
@@ -930,7 +1026,14 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2"
+          "notes": "v2, h2",
+          "sectionId": "27mm_domal__shutter_all_side",
+          "id": "27mm_domal__shutter_all_side",
+          "seriesId": "27mm_domal",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "top": {
           "name": "",
@@ -999,7 +1102,14 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2"
+          "notes": "v2, h2",
+          "sectionId": "27mm_domal__shutter_all_side",
+          "id": "27mm_domal__shutter_all_side",
+          "seriesId": "27mm_domal",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "interlockSide": {
           "name": "",
@@ -1045,7 +1155,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1 H0"
+          "notes": "V1 H0",
+          "sectionId": "27mm_domal__interlock",
+          "id": "27mm_domal__interlock",
+          "seriesId": "27mm_domal",
+          "role": "interlock",
+          "roleLabel": "Interlock",
+          "usage": "interlock",
+          "usageLabel": "Interlock"
         },
         "interlockRenf": {
           "name": "",
@@ -2752,7 +2869,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "27mm_domal__2_track",
+              "id": "27mm_domal__2_track",
+              "seriesId": "27mm_domal",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "trackOption": "2",
             "railCount": 2
@@ -2782,7 +2907,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "27mm_domal__2_track",
+              "id": "27mm_domal__2_track",
+              "seriesId": "27mm_domal",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "trackOption": "2",
             "railCount": 2

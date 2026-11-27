@@ -230,7 +230,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "25mm_prestige__2_track",
+              "id": "25mm_prestige__2_track",
+              "seriesId": "25mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "vertical": {
               "name": "2 track",
@@ -253,7 +261,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "25mm_prestige__2_track",
+              "id": "25mm_prestige__2_track",
+              "seriesId": "25mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "top": {
               "name": "2 track",
@@ -276,7 +292,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "25mm_prestige__2_track",
+              "id": "25mm_prestige__2_track",
+              "seriesId": "25mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "bottom": {
               "name": "2 track",
@@ -299,7 +323,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "25mm_prestige__2_track",
+              "id": "25mm_prestige__2_track",
+              "seriesId": "25mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "leftVertical": {
               "name": "",
@@ -379,7 +411,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "25mm_prestige__2_5_track",
+              "id": "25mm_prestige__2_5_track",
+              "seriesId": "25mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "vertical": {
               "name": "2.5 track",
@@ -402,7 +442,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "25mm_prestige__2_5_track",
+              "id": "25mm_prestige__2_5_track",
+              "seriesId": "25mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "top": {
               "name": "2.5 track",
@@ -425,7 +473,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "25mm_prestige__2_5_track",
+              "id": "25mm_prestige__2_5_track",
+              "seriesId": "25mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "bottom": {
               "name": "2.5 track",
@@ -448,7 +504,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "25mm_prestige__2_5_track",
+              "id": "25mm_prestige__2_5_track",
+              "seriesId": "25mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "leftVertical": {
               "name": "",
@@ -528,7 +592,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "25mm_prestige__3_track",
+              "id": "25mm_prestige__3_track",
+              "seriesId": "25mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "vertical": {
               "name": "3 Track",
@@ -551,7 +623,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "25mm_prestige__3_track",
+              "id": "25mm_prestige__3_track",
+              "seriesId": "25mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "top": {
               "name": "3 Track",
@@ -574,7 +654,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "25mm_prestige__3_track",
+              "id": "25mm_prestige__3_track",
+              "seriesId": "25mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "bottom": {
               "name": "3 Track",
@@ -597,7 +685,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "25mm_prestige__3_track",
+              "id": "25mm_prestige__3_track",
+              "seriesId": "25mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "leftVertical": {
               "name": "",
@@ -989,7 +1085,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1 H2"
+          "notes": "V1 H2",
+          "sectionId": "25mm_prestige__handle_side_top_bottom",
+          "id": "25mm_prestige__handle_side_top_bottom",
+          "seriesId": "25mm_prestige",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "bottom": {
           "name": "handle side, top, bottom",
@@ -1012,7 +1115,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1 H2"
+          "notes": "V1 H2",
+          "sectionId": "25mm_prestige__handle_side_top_bottom",
+          "id": "25mm_prestige__handle_side_top_bottom",
+          "seriesId": "25mm_prestige",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "handleSide": {
           "name": "handle side, top, bottom",
@@ -1035,7 +1145,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1 H2"
+          "notes": "V1 H2",
+          "sectionId": "25mm_prestige__handle_side_top_bottom",
+          "id": "25mm_prestige__handle_side_top_bottom",
+          "seriesId": "25mm_prestige",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "interlockSide": {
           "name": "",
@@ -1081,7 +1198,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1 H0"
+          "notes": "V1 H0",
+          "sectionId": "25mm_prestige__interlock_slim",
+          "id": "25mm_prestige__interlock_slim",
+          "seriesId": "25mm_prestige",
+          "role": "interlock",
+          "roleLabel": "Interlock",
+          "usage": "interlock",
+          "usageLabel": "Interlock"
         },
         "interlockRenf": {
           "name": "renforcment interlock",
@@ -1104,7 +1228,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1 H0"
+          "notes": "V1 H0",
+          "sectionId": "25mm_prestige__renforcment_interlock",
+          "id": "25mm_prestige__renforcment_interlock",
+          "seriesId": "25mm_prestige",
+          "role": "interlock",
+          "roleLabel": "Interlock",
+          "usage": "interlock",
+          "usageLabel": "Interlock"
         },
         "glassReducer": {
           "name": "",
@@ -1208,7 +1339,15 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "V2 H2"
+          "notes": "V2 H2",
+          "sectionId": "25mm_prestige__2_5_track_mesh_shutter",
+          "id": "25mm_prestige__2_5_track_mesh_shutter",
+          "seriesId": "25mm_prestige",
+          "role": "mesh_shutter",
+          "roleLabel": "Mesh shutter",
+          "orientation": "all",
+          "usage": "mesh",
+          "usageLabel": "Mesh shutter"
         },
         "sections": []
       },
@@ -2790,7 +2929,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "25mm_prestige__2_track",
+              "id": "25mm_prestige__2_track",
+              "seriesId": "25mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "trackOption": "2",
             "railCount": 2
@@ -2820,7 +2967,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "V2 H2"
+              "notes": "V2 H2",
+              "sectionId": "25mm_prestige__2_track",
+              "id": "25mm_prestige__2_track",
+              "seriesId": "25mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "trackOption": "2",
             "railCount": 2

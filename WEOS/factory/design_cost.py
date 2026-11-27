@@ -383,10 +383,42 @@ def _section_std_m(sec: Mapping[str, Any] | None, *, fallback: float = 3.0) -> f
     return max(_f(fallback, 3.0), 0.1)
 
 
-def _section_pool_key(sec: Mapping[str, Any] | None, *, series: str = "", colour: str = "", use: str = "") -> str:
+def _section_pool_key(
+    sec: Mapping[str, Any] | None,
+    *,
+    series: str = "",
+    colour: str = "",
+    use: str = "",
+) -> str:
+    """Remnant / nest pool key = seriesId|sectionId|colour (never cross-series)."""
     s = normalize_section(sec) if isinstance(sec, Mapping) else {}
+    series_id = _str(s.get("seriesId") or series) or "series"
+    section_id = _str(s.get("sectionId") or s.get("id"))
+    if not section_id:
+        section_id = _str(s.get("name")) or _str(use) or "section"
+    return remnant_key(
+        series_id=series_id,
+        section_id=section_id,
+        colour=colour,
+    )
+
+
+def _section_identity(sec: Mapping[str, Any] | None, *, series: str = "", use: str = "") -> dict[str, str]:
+    """seriesId / sectionId / role for materials list + remnant tagging."""
+    s = normalize_section(sec) if isinstance(sec, Mapping) else {}
+    series_id = _str(s.get("seriesId") or series)
+    section_id = _str(s.get("sectionId") or s.get("id"))
+    role = _str(s.get("role") or use)
     name = _str(s.get("name")) or _str(use) or "section"
-    return remnant_key(series=series or name, section=name, colour=colour)
+    if not section_id:
+        section_id = name
+    return {
+        "seriesId": series_id,
+        "sectionId": section_id,
+        "role": role,
+        "roleLabel": _str(s.get("roleLabel")) or role.replace("_", " "),
+        "name": name,
+    }
 
 
 def _pick_std_m(costing: Mapping[str, Any] | None) -> float:
@@ -586,12 +618,16 @@ def nest_cuts_by_section(
             pool[key] = kept
         for rem in pack.get("remnantsOut") or []:
             pool.setdefault(key, []).append(_f(rem))
+            s0 = specs[0] if specs else {}
             remnants_created.append({
                 "key": key,
                 "lengthM": _f(rem),
-                "series": _str(specs[0].get("series")) if specs else "",
-                "section": _str(specs[0].get("sectionName") or specs[0].get("name")) if specs else key,
-                "colour": _str(specs[0].get("colour")) if specs else "",
+                "series": _str(s0.get("seriesId") or s0.get("series")),
+                "seriesId": _str(s0.get("seriesId") or s0.get("series")),
+                "section": _str(s0.get("sectionName") or s0.get("name") or s0.get("sectionId")),
+                "sectionId": _str(s0.get("sectionId") or s0.get("sectionName") or s0.get("name")),
+                "role": _str(s0.get("role") or s0.get("use")),
+                "colour": _str(s0.get("colour")),
             })
         waste_m = _f(pack.get("wastageMetres"))
         net_m = _f(pack.get("netMetres"))
@@ -991,11 +1027,7 @@ def derive_casement_profile_cuts(
     cuts_m: list[float] = []
     cut_specs: list[dict[str, Any]] = []
     coat_mult = coating_multiplier
-    series_label = ""
-    try:
-        series_label = _str((setup or {}).get("id") or (setup or {}).get("series") or "")
-    except Exception:
-        series_label = ""
+    series_label = sid or _str((setup or {}).get("id") or (setup or {}).get("series") or "")
 
     def add_profile(
         name: str,
@@ -1024,6 +1056,7 @@ def derive_casement_profile_cuts(
         kg_m = _section_weight_kg_per_m(s)
         pcs = int(round(qty)) if abs(qty - round(qty)) < 1e-6 else round(qty, 4)
         std_m = _section_std_m(s, fallback=3.0)
+        ident = _section_identity(s, series=series_label, use=use)
         key = _section_pool_key(s, series=series_label, colour=_str(colour), use=use)
         piece_count = n_int
         if abs(qty - round(qty)) > 1e-6:
@@ -1040,6 +1073,9 @@ def derive_casement_profile_cuts(
                 "coatingPerM": coat_m,
                 "sectionName": display,
                 "series": series_label,
+                "seriesId": ident["seriesId"] or series_label,
+                "sectionId": ident["sectionId"],
+                "role": ident["role"] or use,
                 "colour": _str(colour),
                 "use": use,
             })
@@ -1047,6 +1083,10 @@ def derive_casement_profile_cuts(
             "category": "profile",
             "name": display,
             "use": use,
+            "role": ident["role"] or use,
+            "roleLabel": ident.get("roleLabel") or use.replace("_", " "),
+            "seriesId": ident["seriesId"] or series_label,
+            "sectionId": ident["sectionId"],
             "qty": round(qty, 4),
             "pcs": pcs,
             "lengthM": round(length_m, 4),
@@ -1950,7 +1990,8 @@ def compute_sliding_design_cost(
         kg_m = _section_weight_kg_per_m(s)
         std_m = _section_std_m(s, fallback=5.85)
         display = _str(s.get("name")) or role or "Track"
-        key = _section_pool_key(s, series=series_label, colour=colour, use="track")
+        ident = _section_identity(s, series=series_label, use="outer_track")
+        key = _section_pool_key(s, series=series_label, colour=colour, use="outer_track")
         pcs = int(round(q)) if abs(q - round(q)) < 1e-6 else round(q, 4)
         for _ in range(max(int(round(q)), 1)):
             cut_specs.append({
@@ -1961,6 +2002,9 @@ def compute_sliding_design_cost(
                 "coatingPerM": coat_m,
                 "sectionName": display,
                 "series": series_label,
+                "seriesId": ident["seriesId"] or series_label,
+                "sectionId": ident["sectionId"],
+                "role": ident["role"] or "outer_track",
                 "colour": colour,
                 "use": "track",
             })
@@ -1981,6 +2025,10 @@ def compute_sliding_design_cost(
             "amount": round(amt, 2),
             "rateUnit": _str(s.get("rateUnit") or "kg"),
             "use": "track",
+            "role": ident["role"] or "outer_track",
+            "roleLabel": ident.get("roleLabel") or "Outer track",
+            "seriesId": ident["seriesId"] or series_label,
+            "sectionId": ident["sectionId"],
             "sides": role.replace("_", " ") or "track",
             "stock": _section_stock_label(s, fallback_std_m=std_m),
             "stdLengthM": round(std_m, 4),
@@ -2007,8 +2055,10 @@ def compute_sliding_design_cost(
             coat_amt_l = Lm * q * coat_m
             kg_m = _section_weight_kg_per_m(s)
             std_m = _section_std_m(s, fallback=5.85)
-            display = _str(il.get("catalogueName") or il.get("name") or s.get("name") or il.get("use") or default_use)
-            key = _section_pool_key(s, series=series_label, colour=colour, use=_str(il.get("use") or default_use))
+            use_tag = _str(il.get("use") or default_use)
+            display = _str(il.get("catalogueName") or il.get("name") or s.get("name") or use_tag or default_use)
+            ident = _section_identity(s, series=series_label, use=use_tag)
+            key = _section_pool_key(s, series=series_label, colour=colour, use=use_tag)
             for _ in range(max(int(round(q)), 1)):
                 cut_specs.append({
                     "lengthM": Lm,
@@ -2018,8 +2068,11 @@ def compute_sliding_design_cost(
                     "coatingPerM": coat_m,
                     "sectionName": display,
                     "series": series_label,
+                    "seriesId": ident["seriesId"] or series_label,
+                    "sectionId": ident["sectionId"],
+                    "role": ident["role"] or use_tag,
                     "colour": colour,
-                    "use": _str(il.get("use") or default_use),
+                    "use": use_tag,
                 })
             profile_lines.append({
                 "category": "profile",
@@ -2037,8 +2090,12 @@ def compute_sliding_design_cost(
                 "coatingAmount": round(coat_amt_l, 2),
                 "amount": round(al_amt_l + coat_amt_l, 2),
                 "rateUnit": _str(s.get("rateUnit") or "kg"),
-                "use": _str(il.get("use") or default_use),
-                "sides": _str(il.get("sides") or il.get("use") or default_use),
+                "use": use_tag,
+                "role": ident["role"] or use_tag,
+                "roleLabel": ident.get("roleLabel") or use_tag.replace("_", " "),
+                "seriesId": ident["seriesId"] or series_label,
+                "sectionId": ident["sectionId"],
+                "sides": _str(il.get("sides") or use_tag),
                 "stock": _section_stock_label(s, fallback_std_m=std_m),
                 "stdLengthM": round(std_m, 4),
                 "sectionKey": key,

@@ -55,10 +55,17 @@ def remnant_key(
     section: Any = None,
     colour: Any = None,
     profile_family: Any = None,
+    series_id: Any = None,
+    section_id: Any = None,
 ) -> str:
+    """Key leftovers by seriesId + sectionId (+ colour).
+
+    Critical: remnants from one series must never reuse on a different series,
+    even when section display names match.
+    """
     bits = [
-        _str(series) or _str(profile_family) or "series",
-        _str(section) or "section",
+        _str(series_id) or _str(series) or _str(profile_family) or "series",
+        _str(section_id) or _str(section) or "section",
         _str(colour).lower().replace(" ", "_") or "any",
     ]
     return "|".join(bits).lower()
@@ -84,20 +91,28 @@ def list_remnants(stock: Mapping[str, Any] | None = None) -> list[dict[str, Any]
         # Drop scraps that somehow landed in stock (≤3 ft)
         if not is_reusable_remnant_m(length_m):
             continue
-        series = _str(raw.get("series") or raw.get("seriesId") or raw.get("profileFamily") or "default")
-        section = _str(raw.get("section") or raw.get("sectionName") or raw.get("profile") or "—")
+        series_id = _str(raw.get("seriesId") or raw.get("series") or raw.get("profileFamily") or "default")
+        section_id = _str(raw.get("sectionId") or raw.get("section") or raw.get("sectionName") or raw.get("profile") or "—")
+        section = _str(raw.get("section") or raw.get("sectionName") or section_id or "—")
         colour = _str(raw.get("colour") or raw.get("color") or "any")
         out.append({
             "id": _str(raw.get("id")) or f"LO-{len(out)+1}",
-            "series": series,
+            "series": series_id,
+            "seriesId": series_id,
             "section": section,
+            "sectionId": section_id,
+            "role": _str(raw.get("role") or ""),
             "colour": colour,
             "lengthMm": round(length_mm, 1),
             "lengthM": round(length_m, 4),
             "lengthFt": round(length_m / 0.3048, 2),
             "material": "aluminium",
-            "profileFamily": _str(raw.get("profileFamily") or series),
-            "key": remnant_key(series=series, section=section, colour=colour),
+            "profileFamily": _str(raw.get("profileFamily") or series_id),
+            "key": remnant_key(
+                series_id=series_id,
+                section_id=section_id,
+                colour=colour,
+            ),
             "source": _str(raw.get("source") or "stock"),
             "updatedAt": _str(raw.get("updatedAt") or raw.get("createdAt")),
             "notes": _str(raw.get("notes")),
@@ -189,21 +204,29 @@ def merge_remnants_into_stock(
             length_m = _f(raw.get("lengthMm")) / 1000.0
         if not is_reusable_remnant_m(length_m):
             continue
-        series = _str(raw.get("series") or raw.get("profileFamily") or "default")
-        section = _str(raw.get("section") or raw.get("sectionName") or "section")
+        series_id = _str(
+            raw.get("seriesId") or raw.get("series") or raw.get("profileFamily") or "default"
+        )
+        section_id = _str(
+            raw.get("sectionId") or raw.get("section") or raw.get("sectionName") or "section"
+        )
+        section = _str(raw.get("section") or raw.get("sectionName") or section_id)
         colour = _str(raw.get("colour") or "any")
         rid = _str(raw.get("id"))
         if not rid:
-            rid = f"LO-{sq or series[:8]}-{sv or 'x'}-{int(length_m * 1000)}-{len(leftover)+1}"
+            rid = f"LO-{sq or series_id[:8]}-{sv or 'x'}-{int(length_m * 1000)}-{len(leftover)+1}"
         piece = {
             "id": rid,
             "lengthMm": round(length_m * 1000.0, 1),
             "lengthM": round(length_m, 4),
             "material": "aluminium",
-            "series": series,
+            "series": series_id,
+            "seriesId": series_id,
             "section": section,
+            "sectionId": section_id,
+            "role": _str(raw.get("role") or ""),
             "colour": colour,
-            "profileFamily": series,
+            "profileFamily": series_id,
             "source": _str(raw.get("source") or "quote"),
             "updatedAt": _now(),
             "notes": _str(raw.get("notes")),
@@ -232,20 +255,27 @@ def leftovers_for_nesting(
     series: Any = None,
     section: Any = None,
     colour: Any = None,
+    series_id: Any = None,
+    section_id: Any = None,
 ) -> list[dict[str, Any]]:
-    """Leftover rows matching series/section/colour for FFD bar nesting."""
-    want = remnant_key(series=series, section=section, colour=colour)
-    series_s = _str(series).lower()
-    section_s = _str(section).lower()
+    """Leftover rows matching seriesId/sectionId/colour for FFD bar nesting.
+
+    Same-series only: a remnant from ``25mm_prestige`` never seeds a
+    ``35mm_gulf`` nest, even when section names look alike.
+    """
+    sid = _str(series_id or series).lower()
+    sec_id = _str(section_id or section).lower()
+    want = remnant_key(series_id=sid, section_id=sec_id, colour=colour)
     colour_s = _str(colour).lower().replace(" ", "_") or "any"
     out: list[dict[str, Any]] = []
     for r in list_remnants():
-        if series_s and r["series"].lower() not in (series_s, "default") and series_s not in r["series"].lower():
-            # Allow profileFamily default match
-            if r.get("profileFamily", "").lower() != series_s and r["series"].lower() != "default":
-                continue
-        if section_s and section_s not in ("section", "—", "-"):
-            if r["section"].lower() != section_s and section_s not in r["section"].lower():
+        r_sid = _str(r.get("seriesId") or r.get("series")).lower()
+        # Strict series match — no cross-series tukde reuse
+        if sid and r_sid != sid:
+            continue
+        r_sec = _str(r.get("sectionId") or r.get("section")).lower()
+        if sec_id and sec_id not in ("section", "—", "-", ""):
+            if r_sec != sec_id and sec_id not in r_sec and sec_id not in _str(r.get("section")).lower():
                 continue
         if colour_s not in ("any", "", "white") and r["colour"].lower() not in (colour_s, "any"):
             if colour_s not in r["colour"].lower():
@@ -253,11 +283,26 @@ def leftovers_for_nesting(
         out.append({
             "id": r["id"],
             "lengthMm": r["lengthMm"],
-            "series": r["series"],
+            "series": r_sid or r["series"],
+            "seriesId": r_sid or r.get("seriesId") or r["series"],
             "section": r["section"],
+            "sectionId": r.get("sectionId") or r["section"],
+            "role": r.get("role") or "",
             "colour": r["colour"],
             "key": r["key"],
         })
     # Prefer exact key matches first
-    out.sort(key=lambda x: (0 if remnant_key(series=x["series"], section=x["section"], colour=x["colour"]) == want else 1, -_f(x["lengthMm"])))
+    out.sort(
+        key=lambda x: (
+            0
+            if remnant_key(
+                series_id=x.get("seriesId") or x["series"],
+                section_id=x.get("sectionId") or x["section"],
+                colour=x["colour"],
+            )
+            == want
+            else 1,
+            -_f(x["lengthMm"]),
+        )
+    )
     return out

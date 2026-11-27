@@ -194,7 +194,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "29mm_premium__2_track",
+              "id": "29mm_premium__2_track",
+              "seriesId": "29mm_premium",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "vertical": {
               "name": "2 track",
@@ -217,7 +225,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "29mm_premium__2_track",
+              "id": "29mm_premium__2_track",
+              "seriesId": "29mm_premium",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "top": {
               "name": "2 track",
@@ -240,7 +256,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "29mm_premium__2_track",
+              "id": "29mm_premium__2_track",
+              "seriesId": "29mm_premium",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "bottom": {
               "name": "2 track",
@@ -263,7 +287,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "29mm_premium__2_track",
+              "id": "29mm_premium__2_track",
+              "seriesId": "29mm_premium",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "leftVertical": {
               "name": "",
@@ -343,7 +375,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "29mm_premium__3_track",
+              "id": "29mm_premium__3_track",
+              "seriesId": "29mm_premium",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "vertical": {
               "name": "3 track",
@@ -366,7 +406,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "29mm_premium__3_track",
+              "id": "29mm_premium__3_track",
+              "seriesId": "29mm_premium",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "top": {
               "name": "3 track",
@@ -389,7 +437,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "29mm_premium__3_track",
+              "id": "29mm_premium__3_track",
+              "seriesId": "29mm_premium",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "bottom": {
               "name": "3 track",
@@ -412,7 +468,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "29mm_premium__3_track",
+              "id": "29mm_premium__3_track",
+              "seriesId": "29mm_premium",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "leftVertical": {
               "name": "",
@@ -930,7 +994,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1 H2"
+          "notes": "V1 H2",
+          "sectionId": "29mm_premium__shutter",
+          "id": "29mm_premium__shutter",
+          "seriesId": "29mm_premium",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "top": {
           "name": "",
@@ -999,7 +1070,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1 H2"
+          "notes": "V1 H2",
+          "sectionId": "29mm_premium__shutter",
+          "id": "29mm_premium__shutter",
+          "seriesId": "29mm_premium",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "interlockSide": {
           "name": "",
@@ -1045,7 +1123,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1 H0"
+          "notes": "V1 H0",
+          "sectionId": "29mm_premium__slim_interlock",
+          "id": "29mm_premium__slim_interlock",
+          "seriesId": "29mm_premium",
+          "role": "interlock",
+          "roleLabel": "Interlock",
+          "usage": "interlock",
+          "usageLabel": "Interlock"
         },
         "interlockRenf": {
           "name": "renforsments interlock",
@@ -1068,7 +1153,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1 H0"
+          "notes": "V1 H0",
+          "sectionId": "29mm_premium__renforsments_interlock",
+          "id": "29mm_premium__renforsments_interlock",
+          "seriesId": "29mm_premium",
+          "role": "interlock",
+          "roleLabel": "Interlock",
+          "usage": "interlock",
+          "usageLabel": "Interlock"
         },
         "glassReducer": {
           "name": "",
@@ -2753,7 +2845,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "29mm_premium__2_track",
+              "id": "29mm_premium__2_track",
+              "seriesId": "29mm_premium",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "trackOption": "2",
             "railCount": 2
@@ -2783,7 +2883,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "29mm_premium__2_track",
+              "id": "29mm_premium__2_track",
+              "seriesId": "29mm_premium",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "trackOption": "2",
             "railCount": 2

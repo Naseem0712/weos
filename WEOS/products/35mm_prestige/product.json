@@ -207,7 +207,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "35mm_prestige__2_track",
+              "id": "35mm_prestige__2_track",
+              "seriesId": "35mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "vertical": {
               "name": "2 Track",
@@ -230,7 +238,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "35mm_prestige__2_track",
+              "id": "35mm_prestige__2_track",
+              "seriesId": "35mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "top": {
               "name": "2 Track",
@@ -253,7 +269,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "35mm_prestige__2_track",
+              "id": "35mm_prestige__2_track",
+              "seriesId": "35mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "bottom": {
               "name": "2 Track",
@@ -276,7 +300,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "35mm_prestige__2_track",
+              "id": "35mm_prestige__2_track",
+              "seriesId": "35mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "leftVertical": {
               "name": "",
@@ -356,7 +388,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "35mm_prestige__3_track",
+              "id": "35mm_prestige__3_track",
+              "seriesId": "35mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "vertical": {
               "name": "3 track",
@@ -379,7 +419,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "35mm_prestige__3_track",
+              "id": "35mm_prestige__3_track",
+              "seriesId": "35mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "top": {
               "name": "3 track",
@@ -402,7 +450,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "35mm_prestige__3_track",
+              "id": "35mm_prestige__3_track",
+              "seriesId": "35mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "bottom": {
               "name": "3 track",
@@ -425,7 +481,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "35mm_prestige__3_track",
+              "id": "35mm_prestige__3_track",
+              "seriesId": "35mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "leftVertical": {
               "name": "",
@@ -505,7 +569,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "35mm_prestige__4_track",
+              "id": "35mm_prestige__4_track",
+              "seriesId": "35mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "add",
+              "usage": "track_add",
+              "usageLabel": "Outer track — add"
             },
             "vertical": {
               "name": "4 track",
@@ -528,7 +600,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "35mm_prestige__4_track",
+              "id": "35mm_prestige__4_track",
+              "seriesId": "35mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "add",
+              "usage": "track_add",
+              "usageLabel": "Outer track — add"
             },
             "top": {
               "name": "4 track",
@@ -551,7 +631,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "35mm_prestige__4_track",
+              "id": "35mm_prestige__4_track",
+              "seriesId": "35mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "add",
+              "usage": "track_add",
+              "usageLabel": "Outer track — add"
             },
             "bottom": {
               "name": "4 track",
@@ -574,7 +662,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "35mm_prestige__4_track",
+              "id": "35mm_prestige__4_track",
+              "seriesId": "35mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "add",
+              "usage": "track_add",
+              "usageLabel": "Outer track — add"
             },
             "leftVertical": {
               "name": "",
@@ -943,7 +1039,14 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2"
+          "notes": "v2, h2",
+          "sectionId": "35mm_prestige__hnadle_side",
+          "id": "35mm_prestige__hnadle_side",
+          "seriesId": "35mm_prestige",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "top": {
           "name": "",
@@ -1012,7 +1115,14 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2"
+          "notes": "v2, h2",
+          "sectionId": "35mm_prestige__hnadle_side",
+          "id": "35mm_prestige__hnadle_side",
+          "seriesId": "35mm_prestige",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "interlockSide": {
           "name": "",
@@ -1058,7 +1168,14 @@
           "bomHint": "split_vh",
           "side": "",
           "glassType": "",
-          "notes": "V1"
+          "notes": "V1",
+          "sectionId": "35mm_prestige__interlock",
+          "id": "35mm_prestige__interlock",
+          "seriesId": "35mm_prestige",
+          "role": "interlock",
+          "roleLabel": "Interlock",
+          "usage": "interlock",
+          "usageLabel": "Interlock"
         },
         "interlockRenf": {
           "name": "",
@@ -1185,7 +1302,14 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2"
+          "notes": "v2, h2",
+          "sectionId": "35mm_prestige__mesh_shutter",
+          "id": "35mm_prestige__mesh_shutter",
+          "seriesId": "35mm_prestige",
+          "role": "mesh_shutter",
+          "roleLabel": "Mesh shutter",
+          "usage": "mesh",
+          "usageLabel": "Mesh shutter"
         },
         "sections": []
       },
@@ -2766,7 +2890,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "35mm_prestige__2_track",
+              "id": "35mm_prestige__2_track",
+              "seriesId": "35mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "trackOption": "2",
             "railCount": 2
@@ -2796,7 +2928,15 @@
               "bomHint": "all_sides_same_v2h2",
               "side": "",
               "glassType": "",
-              "notes": "v2, h2"
+              "notes": "v2, h2",
+              "sectionId": "35mm_prestige__2_track",
+              "id": "35mm_prestige__2_track",
+              "seriesId": "35mm_prestige",
+              "role": "outer_track",
+              "roleLabel": "Outer track",
+              "orientation": "all",
+              "usage": "track",
+              "usageLabel": "Outer track"
             },
             "trackOption": "2",
             "railCount": 2

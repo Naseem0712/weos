@@ -1313,7 +1313,15 @@
             "bomHint": "all_sides_same_v2h2",
             "side": "",
             "glassType": "",
-            "notes": "v2, h2 · 20% extra · 40% extra"
+            "notes": "v2, h2 · 20% extra · 40% extra",
+            "sectionId": "40mm_casement_standard__outer_frame",
+            "id": "40mm_casement_standard__outer_frame",
+            "seriesId": "40mm_casement_standard",
+            "role": "outer_frame",
+            "roleLabel": "Outer frame",
+            "orientation": "all",
+            "usage": "frame",
+            "usageLabel": "Outer frame"
           },
           "grills": {
             "name": "Outer Frame",
@@ -1336,7 +1344,15 @@
             "bomHint": "all_sides_same_v2h2",
             "side": "",
             "glassType": "",
-            "notes": "v2, h2 · 20% extra · 40% extra"
+            "notes": "v2, h2 · 20% extra · 40% extra",
+            "sectionId": "40mm_casement_standard__outer_frame",
+            "id": "40mm_casement_standard__outer_frame",
+            "seriesId": "40mm_casement_standard",
+            "role": "outer_frame",
+            "roleLabel": "Outer frame",
+            "orientation": "all",
+            "usage": "frame",
+            "usageLabel": "Outer frame"
           },
           "grills_mesh": {
             "name": "",
@@ -1383,7 +1399,15 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2 · 20% extra · 40% extra"
+          "notes": "v2, h2 · 20% extra · 40% extra",
+          "sectionId": "40mm_casement_standard__outer_frame",
+          "id": "40mm_casement_standard__outer_frame",
+          "seriesId": "40mm_casement_standard",
+          "role": "outer_frame",
+          "roleLabel": "Outer frame",
+          "orientation": "all",
+          "usage": "frame",
+          "usageLabel": "Outer frame"
         },
         "notes": "Outer frame all sides same (variant changes section)."
       },
@@ -1410,7 +1434,14 @@
           "bomHint": "unspecified",
           "side": "",
           "glassType": "",
-          "notes": "free"
+          "notes": "free",
+          "sectionId": "40mm_casement_standard__mullion",
+          "id": "40mm_casement_standard__mullion",
+          "seriesId": "40mm_casement_standard",
+          "role": "mullion",
+          "roleLabel": "Mullion",
+          "usage": "mullion",
+          "usageLabel": "Mullion"
         },
         "big": {
           "name": "Mullion Big",
@@ -1433,7 +1464,14 @@
           "bomHint": "unspecified",
           "side": "",
           "glassType": "",
-          "notes": "free"
+          "notes": "free",
+          "sectionId": "40mm_casement_standard__mullion_big",
+          "id": "40mm_casement_standard__mullion_big",
+          "seriesId": "40mm_casement_standard",
+          "role": "mullion",
+          "roleLabel": "Mullion",
+          "usage": "mullion",
+          "usageLabel": "Mullion"
         },
         "notes": ""
       },
@@ -1461,7 +1499,14 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2,"
+          "notes": "v2, h2,",
+          "sectionId": "40mm_casement_standard__shutter_sg_no_need_clip",
+          "id": "40mm_casement_standard__shutter_sg_no_need_clip",
+          "seriesId": "40mm_casement_standard",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "big": {
           "name": "Shutter SG (no Need Clip)",
@@ -1484,7 +1529,14 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2,"
+          "notes": "v2, h2,",
+          "sectionId": "40mm_casement_standard__shutter_sg_no_need_clip",
+          "id": "40mm_casement_standard__shutter_sg_no_need_clip",
+          "seriesId": "40mm_casement_standard",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "allSides": {
           "name": "Shutter SG (no Need Clip)",
@@ -1507,7 +1559,14 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2,"
+          "notes": "v2, h2,",
+          "sectionId": "40mm_casement_standard__shutter_sg_no_need_clip",
+          "id": "40mm_casement_standard__shutter_sg_no_need_clip",
+          "seriesId": "40mm_casement_standard",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "vertical": {
           "name": "",
@@ -1670,7 +1729,14 @@
         "bomHint": "all_sides_same_v2h2",
         "side": "",
         "glassType": "",
-        "notes": "v2, h2,"
+        "notes": "v2, h2,",
+        "sectionId": "40mm_casement_standard__shutter_sg_no_need_clip",
+        "id": "40mm_casement_standard__shutter_sg_no_need_clip",
+        "seriesId": "40mm_casement_standard",
+        "role": "glass_shutter",
+        "roleLabel": "Glass shutter",
+        "usage": "sash",
+        "usageLabel": "Glass shutter"
       },
       "glass": {
         "sgClip": {
@@ -1694,7 +1760,14 @@
           "bomHint": "all_sides_same_v2h2",
           "side": "",
           "glassType": "",
-          "notes": "v2, h2,"
+          "notes": "v2, h2,",
+          "sectionId": "40mm_casement_standard__shutter_sg_no_need_clip",
+          "id": "40mm_casement_standard__shutter_sg_no_need_clip",
+          "seriesId": "40mm_casement_standard",
+          "role": "glass_shutter",
+          "roleLabel": "Glass shutter",
+          "usage": "sash",
+          "usageLabel": "Glass shutter"
         },
         "dgClip": null
       },
@@ -1724,7 +1797,14 @@
             "bomHint": "all_sides_same_v2h2",
             "side": "",
             "glassType": "",
-            "notes": "v2, h2,"
+            "notes": "v2, h2,",
+            "sectionId": "40mm_casement_standard__shutter_sg_no_need_clip",
+            "id": "40mm_casement_standard__shutter_sg_no_need_clip",
+            "seriesId": "40mm_casement_standard",
+            "role": "glass_shutter",
+            "roleLabel": "Glass shutter",
+            "usage": "sash",
+            "usageLabel": "Glass shutter"
           },
           "notes": "Single glass up to 12mm"
         },

@@ -9,7 +9,7 @@
       "id": "40mm_prestige__2_track_all_side",
       "name": "2 track All Side",
       "usage": "track",
-      "usageLabel": "Track / Outer frame",
+      "usageLabel": "Outer track",
       "widthMm": 50.0,
       "sectionDepthMm": 108.0,
       "standardLength": "16",
@@ -26,13 +26,18 @@
       "rateUnit": "kg",
       "coatingCost": 30.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "40mm_prestige__2_track_all_side",
+      "seriesId": "40mm_prestige",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "all"
     },
     {
       "id": "40mm_prestige__3_track_all_side",
       "name": "3 track All Side",
       "usage": "track",
-      "usageLabel": "Track / Outer frame",
+      "usageLabel": "Outer track",
       "widthMm": 50.0,
       "sectionDepthMm": 161.4,
       "standardLength": "16",
@@ -49,13 +54,18 @@
       "rateUnit": "kg",
       "coatingCost": 45.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "40mm_prestige__3_track_all_side",
+      "seriesId": "40mm_prestige",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "all"
     },
     {
       "id": "40mm_prestige__4_track_all_side",
       "name": "4 track All Side",
       "usage": "track_add",
-      "usageLabel": "Add track",
+      "usageLabel": "Outer track — add",
       "widthMm": 50.0,
       "sectionDepthMm": 214.79,
       "standardLength": "16",
@@ -72,13 +82,18 @@
       "rateUnit": "kg",
       "coatingCost": 65.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "40mm_prestige__4_track_all_side",
+      "seriesId": "40mm_prestige",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "add"
     },
     {
       "id": "40mm_prestige__hnadle_side_vertical",
       "name": "Hnadle side Vertical",
       "usage": "sash",
-      "usageLabel": "Section",
+      "usageLabel": "Glass shutter",
       "widthMm": 61.5,
       "sectionDepthMm": 41.6,
       "standardLength": "16",
@@ -95,13 +110,17 @@
       "rateUnit": "kg",
       "coatingCost": 23.0,
       "coatingUnit": "rft",
-      "use": "V1"
+      "use": "V1",
+      "sectionId": "40mm_prestige__hnadle_side_vertical",
+      "seriesId": "40mm_prestige",
+      "role": "glass_shutter",
+      "roleLabel": "Glass shutter"
     },
     {
       "id": "40mm_prestige__top_bottom_horizonatal",
       "name": "Top Bottom Horizonatal",
       "usage": "sash",
-      "usageLabel": "Sash / Shutter",
+      "usageLabel": "Glass shutter",
       "widthMm": 77.5,
       "sectionDepthMm": 37.4,
       "standardLength": "16",
@@ -118,7 +137,11 @@
       "rateUnit": "kg",
       "coatingCost": 23.0,
       "coatingUnit": "rft",
-      "use": "H2"
+      "use": "H2",
+      "sectionId": "40mm_prestige__top_bottom_horizonatal",
+      "seriesId": "40mm_prestige",
+      "role": "glass_shutter",
+      "roleLabel": "Glass shutter"
     },
     {
       "id": "40mm_prestige__slim_interlock",
@@ -141,7 +164,11 @@
       "rateUnit": "kg",
       "coatingCost": 16.0,
       "coatingUnit": "rft",
-      "use": "V1"
+      "use": "V1",
+      "sectionId": "40mm_prestige__slim_interlock",
+      "seriesId": "40mm_prestige",
+      "role": "interlock",
+      "roleLabel": "Interlock"
     },
     {
       "id": "40mm_prestige__renforcment_interlock",
@@ -164,7 +191,11 @@
       "rateUnit": "kg",
       "coatingCost": 26.0,
       "coatingUnit": "rft",
-      "use": "V1"
+      "use": "V1",
+      "sectionId": "40mm_prestige__renforcment_interlock",
+      "seriesId": "40mm_prestige",
+      "role": "interlock",
+      "roleLabel": "Interlock"
     },
     {
       "id": "40mm_prestige__meeting_section",
@@ -187,9 +218,14 @@
       "rateUnit": "kg",
       "coatingCost": 16.0,
       "coatingUnit": "rft",
-      "use": "V1"
+      "use": "V1",
+      "sectionId": "40mm_prestige__meeting_section",
+      "seriesId": "40mm_prestige",
+      "role": "meeting",
+      "roleLabel": "Meeting"
     }
   ],
   "designOptions": [],
-  "engineProductId": "29mm_sliding"
+  "engineProductId": "29mm_sliding",
+  "seriesId": "40mm_prestige"
 }

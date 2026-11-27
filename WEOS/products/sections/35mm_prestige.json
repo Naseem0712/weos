@@ -9,7 +9,7 @@
       "id": "35mm_prestige__2_track",
       "name": "2 Track",
       "usage": "track",
-      "usageLabel": "Track / Outer frame",
+      "usageLabel": "Outer track",
       "widthMm": 47.2,
       "sectionDepthMm": 94.25,
       "standardLength": "16",
@@ -26,13 +26,18 @@
       "rateUnit": "kg",
       "coatingCost": 30.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "35mm_prestige__2_track",
+      "seriesId": "35mm_prestige",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "all"
     },
     {
       "id": "35mm_prestige__3_track",
       "name": "3 track",
       "usage": "track",
-      "usageLabel": "Track / Outer frame",
+      "usageLabel": "Outer track",
       "widthMm": 48.2,
       "sectionDepthMm": 139.0,
       "standardLength": "16",
@@ -49,13 +54,18 @@
       "rateUnit": "kg",
       "coatingCost": 40.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "35mm_prestige__3_track",
+      "seriesId": "35mm_prestige",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "all"
     },
     {
       "id": "35mm_prestige__4_track",
       "name": "4 track",
       "usage": "track_add",
-      "usageLabel": "Add track",
+      "usageLabel": "Outer track — add",
       "widthMm": 48.2,
       "sectionDepthMm": null,
       "standardLength": "16",
@@ -72,13 +82,18 @@
       "rateUnit": "kg",
       "coatingCost": 52.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "35mm_prestige__4_track",
+      "seriesId": "35mm_prestige",
+      "role": "outer_track",
+      "roleLabel": "Outer track",
+      "orientation": "add"
     },
     {
       "id": "35mm_prestige__hnadle_side",
       "name": "hnadle side",
       "usage": "sash",
-      "usageLabel": "Section",
+      "usageLabel": "Glass shutter",
       "widthMm": 75.2,
       "sectionDepthMm": 35.2,
       "standardLength": "16",
@@ -95,13 +110,17 @@
       "rateUnit": "kg",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "35mm_prestige__hnadle_side",
+      "seriesId": "35mm_prestige",
+      "role": "glass_shutter",
+      "roleLabel": "Glass shutter"
     },
     {
       "id": "35mm_prestige__mesh_shutter",
       "name": "mesh shutter",
       "usage": "mesh",
-      "usageLabel": "Sash / Shutter",
+      "usageLabel": "Mesh shutter",
       "widthMm": 75.2,
       "sectionDepthMm": 35.2,
       "standardLength": "16",
@@ -118,7 +137,11 @@
       "rateUnit": "kg",
       "coatingCost": 22.0,
       "coatingUnit": "rft",
-      "use": "v2, h2"
+      "use": "v2, h2",
+      "sectionId": "35mm_prestige__mesh_shutter",
+      "seriesId": "35mm_prestige",
+      "role": "mesh_shutter",
+      "roleLabel": "Mesh shutter"
     },
     {
       "id": "35mm_prestige__interlock",
@@ -141,9 +164,14 @@
       "rateUnit": "kg",
       "coatingCost": 11.0,
       "coatingUnit": "rft",
-      "use": "V1"
+      "use": "V1",
+      "sectionId": "35mm_prestige__interlock",
+      "seriesId": "35mm_prestige",
+      "role": "interlock",
+      "roleLabel": "Interlock"
     }
   ],
   "designOptions": [],
-  "engineProductId": "29mm_sliding"
+  "engineProductId": "29mm_sliding",
+  "seriesId": "35mm_prestige"
 }
