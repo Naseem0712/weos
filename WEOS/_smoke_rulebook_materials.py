@@ -43,6 +43,14 @@ def main():
         glass_seal = next(h for h in row["hardware"] if "gasket — glass" in h["name"].lower())
         expected = sum(4 * (p["widthMm"] + p["heightMm"]) / 1000 for p in row["glass"]["panes"])
         assert isclose(glass_seal["qty"], expected, abs_tol=.0001) and glass_seal["amount"] > 0
+    fixed_case = dict(line, product="40mm_casement_standard", glass="8mm_toughened")
+    row = materials_rows_for_line(fixed_case)
+    assert sum(p["pcs"] for p in row["materials"] if p["use"] == "glass_clip") == 4
+    assert not row["missingClip"]
+
+    from WEOS.factory.materials_list import build_quote_materials_list
+    pack = build_quote_materials_list([line])
+    assert sum(s["qty"] for s in pack["materialsSummary"] if "clip dg" == s["name"].lower()) == 16
     row = materials_rows_for_line({
         "product": "35mm_gulf", "system": "sliding", "width": 1050, "height": 970,
         "trackCount": 2, "glassShutters": 2, "glass": "8mm_toughened",
