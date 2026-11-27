@@ -384,6 +384,8 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
             "aluminiumCost": design_cost.get("aluminiumCost"),
             "coatingCost": design_cost.get("coatingCost"),
             "hardwareCost": design_cost.get("hardwareCost"),
+            "epdmCost": design_cost.get("epdmCost"),
+            "brushCost": design_cost.get("brushCost"),
             "glassCost": design_cost.get("glassCost"),
             "meshCost": design_cost.get("meshCost"),
             "mesh": design_cost.get("mesh"),

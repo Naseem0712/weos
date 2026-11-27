@@ -788,11 +788,37 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
             "notes": _str(block.get("notes")),
         }
 
+    def _rate_or(block: Mapping[str, Any], *keys: str, default: float) -> float:
+        """Prefer explicit positive rate; else rulebook/catalogue seed (never silent ₹0)."""
+        for k in keys:
+            v = _num(block.get(k))
+            if v is not None and float(v) > 0:
+                return float(v)
+        return float(default)
+
+    tc = qty_rate("trackConnectors", 0, 8, name="Track connectors")
+    if float(tc.get("rate") or 0) <= 0:
+        tc["rate"] = 40.0
+    sc = qty_rate("shutterConnectors", 0, 4, name="Shutter connectors")
+    if float(sc.get("rate") or 0) <= 0:
+        sc["rate"] = 30.0
+    wheel_blk = _wheel_block(wheels, default_name="Wheels")
+    if float(wheel_blk.get("rate") or 0) <= 0:
+        wheel_blk["rate"] = 70.0
+    mesh_src = mesh_wheels or {
+        "name": "Mesh wheel",
+        "rate": _num(wheels.get("rate")) or 70.0,
+        "weightCapacityKg": 40.0,
+    }
+    mesh_blk = _wheel_block(mesh_src, default_name="Mesh wheel", default_cap=40.0)
+    if float(mesh_blk.get("rate") or 0) <= 0:
+        mesh_blk["rate"] = 70.0
+
     return {
-        "trackConnectors": qty_rate("trackConnectors", 0, 8, name="Track connectors"),
-        "shutterConnectors": qty_rate("shutterConnectors", 0, 4, name="Shutter connectors"),
+        "trackConnectors": tc,
+        "shutterConnectors": sc,
         "epdm": {
-            "ratePerM": _num(epdm.get("ratePerM") or epdm.get("rate")) or 0.0,
+            "ratePerM": _rate_or(epdm, "ratePerM", "rate", default=19.0),
             # 2(H+W) per shutter (rules); leaf width used at quote time
             "formula": _str(epdm.get("formula") or "2*(height_m + leaf_width_m)*glass_shutters"),
             "brand": _brand(epdm, name="EPDM"),
@@ -800,7 +826,7 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
             "notes": _str(epdm.get("notes")),
         },
         "brush": {
-            "ratePerM": _num(brush.get("ratePerM") or brush.get("rate")) or 0.0,
+            "ratePerM": _rate_or(brush, "ratePerM", "rate", default=9.0),
             "formula": _str(brush.get("formula") or "2*(height_m + leaf_width_m)*all_shutters"),
             "brand": _brand(brush, name="Brush"),
             "origin": _str(brush.get("origin") or "indian"),
@@ -808,7 +834,7 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
         },
         "wings": {
             # 4/shutter if slim or renf interlock; 8 if all-side same section
-            "rate": _num(wings.get("rate")) or 0.0,
+            "rate": _rate_or(wings, "rate", default=5.0),
             "qtyAllSidesSame": int(_num(wings.get("qtyAllSidesSame")) or 8),
             "qtySplit": int(_num(wings.get("qtySplit")) or 4),
             "brand": _brand(wings, name="Wings"),
@@ -817,7 +843,7 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
         },
         "lock": {
             "type": lock_type,
-            "rate": _num(lock.get("rate")) or 0.0,
+            "rate": _rate_or(lock, "rate", default=450.0),
             "unit": _str(lock.get("unit") or "SET").upper(),
             "brand": _brand(lock, name="Lock"),
             "origin": _str(lock.get("origin") or "indian"),
@@ -828,7 +854,7 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
             "qtyPerShutter": _num(
                 interlock_caps.get("qtyPerShutter") if interlock_caps.get("qtyPerShutter") is not None else 2
             ) or 2.0,
-            "rate": _num(interlock_caps.get("rate")) or 0.0,
+            "rate": _rate_or(interlock_caps, "rate", default=22.0),
             "unit": _str(interlock_caps.get("unit") or "PC").upper(),
             "brand": _brand(interlock_caps, name="Interlock cap"),
             "origin": _str(interlock_caps.get("origin") or "indian"),
@@ -838,14 +864,14 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
             "qtyPerShutter": _num(
                 lock_guides.get("qtyPerShutter") if lock_guides.get("qtyPerShutter") is not None else 1
             ) or 1.0,
-            "rate": _num(lock_guides.get("rate")) or 0.0,
+            "rate": _rate_or(lock_guides, "rate", default=15.0),
             "unit": _str(lock_guides.get("unit") or "PC").upper(),
             "brand": _brand(lock_guides, name="Lock guide"),
             "origin": _str(lock_guides.get("origin") or "indian"),
             "notes": _str(lock_guides.get("notes") or "1 guide per shutter"),
         },
         "antiDustPads": {
-            "rate": _num(anti_dust.get("rate")) or 0.0,
+            "rate": _rate_or(anti_dust, "rate", default=10.0),
             "unit": _str(anti_dust.get("unit") or "PC").upper(),
             "brand": _brand(anti_dust, name="Anti-dust pad"),
             "origin": _str(anti_dust.get("origin") or "indian"),
@@ -853,13 +879,9 @@ def _norm_sliding_hardware_pack(raw: Any) -> dict[str, Any]:
             "qtyOverride": _num(anti_dust.get("qty") or anti_dust.get("qtyOverride")),
         },
         # Glass shutter wheels — capacity should cover shutter glass weight
-        "wheels": _wheel_block(wheels, default_name="Wheels"),
+        "wheels": wheel_blk,
         # Mesh shutters use regular/light mesh wheels (not heavy glass wheels)
-        "meshWheels": _wheel_block(
-            mesh_wheels or {"name": "Mesh wheel", "rate": _num(wheels.get("rate")) or 70.0, "weightCapacityKg": 40.0},
-            default_name="Mesh wheel",
-            default_cap=40.0,
-        ),
+        "meshWheels": mesh_blk,
     }
 
 

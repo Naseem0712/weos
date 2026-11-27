@@ -47,6 +47,9 @@ from WEOS.factory.remnant_stock import (
 # Fabricator wastage band (percent of purchased bar length attributable to scrap).
 WASTAGE_PCT_MIN = 0.0
 WASTAGE_PCT_MAX = 2.5
+# Seed rates when Excel / Series Setup omit kg or coating (never silently ₹0 Al).
+DEFAULT_AL_RATE_KG = 450.0
+DEFAULT_COAT_RFT = 22.0
 # Alias for callers / UI
 WASTAGE_MAX_REUSABLE_FT = 3.0
 
@@ -270,10 +273,11 @@ def _section_rate_per_m(sec: Mapping[str, Any] | None) -> float:
     role = _str(s.get("role") or "").lower()
     wt = _section_weight_kg_per_m(s)
     if role == "clip" and wt > 0 and unit in ("rft", "ft", "feet", "foot", "rmt", "rm", "m", "mt"):
-        kg_rate = rate if rate >= 300 else 450.0
+        kg_rate = rate if rate >= 300 else DEFAULT_AL_RATE_KG
         return kg_rate * wt
     if rate <= 0:
-        return 0.0
+        # Missing Excel rate but known weight → still bill Al at seed ₹/kg.
+        return DEFAULT_AL_RATE_KG * wt if wt > 0 else 0.0
     if unit in ("kg", "per_kg", "kgm", "rs_kg", "inr_kg"):
         kg_m = _section_weight_kg_per_m(s)
         return rate * kg_m if kg_m > 0 else 0.0
@@ -337,6 +341,106 @@ def _section_weight_kg_per_m(sec: Mapping[str, Any] | None) -> float:
     if unit in ("ft", "rft"):
         return raw / 0.3048
     return raw
+
+
+def _coat_mult_for_colour(colour: Any) -> float:
+    try:
+        from WEOS.factory.commercial_defaults import coating_multiplier_for_colour
+
+        return float(coating_multiplier_for_colour(colour) or 1.0)
+    except Exception:
+        return 1.0
+
+
+def _ensure_profile_cut_rates(
+    cut_specs: Sequence[Any] | None,
+    profile_lines: Sequence[Any] | None = None,
+    *,
+    colour: Any = None,
+) -> None:
+    """Fill missing Al/coat ₹/m on nest cuts so live design cost never drops Al silently.
+
+    Cut specs historically omitted ``weightKgPerM``, so the kg×rate recovery could
+    not run even when profile lines carried weight — nest Al stayed ₹0 while the
+    materials list still showed recovered profile rows.
+    """
+    by_key: dict[str, dict[str, Any]] = {}
+    for pl in profile_lines or []:
+        if not isinstance(pl, dict):
+            continue
+        key = _str(pl.get("sectionKey") or pl.get("key"))
+        if not key:
+            continue
+        by_key[key] = pl
+
+    mult = _coat_mult_for_colour(colour)
+    default_coat_m = (DEFAULT_COAT_RFT / 0.3048) * max(mult, 0.0)
+
+    for spec in cut_specs or []:
+        if not isinstance(spec, dict):
+            continue
+        if _f(spec.get("lengthM")) <= 0:
+            continue
+        key = _str(spec.get("key") or spec.get("sectionKey"))
+        pl = by_key.get(key) if key else None
+        if _f(spec.get("weightKgPerM")) <= 0:
+            wt = _f((pl or {}).get("weightKgPerM")) if pl else 0.0
+            if wt > 0:
+                spec["weightKgPerM"] = wt
+        if _f(spec.get("aluminiumPerM")) <= 0:
+            if pl and _f(pl.get("aluminiumPerM")) > 0:
+                spec["aluminiumPerM"] = _f(pl.get("aluminiumPerM"))
+            else:
+                kg_m = _f(spec.get("weightKgPerM"))
+                if kg_m > 0:
+                    spec["aluminiumPerM"] = DEFAULT_AL_RATE_KG * kg_m
+        if _f(spec.get("coatingPerM")) <= 0 and (
+            _f(spec.get("weightKgPerM")) > 0 or _f(spec.get("aluminiumPerM")) > 0
+        ):
+            if pl and _f(pl.get("coatingPerM")) > 0:
+                spec["coatingPerM"] = _f(pl.get("coatingPerM"))
+            else:
+                spec["coatingPerM"] = default_coat_m
+
+    for pl in profile_lines or []:
+        if not isinstance(pl, dict):
+            continue
+        if _f(pl.get("aluminiumPerM")) <= 0 and _f(pl.get("weightKgPerM")) > 0:
+            pl["aluminiumPerM"] = DEFAULT_AL_RATE_KG * _f(pl.get("weightKgPerM"))
+            Lm = _f(pl.get("lengthM") or pl.get("metres"))
+            q = _f(pl.get("qty"), 1)
+            pl["aluminiumAmount"] = round(Lm * q * _f(pl["aluminiumPerM"]), 2)
+        if _f(pl.get("coatingPerM")) <= 0 and (
+            _f(pl.get("weightKgPerM")) > 0 or _f(pl.get("aluminiumPerM")) > 0
+        ):
+            pl["coatingPerM"] = default_coat_m
+            Lm = _f(pl.get("lengthM") or pl.get("metres"))
+            q = _f(pl.get("qty"), 1)
+            pl["coatingAmount"] = round(Lm * q * _f(pl["coatingPerM"]), 2)
+        if _f(pl.get("amount")) <= 0:
+            pl["amount"] = round(_f(pl.get("aluminiumAmount")) + _f(pl.get("coatingAmount")), 2)
+
+
+def _split_seal_hw_amounts(hw_lines: Sequence[Mapping[str, Any]] | None) -> tuple[float, float, float]:
+    """Return (epdm, brush, other_hardware) amounts from priced BOM lines."""
+    epdm = brush = other = 0.0
+    for h in hw_lines or []:
+        if not isinstance(h, Mapping):
+            continue
+        amt = _f(h.get("amount"))
+        if amt <= 0:
+            # recompute if callers only stored qty×rate
+            amt = _f(h.get("qty")) * _f(h.get("unitRate") or h.get("rate"))
+        nm = _str(h.get("name") or h.get("catalogueName")).lower()
+        src = _str(h.get("source") or h.get("remarks")).lower()
+        blob = f"{nm} {src}"
+        if "epdm" in blob or "gasket" in blob or "gaicket" in blob:
+            epdm += amt
+        elif "brush" in blob:
+            brush += amt
+        else:
+            other += amt
+    return round(epdm, 2), round(brush, 2), round(other, 2)
 
 
 def _section_stock_label(sec: Mapping[str, Any] | None, *, fallback_std_m: float | None = None) -> str:
@@ -1108,6 +1212,7 @@ def derive_casement_profile_cuts(
                 "stdM": std_m,
                 "aluminiumPerM": rate_m,
                 "coatingPerM": coat_m,
+                "weightKgPerM": round(kg_m, 4) if kg_m else None,
                 "sectionName": display,
                 "series": series_label,
                 "seriesId": ident["seriesId"] or series_label,
@@ -1539,8 +1644,11 @@ def compute_casement_design_cost(
     coat_full = True
     if costing.get("coatFullBars") is False or costing.get("coatCutsOnly") is True:
         coat_full = False
+    case_cuts = list(cuts.get("cutSpecs") or [])
+    case_profiles = list(cuts.get("lines") or [])
+    _ensure_profile_cut_rates(case_cuts, case_profiles, colour=colour)
     nest = nest_cuts_by_section(
-        cuts.get("cutSpecs") or [],
+        case_cuts,
         remnant_pool=remnant_pool,
         reuse=reuse,
         charge_full_when_split=charge_full,
@@ -1601,7 +1709,9 @@ def compute_casement_design_cost(
             "unitRate": r,
             "amount": round(amt, 2),
             "remarks": _str(h.get("remarks")),
+            "source": _str(h.get("source")),
         })
+    epdm_amt, brush_amt, hw_other = _split_seal_hw_amounts(hw_lines)
 
     glass = _glass_cost(line, width_mm=W, height_mm=H, qty=1.0)
     glass_amt = _f(glass.get("amount"))
@@ -1673,12 +1783,14 @@ def compute_casement_design_cost(
         "profileNetCost": round(profile_net * qty, 2),
         "wastageCost": round(wastage_cost * qty, 2),
         "hardwareCost": round(hw_amt * qty, 2),
+        "epdmCost": round(epdm_amt * qty, 2),
+        "brushCost": round(brush_amt * qty, 2),
         "glassCost": round(glass_amt * qty, 2),
         "meshCost": round(mesh_amt * qty, 2),
         "wastage": waste,
         "remnants": nest.get("remnantsCreated") or [],
         "remnantPool": nest.get("remnantPool") or {},
-        "profiles": cuts.get("lines") or [],
+        "profiles": case_profiles or cuts.get("lines") or [],
         "hardware": hw_lines,
         "glass": glass,
         "mesh": mesh_pack.get("mesh"),
@@ -1691,7 +1803,7 @@ def compute_casement_design_cost(
         "purchasedMetres": nest.get("purchasedMetres"),
         "balanceMetres": nest.get("balanceMetres"),
         "balanceCost": nest.get("balanceCost"),
-        "cutSpecs": cuts.get("cutSpecs") or [],
+        "cutSpecs": case_cuts,
         "profileFamily": "casement",
         "counts": counts,
         "sideSwingOpenHw": _str(
@@ -1711,7 +1823,9 @@ def compute_casement_design_cost(
             "profiles": round(profile_net, 2),
             "wastage": round(wastage_cost, 2),
             "balance": round(_f(nest.get("balanceCost")), 2),
-            "hardware": round(hw_amt, 2),
+            "epdm": round(epdm_amt, 2),
+            "brush": round(brush_amt, 2),
+            "hardware": round(hw_other, 2),
             "glass": round(glass_amt, 2),
             "mesh": round(mesh_amt, 2),
             "labour": round(labour_amt, 2),
@@ -2037,6 +2151,7 @@ def compute_sliding_design_cost(
                 "stdM": std_m,
                 "aluminiumPerM": al_m,
                 "coatingPerM": coat_m,
+                "weightKgPerM": round(kg_m, 4) if kg_m else None,
                 "sectionName": display,
                 "series": series_label,
                 "seriesId": ident["seriesId"] or series_label,
@@ -2103,6 +2218,7 @@ def compute_sliding_design_cost(
                     "stdM": std_m,
                     "aluminiumPerM": al_m,
                     "coatingPerM": coat_m,
+                    "weightKgPerM": round(kg_m, 4) if kg_m else None,
                     "sectionName": display,
                     "series": series_label,
                     "seriesId": ident["seriesId"] or series_label,
@@ -2191,6 +2307,7 @@ def compute_sliding_design_cost(
                 "stdM": 5.85,
                 "aluminiumPerM": al_m,
                 "coatingPerM": 0.0,
+                "weightKgPerM": kg_m or None,
                 "sectionName": name,
                 "series": series_label,
                 "colour": colour,
@@ -2258,7 +2375,10 @@ def compute_sliding_design_cost(
             "unit": _str(h.get("unit") or "PC"),
             "unitRate": r,
             "amount": round(amt, 2),
+            "source": _str(h.get("source")),
+            "remarks": _str(h.get("remarks")),
         })
+    epdm_amt, brush_amt, hw_other = _split_seal_hw_amounts(hw_lines)
 
     glass = _glass_cost(line, width_mm=W, height_mm=H, qty=1.0)
     glass_amt = _f(glass.get("amount"))
@@ -2281,49 +2401,8 @@ def compute_sliding_design_cost(
     remnant_pool: dict[str, list[float]] = {}
     if isinstance(line.get("_remnantPool"), dict):
         remnant_pool = {str(k): list(v) for k, v in line["_remnantPool"].items() if isinstance(v, list)}
-    # Recover zero-Al cuts when weight exists but rate was missing/0 (stale Excel rows).
-    DEFAULT_AL_RATE_KG = 450.0
-    DEFAULT_COAT_RFT = 22.0
-    for spec in cut_specs:
-        if not isinstance(spec, dict):
-            continue
-        if _f(spec.get("aluminiumPerM")) <= 0:
-            kg_m = _f(spec.get("weightKgPerM"))
-            if kg_m > 0:
-                spec["aluminiumPerM"] = DEFAULT_AL_RATE_KG * kg_m
-        if _f(spec.get("coatingPerM")) <= 0 and _f(spec.get("lengthM")) > 0:
-            # Only fill coat when this cut looks like a real profile (has weight or al)
-            if _f(spec.get("weightKgPerM")) > 0 or _f(spec.get("aluminiumPerM")) > 0:
-                try:
-                    from WEOS.factory.commercial_defaults import coating_multiplier_for_colour as _cm
-
-                    mult = float(_cm(colour) or 1.0)
-                except Exception:
-                    mult = 1.0
-                spec["coatingPerM"] = (DEFAULT_COAT_RFT / 0.3048) * max(mult, 0.0)
-    for pl in profile_lines:
-        if not isinstance(pl, dict):
-            continue
-        if _f(pl.get("aluminiumPerM")) <= 0 and _f(pl.get("weightKgPerM")) > 0:
-            pl["aluminiumPerM"] = DEFAULT_AL_RATE_KG * _f(pl.get("weightKgPerM"))
-            Lm = _f(pl.get("lengthM") or pl.get("metres"))
-            q = _f(pl.get("qty"), 1)
-            pl["aluminiumAmount"] = round(Lm * q * _f(pl["aluminiumPerM"]), 2)
-        if _f(pl.get("coatingPerM")) <= 0 and (
-            _f(pl.get("weightKgPerM")) > 0 or _f(pl.get("aluminiumPerM")) > 0
-        ):
-            try:
-                from WEOS.factory.commercial_defaults import coating_multiplier_for_colour as _cm
-
-                mult = float(_cm(colour) or 1.0)
-            except Exception:
-                mult = 1.0
-            pl["coatingPerM"] = (DEFAULT_COAT_RFT / 0.3048) * max(mult, 0.0)
-            Lm = _f(pl.get("lengthM") or pl.get("metres"))
-            q = _f(pl.get("qty"), 1)
-            pl["coatingAmount"] = round(Lm * q * _f(pl["coatingPerM"]), 2)
-        if _f(pl.get("amount")) <= 0:
-            pl["amount"] = round(_f(pl.get("aluminiumAmount")) + _f(pl.get("coatingAmount")), 2)
+    # Recover zero-Al / zero-coat cuts (weight on specs or mirrored from profile lines).
+    _ensure_profile_cut_rates(cut_specs, profile_lines, colour=colour)
 
     coat_full = True
     if costing.get("coatFullBars") is False or costing.get("coatCutsOnly") is True:
@@ -2337,6 +2416,19 @@ def compute_sliding_design_cost(
     )
     al_amt = _f(nest.get("aluminiumCost"))
     coat_amt = _f(nest.get("coatingCost"))
+    # Last-resort: nest still ₹0 but profile rows recovered — charge used Al/coat.
+    if al_amt <= 0:
+        used_al = sum(_f(pl.get("aluminiumAmount")) for pl in profile_lines if isinstance(pl, dict))
+        if used_al > 0:
+            net_m = _f(nest.get("netMetres"))
+            purch_m = _f(nest.get("purchasedMetres"))
+            al_amt = used_al * (purch_m / net_m) if net_m > 0 and purch_m > 0 else used_al
+    if coat_amt <= 0:
+        used_coat = sum(_f(pl.get("coatingAmount")) for pl in profile_lines if isinstance(pl, dict))
+        if used_coat > 0:
+            net_m = _f(nest.get("netMetres"))
+            purch_m = _f(nest.get("purchasedMetres"))
+            coat_amt = used_coat * (purch_m / net_m) if net_m > 0 and purch_m > 0 else used_coat
     wastage_cost = _f(nest.get("wastageCost"))  # 0 — balance already in purchased Al
     profile_net = al_amt + coat_amt
     profile_amt = profile_net
@@ -2382,6 +2474,8 @@ def compute_sliding_design_cost(
         "profileCost": round(profile_amt * qty, 2),
         "wastageCost": round(wastage_cost * qty, 2),
         "hardwareCost": round(hw_amt * qty, 2),
+        "epdmCost": round(epdm_amt * qty, 2),
+        "brushCost": round(brush_amt * qty, 2),
         "glassCost": round(glass_amt * qty, 2),
         "meshCost": round(mesh_amt * qty, 2),
         "wastage": waste,
@@ -2414,7 +2508,9 @@ def compute_sliding_design_cost(
             "profiles": round(profile_net, 2),
             "wastage": round(wastage_cost, 2),
             "balance": round(_f(nest.get("balanceCost")), 2),
-            "hardware": round(hw_amt, 2),
+            "epdm": round(epdm_amt, 2),
+            "brush": round(brush_amt, 2),
+            "hardware": round(hw_other, 2),
             "glass": round(glass_amt, 2),
             "mesh": round(mesh_amt, 2),
             "labour": round(labour_amt, 2),

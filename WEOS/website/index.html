@@ -8021,10 +8021,20 @@ async function refreshLivePrice() {
           return 0;
         };
         const push = (label, v) => { if (v > 0) parts.push(label + ' ' + money(v)); };
-        push('Al', pickAmt(cost.aluminiumCost, design.aluminiumCost, br.aluminium));
-        push('Coat', pickAmt(cost.coatingCost, design.coatingCost, br.coating));
+        // Al/Coat: show when nonzero. If profiles exist but Al stayed 0, surface a
+        // warning so a silent nest failure is visible (not hidden behind Glass/HW).
+        const alAmt = pickAmt(cost.aluminiumCost, design.aluminiumCost, br.aluminium);
+        const coatAmt = pickAmt(cost.coatingCost, design.coatingCost, br.coating);
+        const nProf = (design.profiles && design.profiles.length) || (cost.profiles && cost.profiles.length) || 0;
+        if (alAmt > 0) push('Al', alAmt);
+        else if (nProf > 0) parts.push('Al ₹0');
+        if (coatAmt > 0) push('Coat', coatAmt);
+        else if (nProf > 0 && alAmt > 0) parts.push('Coat ₹0');
+        push('EPDM', pickAmt(cost.epdmCost, design.epdmCost, br.epdm));
+        push('Brush', pickAmt(cost.brushCost, design.brushCost, br.brush));
         push('Glass', pickAmt(cost.glassCost, design.glassCost, br.glass));
-        push('HW', pickAmt(cost.hardwareCost, design.hardwareCost, br.hardware));
+        // HW strip uses seal-split breakdown.hardware when present; else full hardwareCost.
+        push('HW', pickAmt(br.hardware, cost.hardwareCost, design.hardwareCost));
         push('Labour', pickAmt(cost.labourAmount, design.labourAmount, br.labour));
         push('Install', pickAmt(cost.installationAmount, design.installationAmount, br.installation));
         push('Mesh', pickAmt(cost.meshCost, design.meshCost, br.mesh));
@@ -8253,7 +8263,8 @@ function renderCart() {
           if (!br) return '';
           const bits = [];
           const push = (k, lab) => { const n = Number(br[k]); if (n > 0) bits.push(lab + ' ' + money(n)); };
-          push('aluminium','Al'); push('coating','Coat'); push('glass','Glass'); push('hardware','HW');
+          push('aluminium','Al'); push('coating','Coat'); push('epdm','EPDM'); push('brush','Brush');
+          push('glass','Glass'); push('hardware','HW');
           push('labour','Labour'); push('installation','Install'); push('mesh','Mesh'); push('wastage','Waste');
           return bits.length ? ('<div class="qlc-meta" style="margin-top:.15rem">' + bits.join(' · ') + '</div>') : '';
         })() +
