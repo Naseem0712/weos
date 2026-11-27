@@ -16,3 +16,4 @@ jobs:
       - run: python -m WEOS._smoke_rulebook_materials
       - run: python -m WEOS._smoke_casement_fix_door
       - run: python -m WEOS._smoke_live_al_seals
+      - run: python -m WEOS._smoke_design_cost
