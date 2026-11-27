@@ -1789,15 +1789,9 @@ def _setup_from_catalogue_profiles(product: Mapping[str, Any] | None) -> dict[st
             "wallThicknessMm": p.get("wallThicknessMm"),
             "standardLength": p.get("standardLength"),
             "trackCount": p.get("trackCount"),
-            "rate": p.get("rate") if p.get("rate") not in (None, "") else 450.0,
+            "rate": p.get("rate") or 0,
             "rateUnit": p.get("rateUnit") or "kg",
-            # Powder coat is always ₹/rft in Series Setup — default plain white rate
-            # when Excel catalogue rows omit coating so live Coat never stays at 0.
-            "coatingCost": (
-                p.get("coatingCost")
-                if p.get("coatingCost") not in (None, "")
-                else 22.0
-            ),
+            "coatingCost": p.get("coatingCost") or 0,
             "coatingUnit": p.get("coatingUnit") or "rft",
             "use": p.get("use") or p.get("usageLabel") or "",
             "pcsVertical": p.get("pcsVertical"),
@@ -1843,9 +1837,9 @@ def _setup_from_catalogue_profiles(product: Mapping[str, Any] | None) -> dict[st
             s = {
                 "name": sec.get("name"),
                 "weightKgPerM": sec.get("weightKgPerMtr"),
-                "rate": sec.get("rate") or 450,
+                "rate": sec.get("rate") or 0,
                 "rateUnit": "kg",
-                "coatingCost": sec.get("coatingCost") if sec.get("coatingCost") not in (None, "") else 22,
+                "coatingCost": sec.get("coatingCost") or 0,
                 "coatingUnit": "rft",
                 "wMm": sec.get("widthMm"),
                 "hMm": sec.get("sectionDepthMm"),

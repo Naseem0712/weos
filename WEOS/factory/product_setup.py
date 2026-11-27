@@ -3719,8 +3719,8 @@ def apply_setup_bom(
             colour=colour_ctx,
         )
         pack_hw = derive_sliding_hardware_lines(
-            glazing_perimeter_m=context.get("glazingPerimeterM"),
             setup,
+            glazing_perimeter_m=context.get("glazingPerimeterM"),
             width_mm=width_mm,
             height_mm=height_mm,
             shutter_count=shutters,
