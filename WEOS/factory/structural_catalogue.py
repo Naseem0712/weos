@@ -67,6 +67,70 @@ def _slug(*parts: Any) -> str:
     return s or "section"
 
 
+SHAPE_LABELS: dict[str, str] = {
+    "hollow_sq": "Square hollow",
+    "hollow_rect": "Rectangle hollow",
+    "hollow_round": "Round hollow / pipe",
+    "solid_sq": "Solid square",
+    "solid_round": "Solid round",
+    "flat": "Flat bar",
+    "angle": "Angle",
+    "c_channel": "C-channel",
+    "i_beam": "I-section",
+    "louver": "Louver",
+    "oval_louver": "Oval louver",
+    "sheet": "Sheet",
+    "extrusion": "Custom extrusion",
+    "custom": "Other",
+}
+
+# Aliases accepted by list/filter API → canonical shape id
+SHAPE_ALIASES: dict[str, str] = {
+    "square": "hollow_sq",
+    "sq": "hollow_sq",
+    "shs": "hollow_sq",
+    "square_hollow": "hollow_sq",
+    "rectangle": "hollow_rect",
+    "rect": "hollow_rect",
+    "rhs": "hollow_rect",
+    "rectangle_hollow": "hollow_rect",
+    "pipe": "hollow_round",
+    "tube": "hollow_round",
+    "round_hollow": "hollow_round",
+    "chs": "hollow_round",
+    "round": "solid_round",
+    "round_bar": "solid_round",
+    "solid": "solid_round",
+    "square_bar": "solid_sq",
+    "flat_bar": "flat",
+    "fb": "flat",
+    "channel": "c_channel",
+    "c": "c_channel",
+    "i": "i_beam",
+    "ibeam": "i_beam",
+    "beam": "i_beam",
+    "oval": "oval_louver",
+}
+
+
+def material_family(material: str | None) -> str:
+    m = (material or "").strip().lower()
+    if m.startswith("al") or m in ("aluminium", "aluminum", "alu"):
+        return "aluminium"
+    if m in ("mild_steel", "ms", "iron", "steel", "carbon_steel", "gi", "galvanised", "galvanized"):
+        return "iron"
+    return m or "other"
+
+
+def normalize_shape_id(raw: str | None) -> str:
+    t = (raw or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if not t:
+        return "custom"
+    if t in SHAPE_LABELS:
+        return t
+    return SHAPE_ALIASES.get(t, t)
+
+
 def _shape_from_type(section_type: str, *, material: str) -> str:
     t = (section_type or "").strip().upper().replace("-", " ")
     t_compact = t.replace(" ", "_")
@@ -76,8 +140,8 @@ def _shape_from_type(section_type: str, *, material: str) -> str:
         return "hollow_rect"
     if t in ("CHS", "ROUND", "PIPE", "TUBE") or "HOLLOW ROUND" in t:
         return "hollow_round"
-    if t in ("FLAT", "FB", "FLAT_BAR") or t.startswith("FLAT"):
-        return "flat"
+    if t in ("FLAT", "FB", "FLAT_BAR") or t.startswith("FLAT") or "SHEET" in t:
+        return "flat" if "SHEET" not in t else "sheet"
     if t in ("ANGLE", "L", "ISA") or "ANGLE" in t:
         return "angle"
     if t in ("CHANNEL", "C", "PFC", "ISMC") or "CHANNEL" in t or t.startswith("C "):
@@ -95,6 +159,48 @@ def _shape_from_type(section_type: str, *, material: str) -> str:
     if material == "aluminium":
         return "extrusion"
     return "custom"
+
+
+def _tag_section(card: dict[str, Any]) -> dict[str, Any]:
+    """Ensure stable materialFamily + shape labels for UI filters (IDs unchanged)."""
+    out = dict(card)
+    mat = str(out.get("material") or "mild_steel")
+    fam = material_family(mat)
+    # Canonical material string for filters
+    if fam == "aluminium":
+        out["material"] = "aluminium"
+    elif fam == "iron":
+        out["material"] = "mild_steel"
+    shape = normalize_shape_id(str(out.get("shape") or out.get("category") or ""))
+    out["shape"] = shape
+    out["materialFamily"] = fam
+    out["shapeFamily"] = shape
+    out["shapeLabel"] = SHAPE_LABELS.get(shape, shape.replace("_", " ").title())
+    out["materialLabel"] = "Aluminium" if fam == "aluminium" else ("Iron / MS" if fam == "iron" else mat)
+    # Display helpers for picker
+    w = out.get("widthMm")
+    h = out.get("heightMm")
+    th = out.get("thicknessMm")
+    dims = []
+    if w:
+        dims.append(f"{w:g}")
+    if h and (not w or abs(float(h) - float(w)) > 0.05):
+        dims.append(f"{h:g}")
+    elif h and w and abs(float(h) - float(w)) <= 0.05:
+        pass  # square already shown once as W — still show ×W for tubes
+        if shape.startswith("hollow") or shape.startswith("solid"):
+            dims = [f"{float(w):g}", f"{float(h):g}"]
+    dim_s = "×".join(dims) if dims else ""
+    if th:
+        dim_s = f"{dim_s}×{float(th):g}" if dim_s else f"t{float(th):g}"
+    code = str(out.get("code") or out.get("sectionId") or "")
+    name = str(out.get("name") or code)
+    out["pickerLabel"] = " · ".join(
+        p for p in (code, dim_s and f"{dim_s} mm", out.get("materialLabel"), out.get("shapeLabel")) if p
+    )
+    if name and name not in out["pickerLabel"]:
+        out["pickerLabel"] = f"{name} · {out['pickerLabel']}" if out["pickerLabel"] else name
+    return out
 
 
 def theoretical_kg_per_m(
@@ -227,16 +333,23 @@ def _base_card(
 ) -> dict[str, Any]:
     face_w = width_mm
     face_d = height_mm if height_mm is not None else width_mm
+    shape_n = normalize_shape_id(shape)
+    fam = material_family(material)
+    mat_n = "aluminium" if fam == "aluminium" else ("mild_steel" if fam == "iron" else material)
     card = {
         "sectionId": section_id,
         "id": section_id,
         "code": code,
         "name": name,
         "supplier": supplier,
-        "material": material,
+        "material": mat_n,
+        "materialFamily": fam,
         "grade": grade,
-        "shape": shape,
-        "category": category or shape,
+        "shape": shape_n,
+        "shapeFamily": shape_n,
+        "shapeLabel": SHAPE_LABELS.get(shape_n, shape_n.replace("_", " ").title()),
+        "materialLabel": "Aluminium" if fam == "aluminium" else ("Iron / MS" if fam == "iron" else material),
+        "category": category or shape_n,
         "widthMm": width_mm,
         "heightMm": height_mm if height_mm is not None else width_mm,
         "thicknessMm": thickness_mm,
@@ -602,13 +715,16 @@ def build_structural_catalogue(*, persist: bool = True) -> dict[str, Any]:
         else:
             by_id[sid] = _apply_override(by_id[sid], overrides.get(sid, {}))
 
-    sections_out = sorted(by_id.values(), key=lambda s: (s.get("material") or "", s.get("name") or ""))
+    sections_out = [_tag_section(s) for s in by_id.values()]
+    sections_out.sort(key=lambda s: (s.get("materialFamily") or "", s.get("shape") or "", s.get("name") or ""))
+    facets = section_facets(sections_out)
     pack = {
         "version": 1,
         "seriesId": SERIES_ID,
         "name": SERIES_NAME,
         "sectionCount": len(sections_out),
         "sections": sections_out,
+        "facets": facets,
         "sources": {
             "ms": "data/materials/*.csv",
             "aluminium": "WEOS/products/sections/silvassa_structural_catalogue.json",
@@ -621,6 +737,34 @@ def build_structural_catalogue(*, persist: bool = True) -> dict[str, Any]:
     return pack
 
 
+def section_facets(rows: list[Mapping[str, Any]] | None = None) -> dict[str, Any]:
+    """Counts for material + shape chips in the section picker."""
+    secs = list(rows) if rows is not None else list_structural_sections()
+    mat_counts: dict[str, int] = {"iron": 0, "aluminium": 0, "other": 0}
+    shape_counts: dict[str, int] = {}
+    for s in secs:
+        fam = material_family(str(s.get("materialFamily") or s.get("material") or ""))
+        if fam in mat_counts:
+            mat_counts[fam] += 1
+        else:
+            mat_counts["other"] += 1
+        shp = normalize_shape_id(str(s.get("shapeFamily") or s.get("shape") or ""))
+        shape_counts[shp] = shape_counts.get(shp, 0) + 1
+    materials = [
+        {"id": "all", "label": "All", "count": len(secs)},
+        {"id": "iron", "label": "Iron / MS", "count": mat_counts["iron"]},
+        {"id": "aluminium", "label": "Aluminium", "count": mat_counts["aluminium"]},
+    ]
+    if mat_counts["other"]:
+        materials.append({"id": "other", "label": "Other", "count": mat_counts["other"]})
+    shapes = [
+        {"id": sid, "label": SHAPE_LABELS.get(sid, sid.replace("_", " ").title()), "count": n}
+        for sid, n in sorted(shape_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        if n > 0
+    ]
+    return {"materials": materials, "shapes": shapes}
+
+
 def list_structural_sections(
     *,
     material: str | None = None,
@@ -628,27 +772,30 @@ def list_structural_sections(
     q: str | None = None,
 ) -> list[dict[str, Any]]:
     pack = load_structural_catalogue()
-    rows = list(pack.get("sections") or [])
+    rows = [_tag_section(s) if "materialFamily" not in s else s for s in (pack.get("sections") or [])]
     mat = (material or "").strip().lower()
-    shp = (shape or "").strip().lower()
+    shp = normalize_shape_id(shape) if shape else ""
     query = (q or "").strip().lower()
     out = []
     for s in rows:
-        if mat:
-            sm = str(s.get("material") or "").lower()
+        if mat and mat not in ("all", "*"):
+            fam = material_family(str(s.get("materialFamily") or s.get("material") or ""))
             if mat in ("ms", "iron", "steel", "mild_steel"):
-                if sm not in ("mild_steel", "ms", "iron", "steel"):
+                if fam != "iron":
                     continue
             elif mat in ("al", "aluminium", "aluminum"):
-                if not sm.startswith("al"):
+                if fam != "aluminium":
                     continue
-            elif mat not in sm:
+            elif mat != fam and mat not in str(s.get("material") or "").lower():
                 continue
-        if shp and shp not in str(s.get("shape") or "").lower():
-            continue
+        if shp and shp not in ("all", "*"):
+            ss = normalize_shape_id(str(s.get("shapeFamily") or s.get("shape") or ""))
+            if ss != shp:
+                continue
         if query:
             blob = " ".join(
-                str(s.get(k) or "") for k in ("sectionId", "code", "name", "supplier", "shape")
+                str(s.get(k) or "")
+                for k in ("sectionId", "code", "name", "supplier", "shape", "shapeLabel", "materialLabel", "pickerLabel")
             ).lower()
             if query not in blob:
                 continue

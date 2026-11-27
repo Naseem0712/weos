@@ -1339,15 +1339,38 @@ def api_structural_sections(
     shape: str | None = None,
     q: str | None = None,
 ) -> dict[str, Any]:
-    from WEOS.factory.structural_catalogue import list_structural_sections, load_structural_catalogue
+    from WEOS.factory.structural_catalogue import (
+        list_structural_sections,
+        load_structural_catalogue,
+        section_facets,
+    )
 
     pack = load_structural_catalogue()
     rows = list_structural_sections(material=material, shape=shape, q=q)
+    # Facets always from full catalogue so chips stay stable while filtering
+    facets = pack.get("facets") or section_facets()
     return {
         "seriesId": pack.get("seriesId"),
         "name": pack.get("name"),
         "count": len(rows),
         "sections": rows,
+        "facets": facets,
+        "shapeLabels": {
+            "hollow_sq": "Square hollow",
+            "hollow_rect": "Rectangle hollow",
+            "hollow_round": "Round hollow / pipe",
+            "solid_sq": "Solid square",
+            "solid_round": "Solid round",
+            "flat": "Flat bar",
+            "angle": "Angle",
+            "c_channel": "C-channel",
+            "i_beam": "I-section",
+            "louver": "Louver",
+            "oval_louver": "Oval louver",
+            "sheet": "Sheet",
+            "extrusion": "Custom extrusion",
+            "custom": "Other",
+        },
     }
 
 
