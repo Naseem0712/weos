@@ -2054,9 +2054,13 @@ def compute_sliding_design_cost(
     rail_pack = bom.get("trackRail") if isinstance(bom.get("trackRail"), Mapping) else {}
     _append_bom_profile_lines(rail_pack.get("lines") or [], default_use="track_rail")
 
-    # Shutter frames from Excel V/H / V2 H2
+    # Shutter frames from Excel V/H / V2 H2 (glass sash only — never mesh section)
     shutter_pack = bom.get("shutterFrames") if isinstance(bom.get("shutterFrames"), Mapping) else {}
     _append_bom_profile_lines(shutter_pack.get("lines") or [], default_use="shutter")
+
+    # Mesh shutter frames from series meshSection
+    mesh_shutter_pack = bom.get("meshShutters") if isinstance(bom.get("meshShutters"), Mapping) else {}
+    _append_bom_profile_lines(mesh_shutter_pack.get("lines") or [], default_use="mesh_shutter")
 
     # Interlocks (slim / renf / mesh-slim) + glass reducer 1/interlock
     inter_pack = bom.get("interlocks") if isinstance(bom.get("interlocks"), Mapping) else {}

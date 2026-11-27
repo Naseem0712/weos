@@ -772,62 +772,238 @@ def parse_workbook(path: str | Path | None = None) -> dict[str, Any]:
     }
 
 
+def _section_name_l(sec: Mapping[str, Any] | None) -> str:
+    return str((sec or {}).get("name") or "").strip().lower()
+
+
+def _is_mesh_adapter_name(nl: str) -> bool:
+    """Excel typos: mesh adepetr / adeptor / adapter."""
+    return any(k in nl for k in ("adapt", "adept", "adepet", "adeptor", "adepetr"))
+
+
+def _is_mesh_section(sec: Mapping[str, Any] | None) -> bool:
+    if not isinstance(sec, Mapping):
+        return False
+    usage = str(sec.get("usage") or "").lower()
+    nl = _section_name_l(sec)
+    if _is_mesh_adapter_name(nl):
+        return False
+    if usage == "mesh":
+        return True
+    if "mesh" in nl:
+        return True
+    return False
+
+
+def _is_track_section(sec: Mapping[str, Any] | None) -> bool:
+    if not isinstance(sec, Mapping):
+        return False
+    usage = str(sec.get("usage") or "").lower()
+    nl = _section_name_l(sec)
+    if _is_mesh_section(sec):
+        return False
+    if usage.startswith("track"):
+        return True
+    return ("track" in nl or "trck" in nl) and "mesh" not in nl
+
+
+def _is_glass_sash_section(sec: Mapping[str, Any] | None) -> bool:
+    """Glass / door shutter profiles — never mesh, never outer track."""
+    if not isinstance(sec, Mapping):
+        return False
+    if _is_mesh_section(sec) or _is_track_section(sec):
+        return False
+    usage = str(sec.get("usage") or "").lower()
+    nl = _section_name_l(sec)
+    if "interlock" in nl or "reducer" in nl or "meeting" in nl:
+        return False
+    if "adapt" in nl or "adept" in nl:
+        return False
+    if usage in ("sash", "door", "leaf"):
+        return True
+    if "handle" in nl or "hnadle" in nl:
+        return True
+    if "all side" in nl or nl in ("shutter", "sash", "door"):
+        return True
+    if any(k in nl for k in ("top", "bottom", "horizon")) and "track" not in nl:
+        return True
+    if "shutter" in nl or "sash" in nl:
+        return True
+    return False
+
+
+def _track_tid(tc: float) -> str:
+    return "2.5" if abs(float(tc) - 2.5) < 0.01 else str(int(float(tc)))
+
+
+def _rail_count_for_tc(tc: float) -> int:
+    if float(tc) < 3:
+        return 2
+    if float(tc) < 4:
+        return 3
+    return 4
+
+
+def _classify_track_row(sec: Mapping[str, Any]) -> str:
+    """vertical | horizontal | all — how this track row maps onto outer frame sides."""
+    usage = str(sec.get("usage") or "").lower()
+    nl = _section_name_l(sec)
+    if "vertical" in usage or (
+        any(k in nl for k in ("vertical", "left", "right", "jamb"))
+        and not any(k in nl for k in ("top", "bottom", "horizon"))
+    ):
+        return "vertical"
+    if "horizontal" in usage or any(k in nl for k in ("top", "bottom", "horizon")):
+        return "horizontal"
+    if "all" in nl:
+        return "all"
+    return "all"
+
+
 def _build_sliding_setup(series: Mapping[str, Any], hw_items: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     sections = list(series.get("sections") or [])
-    tracks = [s for s in sections if "track" in (s.get("name") or "").lower() or (s.get("usage") or "").startswith("track")]
-    shutters = [s for s in sections if s.get("usage") == "sash"]
-    interlocks = [s for s in sections if s.get("usage") == "interlock"]
-    meetings = [s for s in sections if s.get("usage") == "meeting"]
-    mesh = [s for s in sections if "mesh" in (s.get("name") or "").lower()]
+    tracks = [s for s in sections if _is_track_section(s)]
+    shutters = [s for s in sections if _is_glass_sash_section(s)]
+    interlocks = [
+        s for s in sections
+        if str(s.get("usage") or "").lower() == "interlock"
+        or "interlock" in _section_name_l(s)
+    ]
+    meetings = [
+        s for s in sections
+        if str(s.get("usage") or "").lower() == "meeting" or "meeting" in _section_name_l(s)
+    ]
+    mesh = [s for s in sections if _is_mesh_section(s) or (
+        "mesh" in _section_name_l(s) and "adapt" not in _section_name_l(s) and "adept" not in _section_name_l(s)
+    )]
 
-    # Detect track mode from use columns
-    track_mode = "all_sides_same"
-    for t in tracks:
-        use = (t.get("use") or "").lower()
-        if "v2" in use.replace(" ", "") and ("h2" in use.replace(" ", "") or "h" in use):
-            track_mode = "all_sides_same"
-        if "top" in (t.get("name") or "").lower() or "vertical" in (t.get("name") or "").lower():
-            track_mode = "verticals_same_h_diff"
-
-    track_options: list[dict[str, Any]] = []
-    seen: set[str] = set()
+    # Group track rows by track count so OUTER gets the selected track only;
+    # when Excel lists separate vertical + top/bottom rows, keep both sides.
+    by_tc: dict[float, list[Mapping[str, Any]]] = {}
     for t in tracks:
         tc = t.get("trackCount")
         if tc is None:
+            tc = parse_track_count(t.get("name"))
+        if tc is None:
             continue
-        tid = "2.5" if abs(float(tc) - 2.5) < 0.01 else str(int(float(tc)))
+        by_tc.setdefault(float(tc), []).append(t)
+
+    track_options: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    has_split_track = False
+    for tc in sorted(by_tc.keys()):
+        rows = by_tc[tc]
+        tid = _track_tid(tc)
         if tid in seen:
             continue
         seen.add(tid)
-        sec = _setup_section_from_row(t)
-        track_options.append({
-            "id": tid,
-            "label": f"{tid} track",
-            "railCount": 2 if float(tc) < 3 else (3 if float(tc) < 4 else 4),
-            "sides": {"all": sec, "top": sec, "bottom": sec, "vertical": sec},
-            "weightKgPerM": sec.get("weightKgPerM"),
-            "rate": sec.get("rate"),
-            "rateUnit": sec.get("rateUnit"),
-        })
+        vert = next((r for r in rows if _classify_track_row(r) == "vertical"), None)
+        horiz = next((r for r in rows if _classify_track_row(r) == "horizontal"), None)
+        allside = next((r for r in rows if _classify_track_row(r) == "all"), None)
+        if vert and horiz:
+            has_split_track = True
+            vsec = _setup_section_from_row(vert)
+            hsec = _setup_section_from_row(horiz)
+            track_options.append({
+                "id": tid,
+                "label": f"{tid} track",
+                "railCount": _rail_count_for_tc(tc),
+                "sides": {
+                    "vertical": vsec,
+                    "top": hsec,
+                    "bottom": hsec,
+                    "leftVertical": vsec,
+                    "rightVertical": vsec,
+                    "all": hsec,
+                },
+                "weightKgPerM": vsec.get("weightKgPerM"),
+                "rate": vsec.get("rate"),
+                "rateUnit": vsec.get("rateUnit"),
+            })
+        else:
+            src = allside or vert or horiz or rows[0]
+            sec = _setup_section_from_row(src)
+            track_options.append({
+                "id": tid,
+                "label": f"{tid} track",
+                "railCount": _rail_count_for_tc(tc),
+                "sides": {"all": sec, "top": sec, "bottom": sec, "vertical": sec},
+                "weightKgPerM": sec.get("weightKgPerM"),
+                "rate": sec.get("rate"),
+                "rateUnit": sec.get("rateUnit"),
+            })
     for tid in ("2", "2.5", "3", "4"):
         if tid not in seen:
-            track_options.append({"id": tid, "label": f"{tid} track", "railCount": 2 if float(tid) < 3 else int(float(tid)), "sides": {}})
+            track_options.append({
+                "id": tid,
+                "label": f"{tid} track",
+                "railCount": 2 if float(tid) < 3 else int(float(tid)),
+                "sides": {},
+            })
 
-    # Shutters
-    handle = next((s for s in shutters if "handle" in (s.get("name") or "").lower()), shutters[0] if shutters else None)
-    all_side_sh = next((s for s in shutters if "all side" in (s.get("name") or "").lower() or (s.get("name") or "").strip().lower() == "shutter"), handle)
-    top_bot = next((s for s in shutters if "top" in (s.get("name") or "").lower() or "bottom" in (s.get("name") or "").lower()), None)
-    slim = next((s for s in interlocks if "slim" in (s.get("name") or "").lower() or "interlock" in (s.get("name") or "").lower()), interlocks[0] if interlocks else None)
-    renf = next((s for s in interlocks if "renf" in (s.get("name") or "").lower() or "renfor" in (s.get("name") or "").lower()), None)
+    track_mode = "verticals_same_h_diff" if has_split_track else "all_sides_same"
+
+    # Glass shutters only (mesh stays in mesh block). Handle typo "hnadle" included.
+    handle = next(
+        (s for s in shutters if "handle" in _section_name_l(s) or "hnadle" in _section_name_l(s)),
+        None,
+    )
+    all_side_sh = next(
+        (
+            s for s in shutters
+            if "all side" in _section_name_l(s) or _section_name_l(s) in ("shutter", "sash", "door")
+        ),
+        None,
+    )
+    top_bot = next(
+        (
+            s for s in shutters
+            if any(k in _section_name_l(s) for k in ("top", "bottom", "horizon"))
+            and "handle" not in _section_name_l(s)
+            and "hnadle" not in _section_name_l(s)
+        ),
+        None,
+    )
+    # Combined "handle side, top, bottom" → one section for V+H
+    if handle and top_bot is None and any(k in _section_name_l(handle) for k in ("top", "bottom")):
+        top_bot = handle
+    if handle is None:
+        handle = all_side_sh or (shutters[0] if shutters else None)
+    if all_side_sh is None and handle is not None:
+        # V2 H2 handle/shutter row = all-sides glass sash for that series
+        parsed = parse_use_bom_counts(handle.get("use"), section_name=str(handle.get("name") or ""))
+        if parsed.get("allSidesSame") and top_bot is None:
+            all_side_sh = handle
+
+    slim = next(
+        (s for s in interlocks if "slim" in _section_name_l(s)),
+        None,
+    )
+    if slim is None:
+        slim = next(
+            (s for s in interlocks if "renf" not in _section_name_l(s) and "renfor" not in _section_name_l(s)),
+            interlocks[0] if interlocks else None,
+        )
+    renf = next(
+        (s for s in interlocks if "renf" in _section_name_l(s) or "renfor" in _section_name_l(s)),
+        None,
+    )
     if renf is None and len(interlocks) > 1:
-        renf = interlocks[-1]
+        renf = next((s for s in interlocks if s is not slim), interlocks[-1])
     glass_reducer = next(
-        (s for s in sections if "reducer" in (s.get("name") or "").lower()),
+        (s for s in sections if "reducer" in _section_name_l(s)),
         None,
     )
 
-    shutter_mode = "split" if (handle or slim or renf) else "all_sides_same"
-    if all_side_sh and not slim and not renf:
+    shutter_mode = "split"
+    if all_side_sh and top_bot is None and (handle is None or handle is all_side_sh or handle == all_side_sh):
+        shutter_mode = "all_sides_same"
+    elif handle and top_bot is None:
+        parsed_h = parse_use_bom_counts(handle.get("use"), section_name=str(handle.get("name") or ""))
+        if parsed_h.get("allSidesSame"):
+            shutter_mode = "all_sides_same"
+            all_side_sh = all_side_sh or handle
+    elif not handle and not all_side_sh and not top_bot:
         shutter_mode = "all_sides_same"
 
     # Hardware pack from catalogue items (sliding group)
@@ -919,8 +1095,30 @@ def _build_sliding_setup(series: Mapping[str, Any], hw_items: Sequence[Mapping[s
         })
 
     meeting = meetings[0] if meetings else None
-    mesh_adapter = next((m for m in mesh if "adept" in (m.get("name") or "").lower() or "adapt" in (m.get("name") or "").lower()), None)
-    mesh_shutter = next((m for m in mesh if "shutter" in (m.get("name") or "").lower()), None)
+    mesh_adapters = [
+        m for m in sections
+        if "mesh" in _section_name_l(m) and _is_mesh_adapter_name(_section_name_l(m))
+    ]
+    mesh_adapter = mesh_adapters[0] if mesh_adapters else None
+    mesh_shutter = next(
+        (m for m in mesh if "shutter" in _section_name_l(m)),
+        next((m for m in mesh if not _is_mesh_adapter_name(_section_name_l(m))), None),
+    )
+
+    # Defined (non-empty) track options first for active default
+    defined_opts = [o for o in track_options if (o.get("sides") or {}).get("all") or (o.get("sides") or {}).get("vertical")]
+    active_tid = (defined_opts[0]["id"] if defined_opts else (track_options[0]["id"] if track_options else "2"))
+
+    handle_sec = _setup_section_from_row(handle) if handle else {}
+    all_side_sec = (
+        _setup_section_from_row(all_side_sh)
+        if all_side_sh and shutter_mode == "all_sides_same"
+        else {}
+    )
+    top_sec = _setup_section_from_row(top_bot) if top_bot else {}
+    # Split mode still needs a handle vertical — never leave glass sash empty.
+    if shutter_mode == "split" and not handle_sec.get("name") and all_side_sh:
+        handle_sec = _setup_section_from_row(all_side_sh)
 
     raw = {
         "type": "sliding",
@@ -929,14 +1127,14 @@ def _build_sliding_setup(series: Mapping[str, Any], hw_items: Sequence[Mapping[s
         "sliding": {
             "trackMode": track_mode,
             "bomPattern": "all_side_4" if track_mode == "all_sides_same" else "v2_t1_b1",
-            "activeTrackOption": track_options[0]["id"] if track_options else "2",
+            "activeTrackOption": active_tid,
             "trackOptions": track_options,
             "shutters": {
                 "mode": shutter_mode,
-                "allSides": _setup_section_from_row(all_side_sh) if all_side_sh and shutter_mode == "all_sides_same" else {},
-                "handleSide": _setup_section_from_row(handle) if handle else {},
-                "top": _setup_section_from_row(top_bot) if top_bot else {},
-                "bottom": _setup_section_from_row(top_bot) if top_bot else {},
+                "allSides": all_side_sec,
+                "handleSide": handle_sec if shutter_mode == "split" else (handle_sec or all_side_sec),
+                "top": top_sec if shutter_mode == "split" else {},
+                "bottom": top_sec if shutter_mode == "split" else {},
                 "interlockSlim": _setup_section_from_row(slim) if slim else {},
                 "interlockRenf": _setup_section_from_row(renf) if renf else {},
                 "glassReducer": _setup_section_from_row(glass_reducer) if glass_reducer else {},
@@ -946,14 +1144,17 @@ def _build_sliding_setup(series: Mapping[str, Any], hw_items: Sequence[Mapping[s
                 "section": _setup_section_from_row(meeting) if meeting else {},
             },
             "mesh": {
-                "compatible": bool(mesh),
+                "compatible": bool(mesh_shutter or mesh_adapter),
                 "sameAsShutter": mesh_shutter is None,
-                "adapter": {"sameAllSides": True, "section": _setup_section_from_row(mesh_adapter) if mesh_adapter else {}},
+                "adapter": {
+                    "sameAllSides": True,
+                    "section": _setup_section_from_row(mesh_adapter) if mesh_adapter else {},
+                },
                 "meshSection": _setup_section_from_row(mesh_shutter) if mesh_shutter else {},
             },
             "hardware": hw_list[:24],
             "hardwarePack": hw_pack,
-            "costing": {"costEngine": "stub", "cutFromOwnStock": True, "projectWastageReuse": True},
+            "costing": {"costEngine": "live", "cutFromOwnStock": True, "projectWastageReuse": True},
         },
     }
     return normalize_setup(raw)
@@ -1087,10 +1288,162 @@ def _build_casement_setup(series: Mapping[str, Any], hw_items: Sequence[Mapping[
                     "epdm": {"ratePerM": float((epdm or {}).get("rate") or 19), "brand": brand_ind},
                 },
             },
-            "costing": {"costEngine": "stub", "soldPerRft": False},
+            "costing": {"costEngine": "live", "soldPerRft": False},
         },
     }
     return normalize_setup(raw)
+
+
+def rebuild_setups_from_catalogue(
+    *,
+    series_ids: Sequence[str] | None = None,
+    hardware: Sequence[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Rebuild product.setup from section catalogue without wiping quotes / meta.
+
+    Fixes track→outer-only and glass-shutter (not mesh) section mapping for every
+    active Excel series so live design_cost uses the correct rates/weights.
+    """
+    from WEOS.factory.section_catalogue import load_catalogue
+
+    cat = load_catalogue()
+    hw = list(hardware or [])
+    if not hw:
+        try:
+            from WEOS.factory.hardware_catalogue import list_hardware
+
+            hw = list(list_hardware() or [])
+        except Exception:
+            hw = []
+
+    wanted = {str(x) for x in series_ids} if series_ids else None
+    updated: list[str] = []
+    skipped: list[str] = []
+    for series in cat.get("series") or []:
+        if not isinstance(series, Mapping):
+            continue
+        sid = str(series.get("id") or "")
+        if not sid:
+            continue
+        if wanted is not None and sid not in wanted:
+            continue
+        # Refresh usage tags from names so handle/hnadle/mesh classify correctly
+        secs = []
+        for sec in series.get("sections") or []:
+            if not isinstance(sec, Mapping):
+                continue
+            row = dict(sec)
+            row["usage"] = infer_usage(str(row.get("name") or ""))
+            secs.append(row)
+        series_fix = dict(series)
+        series_fix["sections"] = secs
+        fam = str(series_fix.get("family") or "sliding").lower()
+        if fam == "casement":
+            setup = _build_casement_setup(series_fix, hw)
+        else:
+            setup = _build_sliding_setup(series_fix, hw)
+        pdir = products_dir() / sid
+        meta_path = pdir / "product.json"
+        if not meta_path.is_file():
+            _write_product(series_fix, setup, family="casement" if fam == "casement" else "sliding")
+            updated.append(sid)
+            continue
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8-sig"))
+        except Exception:
+            skipped.append(sid)
+            continue
+        if not isinstance(meta, dict):
+            skipped.append(sid)
+            continue
+        # Preserve labour/profit overrides on costing when present
+        old_setup = meta.get("setup") if isinstance(meta.get("setup"), Mapping) else {}
+        old_cost = {}
+        if fam == "casement":
+            old_cost = ((old_setup.get("casement") or {}).get("costing") or {}) if isinstance(old_setup, Mapping) else {}
+            new_sl = setup.get("casement") if isinstance(setup.get("casement"), Mapping) else {}
+            if isinstance(old_cost, Mapping) and new_sl:
+                merged = dict(new_sl.get("costing") or {})
+                for k in ("labourPerSft", "profitPercent", "installationPerSft", "wastagePercent"):
+                    if old_cost.get(k) not in (None, ""):
+                        merged[k] = old_cost.get(k)
+                merged["costEngine"] = "live"
+                new_sl = dict(new_sl)
+                new_sl["costing"] = merged
+                setup = dict(setup)
+                setup["casement"] = new_sl
+        else:
+            old_cost = ((old_setup.get("sliding") or {}).get("costing") or {}) if isinstance(old_setup, Mapping) else {}
+            new_sl = setup.get("sliding") if isinstance(setup.get("sliding"), Mapping) else {}
+            if isinstance(old_cost, Mapping) and new_sl:
+                merged = dict(new_sl.get("costing") or {})
+                for k in ("labourPerSft", "profitPercent", "installationPerSft", "wastagePercent",
+                          "cutFromOwnStock", "projectWastageReuse"):
+                    if old_cost.get(k) not in (None, ""):
+                        merged[k] = old_cost.get(k)
+                merged["costEngine"] = "live"
+                new_sl = dict(new_sl)
+                new_sl["costing"] = merged
+                setup = dict(setup)
+                setup["sliding"] = new_sl
+        meta["setup"] = setup
+        meta["ratesEditable"] = True
+        meta["status"] = meta.get("status") or "active"
+        if str(meta.get("status") or "").lower() in ("stub", ""):
+            meta["status"] = "active"
+        meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        # Ensure quotation marks live engine without wiping rates/history fields
+        qpath = pdir / "rules" / "quotation.json"
+        if qpath.is_file():
+            try:
+                qdoc = json.loads(qpath.read_text(encoding="utf-8-sig"))
+            except Exception:
+                qdoc = {}
+            if isinstance(qdoc, dict):
+                qdoc["costEngine"] = "live"
+                qdoc["ratesEditable"] = True
+                # Keep stub geometry flag; do not invent manualRate
+                qdoc.setdefault("stub", True)
+                qpath.write_text(json.dumps(qdoc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        # Mirror usage fixes into per-series section JSON
+        sec_path = products_dir() / "sections" / f"{sid}.json"
+        if sec_path.is_file():
+            try:
+                sdoc = json.loads(sec_path.read_text(encoding="utf-8-sig"))
+                if isinstance(sdoc, dict):
+                    sdoc["sections"] = secs
+                    sec_path.write_text(json.dumps(sdoc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            except Exception:
+                pass
+        updated.append(sid)
+
+    # Refresh aggregate catalogue usage tags
+    try:
+        cat2 = dict(cat)
+        new_series = []
+        for series in cat.get("series") or []:
+            if not isinstance(series, Mapping):
+                continue
+            sid = str(series.get("id") or "")
+            if wanted is not None and sid not in wanted:
+                new_series.append(series)
+                continue
+            secs = []
+            for sec in series.get("sections") or []:
+                if not isinstance(sec, Mapping):
+                    continue
+                row = dict(sec)
+                row["usage"] = infer_usage(str(row.get("name") or ""))
+                secs.append(row)
+            row = dict(series)
+            row["sections"] = secs
+            new_series.append(row)
+        cat2["series"] = new_series
+        persist_catalogue(cat2)
+    except Exception:
+        pass
+
+    return {"ok": True, "updated": updated, "skipped": skipped, "count": len(updated)}
 
 
 def _write_product(series: Mapping[str, Any], setup: Mapping[str, Any], *, family: str) -> Path:

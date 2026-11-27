@@ -1503,24 +1503,23 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
         ):
             result_base["designCost"] = design
             price = dict(result_base.get("price") or {})
-            legacy_total = float(price.get("total") or 0)
             design_total = float(design.get("total") or 0)
-            if legacy_total <= 0 or design_total >= legacy_total * 0.25:
-                unit = float(design.get("unitTotal") or (design_total / max(qty, 1)))
-                price["unitTotal"] = round(unit, 2)
-                price["total"] = round(design_total, 2)
-                price["subtotal"] = round(design_total, 2)
-                price["costEngine"] = "live"
-                price["breakdown"] = design.get("breakdown")
-                price["aluminiumCost"] = design.get("aluminiumCost")
-                price["coatingCost"] = design.get("coatingCost")
-                price["glassCost"] = design.get("glassCost")
-                price["hardwareCost"] = design.get("hardwareCost")
-                price["labourAmount"] = design.get("labourAmount")
-                price["installationAmount"] = design.get("installationAmount")
-                price["wastageCost"] = design.get("wastageCost")
-                result_base["price"] = price
-                result_base["costBreakdown"] = design.get("breakdown")
+            # Always prefer live design_cost over stub/old quotation totals
+            unit = float(design.get("unitTotal") or (design_total / max(qty, 1)))
+            price["unitTotal"] = round(unit, 2)
+            price["total"] = round(design_total, 2)
+            price["subtotal"] = round(design_total, 2)
+            price["costEngine"] = "live"
+            price["breakdown"] = design.get("breakdown")
+            price["aluminiumCost"] = design.get("aluminiumCost")
+            price["coatingCost"] = design.get("coatingCost")
+            price["glassCost"] = design.get("glassCost")
+            price["hardwareCost"] = design.get("hardwareCost")
+            price["labourAmount"] = design.get("labourAmount")
+            price["installationAmount"] = design.get("installationAmount")
+            price["wastageCost"] = design.get("wastageCost")
+            result_base["price"] = price
+            result_base["costBreakdown"] = design.get("breakdown")
     except Exception:
         pass
     return apply_selling_to_line_result(result_base, line)

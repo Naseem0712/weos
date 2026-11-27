@@ -77,7 +77,7 @@
     {
       "id": "35mm_prestige__hnadle_side",
       "name": "hnadle side",
-      "usage": "other",
+      "usage": "sash",
       "usageLabel": "Section",
       "widthMm": 75.2,
       "sectionDepthMm": 35.2,
@@ -100,7 +100,7 @@
     {
       "id": "35mm_prestige__mesh_shutter",
       "name": "mesh shutter",
-      "usage": "sash",
+      "usage": "mesh",
       "usageLabel": "Sash / Shutter",
       "widthMm": 75.2,
       "sectionDepthMm": 35.2,

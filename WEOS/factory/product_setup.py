@@ -2442,8 +2442,16 @@ def derive_sliding_shutter_frame_cuts(
                 "colour": _str(colour),
             })
 
+    def _not_mesh(sec: Any) -> bool:
+        if not isinstance(sec, Mapping):
+            return False
+        return "mesh" not in _str(sec.get("name")).lower()
+
     if mode == "all_sides_same":
         sec = sh.get("allSides") or sh.get("handleSide") or {}
+        # Never bill glass shutters on the mesh section
+        if not _not_mesh(sec):
+            sec = sh.get("handleSide") if _not_mesh(sh.get("handleSide")) else {}
         ns = normalize_section(sec if isinstance(sec, Mapping) else {})
         v = int(ns.get("pcsVertical") or 2)
         h = int(ns.get("pcsHorizontal") or 2)
@@ -2451,14 +2459,28 @@ def derive_sliding_shutter_frame_cuts(
         _add(sec, h * g, leaf_w_m, use="shutter_horizontal", label="Shutter top/bottom")
     else:
         handle = sh.get("handleSide") or {}
+        if not _not_mesh(handle):
+            handle = sh.get("allSides") if _not_mesh(sh.get("allSides")) else {}
         top = sh.get("top") or {}
         bot = sh.get("bottom") or {}
         hn = normalize_section(handle if isinstance(handle, Mapping) else {})
         tn = normalize_section(top if isinstance(top, Mapping) else {})
         bn = normalize_section(bot if isinstance(bot, Mapping) else {})
         v_pcs = int(hn.get("pcsVertical") or 1)
-        # handle side top,bottom row often has V=1 H=2 on one combined section
-        if _str(hn.get("name")) and ("top" in _str(hn.get("name")).lower() or "bottom" in _str(hn.get("name")).lower()):
+        # Combined handle+top+bottom row (not a bare "top/bottom" horizontal-only)
+        hn_name = _str(hn.get("name")).lower()
+        combined = bool(hn_name) and ("handle" in hn_name or "hnadle" in hn_name) and (
+            "top" in hn_name or "bottom" in hn_name
+        )
+        if combined or (
+            _str(hn.get("name"))
+            and ("top" in hn_name or "bottom" in hn_name)
+            and "handle" not in hn_name
+            and "hnadle" not in hn_name
+            and not _str(tn.get("name"))
+            and int(hn.get("pcsVertical") or 0) > 0
+            and int(hn.get("pcsHorizontal") or 0) > 0
+        ):
             h_pcs = int(hn.get("pcsHorizontal") or 2)
             _add(handle, v_pcs * g, h_m, use="shutter_handle", label="Handle-side vertical")
             _add(handle, h_pcs * g, leaf_w_m, use="shutter_top_bottom", label="Shutter top/bottom")
@@ -2475,6 +2497,70 @@ def derive_sliding_shutter_frame_cuts(
                 _add(handle, int(hn.get("pcsHorizontal") or 0) * g, leaf_w_m, use="shutter_top_bottom", label="Shutter top/bottom")
 
     return {"lines": lines, "cutSpecs": cut_specs, "mode": mode, "glassCount": g}
+
+
+def derive_sliding_mesh_shutter_cuts(
+    setup: Mapping[str, Any] | None,
+    *,
+    width_mm: float,
+    height_mm: float,
+    mesh_count: float = 0.0,
+    glass_count: float = 2.0,
+    colour: str | None = None,
+) -> dict[str, Any]:
+    """Mesh shutter frame cuts from series meshSection (never glass sash)."""
+    m = max(int(round(float(mesh_count or 0))), 0)
+    if m <= 0 or not isinstance(setup, Mapping):
+        return {"lines": [], "cutSpecs": [], "meshCount": 0}
+    sl = setup.get("sliding") if isinstance(setup.get("sliding"), Mapping) else {}
+    mesh = sl.get("mesh") if isinstance(sl.get("mesh"), Mapping) else {}
+    sec = mesh.get("meshSection") if isinstance(mesh.get("meshSection"), Mapping) else {}
+    if not _str((sec or {}).get("name")) and mesh.get("sameAsShutter"):
+        sh = sl.get("shutters") if isinstance(sl.get("shutters"), Mapping) else {}
+        sec = sh.get("allSides") or sh.get("handleSide") or {}
+    ns = normalize_section(sec if isinstance(sec, Mapping) else {})
+    if not _str(ns.get("name")) and not _num(ns.get("rate")) and not _num(ns.get("weightKgPerM")):
+        return {"lines": [], "cutSpecs": [], "meshCount": m, "missingSection": True}
+    g = max(int(round(float(glass_count or 1))), 1)
+    h_m = max(float(height_mm or 0), 0.0) / 1000.0
+    leaf_w_m = max(float(width_mm or 0), 0.0) / 1000.0 / g
+    v = int(ns.get("pcsVertical") or 2)
+    h = int(ns.get("pcsHorizontal") or 2)
+    lines: list[dict[str, Any]] = []
+    cut_specs: list[dict[str, Any]] = []
+
+    def _add(qty: float, length_m: float, *, use: str, label: str) -> None:
+        if qty <= 0 or length_m <= 0:
+            return
+        display = _str(ns.get("name")) or label
+        q = float(qty)
+        lines.append({
+            "category": "profile",
+            "name": display,
+            "catalogueName": display,
+            "use": use,
+            "qty": q,
+            "pcs": int(round(q)) if abs(q - round(q)) < 1e-6 else round(q, 4),
+            "lengthM": round(length_m, 4),
+            "metres": round(length_m * q, 4),
+            "unit": "RM",
+            "section": ns,
+            "colour": _str(colour),
+            "remarks": f"{label} ×{int(round(q))}",
+            "sides": use.replace("_", " "),
+        })
+        for _ in range(max(int(round(q)), 0)):
+            cut_specs.append({
+                "lengthM": length_m,
+                "section": ns,
+                "use": use,
+                "sectionName": display,
+                "colour": _str(colour),
+            })
+
+    _add(v * m, h_m, use="mesh_shutter_vertical", label="Mesh shutter vertical")
+    _add(h * m, leaf_w_m, use="mesh_shutter_horizontal", label="Mesh shutter top/bottom")
+    return {"lines": lines, "cutSpecs": cut_specs, "meshCount": m, "section": ns}
 
 
 def derive_sliding_interlock_cuts(
@@ -2542,10 +2628,15 @@ def derive_sliding_interlock_cuts(
                 "colour": _str(colour),
             })
 
+    def _usable(sec: Mapping[str, Any]) -> bool:
+        return bool(_str(sec.get("name")) or _num(sec.get("rate")) or _num(sec.get("weightKgPerM")))
+
     _add(slim_sec, assign["slim"], use="interlock_slim", label="Slim interlock")
-    _add(renf_sec or slim_sec, assign["renf"], use="interlock_renf", label="Reinforcement interlock")
+    # Empty renf card must fall back to slim — `{}` is truthy in Python.
+    renf_use = renf_sec if _usable(renf_sec) else slim_sec
+    _add(renf_use, assign["renf"], use="interlock_renf", label="Reinforcement interlock")
     if assign["meshSlim"] > 0:
-        _add(slim_sec, assign["meshSlim"], use="interlock_mesh_slim", label="Mesh slim interlock")
+        _add(slim_sec if _usable(slim_sec) else renf_sec, assign["meshSlim"], use="interlock_mesh_slim", label="Mesh slim interlock")
 
     reducer_pcs = float(assign.get("glassReducerPcs") or 0)
     if reducer_pcs > 0:
@@ -3552,6 +3643,14 @@ def apply_setup_bom(
             glass_count=shutters,
             colour=colour_ctx,
         )
+        mesh_frames = derive_sliding_mesh_shutter_cuts(
+            setup,
+            width_mm=width_mm,
+            height_mm=height_mm,
+            mesh_count=mesh_n,
+            glass_count=shutters,
+            colour=colour_ctx,
+        )
         interlock_pack = derive_sliding_interlock_cuts(
             setup,
             width_mm=width_mm,
@@ -3632,4 +3731,5 @@ def apply_setup_bom(
     if stype == "sliding":
         out["trackRail"] = locals().get("track_rail") or {"lines": [], "rails": 0}
         out["meeting"] = locals().get("meeting_pack") or {"lines": []}
+        out["meshShutters"] = locals().get("mesh_frames") or {"lines": [], "meshCount": 0}
     return out

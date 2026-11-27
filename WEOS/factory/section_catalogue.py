@@ -112,7 +112,21 @@ def infer_usage(name: str | None) -> str:
         return "meeting"
     if "interlock" in n or "renf" in n or re.search(r"\bint\.?\b", n):
         return "interlock"
+    if "reducer" in n:
+        return "other"
+    if "mesh" in n and any(k in n for k in ("adapt", "adept", "adepet", "adeptor", "adepetr")):
+        return "other"
+    if "mesh" in n and "shutter" in n:
+        return "mesh"
+    if "mesh" in n and "track" not in n and "trck" not in n:
+        return "mesh"
+    # Handle / hnadle (Excel typo) are glass shutter verticals — never "other".
+    if "handle" in n or "hnadle" in n:
+        return "sash"
     if "shutter" in n or "sash" in n:
+        return "sash"
+    # Bare top/bottom shutter horizontals (no track in name)
+    if any(k in n for k in ("top", "bottom", "horizon")) and "track" not in n and "trck" not in n:
         return "sash"
     if "domal" in n:
         return "track"

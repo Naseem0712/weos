@@ -146,7 +146,7 @@
     {
       "id": "25mm_prestige__2_5_track_mesh_shutter",
       "name": "2.5 track mesh shutter",
-      "usage": "sash",
+      "usage": "mesh",
       "usageLabel": "Sash / Shutter",
       "widthMm": 41.6,
       "sectionDepthMm": 17.0,

@@ -100,7 +100,7 @@
     {
       "id": "50mm_casement_prestige__door_slim",
       "name": "Door Slim",
-      "usage": "sash",
+      "usage": "other",
       "usageLabel": "Sash / Shutter",
       "widthMm": 62.4,
       "sectionDepthMm": 58.5,
@@ -123,7 +123,7 @@
     {
       "id": "50mm_casement_prestige__door_big",
       "name": "Door big",
-      "usage": "sash",
+      "usage": "other",
       "usageLabel": "Sash / Shutter",
       "widthMm": 78.6,
       "sectionDepthMm": 58.2,

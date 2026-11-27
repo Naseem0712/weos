@@ -11,7 +11,7 @@
       "title": "25mm SERIES - Prestige",
       "displayName": "25mm SERIES - Prestige",
       "family": "sliding",
-      "productId": "29mm_sliding",
+      "productId": "25mm_prestige",
       "sections": [
         {
           "id": "25mm_prestige__2_track",
@@ -154,7 +154,7 @@
         {
           "id": "25mm_prestige__2_5_track_mesh_shutter",
           "name": "2.5 track mesh shutter",
-          "usage": "sash",
+          "usage": "mesh",
           "usageLabel": "Sash / Shutter",
           "widthMm": 41.6,
           "sectionDepthMm": 17.0,
@@ -175,14 +175,15 @@
           "use": "V2 H2"
         }
       ],
-      "designOptions": []
+      "designOptions": [],
+      "engineProductId": "29mm_sliding"
     },
     {
       "id": "27mm_domal",
       "title": "27mm SERIES Domal",
       "displayName": "27mm SERIES Domal",
       "family": "sliding",
-      "productId": "29mm_sliding",
+      "productId": "27mm_domal",
       "sections": [
         {
           "id": "27mm_domal__2_track",
@@ -300,14 +301,15 @@
           "use": "V1 H0"
         }
       ],
-      "designOptions": []
+      "designOptions": [],
+      "engineProductId": "29mm_sliding"
     },
     {
       "id": "29mm_premium",
       "title": "29mm SERIES Premium",
       "displayName": "29mm SERIES Premium",
       "family": "sliding",
-      "productId": "29mm_sliding",
+      "productId": "29mm_premium",
       "sections": [
         {
           "id": "29mm_premium__2_track",
@@ -425,14 +427,15 @@
           "use": "V1 H0"
         }
       ],
-      "designOptions": []
+      "designOptions": [],
+      "engineProductId": "29mm_sliding"
     },
     {
       "id": "35mm_prestige",
       "title": "35mm SERIES - Prestige",
       "displayName": "35mm SERIES - Prestige",
       "family": "sliding",
-      "productId": "29mm_sliding",
+      "productId": "35mm_prestige",
       "sections": [
         {
           "id": "35mm_prestige__2_track",
@@ -506,7 +509,7 @@
         {
           "id": "35mm_prestige__hnadle_side",
           "name": "hnadle side",
-          "usage": "other",
+          "usage": "sash",
           "usageLabel": "Section",
           "widthMm": 75.2,
           "sectionDepthMm": 35.2,
@@ -529,7 +532,7 @@
         {
           "id": "35mm_prestige__mesh_shutter",
           "name": "mesh shutter",
-          "usage": "sash",
+          "usage": "mesh",
           "usageLabel": "Sash / Shutter",
           "widthMm": 75.2,
           "sectionDepthMm": 35.2,
@@ -573,14 +576,15 @@
           "use": "V1"
         }
       ],
-      "designOptions": []
+      "designOptions": [],
+      "engineProductId": "29mm_sliding"
     },
     {
       "id": "35mm_gulf",
       "title": "35mm SERIES - gulf",
       "displayName": "35mm SERIES - gulf",
       "family": "sliding",
-      "productId": "29mm_sliding",
+      "productId": "35mm_gulf",
       "sections": [
         {
           "id": "35mm_gulf__2_track_top_bottom",
@@ -677,7 +681,7 @@
         {
           "id": "35mm_gulf__hnadle_side",
           "name": "Hnadle side",
-          "usage": "other",
+          "usage": "sash",
           "usageLabel": "Section",
           "widthMm": 58.8,
           "sectionDepthMm": 35.0,
@@ -813,14 +817,15 @@
           "use": "v2, h2"
         }
       ],
-      "designOptions": []
+      "designOptions": [],
+      "engineProductId": "29mm_sliding"
     },
     {
       "id": "40mm_prestige",
       "title": "40mm SERIES - Prestige",
       "displayName": "40mm SERIES - Prestige",
       "family": "sliding",
-      "productId": "29mm_sliding",
+      "productId": "40mm_prestige",
       "sections": [
         {
           "id": "40mm_prestige__2_track_all_side",
@@ -894,7 +899,7 @@
         {
           "id": "40mm_prestige__hnadle_side_vertical",
           "name": "Hnadle side Vertical",
-          "usage": "other",
+          "usage": "sash",
           "usageLabel": "Section",
           "widthMm": 61.5,
           "sectionDepthMm": 41.6,
@@ -1007,14 +1012,15 @@
           "use": "V1"
         }
       ],
-      "designOptions": []
+      "designOptions": [],
+      "engineProductId": "29mm_sliding"
     },
     {
       "id": "40mm_casement_standard",
       "title": "40MM Standerd",
       "displayName": "40MM Standerd",
       "family": "casement",
-      "productId": "casement_stub",
+      "productId": "40mm_casement_standard",
       "sections": [
         {
           "id": "40mm_casement_standard__outer_frame",
@@ -1065,7 +1071,7 @@
         {
           "id": "40mm_casement_standard__shutter_sg_no_need_clip",
           "name": "Shutter SG (no Need Clip)",
-          "usage": "other",
+          "usage": "sash",
           "usageLabel": "Section",
           "widthMm": 40.0,
           "sectionDepthMm": 50.8,
@@ -1162,14 +1168,15 @@
       "designOptions": [
         "20% extra",
         "40% extra"
-      ]
+      ],
+      "engineProductId": "casement_stub"
     },
     {
       "id": "50mm_casement_prestige",
       "title": "50mm SERIES - Prestige",
       "displayName": "50mm SERIES - Prestige",
       "family": "casement",
-      "productId": "casement_stub",
+      "productId": "50mm_casement_prestige",
       "sections": [
         {
           "id": "50mm_casement_prestige__outer_frame",
@@ -1266,7 +1273,7 @@
         {
           "id": "50mm_casement_prestige__door_slim",
           "name": "Door Slim",
-          "usage": "sash",
+          "usage": "other",
           "usageLabel": "Sash / Shutter",
           "widthMm": 62.4,
           "sectionDepthMm": 58.5,
@@ -1289,7 +1296,7 @@
         {
           "id": "50mm_casement_prestige__door_big",
           "name": "Door big",
-          "usage": "sash",
+          "usage": "other",
           "usageLabel": "Sash / Shutter",
           "widthMm": 78.6,
           "sectionDepthMm": 58.2,
@@ -1360,7 +1367,8 @@
           "use": "v2, h2"
         }
       ],
-      "designOptions": []
+      "designOptions": [],
+      "engineProductId": "casement_stub"
     }
   ]
 }

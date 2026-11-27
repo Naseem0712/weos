@@ -154,7 +154,7 @@
         {
           "id": "25mm_prestige__2_5_track_mesh_shutter",
           "name": "2.5 track mesh shutter",
-          "usage": "sash",
+          "usage": "mesh",
           "usageLabel": "Sash / Shutter",
           "widthMm": 41.6,
           "sectionDepthMm": 17.0,
@@ -509,7 +509,7 @@
         {
           "id": "35mm_prestige__hnadle_side",
           "name": "hnadle side",
-          "usage": "other",
+          "usage": "sash",
           "usageLabel": "Section",
           "widthMm": 75.2,
           "sectionDepthMm": 35.2,
@@ -532,7 +532,7 @@
         {
           "id": "35mm_prestige__mesh_shutter",
           "name": "mesh shutter",
-          "usage": "sash",
+          "usage": "mesh",
           "usageLabel": "Sash / Shutter",
           "widthMm": 75.2,
           "sectionDepthMm": 35.2,
@@ -681,7 +681,7 @@
         {
           "id": "35mm_gulf__hnadle_side",
           "name": "Hnadle side",
-          "usage": "other",
+          "usage": "sash",
           "usageLabel": "Section",
           "widthMm": 58.8,
           "sectionDepthMm": 35.0,
@@ -899,7 +899,7 @@
         {
           "id": "40mm_prestige__hnadle_side_vertical",
           "name": "Hnadle side Vertical",
-          "usage": "other",
+          "usage": "sash",
           "usageLabel": "Section",
           "widthMm": 61.5,
           "sectionDepthMm": 41.6,
@@ -1071,7 +1071,7 @@
         {
           "id": "40mm_casement_standard__shutter_sg_no_need_clip",
           "name": "Shutter SG (no Need Clip)",
-          "usage": "other",
+          "usage": "sash",
           "usageLabel": "Section",
           "widthMm": 40.0,
           "sectionDepthMm": 50.8,
@@ -1273,7 +1273,7 @@
         {
           "id": "50mm_casement_prestige__door_slim",
           "name": "Door Slim",
-          "usage": "sash",
+          "usage": "other",
           "usageLabel": "Sash / Shutter",
           "widthMm": 62.4,
           "sectionDepthMm": 58.5,
@@ -1296,7 +1296,7 @@
         {
           "id": "50mm_casement_prestige__door_big",
           "name": "Door big",
-          "usage": "sash",
+          "usage": "other",
           "usageLabel": "Sash / Shutter",
           "widthMm": 78.6,
           "sectionDepthMm": 58.2,

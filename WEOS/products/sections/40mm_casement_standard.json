@@ -54,7 +54,7 @@
     {
       "id": "40mm_casement_standard__shutter_sg_no_need_clip",
       "name": "Shutter SG (no Need Clip)",
-      "usage": "other",
+      "usage": "sash",
       "usageLabel": "Section",
       "widthMm": 40.0,
       "sectionDepthMm": 50.8,

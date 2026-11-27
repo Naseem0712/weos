@@ -479,6 +479,112 @@ def main() -> None:
         _ok(first.get("added") == 1, f"first stock post added 1 got {first.get('added')}")
         _ok(second.get("skipped") is True and second.get("added") == 0, f"retry skipped {second}")
 
+    # ── Track → outer only; shutter ≠ mesh; glass area×rate ─────────
+    def _profile_names(cost: dict, *uses: str) -> set[str]:
+        out: set[str] = set()
+        for p in cost.get("profiles") or []:
+            if uses and str(p.get("use") or "") not in uses and not any(
+                str(p.get("use") or "").startswith(u) for u in uses
+            ):
+                continue
+            out.add(str(p.get("name") or "").lower())
+        return out
+
+    # Sliding 25mm: selected 3-track on outer only; glass shutter ≠ mesh
+    p25 = load_product("25mm_prestige", strict=False)
+    c25 = compute_sliding_design_cost(
+        {
+            "width": 1800,
+            "height": 2100,
+            "qty": 1,
+            "glass": "8mm_toughened",
+            "colour": "white",
+            "glassShutters": 2,
+            "meshShutters": 0,
+            "trackCount": 3,
+            "opening": "side",
+            "system": "sliding",
+        },
+        product=p25,
+    )
+    b25 = c25.get("breakdown") or {}
+    track_names = _profile_names(c25, "track")
+    shutter_names = _profile_names(c25, "shutter_handle", "shutter_top_bottom", "shutter_vertical", "shutter_horizontal", "shutter_top", "shutter_bottom")
+    _ok(c25.get("costEngine") == "live" and b25.get("aluminium", 0) > 3000, f"25mm 3T Al {b25}")
+    _ok(b25.get("glass", 0) > 1000 and b25.get("hardware", 0) > 500, f"25mm glass/HW {b25}")
+    _ok(any("3" in n and "track" in n for n in track_names), f"25mm outer uses 3-track {track_names}")
+    _ok(all("mesh" not in n for n in shutter_names), f"25mm glass shutter not mesh {shutter_names}")
+    _ok(any("handle" in n for n in shutter_names), f"25mm glass shutter handle {shutter_names}")
+
+    # Sliding 35mm gulf: split track vertical≠top/bottom; handle ≠ top/bottom
+    p35g = load_product("35mm_gulf", strict=False)
+    c35g = compute_sliding_design_cost(
+        {
+            "width": 2050,
+            "height": 1970,
+            "qty": 1,
+            "glass": "5mm_clear_toughened",
+            "colour": "white",
+            "glassShutters": 2,
+            "meshShutters": 0,
+            "trackCount": 2,
+            "opening": "side",
+            "system": "sliding",
+        },
+        product=p35g,
+    )
+    b35g = c35g.get("breakdown") or {}
+    t35 = _profile_names(c35g, "track")
+    s35 = _profile_names(c35g, "shutter_handle", "shutter_top", "shutter_bottom", "shutter_top_bottom", "shutter_vertical", "shutter_horizontal")
+    _ok(b35g.get("aluminium", 0) > 5000 and b35g.get("glass", 0) > 500 and b35g.get("hardware", 0) > 500, f"35mm_gulf Al/Glass/HW {b35g}")
+    _ok(any("vertical" in n for n in t35), f"35mm_gulf outer vertical track {t35}")
+    _ok(any("top" in n or "bottom" in n for n in t35), f"35mm_gulf outer top/bottom track {t35}")
+    _ok(any("hnadle" in n or "handle" in n for n in s35), f"35mm_gulf handle shutter {s35}")
+    _ok(any(("top" in n or "bottom" in n) and "handle" not in n and "hnadle" not in n for n in s35), f"35mm_gulf top/bottom shutter {s35}")
+    _ok(all("mesh" not in n for n in s35), f"35mm_gulf shutter not mesh {s35}")
+
+    # Glass selection must change glass amount
+    c35g_thick = compute_sliding_design_cost(
+        {
+            "width": 2050,
+            "height": 1970,
+            "qty": 1,
+            "glass": "8mm_toughened",
+            "colour": "white",
+            "glassShutters": 2,
+            "trackCount": 2,
+            "system": "sliding",
+        },
+        product=p35g,
+    )
+    g_thin = float((c35g.get("breakdown") or {}).get("glass") or 0)
+    g_thick = float((c35g_thick.get("breakdown") or {}).get("glass") or 0)
+    _ok(g_thick > g_thin > 0, f"glass rate applied thin={g_thin} thick={g_thick}")
+
+    # Casement 40mm: outer frame + door from series; glass live
+    p40c = load_product("40mm_casement_standard", strict=False)
+    c40 = compute_casement_design_cost(
+        {
+            "width": 1200,
+            "height": 1500,
+            "qty": 1,
+            "glass": "8mm_toughened",
+            "colour": "white",
+            "casementLayout": {
+                "bands": [{"heightMm": 1500, "panels": [{"role": "openable", "widthMm": 1200}]}]
+            },
+        },
+        product=p40c,
+        setup=p40c.get("setup"),
+    )
+    b40 = c40.get("breakdown") or {}
+    uses40 = {str(p.get("use")) for p in (c40.get("profiles") or [])}
+    names40 = {str(p.get("name") or "").lower() for p in (c40.get("profiles") or [])}
+    _ok(c40.get("costEngine") == "live" and b40.get("aluminium", 0) > 1000, f"40mm case Al {b40}")
+    _ok(b40.get("glass", 0) > 1000 and b40.get("hardware", 0) > 100, f"40mm case glass/HW {b40}")
+    _ok("outer_frame" in uses40 and "door" in uses40, f"40mm case uses {uses40}")
+    _ok(any("outer" in n for n in names40) and any("shutter" in n or "door" in n for n in names40), f"40mm case names {names40}")
+
     print("Design cost / interlock / materials / stock smoke passed.")
 
 

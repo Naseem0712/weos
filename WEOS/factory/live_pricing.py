@@ -310,10 +310,10 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
             and design_cost.get("costEngine") == "live"
             and float(design_cost.get("total") or 0) > 0
         ):
-            # Prefer design cost when legacy quotation is empty or weaker
-            if cost_total <= 0 or float(design_cost.get("total") or 0) >= cost_total * 0.25:
-                cost_total = float(design_cost["total"])
-                cost_unit = float(design_cost.get("unitTotal") or (cost_total / max(qty, 1)))
+            # Always prefer live materials→cost pipeline over stub/old quotation.json
+            # (the old 0.25× gate kept inflated legacy totals on many series).
+            cost_total = float(design_cost["total"])
+            cost_unit = float(design_cost.get("unitTotal") or (cost_total / max(qty, 1)))
     except Exception:
         design_cost = None
 
