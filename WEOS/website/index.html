@@ -8004,6 +8004,12 @@ async function refreshLivePrice() {
         else if (eng && eng !== 'stub') bits.push('cost ' + eng);
         if (w.wastageMetres > 0) bits.push('waste ' + (w.wastagePercent != null ? w.wastagePercent + '%' : ''));
         if ((live.cost && live.cost.wastageCost > 0) || br.wastage > 0) bits.push(money((live.cost && live.cost.wastageCost) || br.wastage || 0));
+        const unpriced = new Set(design.missingMaterialRates || []);
+        for (const item of design.hardware || []) {
+          if (item.qty > 0 && !(item.unitRate > 0)) unpriced.add(item.name);
+        }
+        if (unpriced.size) bits.push('Incomplete cost · set rates for ' + Array.from(unpriced).join(', '));
+        if (design.missingClip) bits.push('Incomplete material list · select the matching SG/DG clip in Series Setup');
         $('liveWasteHint').textContent = bits.join(' · ');
       }
       if ($('liveCostParts')) {
