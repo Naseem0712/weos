@@ -1221,7 +1221,7 @@ def _norm_casement_gasket(raw: Any, *, kind: str) -> dict[str, Any]:
         "glass": {
             "ratePerM": _num(glass.get("ratePerM") or glass.get("rate")) or 0.0,
             "formula": _str(glass.get("formula") or "height_m*4 + width_m*4"),
-            "notes": _str(glass.get("notes") or "H×4 + W×4 per door"),
+            "notes": _str(glass.get("notes") or "twice the sum of glazed opening perimeters"),
         },
     }
 
@@ -1687,6 +1687,9 @@ def derive_casement_hardware_lines(
     door_count: float = 1.0,
     side_swing_doors: float | None = None,
     top_hung_doors: float | None = None,
+    door_perimeter_m: float | None = None,
+    glazing_perimeter_m: float | None = None,
+    mullion_count: float = 0,
 ) -> list[dict[str, Any]]:
     """Expand casement hardwarePack into BOM lines.
 
@@ -1714,6 +1717,15 @@ def derive_casement_hardware_lines(
     kind = _str(cm.get("kind") or "normal")
     lines: list[dict[str, Any]] = []
 
+    catalogue_ids = {
+        "Frame connectors": "hw_connector_outer_connecters_40",
+        "Door connectors": "hw_connector_door_connecter_40",
+        "Mullion connectors": "hw_connector_mullion_connecter_40",
+        "Gasket — outer frame": "hw_gasket_epdm_gaickets_19",
+        "Gasket — door outside": "hw_gasket_epdm_same_rate_12",
+        "Gasket — glass": "hw_gasket_epdm_same_rate_12",
+    }
+
     def add(
         name: str,
         qty: float,
@@ -1727,6 +1739,15 @@ def derive_casement_hardware_lines(
     ) -> None:
         if qty <= 0:
             return
+        item_id = catalogue_ids.get(name)
+        if not rate and item_id:
+            from WEOS.factory.hardware_catalogue import get_hardware
+            try:
+                item = get_hardware(item_id)
+            except FileNotFoundError:
+                item = {}
+            if item.get("unit") == unit and item.get("status") != "inactive":
+                rate = float(item.get("rate") or 0)
         display = name
         if capacity or brand:
             display = format_named_capacity_brand(
@@ -1842,7 +1863,9 @@ def derive_casement_hardware_lines(
         brand=_str(lock.get("brand")),
     )
 
-    if kind == "normal":
+    if kind != "stile":
+        add("Mullion connectors", 2 * mullion_count, 0, "PC", "2 per division")
+        add("Window angles", 4, float((pack.get("wings") or {}).get("rate") or 0), "PC", "4 per outer")
         fc = pack.get("frameConnectors") or {}
         add("Frame connectors", float(fc.get("qty") or 4), float(fc.get("rate") or 0), fc.get("unit") or "PC", "4 nos")
         dc = pack.get("doorConnectors") or {}
@@ -1864,12 +1887,10 @@ def derive_casement_hardware_lines(
 
     gasket = pack.get("gasket") if isinstance(pack.get("gasket"), Mapping) else {}
     outer_g = gasket.get("outerFrame") or {}
-    if kind == "stile" or not outer_g.get("includeBottom", True):
-        outer_m = w_m * 1.0 + h_m * 2.0  # top + vertical×2
-        outer_note = "top + vertical×2 (no bottom)"
-    else:
-        outer_m = h_m * 2.0 + w_m * 2.0
-        outer_note = "H×2 + W×2"
+    outer_m = 2 * (w_m + h_m)
+    outer_note = "outer perimeter"
+    door_m = outer_m * doors if door_perimeter_m is None else door_perimeter_m
+    glazing_m = door_m if glazing_perimeter_m is None else glazing_perimeter_m
     add("Gasket — outer frame", outer_m, float(outer_g.get("ratePerM") or 0), "RM", outer_note)
     inter = gasket.get("interlock") or {}
     add(
@@ -1882,15 +1903,15 @@ def derive_casement_hardware_lines(
     door_g = gasket.get("doorOutside") or {}
     add(
         "Gasket — door outside",
-        (h_m * 2.0 + w_m * 2.0) * doors,
+        2 * door_m,
         float(door_g.get("ratePerM") or 0),
         "RM",
-        "H×2 + W×2 per door",
+        "twice the sum of door perimeters",
     )
     glass_g = gasket.get("glass") or {}
     add(
         "Gasket — glass",
-        (h_m * 4.0 + w_m * 4.0) * doors,
+        2 * glazing_m,
         float(glass_g.get("ratePerM") or 0),
         "RM",
         "H×4 + W×4 per door",
@@ -2390,7 +2411,7 @@ def assign_sliding_interlocks(
     elif g == 2:
         slim, renf, rule = 1, 1, "2_glass_1slim_1renf"
     elif g == 3:
-        slim, renf, rule = 1, 2, "3_glass_1slim_2renf"
+        slim, renf, rule = 2, 2, "3_glass_centre_two_slim"
     elif g == 4 and op == "side" and tc >= 3.99:
         slim, renf, rule = 1, 3, "4_glass_4track_side_1slim_3renf"
     elif g == 4:
@@ -2489,6 +2510,7 @@ def derive_sliding_shutter_frame_cuts(
             return False
         return "mesh" not in _str(sec.get("name")).lower()
 
+    handle_count = 2 if g == 3 else g
     if mode == "all_sides_same":
         sec = sh.get("allSides") or sh.get("handleSide") or {}
         # Never bill glass shutters on the mesh section
@@ -2497,7 +2519,7 @@ def derive_sliding_shutter_frame_cuts(
         ns = normalize_section(sec if isinstance(sec, Mapping) else {})
         v = int(ns.get("pcsVertical") or 2)
         h = int(ns.get("pcsHorizontal") or 2)
-        _add(sec, v * g, h_m, use="shutter_vertical", label="Shutter vertical")
+        _add(sec, handle_count, h_m, use="shutter_vertical", label="Shutter vertical")
         _add(sec, h * g, leaf_w_m, use="shutter_horizontal", label="Shutter top/bottom")
     else:
         handle = sh.get("handleSide") or {}
@@ -2524,16 +2546,16 @@ def derive_sliding_shutter_frame_cuts(
             and int(hn.get("pcsHorizontal") or 0) > 0
         ):
             h_pcs = int(hn.get("pcsHorizontal") or 2)
-            _add(handle, v_pcs * g, h_m, use="shutter_handle", label="Handle-side vertical")
+            _add(handle, handle_count, h_m, use="shutter_handle", label="Handle-side vertical")
             _add(handle, h_pcs * g, leaf_w_m, use="shutter_top_bottom", label="Shutter top/bottom")
         else:
-            _add(handle, v_pcs * g, h_m, use="shutter_handle", label="Handle-side vertical")
+            _add(handle, handle_count, h_m, use="shutter_handle", label="Handle-side vertical")
             t_pcs = int(tn.get("pcsHorizontal") or tn.get("pcsVertical") or (1 if _str(tn.get("name")) else 0))
             b_pcs = int(bn.get("pcsHorizontal") or bn.get("pcsVertical") or (1 if _str(bn.get("name")) else 0))
             if t_pcs:
-                _add(top, t_pcs * g, leaf_w_m, use="shutter_top", label="Shutter top")
+                _add(top, g, leaf_w_m, use="shutter_top", label="Shutter top")
             if b_pcs:
-                _add(bot, b_pcs * g, leaf_w_m, use="shutter_bottom", label="Shutter bottom")
+                _add(bot, g, leaf_w_m, use="shutter_bottom", label="Shutter bottom")
             # Combined "handle side, top, bottom" with H=2 already covered above
             if not t_pcs and not b_pcs and int(hn.get("pcsHorizontal") or 0) > 0:
                 _add(handle, int(hn.get("pcsHorizontal") or 0) * g, leaf_w_m, use="shutter_top_bottom", label="Shutter top/bottom")
@@ -2557,10 +2579,12 @@ def derive_sliding_mesh_shutter_cuts(
     sl = setup.get("sliding") if isinstance(setup.get("sliding"), Mapping) else {}
     mesh = sl.get("mesh") if isinstance(sl.get("mesh"), Mapping) else {}
     sec = mesh.get("meshSection") if isinstance(mesh.get("meshSection"), Mapping) else {}
-    if not _str((sec or {}).get("name")) and mesh.get("sameAsShutter"):
-        sh = sl.get("shutters") if isinstance(sl.get("shutters"), Mapping) else {}
-        sec = sh.get("allSides") or sh.get("handleSide") or {}
-    ns = normalize_section(sec if isinstance(sec, Mapping) else {})
+    shared = bool(mesh.get("sameAsShutter")) and not _str(sec.get("name"))
+    sh = sl.get("shutters") or {}
+    if shared:
+        sec = next((s for s in (sh.get("handleSide"), sh.get("allSides"))
+                    if s and _str(s.get("name"))), {})
+    ns = normalize_section(sec)
     if not _str(ns.get("name")) and not _num(ns.get("rate")) and not _num(ns.get("weightKgPerM")):
         return {"lines": [], "cutSpecs": [], "meshCount": m, "missingSection": True}
     g = max(int(round(float(glass_count or 1))), 1)
@@ -2571,10 +2595,10 @@ def derive_sliding_mesh_shutter_cuts(
     lines: list[dict[str, Any]] = []
     cut_specs: list[dict[str, Any]] = []
 
-    def _add(qty: float, length_m: float, *, use: str, label: str) -> None:
+    def _add(qty: float, length_m: float, section: Mapping[str, Any], *, use: str, label: str) -> None:
         if qty <= 0 or length_m <= 0:
             return
-        display = _str(ns.get("name")) or label
+        display = _str(section.get("name")) or label
         q = float(qty)
         lines.append({
             "category": "profile",
@@ -2586,7 +2610,7 @@ def derive_sliding_mesh_shutter_cuts(
             "lengthM": round(length_m, 4),
             "metres": round(length_m * q, 4),
             "unit": "RM",
-            "section": ns,
+            "section": section,
             "colour": _str(colour),
             "remarks": f"{label} ×{int(round(q))}",
             "sides": use.replace("_", " "),
@@ -2594,14 +2618,24 @@ def derive_sliding_mesh_shutter_cuts(
         for _ in range(max(int(round(q)), 0)):
             cut_specs.append({
                 "lengthM": length_m,
-                "section": ns,
+                "section": section,
                 "use": use,
                 "sectionName": display,
                 "colour": _str(colour),
             })
 
-    _add(v * m, h_m, use="mesh_shutter_vertical", label="Mesh shutter vertical")
-    _add(h * m, leaf_w_m, use="mesh_shutter_horizontal", label="Mesh shutter top/bottom")
+    _add(m if shared else v * m, h_m, ns, use="mesh_shutter_vertical", label="Mesh shutter vertical")
+    if shared:
+        for side in ("top", "bottom"):
+            section = sh.get(side) or {}
+            _add(m, leaf_w_m, section if _str(section.get("name")) else ns,
+                 use="mesh_shutter_horizontal", label=f"Mesh shutter {side}")
+    else:
+        _add(h * m, leaf_w_m, ns, use="mesh_shutter_horizontal", label="Mesh shutter top/bottom")
+    adapter = (mesh.get("adapter") or {}).get("section") or {}
+    if _str(adapter.get("name")):
+        _add(2 * m, h_m, adapter, use="mesh_adapter", label="Mesh adapter vertical")
+        _add(2 * m, leaf_w_m, adapter, use="mesh_adapter", label="Mesh adapter horizontal")
     return {"lines": lines, "cutSpecs": cut_specs, "meshCount": m, "section": ns}
 
 
@@ -2744,37 +2778,17 @@ def derive_sliding_track_fill(
 
     if mode == "all_sides_same":
         sec = sides.get("all") or sides.get("vertical")
-        ns = normalize_section(sec) if sec is not None else normalize_section({})
-        # Excel V2/H2 → 2 vertical @ H + 2 horizontal @ W (one section, all sides)
-        v_pcs = ns.get("pcsVertical")
-        h_pcs = ns.get("pcsHorizontal")
-        if ns.get("allSidesSame") or (v_pcs and h_pcs) or _str(ns.get("bomHint")) == "all_sides_same_v2h2":
-            add_line("track_vertical", int(v_pcs or 2), sec, h)
-            add_line("track_horizontal", int(h_pcs or 2), sec, w)
-        else:
-            add_line("track_all", pieces.get("all") or 4, sec, 0)
-    elif mode == "verticals_same_h_diff":
-        vsec = normalize_section(sides.get("vertical") or {})
-        tsec = normalize_section(sides.get("top") or {})
-        bsec = normalize_section(sides.get("bottom") or {})
-        v_q = vsec.get("pcsVertical") or pieces.get("vertical") or 2
-        # Top/bottom may carry pcsHorizontal (or inverted Excel V count → already corrected)
-        t_q = tsec.get("pcsHorizontal") or pieces.get("top") or 1
-        b_q = bsec.get("pcsHorizontal") or pieces.get("bottom") or 1
-        add_line("track_vertical", int(v_q), sides.get("vertical"), h)
-        add_line("track_top", int(t_q), sides.get("top"), w)
-        add_line("track_bottom", int(b_q), sides.get("bottom"), w)
+        add_line("track_vertical", 2, sec, h)
+        add_line("track_horizontal", 2, sec, w)
     else:
-        lv = normalize_section(sides.get("leftVertical") or {})
-        rv = normalize_section(sides.get("rightVertical") or {})
-        tsec = normalize_section(sides.get("top") or {})
-        bsec = normalize_section(sides.get("bottom") or {})
-        add_line("track_left", int(lv.get("pcsVertical") or 1), sides.get("leftVertical"), h)
-        add_line("track_right", int(rv.get("pcsVertical") or 1), sides.get("rightVertical"), h)
-        top_q = tsec.get("pcsHorizontal") or pieces.get("top") or 1
-        bot_q = bsec.get("pcsHorizontal") or pieces.get("bottom") or 1
-        add_line("track_top", int(top_q), sides.get("top"), w)
-        add_line("track_bottom", int(bot_q), sides.get("bottom"), w)
+        if mode == "verticals_same_h_diff":
+            add_line("track_vertical", 2, sides.get("vertical"), h)
+        else:
+            add_line("track_left", 1, sides.get("leftVertical"), h)
+            add_line("track_right", 1, sides.get("rightVertical"), h)
+        # The catalogue's H2 describes the complete frame, once per side.
+        add_line("track_top", 1, sides.get("top"), w)
+        add_line("track_bottom", 1, sides.get("bottom"), w)
 
     return {
         "pattern": pattern,
@@ -2856,6 +2870,19 @@ def derive_sliding_track_rail_cuts(
     if not _str(sec.get("name")) and not _num(sec.get("rate")):
         # No catalogue rail — skip rather than invent a zero row
         return {"lines": [], "cutSpecs": [], "rails": rails, "missingSection": True}
+    if not _num(sec.get("rate")) or (
+        sec.get("rateUnit") == "kg" and not _num(sec.get("weightKgPerM"))
+    ):
+        from WEOS.factory.hardware_catalogue import list_hardware
+
+        name = _str(sec.get("name")).casefold()
+        for item in list_hardware():
+            if _str(item.get("name")).casefold() != name or item.get("status") == "inactive":
+                continue
+            unit = _str(item.get("unit")).lower()
+            if unit in ("rft", "ft", "rm", "rmt", "m") and _num(item.get("rate")):
+                sec = dict(sec, rate=item["rate"], rateUnit=unit)
+                break
     L_m = max(float(width_mm or 0), 0.0) / 1000.0
     if L_m <= 0:
         return {"lines": [], "cutSpecs": [], "rails": rails}
@@ -2948,6 +2975,7 @@ def derive_sliding_hardware_lines(
     height_mm: float,
     shutter_count: float = 2.0,
     mesh_count: float = 0.0,
+    glazing_perimeter_m: float | None = None,
 ) -> list[dict[str, Any]]:
     """Expand structured hardwarePack into priced BOM lines (per opening).
 
@@ -3071,10 +3099,10 @@ def derive_sliding_hardware_lines(
     epdm = pack.get("epdm") or {}
     add(
         "EPDM dual-side",
-        glass_peri * shutters,
+        2 * glass_peri * shutters if glazing_perimeter_m is None else 2 * glazing_perimeter_m,
         float(epdm.get("ratePerM") or 0),
         "RM",
-        "2(H+leafW) × glass shutters (rules glazing EPDM)",
+        "twice the sum of glazed opening perimeters",
         brand=_str(epdm.get("brand")),
         origin=_str(epdm.get("origin") or "indian"),
     )
@@ -3705,6 +3733,7 @@ def apply_setup_bom(
         )
         pack_hw = derive_sliding_hardware_lines(
             setup,
+            glazing_perimeter_m=context.get("glazingPerimeterM"),
             width_mm=width_mm,
             height_mm=height_mm,
             shutter_count=shutters,
@@ -3733,6 +3762,9 @@ def apply_setup_bom(
             door_count=shutters,
             side_swing_doors=float(side_n) if side_n is not None else None,
             top_hung_doors=float(top_n) if top_n is not None else None,
+            door_perimeter_m=context.get("doorPerimeterM"),
+            glazing_perimeter_m=context.get("glazingPerimeterM"),
+            mullion_count=float(context.get("mullionCount") or 0),
         )
         if hw:
             # Prefer weight-picked hinges/floor springs when both exist

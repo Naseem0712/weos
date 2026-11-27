@@ -137,34 +137,10 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
             "colour": _str(p.get("colour") or colour_raw) or colour_detail,
             "finishFamily": finish_family or None,
             "coatingBrand": coat_brand or None,
-            "wastageM": waste_m if waste_m > 0 else None,
+            "wastageM": None,
             "wastagePercent": waste_pct if waste_pct > 0 else None,
             "remarks": p.get("remarks") or p.get("use") or "",
         })
-    # Also surface setup section names when design engine stubbed
-    if not materials and isinstance(product.get("setup"), Mapping):
-        try:
-            from WEOS.factory.product_setup import flatten_setup_sections
-
-            for sec in flatten_setup_sections(product["setup"]):
-                nm = _str(sec.get("name"))
-                if nm:
-                    std_mm = _f(sec.get("stdLengthMm"))
-                    stock = f"{std_mm:g} mm stock" if std_mm else _str(sec.get("stdLength") or "")
-                    materials.append({
-                        "kind": "profile",
-                        "name": nm,
-                        "qty": 1,
-                        "pcs": 1,
-                        "unit": "section",
-                        "sides": _str(sec.get("use")),
-                        "stock": stock or "—",
-                        "weightKgPerM": sec.get("weightKgPerM"),
-                        "remarks": _str(sec.get("use")),
-                    })
-        except Exception:
-            pass
-
     def _hw_display(h: Mapping[str, Any]) -> tuple[str, str]:
         try:
             from WEOS.factory.hardware_brands import resolve_hardware_brand
@@ -228,7 +204,8 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
             "stock": "—",
             "remarks": _str(m.get("remarks") or m.get("formula") or ""),
         })
-    for h in line.get("hardware") or []:
+    # A reopened line can carry the previous drawing's generated hardware.
+    for h in (line.get("hardware") or []) if not design.get("ok") else ():
         if isinstance(h, Mapping):
             nm, brand = _hw_display(h)
             if nm and not any(x["name"] == nm for x in hardware):
@@ -250,8 +227,10 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
         "kind": "glass",
         "name": _str(g.get("catalogueName") or g.get("packName") or g.get("name") or glass_name),
         "packName": _str(g.get("packName") or g.get("catalogueName") or g.get("name") or glass_name),
-        "qty": g.get("qty") or 1,
-        "pcs": g.get("qty") or 1,
+        "qty": g.get("paneCount") or 1,
+        "pcs": g.get("paneCount") or 1,
+        "panes": g.get("panes") or [],
+        "areaBasis": g.get("areaBasis"),
         "unit": "sft",
         "areaSft": g.get("areaSft"),
         "widthMm": g.get("widthMm") or line.get("width"),
@@ -268,25 +247,6 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
         "remarks": "",
     }
 
-    # Fixed partition series names
-    parts = line.get("partitions") or (line.get("options") or {}).get("partitions") or []
-    for p in parts if isinstance(parts, (list, tuple)) else []:
-        if not isinstance(p, Mapping):
-            continue
-        series = _str(p.get("profileSeries") or p.get("sectionSeries") or p.get("fixedSeries"))
-        if series:
-            side = _str(p.get("side"))
-            materials.append({
-                "kind": "profile",
-                "name": series,
-                "qty": 1,
-                "pcs": 1,
-                "unit": "fix",
-                "sides": f"{side} fix" if side else "fix",
-                "stock": "—",
-                "remarks": f"{side} fix {_f(p.get('sizeMm'))} mm",
-            })
-
     return {
         "lineId": line.get("lineId"),
         "serial": line.get("serial"),
@@ -300,6 +260,7 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
         "finishFamily": finish_family or None,
         "coatingBrand": coat_brand or None,
         "location": _str(line.get("locationName") or line.get("positionName") or ""),
+        "missingClip": design.get("missingClip", False),
         "materials": materials,
         "hardware": hardware,
         "glass": glass_row,
@@ -333,7 +294,7 @@ def build_quote_materials_list(
     Rulebook v2: quote-wide commercial nest + purchase list + allocated wastage
     are attached so the printable list matches quote costing (not isolated lines).
     """
-    active = [ln for ln in lines if isinstance(ln, Mapping)]
+    active = [ln for ln in lines if isinstance(ln, Mapping) and not ln.get("cancelled")]
     quote_pack: dict[str, Any] = {}
     cost_by_line: dict[str, Mapping[str, Any]] = {}
     try:
@@ -392,12 +353,15 @@ def build_quote_materials_list(
             key = _str(m.get("name")).lower()
             if not key:
                 continue
+            identity = (key, m.get("seriesId"), m.get("sectionId"), m.get("colour"), m.get("unit"))
             slot = mat_roll.setdefault(
-                key,
+                identity,
                 {
                     "name": m["name"],
+                    "seriesId": m.get("seriesId"), "sectionId": m.get("sectionId"),
+                    "colour": m.get("colour"), "metres": 0.0,
                     "qty": 0.0,
-                    "unit": m.get("unit"),
+                    "unit": "pcs" if m.get("kind") == "profile" else m.get("unit"),
                     "sides": set(),
                     "stock": _str(m.get("stock")),
                     "weightKg": 0.0,
@@ -408,7 +372,9 @@ def build_quote_materials_list(
             pcs = m.get("pcs")
             if pcs is None:
                 pcs = m.get("qty") or m.get("lengthM") or 1
-            slot["qty"] = _f(slot["qty"]) + _f(pcs) * lq
+            quantity = m.get("areaSft") if m.get("kind") == "mesh" else pcs
+            slot["qty"] = _f(slot["qty"]) + _f(quantity) * lq
+            slot["metres"] += _f(m.get("cutLengthM")) * _f(pcs) * lq
             if m.get("sides"):
                 slot["sides"].add(_str(m.get("sides")))
             if m.get("stock") and not slot.get("stock"):
@@ -478,6 +444,8 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
             bits.append(f"{esc(pcs)} pcs")
         if m.get("lengthM") is not None:
             bits.append(f"{esc(round(_f(m.get('lengthM')), 3))} m cut")
+        if m.get("cutLengthM") and not _f(m.get("aluminiumPerM")):
+            bits.append("material rate missing")
         if m.get("sides"):
             bits.append(f"sides: {esc(m.get('sides'))}")
         if m.get("use"):
@@ -511,6 +479,8 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
             bits.append(f"{esc(pcs)} {esc(h.get('unit') or 'PC')}")
         if h.get("unitRate") is not None and _f(h.get("unitRate")) > 0:
             bits.append(f"₹{esc(round(_f(h.get('unitRate')), 1))}")
+        elif _f(pcs) > 0:
+            bits.append("rate missing")
         if h.get("amount") is not None and _f(h.get("amount")) > 0:
             bits.append(f"= ₹{esc(round(_f(h.get('amount')), 2))}")
         return " · ".join(bits)
@@ -533,6 +503,8 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
             f"</li>"
             for m in (ln.get("materials") or [])
         ) or "<li class=muted>—</li>"
+        if ln.get("missingClip"):
+            mats += "<li>Selected series is missing the glazing clip for this glass.</li>"
         hws = "".join(
             f"<li><strong>{esc(h.get('name'))}</strong>"
             f"{(' — ' + _hw_bits(h)) if _hw_bits(h) else ''}</li>"
@@ -548,6 +520,8 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
             g_bits.append(f"{esc(g.get('thicknessMm'))} mm")
         if g.get("sizeLabel"):
             g_bits.append(esc(g.get("sizeLabel")))
+        if g.get("areaBasis") != "pane_after_deductions" and g.get("areaBasis"):
+            g_bits.append(esc(g["areaBasis"]))
         if g.get("qty") is not None:
             g_bits.append(f"qty {esc(g.get('qty'))}")
         if g.get("areaSft") is not None:
@@ -599,18 +573,19 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
 
     def summary_table(title: str, items: Sequence[Mapping[str, Any]], qty_key: str = "qty") -> str:
         body = "".join(
-            f"<tr><td>{esc(it.get('name'))}</td>"
+            f"<tr><td>{esc(it.get('name'))} {esc(it.get('seriesId'))} {esc(it.get('colour'))}</td>"
             f"<td class=num>{esc(round(_f(it.get(qty_key)), 3) if it.get(qty_key) is not None else '')}</td>"
             f"<td>{esc(it.get('unit'))}</td>"
+            f"<td class=num>{esc(round(_f(it.get('metres')), 3)) if it.get('metres') else ''} </td>"
             f"<td>{esc(it.get('sides') or '')}</td>"
             f"<td>{esc(it.get('stock') or '')}</td>"
             f"<td class=num>{esc(round(_f(it.get('weightKg')), 3) if it.get('weightKg') is not None else '')}</td>"
             f"<td class=num>{esc(round(_f(it.get('wastageM')), 3) if it.get('wastageM') is not None else '')}</td></tr>"
             for it in items
-        ) or "<tr><td colspan=7 class=muted>None</td></tr>"
+        ) or "<tr><td colspan=8 class=muted>None</td></tr>"
         return (
             f"<h2>{esc(title)}</h2><table><thead><tr>"
-            f"<th>Name</th><th>Pcs / qty</th><th>Unit</th><th>Sides</th>"
+            f"<th>Name</th><th>Pcs / qty</th><th>Unit</th><th>Total cut m</th><th>Sides</th>"
             f"<th>Section stock</th><th>Weight kg</th><th>Wastage m</th>"
             f"</tr></thead><tbody>{body}</tbody></table>"
         )

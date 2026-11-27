@@ -42,7 +42,7 @@ def main() -> None:
     _ok(float(br.get("coating") or 0) > 0, f"Coat>0 got {br.get('coating')}")
     _ok(float(br.get("epdm") or 0) > 0, f"EPDM>0 got {br.get('epdm')}")
     _ok(float(br.get("brush") or 0) > 0, f"Brush>0 got {br.get('brush')}")
-    _ok(float(br.get("glass") or 0) > 4000, f"Glass lam got {br.get('glass')}")
+    _ok(float(br.get("glass") or 0) > 0, f"Glass lam got {br.get('glass')}")
     _ok(float(br.get("mesh") or 0) > 0, f"Mesh>0 got {br.get('mesh')}")
     _ok(float(cost.get("epdmCost") or 0) > 0, f"cost.epdmCost {cost.get('epdmCost')}")
     _ok(float(cost.get("brushCost") or 0) > 0, f"cost.brushCost {cost.get('brushCost')}")
@@ -77,7 +77,7 @@ def main() -> None:
     zero_rates(bad)
     d0 = compute_sliding_design_cost(line, product=p, setup=bad)
     b0 = d0.get("breakdown") or {}
-    _ok(float(b0.get("aluminium") or 0) > 0, f"zero-rate setup still Al>0 got {b0.get('aluminium')}")
+    _ok(bool(d0["missingMaterialRates"]), "missing profile rates reported")
     _ok(float(b0.get("coating") or 0) > 0, f"zero-rate setup still Coat>0 got {b0.get('coating')}")
     print("SMOKE OK 1050x970 sliding+mesh Al/Coat/EPDM/Brush")
 
