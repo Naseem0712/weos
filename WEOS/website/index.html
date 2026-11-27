@@ -2028,8 +2028,41 @@ textarea{max-width:100%}
               <div class="rt-row">
                 <div><label class="l">W (ft)</label><input id="gtWidthFt" type="number" step="0.01" value="13" style="width:64px"/></div>
                 <div><label class="l">H (ft)</label><input id="gtHeightFt" type="number" step="0.01" value="8" style="width:64px"/></div>
-                <div><label class="l">Louver gap</label><input id="gtGap" type="number" step="1" value="25" style="width:56px"/></div>
                 <div><label class="l">Qty</label><input id="gtQty" type="number" min="1" value="1" style="width:48px"/></div>
+              </div>
+              <div class="rt-row">
+                <div class="grow"><label class="l">Outer / wall frame</label><select id="gtFrameSec" style="width:100%;min-width:160px"></select></div>
+              </div>
+              <div class="rt-row">
+                <div class="grow"><label class="l">Wall post</label><select id="gtWallPostSec" style="width:100%;min-width:140px"></select></div>
+                <div class="grow"><label class="l">Leaf frame</label><select id="gtLeafSec" style="width:100%;min-width:140px"></select></div>
+              </div>
+              <div class="rt-row" id="gtLouverRow">
+                <div class="grow"><label class="l">Louver / blade</label><select id="gtLouverSec" style="width:100%;min-width:140px"></select></div>
+                <div class="grow"><label class="l">Support rod</label><select id="gtSupportSec" style="width:100%;min-width:120px"></select></div>
+              </div>
+              <div class="rt-row" id="gtGrillRow" style="display:none">
+                <div class="grow"><label class="l">Grill bar</label><select id="gtGrillSec" style="width:100%;min-width:140px"></select></div>
+                <div><label class="l">Grill style</label>
+                  <select id="gtGrillStyle" style="width:100px">
+                    <option value="straight" selected>Straight</option>
+                    <option value="diagonal">Diagonal</option>
+                  </select>
+                </div>
+              </div>
+              <div class="rt-row" id="gtTrackRow" style="display:none">
+                <div class="grow"><label class="l">Track C-channel</label><select id="gtTrackChSec" style="width:100%;min-width:140px"></select></div>
+                <div class="grow"><label class="l">Track round Ø</label><select id="gtTrackBarSec" style="width:100%;min-width:120px"></select></div>
+              </div>
+              <div class="rt-row">
+                <div><label class="l">Gap mode</label>
+                  <select id="gtGapMode" style="width:110px">
+                    <option value="fixed_gap" selected>Clear gap</option>
+                    <option value="equal_spacing">Equal spacing</option>
+                  </select>
+                </div>
+                <div><label class="l">Clear gap mm</label><input id="gtGap" type="number" step="1" value="25" style="width:64px"/></div>
+                <div><label class="l">Blades</label><input id="gtBladeCount" type="number" min="1" step="1" value="" style="width:52px;background:#f1f5f9" title="Computed for clear gap; editable for equal spacing"/></div>
               </div>
               <div class="rt-row">
                 <div><label class="l">MS ₹/kg</label><input id="gtMsRate" type="number" step="1" value="150" style="width:64px"/></div>
@@ -2042,7 +2075,7 @@ textarea{max-width:100%}
                 <div><label class="l">Fab ₹/sft</label><input id="gtFab" type="number" step="1" value="150" style="width:64px"/></div>
                 <div><label class="l">HW package</label><input id="gtHwPkg" type="number" step="1" value="10000" style="width:80px"/></div>
               </div>
-              <div class="muted" style="font-size:.72rem;margin:.2rem 0">Purchase rates stay with selection (MS ₹/kg · Al ₹/full bar · coat ₹/rft). Selling uses fab ₹/sft + itemised cost.</div>
+              <div class="muted" style="font-size:.72rem;margin:.2rem 0">Section IDs shared with material library. Purchase rates stay with selection. Mitres · hinges · sliding wheels@300 mm + half-buried track.</div>
               <div id="gateBom" class="rt-bom"></div>
               <div class="err" id="gateErr" style="font-size:.75rem"></div>
             </div>
@@ -12245,6 +12278,75 @@ function showGateTools(on) {
   const el = $('gateTools');
   if (!el) return;
   el.classList.toggle('hidden', !on);
+  if (on) {
+    ensureGateSectionOptions().then(() => { syncGateUiRows(); });
+  }
+}
+function _fillSelectOptions(sel, rows, preferIds) {
+  if (!sel) return;
+  const prefer = (preferIds || []).map(String);
+  const cur = String(sel.value || '');
+  const opts = (rows || []).map(s => {
+    const id = s.sectionId || s.id;
+    const label = (s.name || id) + (s.weightKgPerM != null ? ` · ${s.weightKgPerM} kg/m` : '');
+    return { id: String(id), label };
+  });
+  sel.innerHTML = opts.map(o => `<option value="${o.id}">${o.label}</option>`).join('');
+  const pick = prefer.find(p => opts.some(o => o.id === p)) || (opts.some(o => o.id === cur) ? cur : (opts[0] && opts[0].id) || '');
+  if (pick) sel.value = pick;
+}
+async function ensureGateSectionOptions() {
+  if (state._gateSecsLoaded) return state._gateSecs;
+  try {
+    const res = await api('/api/structural/sections');
+    const all = (res && res.sections) || [];
+    state._gateSecs = all;
+    state._gateSecsLoaded = true;
+    const msHollow = all.filter(s => {
+      const m = String(s.material || '').toLowerCase();
+      const sh = String(s.shape || '');
+      return (m.includes('mild') || m === 'ms' || m.includes('steel')) && (sh.includes('hollow') || sh === 'c_channel');
+    });
+    const msRound = all.filter(s => String(s.shape || '') === 'solid_round');
+    const msChannel = all.filter(s => String(s.shape || '') === 'c_channel');
+    const alHollow = all.filter(s => String(s.material || '').toLowerCase().startsWith('al') && String(s.shape || '').includes('hollow'));
+    const preferFrame = ['ms_shs_75x75_3_0', 'ms_shs_75x75_t3'];
+    const preferLouver = all.filter(s => Math.abs(Number(s.widthMm) - 25) < 0.6 && Math.abs(Number(s.heightMm) - 25) < 0.6 && String(s.material || '').toLowerCase().startsWith('al')).map(s => s.sectionId);
+    const preferRound12 = msRound.filter(s => Math.abs(Number(s.widthMm) - 12) < 0.6).map(s => s.sectionId);
+    const preferTrackBar = msRound.filter(s => {
+      const d = Number(s.widthMm);
+      return d >= 16 && d <= 25;
+    }).map(s => s.sectionId);
+    const preferCh = msChannel.filter(s => Math.abs(Number(s.widthMm) - 38) < 1).map(s => s.sectionId);
+    _fillSelectOptions($('gtFrameSec'), msHollow.length ? msHollow : all, preferFrame);
+    _fillSelectOptions($('gtWallPostSec'), msHollow.length ? msHollow : all, preferFrame);
+    _fillSelectOptions($('gtLeafSec'), msHollow.length ? msHollow : all, preferFrame);
+    _fillSelectOptions($('gtLouverSec'), alHollow.length ? alHollow : all, preferLouver);
+    _fillSelectOptions($('gtSupportSec'), msRound.length ? msRound : all, preferRound12.length ? preferRound12 : preferTrackBar);
+    _fillSelectOptions($('gtGrillSec'), msRound.length ? msRound : msHollow, preferRound12);
+    _fillSelectOptions($('gtTrackChSec'), msChannel.length ? msChannel : msHollow, preferCh);
+    _fillSelectOptions($('gtTrackBarSec'), preferTrackBar.length ? msRound.filter(s => preferTrackBar.includes(s.sectionId)) : msRound, preferTrackBar.filter(id => id.includes('20')));
+    return all;
+  } catch (e) {
+    console.warn('structural sections load failed', e);
+    state._gateSecs = [];
+    return [];
+  }
+}
+function syncGateUiRows() {
+  const bay = ($('gtBayType') && $('gtBayType').value) || '';
+  const grill = bay === 'fixed_grill';
+  const sliding = bay.indexOf('sliding') >= 0;
+  const louverish = !grill;
+  const equal = (($('gtGapMode') && $('gtGapMode').value) || '') === 'equal_spacing';
+  if ($('gtGrillRow')) $('gtGrillRow').style.display = grill ? '' : 'none';
+  if ($('gtLouverRow')) $('gtLouverRow').style.display = louverish ? '' : 'none';
+  if ($('gtTrackRow')) $('gtTrackRow').style.display = sliding ? '' : 'none';
+  if ($('gtGap')) $('gtGap').disabled = equal;
+  if ($('gtBladeCount')) {
+    $('gtBladeCount').readOnly = !equal;
+    $('gtBladeCount').style.background = equal ? '#fff' : '#f1f5f9';
+  }
 }
 function gateCfgFromUi() {
   const n = (id, d) => {
@@ -12252,15 +12354,40 @@ function gateCfgFromUi() {
     const v = el ? parseFloat(el.value) : NaN;
     return Number.isFinite(v) ? v : d;
   };
+  const s = (id) => (($(id) && $(id).value) || '').trim();
+  const bay = s('gtBayType') || 'folding_privacy';
+  const trackBarId = s('gtTrackBarSec');
+  let trackDia = 20;
+  const m = /round[_ ]?(\d+)/i.exec(trackBarId) || /Ø(\d+)/i.exec(($('gtTrackBarSec') && $('gtTrackBarSec').selectedOptions[0] && $('gtTrackBarSec').selectedOptions[0].text) || '');
+  if (m) trackDia = parseFloat(m[1]) || 20;
+  const gapMode = s('gtGapMode') || 'fixed_gap';
+  const gapMm = n('gtGap', 25);
+  const bladeEl = $('gtBladeCount');
+  const bladeN = bladeEl && bladeEl.value !== '' ? parseInt(bladeEl.value, 10) : NaN;
   return {
-    bayType: ($('gtBayType') && $('gtBayType').value) || 'folding_privacy',
+    bayType: bay,
     foldLeft: n('gtFoldLeft', 2),
     foldRight: n('gtFoldRight', 2),
     widthFt: n('gtWidthFt', 13),
     heightFt: n('gtHeightFt', 8),
-    louverGapMm: n('gtGap', 25),
+    louverGapMm: gapMm,
+    grillSpacingMm: gapMm,
+    louverSpacingMode: gapMode,
+    spacingMode: gapMode,
+    bladeCount: Number.isFinite(bladeN) && bladeN > 0 ? bladeN : undefined,
     louverOrientation: 'vertical',
+    grillStyle: s('gtGrillStyle') || 'straight',
+    grillOrientation: 'vertical',
     qty: n('gtQty', 1),
+    frameSectionId: s('gtFrameSec') || undefined,
+    wallPostSectionId: s('gtWallPostSec') || undefined,
+    leafFrameSectionId: s('gtLeafSec') || undefined,
+    louverSectionId: s('gtLouverSec') || undefined,
+    supportSectionId: s('gtSupportSec') || undefined,
+    grillSectionId: s('gtGrillSec') || undefined,
+    trackChannelSectionId: s('gtTrackChSec') || undefined,
+    trackBarSectionId: trackBarId || undefined,
+    trackBarDiaMm: trackDia,
     msRatePerKg: n('gtMsRate', 150),
     msBarWeightKg: n('gtMsBarKg', 25),
     msStockFt: n('gtMsStock', 20),
@@ -12272,12 +12399,16 @@ function gateCfgFromUi() {
     hardwarePackageAmount: n('gtHwPkg', 10000),
     supportRodCount: 2,
     supportDiaMm: 12,
+    mitreOuter: true,
+    mitreLeafFrames: true,
   };
 }
 async function gateCalc() {
   const err = $('gateErr');
   if (err) err.textContent = '';
   try {
+    await ensureGateSectionOptions();
+    syncGateUiRows();
     const cfg = gateCfgFromUi();
     state.gate = cfg;
     state.gateMode = true;
@@ -12289,17 +12420,21 @@ async function gateCalc() {
       state._previewKey = 'gate:' + (q.widthMm || '') + 'x' + (q.heightMm || '');
       if (typeof fitPreviewToStage === 'function') fitPreviewToStage({ reset: false });
     }
+    if ($('gtBladeCount')) $('gtBladeCount').value = String(q.bladeCountPerLeaf != null ? q.bladeCountPerLeaf : (q.grill && q.grill.bladeCount) || 0);
     const bom = $('gateBom');
     if (bom) {
       const w = q.weight || {};
       const bars = q.bars || {};
       const cost = q.cost || {};
+      const track = q.track || {};
       bom.innerHTML = [
-        `<div><b>Blades/leaf</b> ${q.bladeCountPerLeaf || 0} · gap ${q.louverGapMm || 0} mm · leaves ${(q.foldLeft||0)}+${(q.foldRight||0)}</div>`,
+        `<div><b>Blades/leaf</b> ${q.bladeCountPerLeaf || 0} · gap ${q.louverGapMm || 0} mm · mode ${q.louverSpacingMode || 'fixed_gap'} · leaves ${(q.foldLeft||0)}+${(q.foldRight||0)}</div>`,
+        `<div><b>Sections</b> frame ${q.frameSectionId || '—'} · leaf ${q.leafFrameSectionId || '—'} · fill ${q.louverSectionId || q.grillSectionId || '—'}</div>`,
         `<div><b>Bars</b> MS ${bars.ms || 0} · Al ${bars.aluminium || 0} · <b>kg</b> Fe ${w.ironKg || 0} · Al ${w.aluminiumKg || 0}</div>`,
+        track.channelSectionId ? `<div><b>Track</b> ${track.channelSectionId} + Ø${track.barDiaMm} · half buried · wheels @ ${track.wheelInsetMm || 300} mm</div>` : '',
         `<div><b>Cost</b> Fe ₹${cost.iron||0} · Al ₹${cost.aluminium||0} · Coat ₹${cost.coating||0} · HW ₹${cost.hardware||0} · Fab ₹${cost.fabricationInstall||0}</div>`,
         `<div><b>Selling</b> ₹${q.sellingTotal || 0} · ₹${q.sellingPerSft || 0}/sft · ${q.areaSft || 0} sft</div>`,
-      ].join('');
+      ].filter(Boolean).join('');
     }
     if ($('lineWidth')) $('lineWidth').value = Math.round(q.widthMm || cfg.widthFt * 304.8);
     if ($('lineHeight')) $('lineHeight').value = Math.round(q.heightMm || cfg.heightFt * 304.8);
@@ -12973,10 +13108,15 @@ if ($('btnRailAdd')) $('btnRailAdd').onclick = railingAdd;
 if ($('btnShowerCalc')) $('btnShowerCalc').onclick = showerCalc;
 if ($('btnGateCalc')) $('btnGateCalc').onclick = gateCalc;
 if ($('btnGateAdd')) $('btnGateAdd').onclick = gateAdd;
-['gtBayType','gtFoldLeft','gtFoldRight','gtWidthFt','gtHeightFt','gtGap','gtQty','gtMsRate','gtMsBarKg','gtMsStock','gtAlRate','gtCoat','gtFab','gtHwPkg'].forEach(id => {
+if ($('gtBayType')) $('gtBayType').addEventListener('change', () => { syncGateUiRows(); });
+if ($('gtGapMode')) $('gtGapMode').addEventListener('change', () => { syncGateUiRows(); });
+['gtBayType','gtFoldLeft','gtFoldRight','gtWidthFt','gtHeightFt','gtGap','gtGapMode','gtBladeCount','gtQty','gtMsRate','gtMsBarKg','gtMsStock','gtAlRate','gtCoat','gtFab','gtHwPkg','gtFrameSec','gtWallPostSec','gtLeafSec','gtLouverSec','gtSupportSec','gtGrillSec','gtGrillStyle','gtTrackChSec','gtTrackBarSec'].forEach(id => {
   const el = $(id);
   if (!el) return;
-  el.addEventListener('change', () => { if (state.gateMode || (typeof productWorldOf === 'function' && productWorldOf(selectedProductMeta(), null) === 'gate')) gateCalc(); });
+  el.addEventListener('change', () => {
+    if (id === 'gtBayType' || id === 'gtGapMode') syncGateUiRows();
+    if (state.gateMode || (typeof productWorldOf === 'function' && productWorldOf(selectedProductMeta(), null) === 'gate')) gateCalc();
+  });
   el.addEventListener('input', () => {
     if (!(state.gateMode || (typeof productWorldOf === 'function' && productWorldOf(selectedProductMeta(), null) === 'gate'))) return;
     clearTimeout(state._gateT);

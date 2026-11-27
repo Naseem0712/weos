@@ -68,24 +68,25 @@ def _slug(*parts: Any) -> str:
 
 
 def _shape_from_type(section_type: str, *, material: str) -> str:
-    t = (section_type or "").strip().upper()
-    if t in ("SHS", "SQ", "SQUARE"):
+    t = (section_type or "").strip().upper().replace("-", " ")
+    t_compact = t.replace(" ", "_")
+    if t in ("SHS", "SQ", "SQUARE") or t_compact.startswith("SHS"):
         return "hollow_sq"
-    if t in ("RHS", "RECT", "RECTANGLE"):
+    if t in ("RHS", "RECT", "RECTANGLE") or t_compact.startswith("RHS"):
         return "hollow_rect"
-    if t in ("CHS", "ROUND", "PIPE", "TUBE"):
+    if t in ("CHS", "ROUND", "PIPE", "TUBE") or "HOLLOW ROUND" in t:
         return "hollow_round"
-    if t in ("FLAT", "FB", "FLAT_BAR"):
+    if t in ("FLAT", "FB", "FLAT_BAR") or t.startswith("FLAT"):
         return "flat"
-    if t in ("ANGLE", "L", "ISA"):
+    if t in ("ANGLE", "L", "ISA") or "ANGLE" in t:
         return "angle"
-    if t in ("CHANNEL", "C", "PFC", "ISMC"):
+    if t in ("CHANNEL", "C", "PFC", "ISMC") or "CHANNEL" in t or t.startswith("C "):
         return "c_channel"
-    if t in ("I", "UB", "UC", "BEAM"):
+    if t in ("I", "UB", "UC", "BEAM") or t.startswith("I "):
         return "i_beam"
-    if t in ("SOLID_SQ", "SQUARE_BAR"):
+    if t in ("SOLID_SQ", "SQUARE_BAR") or "SOLID SQ" in t or "SOLID_SQUARE" in t_compact:
         return "solid_sq"
-    if t in ("SOLID_ROUND", "ROUND_BAR"):
+    if t in ("SOLID_ROUND", "ROUND_BAR") or "SOLID ROUND" in t or t_compact.startswith("SOLID_ROUND"):
         return "solid_round"
     if "LOUVER" in t or "Z_" in t or t.startswith("Z"):
         return "louver"

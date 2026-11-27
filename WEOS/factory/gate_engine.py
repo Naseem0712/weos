@@ -199,7 +199,9 @@ def _resolve_support_section(cfg: Mapping[str, Any]) -> dict[str, Any]:
         if sec:
             return sec
     dia = _f(cfg.get("supportDiaMm"), 12.0)
-    # Prefer synthetic solid round — do not pick SHS 12×12 hollow by size alone.
+    hit = find_section_by_size(material="mild_steel", width_mm=dia, height_mm=dia, shape="solid_round")
+    if hit and str(hit.get("shape") or "") == "solid_round":
+        return hit
     area = math.pi / 4.0 * dia * dia
     return {
         "sectionId": f"ms_round_{int(dia) if float(dia).is_integer() else dia}",
@@ -219,6 +221,118 @@ def _resolve_support_section(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "purchaseRate": _f(cfg.get("msRatePerKg"), 150.0),
         "purchaseRateUnit": "kg",
     }
+
+
+def _apply_ms_rates(sec: Mapping[str, Any], cfg: Mapping[str, Any]) -> dict[str, Any]:
+    out = dict(sec or {})
+    if cfg.get("msBarWeightKg") is not None and not out.get("kgPerStockLength"):
+        out["kgPerStockLength"] = _f(cfg.get("msBarWeightKg"))
+    if cfg.get("msStockFt") is not None and not out.get("stockLengthMm"):
+        out["stockLengthFt"] = _f(cfg.get("msStockFt"))
+        out["stockLengthMm"] = _f(cfg.get("msStockFt")) * MM_PER_FT
+    if cfg.get("msRatePerKg") is not None:
+        out["purchaseRate"] = _f(cfg.get("msRatePerKg"))
+        out["purchaseRateUnit"] = out.get("purchaseRateUnit") or "kg"
+    if out.get("kgPerStockLength") and out.get("stockLengthMm") and not out.get("weightKgPerM"):
+        out["weightKgPerM"] = _f(out["kgPerStockLength"]) / (_f(out["stockLengthMm"]) / 1000.0)
+    return out
+
+
+def _resolve_wall_post_section(cfg: Mapping[str, Any], frame: Mapping[str, Any]) -> dict[str, Any]:
+    sid = _s(cfg.get("wallPostSectionId"))
+    if sid:
+        sec = get_structural_section(sid)
+        if sec:
+            return _apply_ms_rates(sec, cfg)
+    return _apply_ms_rates(frame, cfg)
+
+
+def _resolve_leaf_frame_section(cfg: Mapping[str, Any], frame: Mapping[str, Any]) -> dict[str, Any]:
+    sid = _s(cfg.get("leafFrameSectionId") or cfg.get("leafSectionId"))
+    if sid:
+        sec = get_structural_section(sid)
+        if sec:
+            return _apply_ms_rates(sec, cfg)
+    return _apply_ms_rates(frame, cfg)
+
+
+def _resolve_grill_section(cfg: Mapping[str, Any], fallback: Mapping[str, Any]) -> dict[str, Any]:
+    sid = _s(cfg.get("grillSectionId") or cfg.get("grillBarSectionId"))
+    if sid:
+        sec = get_structural_section(sid)
+        if sec:
+            return _apply_ms_rates(sec, cfg)
+    # Prefer flat / round bar for grill
+    hit = find_section_by_size(material="mild_steel", width_mm=12, height_mm=12, shape="solid_round")
+    if hit:
+        return _apply_ms_rates(hit, cfg)
+    return _apply_ms_rates(fallback, cfg)
+
+
+def _resolve_track_channel_section(cfg: Mapping[str, Any]) -> dict[str, Any]:
+    sid = _s(cfg.get("trackChannelSectionId") or cfg.get("trackCChannelSectionId"))
+    if sid:
+        sec = get_structural_section(sid)
+        if sec:
+            return _apply_ms_rates(sec, cfg)
+    # Prefer catalogue C-channel ~38×75
+    hit = find_section_by_size(material="mild_steel", width_mm=38, height_mm=75, thickness_mm=5, shape="c_channel")
+    if hit:
+        return _apply_ms_rates(hit, cfg)
+    for s in (get_structural_section("ms_c_channel_38x75_5") or {},):
+        if s:
+            return _apply_ms_rates(s, cfg)
+    # Synthetic C-channel for sliding floor track
+    return _apply_ms_rates({
+        "sectionId": "ms_c_channel_38x75_5",
+        "name": "MS C-channel 38×75×5",
+        "material": "mild_steel",
+        "shape": "c_channel",
+        "widthMm": 38.0,
+        "heightMm": 75.0,
+        "thicknessMm": 5.0,
+        "faceWidthMm": 38.0,
+        "depthMm": 75.0,
+        "weightKgPerM": 5.5342,
+        "weightSource": "theoretical",
+        "stockLengthFt": 20.0,
+        "stockLengthMm": 20.0 * MM_PER_FT,
+        "purchaseRateUnit": "kg",
+    }, cfg)
+
+
+def _resolve_track_bar_section(cfg: Mapping[str, Any]) -> dict[str, Any]:
+    sid = _s(cfg.get("trackBarSectionId") or cfg.get("trackRoundSectionId"))
+    if sid:
+        sec = get_structural_section(sid)
+        if sec:
+            return _apply_ms_rates(sec, cfg)
+    dia = _f(cfg.get("trackBarDiaMm") or cfg.get("trackRoundDiaMm"), 20.0)
+    dia = min(max(dia, 16.0), 25.0)
+    hit = find_section_by_size(material="mild_steel", width_mm=dia, height_mm=dia, shape="solid_round")
+    if hit and str(hit.get("shape") or "") == "solid_round":
+        return _apply_ms_rates(hit, cfg)
+    area = math.pi / 4.0 * dia * dia
+    return _apply_ms_rates({
+        "sectionId": f"ms_solid_round_{int(dia)}",
+        "name": f"MS solid round Ø{dia:g}",
+        "material": "mild_steel",
+        "shape": "solid_round",
+        "widthMm": dia,
+        "heightMm": dia,
+        "thicknessMm": dia,
+        "faceWidthMm": dia,
+        "depthMm": dia,
+        "weightKgPerM": round(area * 7850.0 / 1e6, 4),
+        "weightSource": "theoretical",
+        "stockLengthFt": 20.0,
+        "stockLengthMm": 20.0 * MM_PER_FT,
+        "purchaseRateUnit": "kg",
+    }, cfg)
+
+
+WHEEL_INSET_MM = 300.0
+TRACK_BURY_RATIO = 0.5  # half buried in ground
 
 
 def fixed_gap_blade_count(*, usable_mm: float, face_mm: float, gap_mm: float) -> dict[str, Any]:
@@ -280,9 +394,12 @@ def _grill_cuts(
     section: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
     style = _s(cfg.get("grillStyle") or cfg.get("grillType"), "straight").lower()
-    spacing = _f(cfg.get("grillSpacingMm"), 100.0)
+    # Prefer explicit grill gap; fall back to shared louver gap field from UI.
+    spacing = _f(cfg.get("grillSpacingMm") or cfg.get("louverGapMm"), 66.0)
     cuts: list[dict[str, Any]] = []
     mid = section
+    face = max(_section_face(section, 12), 1.0)
+    spacing_mode = _s(cfg.get("louverSpacingMode") or cfg.get("spacingMode") or cfg.get("grillSpacingMode"), "fixed_gap").lower()
     if style in ("diagonal", "cross"):
         # Diagonal from endpoints of clear rect
         diag = math.hypot(clear_w, clear_h)
@@ -325,10 +442,15 @@ def _grill_cuts(
             note=f"developed=2×{straight:g}+π×{dia:g}",
         ))
     else:
-        # Straight bars — vertical by default
+        # Straight bars — vertical by default; clear-gap / equal-spacing like louvers
         orient = _s(cfg.get("grillOrientation"), "vertical").lower()
+        span = clear_h if orient == "horizontal" else clear_w
+        if spacing_mode == "equal_spacing" and cfg.get("bladeCount"):
+            pack = equal_spacing_layout(usable_mm=span, face_mm=face, blade_count=_i(cfg.get("bladeCount")))
+        else:
+            pack = fixed_gap_blade_count(usable_mm=span, face_mm=face, gap_mm=spacing)
+        n = max(int(pack.get("bladeCount") or 0), 1)
         if orient == "horizontal":
-            n = max(int(math.floor((clear_h + spacing) / (spacing + 1))), 1)
             for i in range(n):
                 cuts.append(_cut_row(
                     design_id=f"{bay_id}-bar-h{i+1}",
@@ -342,7 +464,6 @@ def _grill_cuts(
                     joint="between",
                 ))
         else:
-            n = max(int(math.floor((clear_w + spacing) / (spacing + 1))), 1)
             for i in range(n):
                 cuts.append(_cut_row(
                     design_id=f"{bay_id}-bar-v{i+1}",
@@ -763,21 +884,9 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
     if c.get("deductionsMissing"):
         incomplete.append("clearance deductions incomplete")
 
-    frame = _resolve_frame_section(c)
-    # Apply acceptance MS commercial overrides onto frame card copy
-    frame = dict(frame)
-    if c.get("msBarWeightKg") is not None:
-        frame["kgPerStockLength"] = _f(c.get("msBarWeightKg"))
-    if c.get("msStockFt") is not None:
-        frame["stockLengthFt"] = _f(c.get("msStockFt"))
-        frame["stockLengthMm"] = _f(c.get("msStockFt")) * MM_PER_FT
-    if c.get("msRatePerKg") is not None:
-        frame["purchaseRate"] = _f(c.get("msRatePerKg"))
-        frame["purchaseRateUnit"] = "kg"
-    # Full-bar commercial: 25 kg / 20 ft → kg/m for used weight
-    if frame.get("kgPerStockLength") and frame.get("stockLengthMm"):
-        frame["weightKgPerM"] = _f(frame["kgPerStockLength"]) / (_f(frame["stockLengthMm"]) / 1000.0)
-
+    frame = _apply_ms_rates(_resolve_frame_section(c), c)
+    wall_post_sec = _resolve_wall_post_section(c, frame)
+    leaf_frame_sec = _resolve_leaf_frame_section(c, frame)
     louver_sec = dict(_resolve_louver_section(c))
     if c.get("alRatePerBar") is not None:
         louver_sec["purchaseRate"] = _f(c.get("alRatePerBar"))
@@ -785,33 +894,37 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
     if c.get("alStockFt") is not None:
         louver_sec["stockLengthFt"] = _f(c.get("alStockFt"))
         louver_sec["stockLengthMm"] = _f(c.get("alStockFt")) * MM_PER_FT
-    support_sec = dict(_resolve_support_section(c))
-    if c.get("msRatePerKg") is not None:
-        support_sec["purchaseRate"] = _f(c.get("msRatePerKg"))
-        support_sec["purchaseRateUnit"] = "kg"
+    support_sec = _apply_ms_rates(_resolve_support_section(c), c)
+    grill_sec = _resolve_grill_section(c, support_sec)
+    track_ch_sec = _resolve_track_channel_section(c)
+    track_bar_sec = _resolve_track_bar_section(c)
 
     face = _section_face(frame, 75.0)
-    left_n = max(_i(c.get("foldLeft"), 2), 0)
-    right_n = max(_i(c.get("foldRight"), 2), 0)
+    leaf_face = _section_face(leaf_frame_sec, face)
+    post_face = _section_face(wall_post_sec, face)
+    left_n = max(_i(c.get("foldLeft"), 0), 0)
+    right_n = max(_i(c.get("foldRight"), 0), 0)
     if bay_type.startswith("folding") or bay_type == "folding_privacy":
         if left_n + right_n <= 0:
             left_n, right_n = 2, 2
     leaf_count = left_n + right_n
     if bay_type.startswith("swing"):
-        leaf_count = max(_i(c.get("leafCount"), 1), 1)
-        left_n, right_n = leaf_count, 0
+        if leaf_count <= 0:
+            leaf_count = max(_i(c.get("leafCount"), 1), 1)
+            left_n, right_n = leaf_count, 0
     if bay_type.startswith("sliding"):
-        leaf_count = max(_i(c.get("leafCount"), 2), 1)
-        left_n, right_n = leaf_count // 2, leaf_count - leaf_count // 2
+        # Honour Fold L/R from UI (e.g. 1+1); fall back to leafCount
+        if leaf_count <= 0:
+            leaf_count = max(_i(c.get("leafCount"), 2), 1)
+            left_n, right_n = leaf_count // 2, leaf_count - leaf_count // 2
     if bay_type in ("fixed_grill", "fixed_louvers"):
         leaf_count = 0
         left_n = right_n = 0
 
     wall_posts = _i(c.get("wallPostCount"), 2 if leaf_count else 0)
     # Shared posts/dividers counted once
-    usable_w = W - wall_posts * face - 2 * wall_clear
+    usable_w = W - wall_posts * post_face - 2 * wall_clear
     if leaf_count > 0:
-        # Meeting clearances between leaves
         meetings = max(leaf_count - 1, 0)
         usable_w -= meetings * meeting_clear
         leaf_outer_w = usable_w / leaf_count
@@ -822,16 +935,22 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
     cuts: list[dict[str, Any]] = []
     bays: list[dict[str, Any]] = []
     leaves_meta: list[dict[str, Any]] = []
+    grill_meta: dict[str, Any] | None = None
     bay_id = "bay-1"
+    fill_type = _s(c.get("fillType"), "louvers" if "louver" in bay_type or "privacy" in bay_type or "folding" in bay_type or "sliding" in bay_type or "swing" in bay_type else "grill")
+    if bay_type == "fixed_grill":
+        fill_type = "grill"
+    elif bay_type == "fixed_louvers":
+        fill_type = "louvers"
 
-    # Wall posts (separate physical members)
+    # Wall posts (separate physical members / section)
     for i in range(wall_posts):
         cuts.append(_cut_row(
             design_id=f"wall-post-{i+1}",
             bay_id=bay_id,
             leaf_id=None,
             role="wall_post",
-            section=frame,
+            section=wall_post_sec,
             cut_mm=H,
             pcs=1,
             end_cut="square",
@@ -840,20 +959,17 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
 
     fill_metas: list[dict[str, Any]] = []
     if leaf_count > 0:
-        idx = 0
         for side, n in (("L", left_n), ("R", right_n)):
             for j in range(n):
-                idx += 1
                 leaf_id = f"leaf-{side}{j+1}"
-                # Leaf frame
                 frame_cuts = _leaf_frame_cuts(
                     leaf_id=leaf_id, bay_id=bay_id,
-                    leaf_w=leaf_outer_w, leaf_h=leaf_outer_h, frame=frame,
+                    leaf_w=leaf_outer_w, leaf_h=leaf_outer_h, frame=leaf_frame_sec,
                     mitre=_bool(c.get("mitreLeafFrames"), True),
                 )
                 cuts.extend([fc for fc in frame_cuts if fc.get("memberRole") != "_meta_face"])
-                clear_w = max(leaf_outer_w - 2 * face, 0.0)
-                clear_h = max(leaf_outer_h - 2 * face, 0.0)
+                clear_w = max(leaf_outer_w - 2 * leaf_face, 0.0)
+                clear_h = max(leaf_outer_h - 2 * leaf_face, 0.0)
                 leaf_rec = {
                     "leafId": leaf_id,
                     "side": side,
@@ -862,8 +978,28 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
                     "outerHeightMm": round(leaf_outer_h, 1),
                     "clearWidthMm": round(clear_w, 1),
                     "clearHeightMm": round(clear_h, 1),
+                    "frameFaceMm": leaf_face,
+                    "x0Mm": None,  # filled below after layout
                 }
-                if bay_type in ("folding_privacy", "folding_door", "fixed_louvers", "privacy_screen") or _s(c.get("fillType"), "louvers") == "louvers":
+                if fill_type == "grill":
+                    gcuts = _grill_cuts(
+                        clear_w=clear_w, clear_h=clear_h, cfg=c, bay_id=bay_id, section=grill_sec,
+                    )
+                    for gc in gcuts:
+                        gc["leafId"] = leaf_id
+                    cuts.extend(gcuts)
+                    leaf_rec["fill"] = {
+                        "fillType": "grill",
+                        "grillStyle": _s(c.get("grillStyle"), "straight"),
+                        "grillOrientation": _s(c.get("grillOrientation"), "vertical"),
+                        "grillSpacingMm": _f(c.get("grillSpacingMm") or c.get("louverGapMm"), 66),
+                        "bladeCount": len(gcuts),
+                        "clearWidthMm": clear_w,
+                        "clearHeightMm": clear_h,
+                        "spacingMode": _s(c.get("louverSpacingMode") or c.get("spacingMode"), "fixed_gap"),
+                    }
+                    fill_metas.append(leaf_rec["fill"])
+                else:
                     fill_cuts, meta = _louver_fill_cuts(
                         leaf_id=leaf_id, bay_id=bay_id,
                         clear_w=clear_w, clear_h=clear_h, cfg=c,
@@ -872,20 +1008,20 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
                     cuts.extend(fill_cuts)
                     leaf_rec["fill"] = meta
                     fill_metas.append(meta)
-                elif bay_type == "fixed_grill" or _s(c.get("fillType")) == "grill":
-                    cuts.extend(_grill_cuts(
-                        clear_w=clear_w, clear_h=clear_h, cfg=c, bay_id=bay_id, section=support_sec,
-                    ))
+                # Wheel positions for sliding (inset 300 mm from each leaf edge)
+                if bay_type.startswith("sliding"):
+                    leaf_rec["wheels"] = [
+                        {"insetFromLeftMm": WHEEL_INSET_MM, "role": "wheel_left"},
+                        {"insetFromRightMm": WHEEL_INSET_MM, "role": "wheel_right"},
+                    ]
                 leaves_meta.append(leaf_rec)
     else:
-        # Single fixed bay — outer frame + fill
-        # Outer frame members
+        # Fixed bay — outer frame + fill (mitred hollow section)
         for role, length, pcs in (
             ("outer_jamb", H, 2),
             ("outer_head", W, 1),
             ("outer_sill", W, 1),
         ):
-            # expand pcs into separate design ids
             for p in range(pcs):
                 cuts.append(_cut_row(
                     design_id=f"{role}-{p+1}",
@@ -898,10 +1034,33 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
                     end_cut="mitre" if _bool(c.get("mitreOuter"), True) else "butt",
                     joint="mitre" if _bool(c.get("mitreOuter"), True) else "butt_through",
                 ))
-        clear_w = max(W - 2 * face - 2 * wall_clear, 0.0)
-        clear_h = max(H - 2 * face - bottom_clear - top_clear, 0.0)
-        if bay_type == "fixed_grill":
-            cuts.extend(_grill_cuts(clear_w=clear_w, clear_h=clear_h, cfg=c, bay_id=bay_id, section=support_sec))
+        clear_w = max(W - 2 * face, 0.0)
+        clear_h = max(H - 2 * face, 0.0)
+        if bay_type == "fixed_grill" or fill_type == "grill":
+            gcuts = _grill_cuts(clear_w=clear_w, clear_h=clear_h, cfg=c, bay_id=bay_id, section=grill_sec)
+            cuts.extend(gcuts)
+            grill_meta = {
+                "fillType": "grill",
+                "grillStyle": _s(c.get("grillStyle"), "straight"),
+                "grillOrientation": _s(c.get("grillOrientation"), "vertical"),
+                "grillSpacingMm": _f(c.get("grillSpacingMm") or c.get("louverGapMm"), 66),
+                "bladeCount": len(gcuts),
+                "clearWidthMm": round(clear_w, 1),
+                "clearHeightMm": round(clear_h, 1),
+                "marginMm": 0,
+                "faceMm": _section_face(grill_sec, 12),
+                "spacingMode": _s(c.get("louverSpacingMode") or c.get("spacingMode"), "fixed_gap"),
+            }
+            # Derive equal visual spacing for SVG from bar count
+            style = grill_meta["grillStyle"]
+            if style in ("straight", "") and grill_meta["bladeCount"] > 0:
+                orient = grill_meta["grillOrientation"]
+                span = clear_w if orient == "vertical" else clear_h
+                n = int(grill_meta["bladeCount"])
+                pitch = span / max(n, 1)
+                grill_meta["pitchMm"] = round(pitch, 2)
+                grill_meta["bladeFaceMm"] = min(_section_face(grill_sec, 12), pitch * 0.35)
+            fill_metas.append(grill_meta)
         else:
             fill_cuts, meta = _louver_fill_cuts(
                 leaf_id="bay-fill", bay_id=bay_id,
@@ -910,6 +1069,64 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
             )
             cuts.extend(fill_cuts)
             fill_metas.append(meta)
+
+    # Sliding floor track: C-channel + round solid bar (full opening width)
+    track_meta = None
+    if bay_type.startswith("sliding"):
+        track_len = W
+        cuts.append(_cut_row(
+            design_id="track-c-channel",
+            bay_id=bay_id,
+            leaf_id=None,
+            role="track_c_channel",
+            section=track_ch_sec,
+            cut_mm=track_len,
+            pcs=1,
+            end_cut="square",
+            joint="floor",
+            note="floor track C-channel · half buried",
+        ))
+        cuts.append(_cut_row(
+            design_id="track-round-bar",
+            bay_id=bay_id,
+            leaf_id=None,
+            role="track_round_bar",
+            section=track_bar_sec,
+            cut_mm=track_len,
+            pcs=1,
+            end_cut="square",
+            joint="on_channel",
+            note=f"Ø{_section_face(track_bar_sec, 20):g} round on C-channel",
+        ))
+        track_meta = {
+            "lengthMm": round(track_len, 1),
+            "channelSectionId": track_ch_sec.get("sectionId"),
+            "channelFaceMm": _section_face(track_ch_sec, 38),
+            "channelDepthMm": _f(track_ch_sec.get("depthMm") or track_ch_sec.get("heightMm"), 75),
+            "barSectionId": track_bar_sec.get("sectionId"),
+            "barDiaMm": _section_face(track_bar_sec, 20),
+            "buryRatio": TRACK_BURY_RATIO,
+            "wheelInsetMm": WHEEL_INSET_MM,
+        }
+
+    # Hinge layout for fold/swing elevation
+    hinge_meta = None
+    hinges_per_joint = _i(c.get("hingesPerJoint"), 3)
+    if bay_type.startswith("folding") or bay_type.startswith("swing") or bay_type == "folding_privacy":
+        joints: list[dict[str, Any]] = []
+        if wall_posts and left_n:
+            joints.append({"kind": "wall_leaf", "side": "L", "atLeaf": 0, "count": hinges_per_joint})
+        for i in range(max(left_n - 1, 0)):
+            joints.append({"kind": "leaf_leaf", "side": "L", "atLeaf": i + 1, "count": hinges_per_joint})
+        for i in range(max(right_n - 1, 0)):
+            joints.append({"kind": "leaf_leaf", "side": "R", "atLeaf": left_n + i, "count": hinges_per_joint})
+        if wall_posts and right_n:
+            joints.append({"kind": "wall_leaf", "side": "R", "atLeaf": left_n + right_n - 1, "count": hinges_per_joint})
+        if bay_type.startswith("swing") and leaves_meta:
+            joints = [{"kind": "wall_leaf", "side": "L", "atLeaf": 0, "count": hinges_per_joint}]
+            if leaf_count > 1:
+                joints.append({"kind": "wall_leaf", "side": "R", "atLeaf": leaf_count - 1, "count": hinges_per_joint})
+        hinge_meta = {"hingesPerJoint": hinges_per_joint, "joints": joints}
 
     bays.append({
         "bayId": bay_id,
@@ -920,12 +1137,19 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "foldLeft": left_n,
         "foldRight": right_n,
         "leaves": leaves_meta,
+        "grill": grill_meta,
+        "fillType": fill_type,
     })
 
     sections_map = {
         frame.get("sectionId"): frame,
+        wall_post_sec.get("sectionId"): wall_post_sec,
+        leaf_frame_sec.get("sectionId"): leaf_frame_sec,
         louver_sec.get("sectionId"): louver_sec,
         support_sec.get("sectionId"): support_sec,
+        grill_sec.get("sectionId"): grill_sec,
+        track_ch_sec.get("sectionId"): track_ch_sec,
+        track_bar_sec.get("sectionId"): track_bar_sec,
     }
     kerf = _f(c.get("kerfMm"), DEFAULT_KERF_MM)
     trim = _f(c.get("trimMm"), DEFAULT_TRIM_MM)
@@ -1056,11 +1280,24 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
         "leafCount": leaf_count,
         "wallPostCount": wall_posts,
         "frameSectionId": frame.get("sectionId"),
+        "wallPostSectionId": wall_post_sec.get("sectionId"),
+        "leafFrameSectionId": leaf_frame_sec.get("sectionId"),
         "louverSectionId": louver_sec.get("sectionId"),
         "supportSectionId": support_sec.get("sectionId"),
+        "grillSectionId": grill_sec.get("sectionId"),
+        "trackChannelSectionId": track_ch_sec.get("sectionId"),
+        "trackBarSectionId": track_bar_sec.get("sectionId"),
         "frameFaceMm": face,
+        "leafFaceMm": leaf_face,
+        "wallPostFaceMm": post_face,
+        "fillType": fill_type,
+        "louverSpacingMode": _s(c.get("louverSpacingMode") or c.get("spacingMode"), "fixed_gap"),
+        "grillStyle": _s(c.get("grillStyle"), "straight"),
         "bays": bays,
         "leaves": leaves_meta,
+        "grill": grill_meta,
+        "track": track_meta,
+        "hinges": hinge_meta,
         "cuts": [c for c in cuts if _i(c.get("pieces")) > 0 or c.get("memberRole") == "wall_post"],
         "cutList": cuts,
         "nests": nests,
@@ -1120,24 +1357,188 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _svg_mitred_hollow_frame(
+    parts: list[str],
+    *,
+    sx,
+    sy,
+    x_mm: float,
+    y_mm: float,
+    w_mm: float,
+    h_mm: float,
+    face_mm: float,
+    role: str = "frame",
+    fill: str = "#cbd5e1",
+    stroke: str = "#0f172a",
+) -> None:
+    """Draw hollow section frame with visible 45° mitre corner lines (fabrication view)."""
+    f = max(face_mm, 1.0)
+    # Outer + inner rectangles
+    parts.append(
+        f'<rect x="{sx(x_mm):.2f}" y="{sy(y_mm):.2f}" width="{abs(sx(x_mm+w_mm)-sx(x_mm)):.2f}" '
+        f'height="{abs(sy(y_mm+h_mm)-sy(y_mm)):.2f}" fill="none" stroke="{stroke}" stroke-width="1.6" '
+        f'data-role="{escape(role)}" data-mitre="1"/>'
+    )
+    ix, iy = x_mm + f, y_mm + f
+    iw, ih = max(w_mm - 2 * f, 0.0), max(h_mm - 2 * f, 0.0)
+    if iw > 1 and ih > 1:
+        parts.append(
+            f'<rect x="{sx(ix):.2f}" y="{sy(iy):.2f}" width="{abs(sx(ix+iw)-sx(ix)):.2f}" '
+            f'height="{abs(sy(iy+ih)-sy(iy)):.2f}" fill="#f8fafc" stroke="{stroke}" stroke-width="1.1" '
+            f'data-role="{escape(role)}_inner"/>'
+        )
+    # Four hollow walls as filled bands (section face width)
+    # Top rail
+    parts.append(
+        f'<path d="M {sx(x_mm):.2f} {sy(y_mm):.2f} L {sx(x_mm+w_mm):.2f} {sy(y_mm):.2f} '
+        f'L {sx(x_mm+w_mm-f):.2f} {sy(y_mm+f):.2f} L {sx(x_mm+f):.2f} {sy(y_mm+f):.2f} Z" '
+        f'fill="{fill}" stroke="{stroke}" stroke-width="0.7" data-role="{escape(role)}_head" data-mitre="1"/>'
+    )
+    # Bottom rail
+    parts.append(
+        f'<path d="M {sx(x_mm):.2f} {sy(y_mm+h_mm):.2f} L {sx(x_mm+w_mm):.2f} {sy(y_mm+h_mm):.2f} '
+        f'L {sx(x_mm+w_mm-f):.2f} {sy(y_mm+h_mm-f):.2f} L {sx(x_mm+f):.2f} {sy(y_mm+h_mm-f):.2f} Z" '
+        f'fill="{fill}" stroke="{stroke}" stroke-width="0.7" data-role="{escape(role)}_sill" data-mitre="1"/>'
+    )
+    # Left jamb
+    parts.append(
+        f'<path d="M {sx(x_mm):.2f} {sy(y_mm):.2f} L {sx(x_mm+f):.2f} {sy(y_mm+f):.2f} '
+        f'L {sx(x_mm+f):.2f} {sy(y_mm+h_mm-f):.2f} L {sx(x_mm):.2f} {sy(y_mm+h_mm):.2f} Z" '
+        f'fill="{fill}" stroke="{stroke}" stroke-width="0.7" data-role="{escape(role)}_jamb_L" data-mitre="1"/>'
+    )
+    # Right jamb
+    parts.append(
+        f'<path d="M {sx(x_mm+w_mm):.2f} {sy(y_mm):.2f} L {sx(x_mm+w_mm):.2f} {sy(y_mm+h_mm):.2f} '
+        f'L {sx(x_mm+w_mm-f):.2f} {sy(y_mm+h_mm-f):.2f} L {sx(x_mm+w_mm-f):.2f} {sy(y_mm+f):.2f} Z" '
+        f'fill="{fill}" stroke="{stroke}" stroke-width="0.7" data-role="{escape(role)}_jamb_R" data-mitre="1"/>'
+    )
+    # Explicit 45° mitre corner marks
+    for ox, oy, ix_, iy_ in (
+        (x_mm, y_mm, x_mm + f, y_mm + f),
+        (x_mm + w_mm, y_mm, x_mm + w_mm - f, y_mm + f),
+        (x_mm + w_mm, y_mm + h_mm, x_mm + w_mm - f, y_mm + h_mm - f),
+        (x_mm, y_mm + h_mm, x_mm + f, y_mm + h_mm - f),
+    ):
+        parts.append(
+            f'<line x1="{sx(ox):.2f}" y1="{sy(oy):.2f}" x2="{sx(ix_):.2f}" y2="{sy(iy_):.2f}" '
+            f'stroke="#111827" stroke-width="1.15" data-mitre-line="1"/>'
+        )
+
+
+def _svg_gate_hinges(
+    parts: list[str],
+    *,
+    sx,
+    sy,
+    scale: float,
+    x_mm: float,
+    h_mm: float,
+    y0_mm: float = 0.0,
+    count: int = 3,
+    thicker: bool = True,
+) -> None:
+    """Thicker/taller hinges on elevation (fold/swing) — not window casement size."""
+    try:
+        from WEOS.factory.geometry import casement_hinge_svg, hinge_centers_mm
+    except Exception:
+        return
+    centers = hinge_centers_mm(h_mm, count=max(count, 2))
+    # Gate hinges ~1.6× casement footprint
+    hw = max(28.0 * scale, 10.0) if thicker else max(18.0 * scale, 8.0)
+    hh = max(52.0 * scale, 16.0) if thicker else max(32.0 * scale, 12.0)
+    for cy_from_top in centers:
+        cy = sy(y0_mm + cy_from_top)
+        cx = sx(x_mm)
+        parts.append(
+            casement_hinge_svg(
+                cx, cy, w=hw, h=hh, stroke="#0f172a", stroke_width=0.85,
+                extra_attrs='data-gate-hinge="1"',
+            )
+        )
+
+
+def _svg_grill_fill(
+    parts: list[str],
+    *,
+    sx,
+    sy,
+    x0: float,
+    y0: float,
+    clear_w: float,
+    clear_h: float,
+    meta: Mapping[str, Any] | None,
+) -> None:
+    m = meta if isinstance(meta, Mapping) else {}
+    style = _s(m.get("grillStyle"), "straight").lower()
+    orient = _s(m.get("grillOrientation"), "vertical").lower()
+    n = max(int(m.get("bladeCount") or 0), 0)
+    face = max(_f(m.get("bladeFaceMm") or m.get("faceMm"), 10), 2.0)
+    if style in ("diagonal", "cross"):
+        parts.append(
+            f'<line x1="{sx(x0):.2f}" y1="{sy(y0):.2f}" x2="{sx(x0+clear_w):.2f}" y2="{sy(y0+clear_h):.2f}" '
+            f'stroke="#334155" stroke-width="1.4" data-role="grill_diagonal"/>'
+        )
+        parts.append(
+            f'<line x1="{sx(x0+clear_w):.2f}" y1="{sy(y0):.2f}" x2="{sx(x0):.2f}" y2="{sy(y0+clear_h):.2f}" '
+            f'stroke="#334155" stroke-width="1.4" data-role="grill_diagonal"/>'
+        )
+        return
+    if n <= 0:
+        # Fallback visual: pitch from spacing
+        spacing = max(_f(m.get("grillSpacingMm"), 100), 40)
+        if orient == "horizontal":
+            n = max(int(math.floor(clear_h / spacing)), 1)
+        else:
+            n = max(int(math.floor(clear_w / spacing)), 1)
+    if orient == "horizontal":
+        pitch = clear_h / max(n, 1)
+        for i in range(n):
+            cy = y0 + pitch * (i + 0.5) - face / 2.0
+            parts.append(
+                f'<rect x="{sx(x0):.2f}" y="{sy(cy):.2f}" width="{abs(sx(x0+clear_w)-sx(x0)):.2f}" '
+                f'height="{max(abs(sy(cy+face)-sy(cy)), 0.8):.2f}" fill="#64748b" stroke="#1e293b" '
+                f'stroke-width="0.55" data-role="grill_bar"/>'
+            )
+    else:
+        pitch = clear_w / max(n, 1)
+        for i in range(n):
+            cx = x0 + pitch * (i + 0.5) - face / 2.0
+            parts.append(
+                f'<rect x="{sx(cx):.2f}" y="{sy(y0):.2f}" width="{max(abs(sx(cx+face)-sx(cx)), 0.8):.2f}" '
+                f'height="{abs(sy(y0+clear_h)-sy(y0)):.2f}" fill="#64748b" stroke="#1e293b" '
+                f'stroke-width="0.55" data-role="grill_bar"/>'
+            )
+
+
 def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> str:
-    """Elevation SVG for canvas + PDF."""
+    """Elevation SVG: hollow mitred sections, grill/louvers, hinges, sliding wheels+track."""
     q = quote or compute_gate(cfg)
     W = _f(q.get("widthMm") or cfg.get("widthMm"), 3962)
     H = _f(q.get("heightMm") or cfg.get("heightMm"), 2438)
     face = _f(q.get("frameFaceMm"), 75)
-    left = _i(q.get("foldLeft"), 2)
-    right = _i(q.get("foldRight"), 2)
+    leaf_face = _f(q.get("leafFaceMm"), face)
+    post_face = _f(q.get("wallPostFaceMm"), face)
+    left = _i(q.get("foldLeft"), 0)
+    right = _i(q.get("foldRight"), 0)
     leaves = list(q.get("leaves") or [])
-    vb_w, vb_h = 720.0, 480.0
-    pad = 40.0
-    title_h = 36.0
+    bay_type = _s(q.get("bayType"), "folding_privacy")
+    track = q.get("track") if isinstance(q.get("track"), Mapping) else None
+    hinge_meta = q.get("hinges") if isinstance(q.get("hinges"), Mapping) else None
+
+    # Extra room below for half-buried track on sliding
+    track_extra = 0.0
+    if track:
+        track_extra = max(_f(track.get("channelDepthMm"), 75) * 0.55, 40.0)
+
+    vb_w, vb_h = 760.0, 520.0
+    pad = 36.0
+    title_h = 34.0
     max_w = vb_w - pad * 2
-    max_h = vb_h - pad * 2 - title_h
-    scale = min(max_w / max(W, 1.0), max_h / max(H, 1.0))
+    max_h = vb_h - pad * 2 - title_h - (28 if track_extra else 8)
+    scale = min(max_w / max(W, 1.0), max_h / max(H + track_extra, 1.0))
     dw, dh = W * scale, H * scale
     x0 = (vb_w - dw) / 2.0
-    y0 = title_h + (max_h - dh) / 2.0 + pad / 2.0
+    y0 = title_h + pad * 0.4
 
     def sx(mm: float) -> float:
         return x0 + mm * scale
@@ -1145,70 +1546,186 @@ def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> 
     def sy(mm: float) -> float:
         return y0 + mm * scale
 
-    bay = _s(q.get("bayType"), "folding_privacy").replace("_", " ").title()
-    parts = [
+    bay = bay_type.replace("_", " ").title()
+    parts: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb_w:g} {vb_h:g}" '
-        f'data-model-system="gate" data-bay-type="{escape(_s(q.get("bayType")))}" role="img">',
+        f'data-model-system="gate" data-bay-type="{escape(bay_type)}" '
+        f'data-frame-face-mm="{face:g}" data-scale-mm-per-px="{1/scale if scale else 0:g}" role="img">',
         '<rect width="100%" height="100%" fill="#fff"/>',
-        f'<text x="{pad:g}" y="24" font-family="Arial" font-size="16" font-weight="700" fill="#1f2937">'
+        f'<text x="{pad:g}" y="22" font-family="Arial" font-size="16" font-weight="700" fill="#1f2937">'
         f'{escape(bay)}</text>',
-        f'<text x="{vb_w - pad:g}" y="24" font-family="Arial" font-size="12" text-anchor="end" fill="#475569">'
+        f'<text x="{vb_w - pad:g}" y="22" font-family="Arial" font-size="12" text-anchor="end" fill="#475569">'
         f'{mm_n(W)} × {mm_n(H)} mm · {left}+{right}</text>',
-        f'<rect x="{x0:g}" y="{y0:g}" width="{dw:g}" height="{dh:g}" fill="#f8fafc" stroke="#111827" stroke-width="2"/>',
     ]
-    # Wall posts
-    wp = _i(q.get("wallPostCount"), 2)
+
+    wp = _i(q.get("wallPostCount"), 0)
+    # Wall posts as hollow uprights
     if wp >= 1:
-        parts.append(
-            f'<rect x="{x0:g}" y="{y0:g}" width="{face*scale:g}" height="{dh:g}" '
-            f'fill="#94a3b8" stroke="#0f172a" stroke-width="1" data-role="wall_post"/>'
+        _svg_mitred_hollow_frame(
+            parts, sx=sx, sy=sy, x_mm=0, y_mm=0, w_mm=post_face, h_mm=H, face_mm=min(post_face * 0.35, 18),
+            role="wall_post", fill="#94a3b8",
         )
     if wp >= 2:
-        parts.append(
-            f'<rect x="{x0 + dw - face*scale:g}" y="{y0:g}" width="{face*scale:g}" height="{dh:g}" '
-            f'fill="#94a3b8" stroke="#0f172a" stroke-width="1" data-role="wall_post"/>'
+        _svg_mitred_hollow_frame(
+            parts, sx=sx, sy=sy, x_mm=W - post_face, y_mm=0, w_mm=post_face, h_mm=H, face_mm=min(post_face * 0.35, 18),
+            role="wall_post", fill="#94a3b8",
         )
 
-    # Leaves
     n = len(leaves) or (left + right)
     if n > 0:
-        inner_x = face if wp else 0.0
-        inner_w = W - (2 * face if wp >= 2 else 0.0)
-        leaf_w = inner_w / n
+        inner_x = post_face if wp else 0.0
+        inner_w = W - (2 * post_face if wp >= 2 else (post_face if wp else 0.0))
+        leaf_w = inner_w / max(n, 1)
         for i, leaf in enumerate(leaves or [{"leafId": f"L{i+1}"} for i in range(n)]):
             lx = inner_x + i * leaf_w
-            parts.append(
-                f'<rect x="{sx(lx):g}" y="{sy(0):g}" width="{leaf_w*scale:g}" height="{dh:g}" '
-                f'fill="none" stroke="#334155" stroke-width="1.4" data-leaf="{escape(str(leaf.get("leafId") or i+1))}"/>'
+            lf = _f(leaf.get("frameFaceMm"), leaf_face)
+            _svg_mitred_hollow_frame(
+                parts, sx=sx, sy=sy, x_mm=lx, y_mm=0, w_mm=leaf_w, h_mm=H, face_mm=lf,
+                role="moving_leaf_frame", fill="#94a3b8",
             )
-            # Vertical louvers preview
-            clear_x = lx + face
-            clear_w = max(leaf_w - 2 * face, 0)
-            clear_y = face
-            clear_h = max(H - 2 * face, 0)
+            clear_x = lx + lf
+            clear_y = lf
+            clear_w = max(leaf_w - 2 * lf, 0)
+            clear_h = max(H - 2 * lf, 0)
             fill = leaf.get("fill") if isinstance(leaf.get("fill"), Mapping) else {}
-            bc = int(fill.get("bladeCount") or q.get("bladeCountPerLeaf") or 0)
-            gap = _f(fill.get("gapMm") or q.get("louverGapMm"), 25)
-            bf = _f(fill.get("bladeFaceMm"), 25)
-            margin = _f(fill.get("marginMm"))
-            cursor = clear_x + margin
-            for b in range(bc):
-                parts.append(
-                    f'<rect x="{sx(cursor):g}" y="{sy(clear_y):g}" width="{max(bf*scale, 0.8):g}" '
-                    f'height="{clear_h*scale:g}" fill="#cbd5e1" stroke="#1e293b" stroke-width="0.6" '
-                    f'data-role="louver_blade"/>'
+            if _s(fill.get("fillType")) == "grill" or bay_type == "fixed_grill":
+                _svg_grill_fill(
+                    parts, sx=sx, sy=sy, x0=clear_x, y0=clear_y,
+                    clear_w=clear_w, clear_h=clear_h, meta=fill,
                 )
-                cursor += bf + gap
-            # Centre open mark
+            else:
+                bc = int(fill.get("bladeCount") or q.get("bladeCountPerLeaf") or 0)
+                gap = _f(fill.get("gapMm") or q.get("louverGapMm"), 25)
+                bf = _f(fill.get("bladeFaceMm") or fill.get("bladeWidthMm"), 25)
+                margin = _f(fill.get("marginMm"))
+                cursor = clear_x + margin
+                for _b in range(bc):
+                    parts.append(
+                        f'<rect x="{sx(cursor):.2f}" y="{sy(clear_y):.2f}" width="{max((sx(cursor+bf)-sx(cursor)), 0.8):.2f}" '
+                        f'height="{abs(sy(clear_y+clear_h)-sy(clear_y)):.2f}" fill="#cbd5e1" stroke="#1e293b" '
+                        f'stroke-width="0.55" data-role="louver_blade"/>'
+                    )
+                    cursor += bf + gap
+
+            # Sliding wheels inset 300 mm from each leaf edge
+            if bay_type.startswith("sliding"):
+                for wx_mm in (lx + WHEEL_INSET_MM, lx + leaf_w - WHEEL_INSET_MM):
+                    wr = max(14.0 * scale, 5.0)
+                    parts.append(
+                        f'<circle cx="{sx(wx_mm):.2f}" cy="{sy(H - 8):.2f}" r="{wr:.2f}" '
+                        f'fill="#1e293b" stroke="#0f172a" stroke-width="1" data-role="wheel" '
+                        f'data-inset-mm="{WHEEL_INSET_MM:g}"/>'
+                    )
+                    parts.append(
+                        f'<circle cx="{sx(wx_mm):.2f}" cy="{sy(H - 8):.2f}" r="{wr*0.35:.2f}" '
+                        f'fill="#94a3b8" data-role="wheel_hub"/>'
+                    )
+
             if i == left - 1 and left and right:
                 mx = sx(lx + leaf_w)
                 parts.append(
-                    f'<line x1="{mx:g}" y1="{y0:g}" x2="{mx:g}" y2="{y0+dh:g}" '
+                    f'<line x1="{mx:.2f}" y1="{y0:.2f}" x2="{mx:.2f}" y2="{sy(H):.2f}" '
                     f'stroke="#b91c1c" stroke-width="1.5" stroke-dasharray="4 3" data-role="centre_meet"/>'
                 )
 
+        # Hinges: wall↔leaf and leaf↔leaf
+        if hinge_meta and (bay_type.startswith("folding") or bay_type.startswith("swing") or "privacy" in bay_type):
+            for joint in hinge_meta.get("joints") or []:
+                if not isinstance(joint, Mapping):
+                    continue
+                at = _i(joint.get("atLeaf"), 0)
+                kind = _s(joint.get("kind"))
+                side = _s(joint.get("side"), "L")
+                if kind == "wall_leaf":
+                    hx = post_face if side == "L" else (W - post_face)
+                else:
+                    hx = inner_x + at * leaf_w
+                _svg_gate_hinges(
+                    parts, sx=sx, sy=sy, scale=scale, x_mm=hx, h_mm=H,
+                    count=_i(joint.get("count"), 3), thicker=True,
+                )
+    else:
+        # Fixed grill / louvers — full outer mitred frame + fill
+        _svg_mitred_hollow_frame(
+            parts, sx=sx, sy=sy, x_mm=0, y_mm=0, w_mm=W, h_mm=H, face_mm=face,
+            role="outer_frame", fill="#94a3b8",
+        )
+        clear_x, clear_y = face, face
+        clear_w, clear_h = max(W - 2 * face, 0), max(H - 2 * face, 0)
+        grill = q.get("grill") if isinstance(q.get("grill"), Mapping) else None
+        fill0 = (q.get("fillMetas") or [None])[0]
+        if bay_type == "fixed_grill" or _s(q.get("fillType")) == "grill":
+            _svg_grill_fill(
+                parts, sx=sx, sy=sy, x0=clear_x, y0=clear_y,
+                clear_w=clear_w, clear_h=clear_h, meta=grill or fill0 or {},
+            )
+        elif isinstance(fill0, Mapping):
+            bc = int(fill0.get("bladeCount") or 0)
+            gap = _f(fill0.get("gapMm"), 25)
+            bf = _f(fill0.get("bladeFaceMm") or fill0.get("bladeWidthMm"), 25)
+            margin = _f(fill0.get("marginMm"))
+            orient = _s(fill0.get("orientation"), "vertical")
+            if orient == "horizontal":
+                cursor = clear_y + margin
+                for _b in range(bc):
+                    parts.append(
+                        f'<rect x="{sx(clear_x):.2f}" y="{sy(cursor):.2f}" '
+                        f'width="{abs(sx(clear_x+clear_w)-sx(clear_x)):.2f}" '
+                        f'height="{max(abs(sy(cursor+bf)-sy(cursor)), 0.8):.2f}" fill="#cbd5e1" '
+                        f'stroke="#1e293b" stroke-width="0.55" data-role="louver_blade"/>'
+                    )
+                    cursor += bf + gap
+            else:
+                cursor = clear_x + margin
+                for _b in range(bc):
+                    parts.append(
+                        f'<rect x="{sx(cursor):.2f}" y="{sy(clear_y):.2f}" '
+                        f'width="{max(abs(sx(cursor+bf)-sx(cursor)), 0.8):.2f}" '
+                        f'height="{abs(sy(clear_y+clear_h)-sy(clear_y)):.2f}" fill="#cbd5e1" '
+                        f'stroke="#1e293b" stroke-width="0.55" data-role="louver_blade"/>'
+                    )
+                    cursor += bf + gap
+
+    # Sliding floor track — C-channel half buried, round bar on top
+    if track and bay_type.startswith("sliding"):
+        ch_d = _f(track.get("channelDepthMm"), 75)
+        ch_f = _f(track.get("channelFaceMm"), 38)
+        bar_d = _f(track.get("barDiaMm"), 20)
+        bury = _f(track.get("buryRatio"), TRACK_BURY_RATIO)
+        buried = ch_d * bury
+        above = ch_d - buried
+        # Ground line
+        gy = sy(H)
+        parts.append(
+            f'<line x1="{sx(0)-8:.2f}" y1="{gy:.2f}" x2="{sx(W)+8:.2f}" y2="{gy:.2f}" '
+            f'stroke="#78716c" stroke-width="1.2" stroke-dasharray="6 4" data-role="ground_line"/>'
+        )
+        # Buried portion (below ground)
+        parts.append(
+            f'<rect x="{sx(0):.2f}" y="{gy:.2f}" width="{dw:.2f}" height="{buried*scale:.2f}" '
+            f'fill="#a8a29e" stroke="#57534e" stroke-width="0.8" data-role="track_c_channel_buried"/>'
+        )
+        # Above-ground channel lips
+        parts.append(
+            f'<rect x="{sx(0):.2f}" y="{gy - above*scale:.2f}" width="{dw:.2f}" height="{above*scale:.2f}" '
+            f'fill="#64748b" stroke="#0f172a" stroke-width="1" data-role="track_c_channel"/>'
+        )
+        # Round bar on top of channel
+        parts.append(
+            f'<rect x="{sx(0):.2f}" y="{gy - above*scale - bar_d*scale:.2f}" width="{dw:.2f}" '
+            f'height="{max(bar_d*scale, 2):.2f}" rx="{max(bar_d*scale/2, 1):.2f}" '
+            f'fill="#1e293b" stroke="#0f172a" stroke-width="0.8" data-role="track_round_bar" '
+            f'data-dia-mm="{bar_d:g}"/>'
+        )
+        parts.append(
+            f'<text x="{sx(W/2):.2f}" y="{gy + buried*scale + 12:.2f}" text-anchor="middle" '
+            f'font-family="Arial" font-size="10" fill="#57534e">'
+            f'Track C-ch {ch_f:g}×{ch_d:g} + Ø{bar_d:g} · half buried</text>'
+        )
+
+    footer_y = vb_h - 12
     parts.append(
-        f'<text x="{pad:g}" y="{vb_h - 14:g}" font-family="Arial" font-size="11" fill="#475569">'
+        f'<text x="{pad:g}" y="{footer_y:g}" font-family="Arial" font-size="11" fill="#475569">'
         f'Blades/leaf={q.get("bladeCountPerLeaf")} · gap={q.get("louverGapMm")} mm · '
         f'MS bars={((q.get("bars") or {}).get("ms"))} · Al bars={((q.get("bars") or {}).get("aluminium"))} · '
         f'Fe {((q.get("weight") or {}).get("ironKg"))} kg · Al {((q.get("weight") or {}).get("aluminiumKg"))} kg'
