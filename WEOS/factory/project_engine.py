@@ -837,7 +837,10 @@ def _gate_line_result(line: Mapping[str, Any], *, include_preview: bool = True) 
         cfg["finish"] = line.get("colour")
     q = compute_gate(cfg)
     qty = int(line.get("qty") or line.get("quantity") or q.get("qty") or 1)
-    subtotal = float(q.get("sellingTotal") or 0.0)
+    # Internal factory cost from BOM — never treat as customer selling.
+    cost_total = float((q.get("cost") or {}).get("total") or 0.0)
+    cost_per_sft = float((q.get("cost") or {}).get("perSft") or q.get("costPerSft") or 0.0)
+    area_sft = float(q.get("areaSft") or 0.0)
     svg = _special_line_preview_svg(
         line, include_preview=include_preview, builder=lambda: gate_svg(cfg, quote=q)
     )
@@ -865,6 +868,11 @@ def _gate_line_result(line: Mapping[str, Any], *, include_preview: bool = True) 
             "unit": "RM",
             "remarks": cut.get("designId"),
         })
+    sale_unit = str(line.get("saleUnit") or cfg.get("saleUnit") or "sqft")
+    # Only pass through an explicit user selling rate — never auto-fill from cost.
+    user_rate = line.get("sellingRate")
+    if user_rate in (None, "") and cfg.get("sellingRate") not in (None, ""):
+        user_rate = cfg.get("sellingRate")
     result = {
         "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
         "product": str(line.get("product") or line.get("productId") or "gates_privacy"),
@@ -876,17 +884,9 @@ def _gate_line_result(line: Mapping[str, Any], *, include_preview: bool = True) 
         "width": float(line.get("width") or q.get("widthMm") or 0),
         "height": float(line.get("height") or q.get("heightMm") or 0),
         "qty": qty,
-        "saleUnit": "sft",
-        "sellingRate": float(q.get("sellingPerSft") or 0.0),
-        "selling": {
-            "saleUnit": "sft",
-            "saleUnitLabel": "Per SFT",
-            "sellingRate": float(q.get("sellingPerSft") or 0.0),
-            "billableQty": float(q.get("areaSft") or 0) * qty,
-            "sellingAmount": subtotal,
-            "qty": qty,
-        },
-        "commercialTotal": subtotal,
+        "saleUnit": sale_unit,
+        "sellingRate": user_rate,
+        "commercialTotal": cost_total,
         "gate": q,
         "options": opts_out,
         "sectionSeries": "structural",
@@ -898,6 +898,7 @@ def _gate_line_result(line: Mapping[str, Any], *, include_preview: bool = True) 
             "bayType": q.get("bayType"),
             "bays": q.get("bays") or [],
             "leaves": q.get("leaves") or [],
+            "bayDims": q.get("bayDims") or [],
             "trackCount": None,
             "widthMm": q.get("widthMm"),
             "heightMm": q.get("heightMm"),
@@ -918,19 +919,23 @@ def _gate_line_result(line: Mapping[str, Any], *, include_preview: bool = True) 
         },
         "price": {
             "currency": "INR",
-            "unitRate": float(q.get("sellingPerSft") or 0.0),
-            "unitTotal": subtotal,
-            "subtotal": subtotal,
+            "unitRate": cost_per_sft,
+            "unitTotal": cost_total,
+            "subtotal": cost_total,
             "markupPercent": 0,
             "gstPercent": 0,
-            "total": subtotal,
-            "saleUnit": "sft",
+            "total": cost_total,
+            "saleUnit": sale_unit,
             "cost": q.get("cost"),
-            "selling": q.get("selling"),
+            "costPerSft": cost_per_sft,
+            "areaSft": area_sft,
         },
         "preview": {"svg": svg, "pdfSvg": svg} if svg else {"svg": None},
-        "note": "Gate / grill / privacy — structural MS+Al engine",
+        "note": "Gate / grill / privacy — BOM cost; set selling rate on cart",
         "incomplete": q.get("incomplete") or [],
+        "costPerUnit": cost_per_sft if str(sale_unit).lower() in ("sft", "sqft") else (
+            (cost_total / max(qty, 1)) if str(sale_unit).lower() in ("opening", "pc", "nos") else cost_per_sft
+        ),
     }
     return apply_selling_to_line_result(result, line)
 

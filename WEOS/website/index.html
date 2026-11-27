@@ -2048,9 +2048,19 @@ textarea{max-width:100%}
                     <option value="m">m</option>
                   </select>
                 </div>
-                <div><label class="l" id="gtWidthLbl">W (ft)</label><input id="gtWidth" type="number" step="any" value="13" style="width:72px"/></div>
-                <div><label class="l" id="gtHeightLbl">H (ft)</label><input id="gtHeight" type="number" step="any" value="8" style="width:72px"/></div>
+                <div><label class="l" id="gtWidthLbl">W total</label><input id="gtWidth" type="number" step="any" value="13" style="width:72px" title="Total clear gate width (or use Left/Right below)"/></div>
+                <div><label class="l" id="gtHeightLbl">H</label><input id="gtHeight" type="number" step="any" value="8" style="width:72px"/></div>
                 <div><label class="l">Qty</label><input id="gtQty" type="number" min="1" value="1" style="width:48px"/></div>
+              </div>
+              <div class="rt-row">
+                <div><label class="l" id="gtLeftGateLbl">Left gate</label><input id="gtLeftGate" type="number" step="any" min="0" value="" placeholder="auto" style="width:72px" title="Left bay clear size (priority). Walls/pillar are preview only."/></div>
+                <div><label class="l" id="gtRightGateLbl">Right gate</label><input id="gtRightGate" type="number" step="any" min="0" value="" placeholder="auto" style="width:72px" title="Right bay clear size (priority)."/></div>
+                <div><label class="l">Handle</label>
+                  <select id="gtHandleSideAll" style="width:64px" title="Handle stile side">
+                    <option value="R" selected>Right</option>
+                    <option value="L">Left</option>
+                  </select>
+                </div>
               </div>
               <div class="rt-row">
                 <div class="grow"><label class="l">Outer / wall frame</label><select id="gtFrameSec" style="width:100%;min-width:160px"></select></div>
@@ -2115,18 +2125,19 @@ textarea{max-width:100%}
                 <div><label class="l" id="gtGapLbl">Clear gap</label><input id="gtGap" type="number" step="any" value="0.082" style="width:64px" title="Default ~25 mm in feet"/></div>
                 <div><label class="l">Blades</label><input id="gtBladeCount" type="number" min="1" step="1" value="" style="width:52px;background:#f1f5f9" title="Computed for clear gap; editable for equal spacing"/></div>
               </div>
-              <div class="rt-row">
-                <div><label class="l">MS ₹/kg</label><input id="gtMsRate" type="number" step="1" value="150" style="width:64px"/></div>
+              <div class="rt-row" style="background:#f8fafc;padding:.25rem .35rem;border-radius:6px;border:1px solid #e2e8f0">
+                <div style="flex:1 1 100%;font-size:.7rem;font-weight:650;color:#334155;margin:0 0 .15rem">Purchase rates (material cost)</div>
+                <div><label class="l">MS ₹/kg</label><input id="gtMsRate" type="number" step="1" value="150" style="width:64px" title="Iron purchase rate — used kg × ₹/kg"/></div>
                 <div><label class="l">MS bar kg</label><input id="gtMsBarKg" type="number" step="0.1" value="25" style="width:64px"/></div>
                 <div><label class="l">MS stock ft</label><input id="gtMsStock" type="number" step="1" value="20" style="width:56px"/></div>
-                <div><label class="l">Al ₹/16ft</label><input id="gtAlRate" type="number" step="1" value="850" style="width:64px"/></div>
+                <div><label class="l">Al ₹/16ft</label><input id="gtAlRate" type="number" step="1" value="850" style="width:64px" title="Aluminium full-bar purchase rate"/></div>
               </div>
               <div class="rt-row">
                 <div><label class="l">Coat ₹/rft</label><input id="gtCoat" type="number" step="1" value="25" style="width:64px"/></div>
                 <div><label class="l">Fab ₹/sft</label><input id="gtFab" type="number" step="1" value="150" style="width:64px"/></div>
                 <div><label class="l">HW package</label><input id="gtHwPkg" type="number" step="1" value="10000" style="width:80px"/></div>
               </div>
-              <div class="muted" style="font-size:.72rem;margin:.2rem 0">Sections + rates with selection. Mitres · hinges · 25×25 handle · brick side walls H+100 · mid pillar · sliding split · track 2×W+1ft on pocket side · wheels@300.</div>
+              <div class="muted" style="font-size:.72rem;margin:.2rem 0">Material cost = actual BOM (used × rate / bars). Set <b>Your selling rate</b> or Profit % on the quote panel — changing sell does not change cost.</div>
               <div id="gateBom" class="rt-bom"></div>
               <div class="err" id="gateErr" style="font-size:.75rem"></div>
             </div>
@@ -7924,6 +7935,18 @@ function currentLineDraft() {
       const n = $('lineCurveRise') ? parseFloat($('lineCurveRise').value) : 200;
       return Math.max(40, isFinite(n) ? n : 200);
     })(),
+    // Gate / privacy — attach designer config so /api/quote/live uses BOM cost
+    ...(function(){
+      const isGate = state.gateMode || sys === 'gate' || (typeof productWorldOf === 'function' && productWorldOf(selectedProductMeta(), null) === 'gate');
+      if (!isGate) return {};
+      const gcfg = state.gate || (typeof gateCfgFromUi === 'function' ? gateCfgFromUi() : null);
+      if (!gcfg) return { productType: 'gate' };
+      return {
+        productType: 'gate',
+        options: { gate: gcfg, gateQuote: state._gateQuote || undefined, productType: 'gate' },
+        gate: state._gateQuote || undefined,
+      };
+    })(),
   };
 }
 
@@ -12629,7 +12652,7 @@ function gateFromMm(mm, unit) {
 function syncGateUnitLabels() {
   const u = gateSizeUnit();
   const tag = u === 'mm' ? 'mm' : (u === 'in' ? 'in' : (u === 'm' ? 'm' : 'ft'));
-  [['gtWidthLbl','W'],['gtHeightLbl','H'],['gtGapLbl','Clear gap'],['gtSideWallLbl','Side wall'],['gtMidPillarLbl','Pillar'],['gtSlideMainLbl','Slide main'],['gtSwingLeafLbl','Swing leaf']].forEach(([id, base]) => {
+  [['gtWidthLbl','W total'],['gtHeightLbl','H'],['gtLeftGateLbl','Left gate'],['gtRightGateLbl','Right gate'],['gtGapLbl','Clear gap'],['gtSideWallLbl','Side wall'],['gtMidPillarLbl','Pillar'],['gtSlideMainLbl','Slide main'],['gtSwingLeafLbl','Swing leaf']].forEach(([id, base]) => {
     if ($(id)) $(id).textContent = base + ' (' + tag + ')';
   });
   document.querySelectorAll('#gtPatternRows [data-gap-lbl]').forEach(el => { el.textContent = 'Gap (' + tag + ')'; });
@@ -12725,7 +12748,15 @@ function gateCfgFromUi() {
   const bladeN = bladeEl && bladeEl.value !== '' ? parseInt(bladeEl.value, 10) : NaN;
   const slideMainEl = $('gtSlideMain');
   const slideMainMm = (slideMainEl && slideMainEl.value !== '') ? gateToMm(slideMainEl.value, unit) : undefined;
+  const leftEl = $('gtLeftGate');
+  const rightEl = $('gtRightGate');
+  const leftGateMm = (leftEl && leftEl.value !== '') ? gateToMm(leftEl.value, unit) : undefined;
+  const rightGateMm = (rightEl && rightEl.value !== '') ? gateToMm(rightEl.value, unit) : undefined;
   const pattern = gapModeRaw === 'pattern' ? gatePatternRows() : [];
+  const handleSide = s('gtHandleSide') || s('gtHandleSideAll') || 'R';
+  if ($('gtHandleSide') && $('gtHandleSideAll') && document.activeElement === $('gtHandleSideAll')) {
+    $('gtHandleSide').value = handleSide;
+  }
   return {
     bayType: bay,
     foldLeft: n('gtFoldLeft', 2),
@@ -12735,6 +12766,8 @@ function gateCfgFromUi() {
     heightMm,
     widthFt: widthMm / 304.8,
     heightFt: heightMm / 304.8,
+    leftGateWidthMm: Number.isFinite(leftGateMm) && leftGateMm > 0 ? leftGateMm : undefined,
+    rightGateWidthMm: Number.isFinite(rightGateMm) && rightGateMm > 0 ? rightGateMm : undefined,
     louverGapMm: gapMm,
     grillSpacingMm: gapMm,
     louverSpacingMode: gapMode,
@@ -12757,7 +12790,7 @@ function gateCfgFromUi() {
     trackBarDiaMm: trackDia,
     slidingMainWidthMm: Number.isFinite(slideMainMm) && slideMainMm > 0 ? slideMainMm : undefined,
     swingLeafWidthMm: gateToMm(n('gtSwingLeaf', 0), unit) || 0,
-    handleSide: s('gtHandleSide') || 'R',
+    handleSide,
     sideWallWidthMm: gateToMm(n('gtSideWall', unit === 'ft' ? 230 / 304.8 : 230), unit),
     midPillarEnabled: (($('gtMidPillarEn') && $('gtMidPillarEn').value) || '0') === '1',
     midPillarWidthMm: gateToMm(n('gtMidPillar', unit === 'ft' ? 230 / 304.8 : 230), unit),
@@ -12802,16 +12835,57 @@ async function gateCalc() {
       const track = q.track || {};
       const mas = q.masonry || {};
       const leafW = (q.leaves || []).map(L => Math.round(L.outerWidthMm || 0)).join('+') || '—';
+      const bayTxt = (q.bayDims || []).map(b => `${b.label || b.side} ${Math.round(b.widthMm || 0)}`).join(' · ') || '—';
+      const inc = (q.incomplete || cost.incomplete || []);
+      const sellRate = ($('lineSellRate') && $('lineSellRate').value !== '') ? Number($('lineSellRate').value) : null;
+      const saleUnit = (($('lineSaleUnit') && $('lineSaleUnit').value) || 'sqft');
+      const area = Number(q.areaSft || 0) * Math.max(Number(cfg.qty || 1), 1);
+      let sellAmt = null;
+      if (sellRate != null && Number.isFinite(sellRate)) {
+        if (saleUnit === 'opening' || saleUnit === 'pc') sellAmt = sellRate * Math.max(Number(cfg.qty || 1), 1);
+        else if (saleUnit === 'sqm') sellAmt = sellRate * (area / 10.7639);
+        else sellAmt = sellRate * area;
+      }
       bom.innerHTML = [
         `<div><b>Blades/leaf</b> ${q.bladeCountPerLeaf || 0} · gap ${q.louverGapMm || 0} mm · mode ${q.louverSpacingMode || 'fixed_gap'} · leaves ${(q.foldLeft||0)}+${(q.foldRight||0)} · widths ${leafW}</div>`,
+        `<div><b>Gate clear</b> ${bayTxt} · quote ${Math.round(q.widthMm || 0)}×${Math.round(q.heightMm || 0)} mm</div>`,
         `<div><b>Sections</b> frame ${q.frameSectionId || '—'} · leaf ${q.leafFrameSectionId || '—'} · fill ${q.louverSectionId || q.grillSectionId || '—'} · handle ${q.handleSectionId || '—'}</div>`,
-        `<div><b>Masonry</b> side walls ${mas.sideWallWidthMm || 0} mm · H+${mas.aboveGateMm || 100} · mid pillar ${mas.midPillarEnabled ? (mas.midPillarWidthMm + ' mm') : 'off'} · handle ${q.handleSide || '—'}</div>`,
-        `<div><b>Bars</b> MS ${bars.ms || 0} · Al ${bars.aluminium || 0} · <b>kg</b> Fe ${w.ironKg || 0} · Al ${w.aluminiumKg || 0}</div>`,
+        `<div><b>Masonry</b> walls top +${mas.aboveGateMm || 100} → ground · mid ${mas.midPillarEnabled ? (mas.midPillarWidthMm + ' mm') : 'off'} · handle stile ${q.handleSide || '—'}</div>`,
+        `<div><b>Bars</b> MS ${bars.ms || 0} · Al ${bars.aluminium || 0} · <b>kg used</b> Fe ${w.ironKg || 0} · Al ${w.aluminiumKg || 0}</div>`,
         track.channelSectionId ? `<div><b>Track</b> ${Math.round(track.lengthMm || 0)} mm (2×W+1ft) · pocket ${track.pocketSide || '—'} · Ø${track.barDiaMm} · wheels @ ${track.wheelInsetMm || 300} mm</div>` : '',
-        `<div><b>Cost</b> Fe ₹${cost.iron||0} · Al ₹${cost.aluminium||0} · Coat ₹${cost.coating||0} · HW ₹${cost.hardware||0} · Fab ₹${cost.fabricationInstall||0}</div>`,
-        `<div><b>Selling</b> ₹${q.sellingTotal || 0} · ₹${q.sellingPerSft || 0}/sft · ${q.areaSft || 0} sft</div>`,
+        `<div style="margin-top:.25rem;padding:.3rem;background:#f1f5f9;border-radius:4px"><b>Material cost</b> Fe ₹${cost.iron||0} · Al ₹${cost.aluminium||0} · Coat ₹${cost.coating||0} · HW ₹${cost.hardware||0} · Fab ₹${cost.fabricationInstall||0}<br/><b>Cost total</b> ₹${cost.total||0} · ₹${cost.perSft||q.costPerSft||0}/sft · ${q.areaSft || 0} sft${inc.length ? `<br/><span style="color:#b45309">Incomplete: ${inc.slice(0,4).join('; ')}</span>` : ''}</div>`,
+        `<div style="padding:.3rem;background:#ecfdf5;border-radius:4px;margin-top:.2rem"><b>Customer selling</b> ${sellAmt != null ? ('₹' + Math.round(sellAmt)) : '— enter rate / profit % on quote panel'} · basis ${saleUnit}${sellRate != null ? (' @ ₹' + sellRate) : ''}</div>`,
       ].filter(Boolean).join('');
     }
+    // Drive quote cost / profit UI from live gate BOM cost (sell rate stays user-controlled)
+    const costTotal = Number((q.cost && q.cost.total) || 0);
+    const areaSft = Number(q.areaSft || 0) * Math.max(Number(cfg.qty || q.qty || 1), 1);
+    const unitCost = areaSft > 0 ? (costTotal / areaSft) : (costTotal / Math.max(Number(cfg.qty || 1), 1));
+    state._lastUnitCost = (typeof roundRate1 === 'function' ? roundRate1(unitCost) : Math.round(unitCost * 10) / 10);
+    if ($('liveCost')) $('liveCost').textContent = costTotal > 0 ? (typeof money === 'function' ? money(costTotal) : ('₹' + costTotal)) : '₹ —';
+    if ($('lineCostRate')) {
+      $('lineCostRate').textContent = state._lastUnitCost != null
+        ? ((typeof rateMoney === 'function' ? rateMoney(state._lastUnitCost) : ('₹' + state._lastUnitCost)) + ' / ' + (($('lineSaleUnit') && $('lineSaleUnit').value) || 'sqft'))
+        : '₹ —';
+    }
+    if ($('lineProfitPct') && $('lineProfitPct').value !== '' && typeof applyProfitPercentToSellRate === 'function') {
+      applyProfitPercentToSellRate({ unitCost: state._lastUnitCost });
+    }
+    if (typeof updateStickyProfit === 'function') {
+      const rateRaw = $('lineSellRate') ? $('lineSellRate').value : '';
+      const explicit = rateRaw !== '';
+      let sellN = 0;
+      if (explicit && typeof lineLiveAmount === 'function') {
+        sellN = lineLiveAmount({
+          width: q.widthMm, height: q.heightMm, qty: cfg.qty || 1,
+          saleUnit: ($('lineSaleUnit') && $('lineSaleUnit').value) || 'sqft',
+          sellingRate: +rateRaw,
+        }) || 0;
+      }
+      updateStickyProfit(costTotal, sellN, explicit);
+    }
+    if ($('lineW')) $('lineW').value = Math.round(q.widthMm || cfg.widthFt * 304.8);
+    if ($('lineH')) $('lineH').value = Math.round(q.heightMm || cfg.heightFt * 304.8);
     if ($('lineWidth')) $('lineWidth').value = Math.round(q.widthMm || cfg.widthFt * 304.8);
     if ($('lineHeight')) $('lineHeight').value = Math.round(q.heightMm || cfg.heightFt * 304.8);
     return q;
@@ -12824,6 +12898,7 @@ async function gateAdd() {
   const q = state._gateQuote || await gateCalc();
   if (!q) return;
   const cfg = state.gate || gateCfgFromUi();
+  const rateRaw = $('lineSellRate') ? $('lineSellRate').value : '';
   const line = {
     product: 'gates_privacy',
     productId: 'gates_privacy',
@@ -12836,9 +12911,9 @@ async function gateAdd() {
     colour: cfg.finish || 'wood_finish',
     options: { gate: cfg, gateQuote: q, productType: 'gate' },
     gate: q,
-    commercialTotal: q.sellingTotal,
-    sellingRate: q.sellingPerSft,
-    saleUnit: 'sft',
+    commercialTotal: (q.cost && q.cost.total) || 0,
+    sellingRate: rateRaw === '' ? null : +rateRaw,
+    saleUnit: ($('lineSaleUnit') && $('lineSaleUnit').value) || 'sqft',
   };
   if (typeof addCartLine === 'function') addCartLine(line);
   else if (Array.isArray(state.cart)) { state.cart.push(line); if (typeof renderCart === 'function') renderCart(); }
@@ -13508,7 +13583,7 @@ if ($('gtSizeUnit')) $('gtSizeUnit').addEventListener('change', () => {
   if (state.gateMode) gateCalc();
 });
 state._gateSizeUnit = gateSizeUnit();
-['gtBayType','gtFoldLeft','gtFoldRight','gtWidth','gtHeight','gtSizeUnit','gtGap','gtGapMode','gtBladeCount','gtQty','gtMsRate','gtMsBarKg','gtMsStock','gtAlRate','gtCoat','gtFab','gtHwPkg','gtFrameSec','gtWallPostSec','gtLeafSec','gtLouverSec','gtSupportSec','gtGrillSec','gtGrillStyle','gtTrackChSec','gtTrackBarSec','gtSlideMain','gtSwingLeaf','gtHandleSide','gtSideWall','gtMidPillarEn','gtMidPillar'].forEach(id => {
+['gtBayType','gtFoldLeft','gtFoldRight','gtWidth','gtHeight','gtLeftGate','gtRightGate','gtSizeUnit','gtGap','gtGapMode','gtBladeCount','gtQty','gtMsRate','gtMsBarKg','gtMsStock','gtAlRate','gtCoat','gtFab','gtHwPkg','gtFrameSec','gtWallPostSec','gtLeafSec','gtLouverSec','gtSupportSec','gtGrillSec','gtGrillStyle','gtTrackChSec','gtTrackBarSec','gtSlideMain','gtSwingLeaf','gtHandleSide','gtHandleSideAll','gtSideWall','gtMidPillarEn','gtMidPillar'].forEach(id => {
   const el = $(id);
   if (!el) return;
   el.addEventListener('change', () => {

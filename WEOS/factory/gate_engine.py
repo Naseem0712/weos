@@ -393,21 +393,27 @@ def _ft_or_mm(cfg: Mapping[str, Any], mm_key: str, ft_key: str, default: float =
     return default
 
 
-def _masonry_dims(cfg: Mapping[str, Any], gate_h: float) -> dict[str, Any]:
+def _masonry_dims(cfg: Mapping[str, Any], gate_h: float, *, ground_y_mm: float | None = None) -> dict[str, Any]:
+    """Preview-only masonry. Wall top is 100 mm above gate; bottom = ground."""
     side_w = max(_ft_or_mm(cfg, "sideWallWidthMm", "sideWallWidthFt", DEFAULT_SIDE_WALL_MM), 50.0)
     side_d = max(_ft_or_mm(cfg, "sideWallDepthMm", "sideWallDepthFt", side_w), 50.0)
     mid_on = _bool(cfg.get("midPillarEnabled") or cfg.get("midWallEnabled") or cfg.get("hasMidPillar"))
     mid_w = max(_ft_or_mm(cfg, "midPillarWidthMm", "midPillarWidthFt", DEFAULT_MID_PILLAR_MM), 50.0) if mid_on else 0.0
     mid_d = max(_ft_or_mm(cfg, "midPillarDepthMm", "midPillarDepthFt", mid_w or side_d), 50.0) if mid_on else 0.0
-    wall_h = gate_h + WALL_ABOVE_GATE_MM
+    ground = _f(ground_y_mm, gate_h)
+    wall_top = -WALL_ABOVE_GATE_MM
+    wall_h = ground - wall_top  # gate H (to ground) + 100 mm above
     return {
         "sideWallWidthMm": round(side_w, 1),
         "sideWallDepthMm": round(side_d, 1),
         "midPillarEnabled": mid_on,
         "midPillarWidthMm": round(mid_w, 1),
         "midPillarDepthMm": round(mid_d, 1),
+        "wallTopMm": round(wall_top, 1),
+        "wallBottomMm": round(ground, 1),
         "wallHeightMm": round(wall_h, 1),
         "aboveGateMm": WALL_ABOVE_GATE_MM,
+        "previewOnly": True,
     }
 
 
@@ -441,17 +447,31 @@ def _plan_leaf_widths(
     custom = _parse_mm_list(cfg.get("leafWidthsMm") or cfg.get("leafWidths"))
     roles_in = cfg.get("leafRoles") if isinstance(cfg.get("leafRoles"), (list, tuple)) else []
     handle_side = _resolve_handle_side(cfg, bay_type=bay_type, left_n=left_n, right_n=right_n)
-    span = max(usable_w - mid_w, 1.0)
+    # Mid pillar is preview-only — never shrink clear gate leaf span.
+    _ = mid_w
+    span = max(usable_w, 1.0)
 
     def _scale(ws: list[float]) -> list[float]:
         total = sum(ws) or 1.0
         return [w * span / total for w in ws]
 
     def _group_spans() -> tuple[float, float]:
-        if mid_w > 0 and left_n and right_n:
-            return span / 2.0, span / 2.0
         if leaf_count <= 0:
             return 0.0, 0.0
+        # Explicit left/right clear sizes (priority) — scale into usable leaf span
+        lb = _ft_or_mm(cfg, "leftGateWidthMm", "leftGateWidthFt", 0.0)
+        rb = _ft_or_mm(cfg, "rightGateWidthMm", "rightGateWidthFt", 0.0)
+        if (lb > 0 or rb > 0) and (left_n or right_n):
+            if left_n and lb <= 0:
+                lb = span * left_n / leaf_count
+            if right_n and rb <= 0:
+                rb = span * right_n / leaf_count
+            if not left_n:
+                lb = 0.0
+            if not right_n:
+                rb = 0.0
+            total = max(lb + rb, 1.0)
+            return span * lb / total, span * rb / total
         ls = span * left_n / leaf_count
         return ls, span - ls
 
@@ -1045,6 +1065,48 @@ def _nest_by_section(
         elif kg_m and bars and stock:
             purchase_kg = bars * (stock / 1000.0) * float(kg_m)
         purch = amount_for_purchase(used_m=used_m, used_kg=used_kg or (purchase_kg or 0), bars=bars, section=sec)
+        # Distinct used vs purchase money — wastage is breakup of full-bar amount (never added twice).
+        unit = str(sec.get("purchaseRateUnit") or "kg").lower().replace(" ", "_")
+        rate = sec.get("purchaseRate")
+        stock_m = stock / 1000.0 if stock else 0.0
+        purchase_m = bars * stock_m if bars and stock_m else 0.0
+        wastage_m = max(purchase_m - used_m, 0.0) if purchase_m else 0.0
+        used_amt = None
+        purchase_amt = purch.get("amount")
+        if rate is not None:
+            try:
+                r = float(rate)
+                if unit in ("kg", "per_kg") and kg_m:
+                    used_amt = round(used_kg * r, 2)
+                    if purchase_kg is not None:
+                        purchase_amt = round(float(purchase_kg) * r, 2)
+                elif unit in ("rft", "per_rft", "ft"):
+                    used_amt = round((used_m / 0.3048) * r, 2)
+                    purchase_amt = round((purchase_m / 0.3048) * r, 2) if purchase_m else used_amt
+                elif unit in ("m", "rm", "rmt", "per_m", "metre", "meter"):
+                    used_amt = round(used_m * r, 2)
+                    purchase_amt = round(purchase_m * r, 2) if purchase_m else used_amt
+                elif unit in ("full_length", "bar", "length", "full_bar", "stock"):
+                    # Cost = full bars × rate; used money is proportional breakup only
+                    purchase_amt = round(bars * r, 2)
+                    used_amt = round(purchase_amt * (used_m / purchase_m), 2) if purchase_m > 0 else purchase_amt
+            except (TypeError, ValueError):
+                pass
+        # Internal cost line: used×rate for kg/rft/m; full-bar for ₹/bar (wastage inside purchase)
+        if unit in ("full_length", "bar", "length", "full_bar", "stock", "piece", "pcs", "pc", "set"):
+            cost_amount = purchase_amt
+        else:
+            cost_amount = used_amt if used_amt is not None else purchase_amt
+        if cost_amount is not None:
+            purch = dict(purch)
+            purch["amount"] = cost_amount
+            purch["usedAmount"] = used_amt
+            purch["purchaseAmount"] = purchase_amt
+            purch["wastageAmountBreakup"] = (
+                round(float(purchase_amt) - float(used_amt), 2)
+                if purchase_amt is not None and used_amt is not None
+                else None
+            )
         nests[sid] = {
             "sectionId": sid,
             "sectionName": sec.get("name"),
@@ -1056,10 +1118,15 @@ def _nest_by_section(
             "usedM": round(used_m, 4),
             "usedKg": round(used_kg, 3),
             "purchaseKg": round(purchase_kg, 3) if purchase_kg is not None else None,
+            "purchaseM": round(purchase_m, 4) if purchase_m else None,
+            "wastageM": round(wastage_m, 4) if wastage_m else 0.0,
             "bars": bars,
             "nest": nest,
             "oversize": oversize,
             "purchase": purch,
+            "usedAmount": used_amt,
+            "purchaseAmount": purchase_amt,
+            "costAmount": cost_amount,
             "weightSource": wr.get("weightSource"),
             "weightLabel": wr.get("weightLabel"),
             "kgPerM": kg_m,
@@ -1228,7 +1295,8 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
     track_ch_sec = _resolve_track_channel_section(c)
     track_bar_sec = _resolve_track_bar_section(c)
     handle_sec = _resolve_handle_section(c)
-    masonry = _masonry_dims(c, H)
+    # Walls: top = gate top − 100 mm, bottom = ground (H). Gate leaf keeps bottom gap.
+    masonry = _masonry_dims(c, H, ground_y_mm=H)
 
     face = _section_face(frame, 75.0)
     leaf_face = _section_face(leaf_frame_sec, face)
@@ -1258,20 +1326,36 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
         leaf_count = 0
         left_n = right_n = 0
 
+    # Left/right clear gate sizes take priority; quote W = sum of gate bays (walls/pillar preview-only).
+    left_bay_w = _ft_or_mm(c, "leftGateWidthMm", "leftGateWidthFt", 0.0)
+    right_bay_w = _ft_or_mm(c, "rightGateWidthMm", "rightGateWidthFt", 0.0)
+    if (left_bay_w > 0 or right_bay_w > 0) and leaf_count > 0:
+        if left_n and left_bay_w <= 0:
+            left_bay_w = W * left_n / leaf_count
+        if right_n and right_bay_w <= 0:
+            right_bay_w = W * right_n / leaf_count
+        if not left_n:
+            left_bay_w = 0.0
+        if not right_n:
+            right_bay_w = 0.0
+        W = left_bay_w + right_bay_w
+        c = dict(c)
+        c["widthMm"] = W
+
     handle_side = _resolve_handle_side(c, bay_type=bay_type, left_n=left_n, right_n=right_n)
     mid_w = _f(masonry.get("midPillarWidthMm"))
     wall_posts = _i(c.get("wallPostCount"), 2 if leaf_count else 0)
-    # Shared posts/dividers counted once; mid concrete pillar also reduces leaf span
+    # Mid pillar is preview-only — does not steal clear leaf span from quote W.
     usable_w = W - wall_posts * post_face - 2 * wall_clear
     if leaf_count > 0:
         meetings = max(leaf_count - 1, 0)
-        # Mid pillar replaces one meeting gap when both sides present
         if mid_w > 0 and left_n and right_n:
             meetings = max(left_n - 1, 0) + max(right_n - 1, 0)
         usable_w -= meetings * meeting_clear
     leaf_outer_h = H - bottom_clear - top_clear
+    leaf_y0 = top_clear  # flush under top clearance; bottom gap = bottom_clear at ground
     leaf_plans = _plan_leaf_widths(
-        c, bay_type=bay_type, usable_w=usable_w, left_n=left_n, right_n=right_n, mid_w=mid_w,
+        c, bay_type=bay_type, usable_w=usable_w, left_n=left_n, right_n=right_n, mid_w=0.0,
     )
     leaf_count = len(leaf_plans) if leaf_plans else leaf_count
 
@@ -1341,6 +1425,7 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
                 "clearHeightMm": round(clear_h, 1),
                 "frameFaceMm": leaf_face,
                 "x0Mm": round(cursor_x, 1),
+                "y0Mm": round(leaf_y0, 1),
                 "hingeSide": plan.get("hingeSide"),
                 "handleSide": plan.get("handleSide"),
                 "showHandle": bool(plan.get("showHandle")),
@@ -1379,11 +1464,13 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
                     {"insetFromLeftMm": WHEEL_INSET_MM, "role": "wheel_left"},
                     {"insetFromRightMm": WHEEL_INSET_MM, "role": "wheel_right"},
                 ]
-            # Handle opposite hinge — 25×25 pipe, ≥ half leaf height
+            # Handle on handle stile centreline — 25×25 pipe, half leaf height
             if leaf_rec.get("showHandle") and leaf_rec.get("operable"):
                 hnd_side = _s(leaf_rec.get("handleSide"), handle_side)
-                handle_h = max(leaf_outer_h * 0.5, H * 0.5)
-                y_h = max((leaf_outer_h - handle_h) / 2.0, 0.0)
+                handle_h = max(leaf_outer_h * 0.5, 400.0)
+                handle_h = min(handle_h, leaf_outer_h - 40.0) if leaf_outer_h > 80 else leaf_outer_h
+                y_h = leaf_y0 + max((leaf_outer_h - handle_h) / 2.0, 0.0)
+                # Centre of handle stile (not floating over louvers)
                 if hnd_side == "L":
                     hx = cursor_x + leaf_face / 2.0
                 else:
@@ -1399,7 +1486,7 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
                     pcs=1,
                     end_cut="square",
                     joint="stile_mount",
-                    note=f"25×25 pull · H={handle_h:g} + stubs",
+                    note=f"25×25 pull on {hnd_side} stile · H={handle_h:g} + stubs",
                 ))
                 hrec = {
                     "leafId": leaf_id,
@@ -1409,6 +1496,7 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
                     "heightMm": round(handle_h, 1),
                     "faceMm": handle_face,
                     "stubMm": HANDLE_STUB_MM,
+                    "stileX0Mm": round(cursor_x if hnd_side == "L" else cursor_x + leaf_outer_w - leaf_face, 1),
                     "sectionId": handle_sec.get("sectionId"),
                 }
                 leaf_rec["handle"] = hrec
@@ -1555,19 +1643,57 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
     if joints:
         hinge_meta = {"hingesPerJoint": hinges_per_joint, "joints": joints}
 
+    # Visual extent includes preview mid pillar between L/R; quote W excludes walls/pillar.
+    visual_w = W
+    if mid_w > 0 and left_n and right_n and mid_x0 is not None:
+        visual_w = W + mid_w
+    elif leaves_meta:
+        last = leaves_meta[-1]
+        visual_w = max(W, _f(last.get("x0Mm")) + _f(last.get("outerWidthMm")) + (post_face if wall_posts else 0.0))
+
+    bay_dims: list[dict[str, Any]] = []
+    left_leaves = [L for L in leaves_meta if _s(L.get("side")) == "L"]
+    right_leaves = [L for L in leaves_meta if _s(L.get("side")) == "R"]
+    if left_leaves:
+        x0b = _f(left_leaves[0].get("x0Mm"))
+        x1b = _f(left_leaves[-1].get("x0Mm")) + _f(left_leaves[-1].get("outerWidthMm"))
+        bay_dims.append({
+            "side": "L", "x0Mm": round(x0b, 1), "x1Mm": round(x1b, 1),
+            "widthMm": round(x1b - x0b, 1), "label": "Left gate",
+        })
+    if right_leaves:
+        x0b = _f(right_leaves[0].get("x0Mm"))
+        x1b = _f(right_leaves[-1].get("x0Mm")) + _f(right_leaves[-1].get("outerWidthMm"))
+        bay_dims.append({
+            "side": "R", "x0Mm": round(x0b, 1), "x1Mm": round(x1b, 1),
+            "widthMm": round(x1b - x0b, 1), "label": "Right gate",
+        })
+    if not bay_dims and leaves_meta:
+        x0b = _f(leaves_meta[0].get("x0Mm"))
+        x1b = _f(leaves_meta[-1].get("x0Mm")) + _f(leaves_meta[-1].get("outerWidthMm"))
+        bay_dims.append({
+            "side": "C", "x0Mm": round(x0b, 1), "x1Mm": round(x1b, 1),
+            "widthMm": round(x1b - x0b, 1), "label": "Gate",
+        })
+
     masonry_out = {
         **masonry,
         "midPillarX0Mm": round(mid_x0, 1) if mid_x0 is not None else None,
         "brickPattern": "running_bond",
+        "visualWidthMm": round(visual_w, 1),
         "leftWall": {
             "x0Mm": round(-_f(masonry["sideWallWidthMm"]), 1),
             "widthMm": masonry["sideWallWidthMm"],
+            "topMm": masonry.get("wallTopMm"),
+            "bottomMm": masonry.get("wallBottomMm"),
             "heightMm": masonry["wallHeightMm"],
             "depthMm": masonry["sideWallDepthMm"],
         },
         "rightWall": {
-            "x0Mm": round(W, 1),
+            "x0Mm": round(visual_w, 1),
             "widthMm": masonry["sideWallWidthMm"],
+            "topMm": masonry.get("wallTopMm"),
+            "bottomMm": masonry.get("wallBottomMm"),
             "heightMm": masonry["wallHeightMm"],
             "depthMm": masonry["sideWallDepthMm"],
         },
@@ -1673,33 +1799,28 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
         else:
             ms_purchase += _f(amt)
 
-    # Selling
-    selling_basis = _s(c.get("sellingBasis") or c.get("saleUnit"), "sft").lower()
-    # Customer selling = materials selling basis OR cost+markup; acceptance uses itemised
-    material_cost = ms_purchase + al_purchase + coating_amount + hw_amount
-    # Internal cost
-    cost_total = money_n((material_cost + fab_amount / max(qty, 1)) * qty) if False else money_n(
-        (ms_purchase + al_purchase + coating_amount + hw_amount) * 1  # nests already × qty
-        + fab_amount
-    )
-    # Recompute: nests already include qty; fab includes qty; hw is per opening × qty
-    hw_total = money_n(hw_amount * qty)
-    coat_total = money_n(coating_amount * qty) if qty > 1 and False else money_n(coating_amount)
-    # Coating/nest amounts: nests already × qty for used; purchase amounts in nest are for qty
-    # Fix coat: compute from nest used which is qty-scaled
-    coat_total = money_n(coat_qty * coat_rate)  # coat_qty from used_m already ×qty in nests... 
-    # Actually used_m in nests is qty-scaled; coat_qty used ms_used_m from nests → already × qty
+    # Internal cost from real BOM nests only (purchase amount already excludes double wastage).
+    # Customer selling is NOT cost — set later via cart sale unit / profit % / lump rate.
+    if coat_rate <= 0:
+        incomplete.append("coating rate missing")
+    if fab_rate < 0:
+        incomplete.append("fab rate missing")
     coat_total = money_n(coat_qty * coat_rate)
     hw_total = money_n(hw_amount * qty)
-    selling_parts = {
+    cost_parts = {
         "iron": money_n(ms_purchase),
         "aluminium": money_n(al_purchase),
         "coating": coat_total,
         "hardware": hw_total,
         "fabricationInstall": fab_amount,
     }
-    selling_total = money_n(sum(selling_parts.values()))
-    selling_per_sft = money_n(selling_total / (area_sft * qty)) if area_sft * qty > 0 else None
+    cost_total = money_n(sum(cost_parts.values()))
+    cost_per_sft = money_n(cost_total / (area_sft * qty)) if area_sft * qty > 0 else None
+    # Suggested sell targets (do not write into price as if sold)
+    selling_basis = _s(c.get("sellingBasis") or c.get("saleUnit"), "sft").lower()
+    selling_parts = dict(cost_parts)  # legacy alias — UI must treat as cost breakdown
+    selling_total = cost_total
+    selling_per_sft = cost_per_sft
 
     # Blade summary
     blade_count_total = sum(int(m.get("bladeCount") or 0) for m in fill_metas)
@@ -1798,18 +1919,28 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
             "fabRatePerSft": fab_rate,
             "hardwarePackage": money_n(_f(c.get("hardwarePackageAmount"), 10000)),
         },
+        "bayDims": bay_dims,
+        "visualWidthMm": round(visual_w, 1),
+        "leftGateWidthMm": round(sum(_f(L.get("outerWidthMm")) for L in left_leaves), 1) if left_leaves else 0.0,
+        "rightGateWidthMm": round(sum(_f(L.get("outerWidthMm")) for L in right_leaves), 1) if right_leaves else 0.0,
         "cost": {
-            "iron": money_n(ms_purchase),
-            "aluminium": money_n(al_purchase),
-            "coating": coat_total,
-            "hardware": hw_total,
-            "fabricationInstall": fab_amount,
-            "total": money_n(ms_purchase + al_purchase + coat_total + hw_total + fab_amount),
+            "iron": cost_parts["iron"],
+            "aluminium": cost_parts["aluminium"],
+            "coating": cost_parts["coating"],
+            "hardware": cost_parts["hardware"],
+            "fabricationInstall": cost_parts["fabricationInstall"],
+            "total": cost_total,
+            "perSft": cost_per_sft,
+            "breakdown": cost_parts,
+            "incomplete": list(incomplete),
+            "factoryReady": not incomplete,
         },
+        # Legacy keys kept for older UI — equal to cost until cart applies user sell rate.
         "selling": selling_parts,
         "sellingTotal": selling_total,
         "sellingPerSft": selling_per_sft,
         "sellingBasis": selling_basis,
+        "costPerSft": cost_per_sft,
         "description": description,
         "kerfMm": kerf,
         "trimMm": trim,
@@ -2162,19 +2293,25 @@ def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> 
     handles = list(q.get("handles") or [])
 
     side_w = _f(masonry.get("sideWallWidthMm"), DEFAULT_SIDE_WALL_MM)
-    wall_h = _f(masonry.get("wallHeightMm"), H + WALL_ABOVE_GATE_MM)
+    wall_top = _f(masonry.get("wallTopMm"), -WALL_ABOVE_GATE_MM)
+    wall_bot = _f(masonry.get("wallBottomMm"), H)
+    wall_h = _f(masonry.get("wallHeightMm"), wall_bot - wall_top)
     mid_on = bool(masonry.get("midPillarEnabled"))
     mid_w = _f(masonry.get("midPillarWidthMm")) if mid_on else 0.0
     mid_x0 = masonry.get("midPillarX0Mm")
+    visual_w = _f(q.get("visualWidthMm") or masonry.get("visualWidthMm"), W)
+    if mid_on and mid_w > 0:
+        visual_w = max(visual_w, W + mid_w)
     track_x0 = _f(track.get("x0Mm"), 0.0) if track else 0.0
     track_len = _f(track.get("lengthMm"), W) if track else W
     track_x1 = track_x0 + track_len
 
-    # Content extents in mm (opening 0..W; walls outside; track may overrun)
+    # Content extents in mm (walls outside; mid may expand visual; track may overrun)
     content_x0 = min(-side_w, track_x0 if track else 0.0)
-    content_x1 = max(W + side_w, track_x1 if track else W)
-    content_w = max(content_x1 - content_x0, W + 2 * side_w)
-    content_h = max(wall_h, H)
+    content_x1 = max(visual_w + side_w, track_x1 if track else visual_w)
+    content_w = max(content_x1 - content_x0, visual_w + 2 * side_w)
+    content_y0 = min(wall_top, -28.0)  # room for dims above gate
+    content_y1 = max(wall_bot, H)
 
     track_extra = 0.0
     if track:
@@ -2185,9 +2322,10 @@ def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> 
     title_h = 34.0
     max_w = vb_w - pad * 2
     max_h = vb_h - pad * 2 - title_h - (28 if track_extra else 8)
+    content_h = content_y1 - content_y0
     scale = min(max_w / max(content_w, 1.0), max_h / max(content_h + track_extra, 1.0))
     x0 = pad + (max_w - content_w * scale) / 2.0 - content_x0 * scale
-    y0 = title_h + pad * 0.35
+    y0 = title_h + pad * 0.35 - content_y0 * scale
 
     def sx(mm: float) -> float:
         return x0 + mm * scale
@@ -2208,17 +2346,17 @@ def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> 
         f'{mm_n(W)} × {mm_n(H)} mm · {left}+{right}</text>',
     ]
 
-    # Side walls — always both sides, H+100, running-bond line hatch
+    # Side walls — top +100 mm above gate, bottom at ground (gate bottom gap stays open)
     _svg_brick_hatch(
-        parts, sx=sx, sy=sy, x_mm=-side_w, y_mm=0, w_mm=side_w, h_mm=wall_h, role="side_wall_L",
+        parts, sx=sx, sy=sy, x_mm=-side_w, y_mm=wall_top, w_mm=side_w, h_mm=wall_h, role="side_wall_L",
     )
     _svg_brick_hatch(
-        parts, sx=sx, sy=sy, x_mm=W, y_mm=0, w_mm=side_w, h_mm=wall_h, role="side_wall_R",
+        parts, sx=sx, sy=sy, x_mm=visual_w, y_mm=wall_top, w_mm=side_w, h_mm=wall_h, role="side_wall_R",
     )
     if mid_on and mid_w > 0:
         mx = _f(mid_x0, (W - mid_w) / 2.0)
         _svg_brick_hatch(
-            parts, sx=sx, sy=sy, x_mm=mx, y_mm=0, w_mm=mid_w, h_mm=wall_h, role="mid_pillar",
+            parts, sx=sx, sy=sy, x_mm=mx, y_mm=wall_top, w_mm=mid_w, h_mm=wall_h, role="mid_pillar",
         )
 
     wp = _i(q.get("wallPostCount"), 0)
@@ -2229,7 +2367,8 @@ def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> 
         )
     if wp >= 2:
         _svg_mitred_hollow_frame(
-            parts, sx=sx, sy=sy, x_mm=W - post_face, y_mm=0, w_mm=post_face, h_mm=H, face_mm=min(post_face * 0.35, 18),
+            parts, sx=sx, sy=sy, x_mm=visual_w - post_face, y_mm=0, w_mm=post_face, h_mm=H,
+            face_mm=min(post_face * 0.35, 18),
             role="wall_post",
         )
 
@@ -2248,12 +2387,13 @@ def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> 
                     lx += mid_w
             lf = _f(leaf.get("frameFaceMm"), leaf_face)
             leaf_h = _f(leaf.get("outerHeightMm"), H)
+            ly = _f(leaf.get("y0Mm"), 0.0)
             _svg_mitred_hollow_frame(
-                parts, sx=sx, sy=sy, x_mm=lx, y_mm=0, w_mm=leaf_w, h_mm=leaf_h, face_mm=lf,
+                parts, sx=sx, sy=sy, x_mm=lx, y_mm=ly, w_mm=leaf_w, h_mm=leaf_h, face_mm=lf,
                 role="moving_leaf_frame",
             )
             clear_x = lx + lf
-            clear_y = lf
+            clear_y = ly + lf
             clear_w = max(leaf_w - 2 * lf, 0)
             clear_h = max(leaf_h - 2 * lf, 0)
             fill = leaf.get("fill") if isinstance(leaf.get("fill"), Mapping) else {}
@@ -2402,8 +2542,21 @@ def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> 
             f'C-ch {ch_f:g}×{ch_d:g} + Ø{bar_d:g}</text>'
         )
 
-    # Window-style overall dimensions
-    _svg_dim_h(parts, sx=sx, sy=sy, x0=0, x1=W, y=-28, text=str(mm_n(W)), font=11)
+    # Per-gate clear dims (exclude walls / mid pillar)
+    bay_dims = list(q.get("bayDims") or [])
+    if bay_dims:
+        for bi, bd in enumerate(bay_dims):
+            if not isinstance(bd, Mapping):
+                continue
+            _svg_dim_h(
+                parts, sx=sx, sy=sy,
+                x0=_f(bd.get("x0Mm")), x1=_f(bd.get("x1Mm")),
+                y=-28 - bi * 18,
+                text=str(mm_n(_f(bd.get("widthMm")))),
+                font=11,
+            )
+    else:
+        _svg_dim_h(parts, sx=sx, sy=sy, x0=0, x1=W, y=-28, text=str(mm_n(W)), font=11)
     _svg_dim_v(parts, sx=sx, sy=sy, y0=0, y1=H, x=-28 - side_w * 0.15, text=str(mm_n(H)), font=11)
 
     footer_y = vb_h - 12
