@@ -2054,6 +2054,26 @@ textarea{max-width:100%}
                 <div class="grow"><label class="l">Track C-channel</label><select id="gtTrackChSec" style="width:100%;min-width:140px"></select></div>
                 <div class="grow"><label class="l">Track round Ø</label><select id="gtTrackBarSec" style="width:100%;min-width:120px"></select></div>
               </div>
+              <div class="rt-row" id="gtSlideSplitRow" style="display:none">
+                <div><label class="l">Slide main mm</label><input id="gtSlideMainMm" type="number" step="1" min="0" value="" placeholder="auto" style="width:72px" title="Main sliding leaf clear width (mm). Leave blank to use fold L/R equal split."/></div>
+                <div><label class="l">Swing leaf mm</label><input id="gtSwingLeafMm" type="number" step="1" min="0" value="0" style="width:72px" title="Optional small swing leaf beside sliding"/></div>
+                <div><label class="l">Handle</label>
+                  <select id="gtHandleSide" style="width:64px">
+                    <option value="R" selected>Right</option>
+                    <option value="L">Left</option>
+                  </select>
+                </div>
+              </div>
+              <div class="rt-row">
+                <div><label class="l">Side wall mm</label><input id="gtSideWallMm" type="number" step="1" min="50" value="230" style="width:64px" title="Brick/concrete side wall width (both sides). Walls drawn H+100."/></div>
+                <div><label class="l">Mid pillar</label>
+                  <select id="gtMidPillarEn" style="width:64px">
+                    <option value="0" selected>Off</option>
+                    <option value="1">On</option>
+                  </select>
+                </div>
+                <div><label class="l">Pillar mm</label><input id="gtMidPillarMm" type="number" step="1" min="50" value="230" style="width:64px"/></div>
+              </div>
               <div class="rt-row">
                 <div><label class="l">Gap mode</label>
                   <select id="gtGapMode" style="width:110px">
@@ -2075,7 +2095,7 @@ textarea{max-width:100%}
                 <div><label class="l">Fab ₹/sft</label><input id="gtFab" type="number" step="1" value="150" style="width:64px"/></div>
                 <div><label class="l">HW package</label><input id="gtHwPkg" type="number" step="1" value="10000" style="width:80px"/></div>
               </div>
-              <div class="muted" style="font-size:.72rem;margin:.2rem 0">Section IDs shared with material library. Purchase rates stay with selection. Mitres · hinges · sliding wheels@300 mm + half-buried track.</div>
+              <div class="muted" style="font-size:.72rem;margin:.2rem 0">Sections + rates with selection. Mitres · hinges · 25×25 handle · brick side walls H+100 · mid pillar · sliding split · track 2×W+1ft on pocket side · wheels@300.</div>
               <div id="gateBom" class="rt-bom"></div>
               <div class="err" id="gateErr" style="font-size:.75rem"></div>
             </div>
@@ -12342,6 +12362,8 @@ function syncGateUiRows() {
   if ($('gtGrillRow')) $('gtGrillRow').style.display = grill ? '' : 'none';
   if ($('gtLouverRow')) $('gtLouverRow').style.display = louverish ? '' : 'none';
   if ($('gtTrackRow')) $('gtTrackRow').style.display = sliding ? '' : 'none';
+  if ($('gtSlideSplitRow')) $('gtSlideSplitRow').style.display = sliding ? '' : 'none';
+  if ($('gtMidPillarMm')) $('gtMidPillarMm').disabled = (($('gtMidPillarEn') && $('gtMidPillarEn').value) || '0') !== '1';
   if ($('gtGap')) $('gtGap').disabled = equal;
   if ($('gtBladeCount')) {
     $('gtBladeCount').readOnly = !equal;
@@ -12388,6 +12410,17 @@ function gateCfgFromUi() {
     trackChannelSectionId: s('gtTrackChSec') || undefined,
     trackBarSectionId: trackBarId || undefined,
     trackBarDiaMm: trackDia,
+    slidingMainWidthMm: (() => {
+      const el = $('gtSlideMainMm');
+      if (!el || el.value === '') return undefined;
+      const v = parseFloat(el.value);
+      return Number.isFinite(v) && v > 0 ? v : undefined;
+    })(),
+    swingLeafWidthMm: n('gtSwingLeafMm', 0),
+    handleSide: s('gtHandleSide') || 'R',
+    sideWallWidthMm: n('gtSideWallMm', 230),
+    midPillarEnabled: (($('gtMidPillarEn') && $('gtMidPillarEn').value) || '0') === '1',
+    midPillarWidthMm: n('gtMidPillarMm', 230),
     msRatePerKg: n('gtMsRate', 150),
     msBarWeightKg: n('gtMsBarKg', 25),
     msStockFt: n('gtMsStock', 20),
@@ -12427,11 +12460,14 @@ async function gateCalc() {
       const bars = q.bars || {};
       const cost = q.cost || {};
       const track = q.track || {};
+      const mas = q.masonry || {};
+      const leafW = (q.leaves || []).map(L => Math.round(L.outerWidthMm || 0)).join('+') || '—';
       bom.innerHTML = [
-        `<div><b>Blades/leaf</b> ${q.bladeCountPerLeaf || 0} · gap ${q.louverGapMm || 0} mm · mode ${q.louverSpacingMode || 'fixed_gap'} · leaves ${(q.foldLeft||0)}+${(q.foldRight||0)}</div>`,
-        `<div><b>Sections</b> frame ${q.frameSectionId || '—'} · leaf ${q.leafFrameSectionId || '—'} · fill ${q.louverSectionId || q.grillSectionId || '—'}</div>`,
+        `<div><b>Blades/leaf</b> ${q.bladeCountPerLeaf || 0} · gap ${q.louverGapMm || 0} mm · mode ${q.louverSpacingMode || 'fixed_gap'} · leaves ${(q.foldLeft||0)}+${(q.foldRight||0)} · widths ${leafW}</div>`,
+        `<div><b>Sections</b> frame ${q.frameSectionId || '—'} · leaf ${q.leafFrameSectionId || '—'} · fill ${q.louverSectionId || q.grillSectionId || '—'} · handle ${q.handleSectionId || '—'}</div>`,
+        `<div><b>Masonry</b> side walls ${mas.sideWallWidthMm || 0} mm · H+${mas.aboveGateMm || 100} · mid pillar ${mas.midPillarEnabled ? (mas.midPillarWidthMm + ' mm') : 'off'} · handle ${q.handleSide || '—'}</div>`,
         `<div><b>Bars</b> MS ${bars.ms || 0} · Al ${bars.aluminium || 0} · <b>kg</b> Fe ${w.ironKg || 0} · Al ${w.aluminiumKg || 0}</div>`,
-        track.channelSectionId ? `<div><b>Track</b> ${track.channelSectionId} + Ø${track.barDiaMm} · half buried · wheels @ ${track.wheelInsetMm || 300} mm</div>` : '',
+        track.channelSectionId ? `<div><b>Track</b> ${Math.round(track.lengthMm || 0)} mm (2×W+1ft) · pocket ${track.pocketSide || '—'} · Ø${track.barDiaMm} · wheels @ ${track.wheelInsetMm || 300} mm</div>` : '',
         `<div><b>Cost</b> Fe ₹${cost.iron||0} · Al ₹${cost.aluminium||0} · Coat ₹${cost.coating||0} · HW ₹${cost.hardware||0} · Fab ₹${cost.fabricationInstall||0}</div>`,
         `<div><b>Selling</b> ₹${q.sellingTotal || 0} · ₹${q.sellingPerSft || 0}/sft · ${q.areaSft || 0} sft</div>`,
       ].filter(Boolean).join('');
@@ -13110,11 +13146,11 @@ if ($('btnGateCalc')) $('btnGateCalc').onclick = gateCalc;
 if ($('btnGateAdd')) $('btnGateAdd').onclick = gateAdd;
 if ($('gtBayType')) $('gtBayType').addEventListener('change', () => { syncGateUiRows(); });
 if ($('gtGapMode')) $('gtGapMode').addEventListener('change', () => { syncGateUiRows(); });
-['gtBayType','gtFoldLeft','gtFoldRight','gtWidthFt','gtHeightFt','gtGap','gtGapMode','gtBladeCount','gtQty','gtMsRate','gtMsBarKg','gtMsStock','gtAlRate','gtCoat','gtFab','gtHwPkg','gtFrameSec','gtWallPostSec','gtLeafSec','gtLouverSec','gtSupportSec','gtGrillSec','gtGrillStyle','gtTrackChSec','gtTrackBarSec'].forEach(id => {
+['gtBayType','gtFoldLeft','gtFoldRight','gtWidthFt','gtHeightFt','gtGap','gtGapMode','gtBladeCount','gtQty','gtMsRate','gtMsBarKg','gtMsStock','gtAlRate','gtCoat','gtFab','gtHwPkg','gtFrameSec','gtWallPostSec','gtLeafSec','gtLouverSec','gtSupportSec','gtGrillSec','gtGrillStyle','gtTrackChSec','gtTrackBarSec','gtSlideMainMm','gtSwingLeafMm','gtHandleSide','gtSideWallMm','gtMidPillarEn','gtMidPillarMm'].forEach(id => {
   const el = $(id);
   if (!el) return;
   el.addEventListener('change', () => {
-    if (id === 'gtBayType' || id === 'gtGapMode') syncGateUiRows();
+    if (id === 'gtBayType' || id === 'gtGapMode' || id === 'gtMidPillarEn') syncGateUiRows();
     if (state.gateMode || (typeof productWorldOf === 'function' && productWorldOf(selectedProductMeta(), null) === 'gate')) gateCalc();
   });
   el.addEventListener('input', () => {
