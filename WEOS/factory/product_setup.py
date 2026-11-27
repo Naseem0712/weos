@@ -2411,7 +2411,7 @@ def assign_sliding_interlocks(
     elif g == 2:
         slim, renf, rule = 1, 1, "2_glass_1slim_1renf"
     elif g == 3:
-        slim, renf, rule = 1, 2, "3_glass_1slim_2renf"
+        slim, renf, rule = 2, 2, "3_glass_centre_two_slim"
     elif g == 4 and op == "side" and tc >= 3.99:
         slim, renf, rule = 1, 3, "4_glass_4track_side_1slim_3renf"
     elif g == 4:
@@ -2510,6 +2510,7 @@ def derive_sliding_shutter_frame_cuts(
             return False
         return "mesh" not in _str(sec.get("name")).lower()
 
+    handle_count = 2 if g == 3 else g
     if mode == "all_sides_same":
         sec = sh.get("allSides") or sh.get("handleSide") or {}
         # Never bill glass shutters on the mesh section
@@ -2518,7 +2519,7 @@ def derive_sliding_shutter_frame_cuts(
         ns = normalize_section(sec if isinstance(sec, Mapping) else {})
         v = int(ns.get("pcsVertical") or 2)
         h = int(ns.get("pcsHorizontal") or 2)
-        _add(sec, v * g, h_m, use="shutter_vertical", label="Shutter vertical")
+        _add(sec, handle_count, h_m, use="shutter_vertical", label="Shutter vertical")
         _add(sec, h * g, leaf_w_m, use="shutter_horizontal", label="Shutter top/bottom")
     else:
         handle = sh.get("handleSide") or {}
@@ -2545,10 +2546,10 @@ def derive_sliding_shutter_frame_cuts(
             and int(hn.get("pcsHorizontal") or 0) > 0
         ):
             h_pcs = int(hn.get("pcsHorizontal") or 2)
-            _add(handle, v_pcs * g, h_m, use="shutter_handle", label="Handle-side vertical")
+            _add(handle, handle_count, h_m, use="shutter_handle", label="Handle-side vertical")
             _add(handle, h_pcs * g, leaf_w_m, use="shutter_top_bottom", label="Shutter top/bottom")
         else:
-            _add(handle, v_pcs * g, h_m, use="shutter_handle", label="Handle-side vertical")
+            _add(handle, handle_count, h_m, use="shutter_handle", label="Handle-side vertical")
             t_pcs = int(tn.get("pcsHorizontal") or tn.get("pcsVertical") or (1 if _str(tn.get("name")) else 0))
             b_pcs = int(bn.get("pcsHorizontal") or bn.get("pcsVertical") or (1 if _str(bn.get("name")) else 0))
             if t_pcs:
@@ -2578,10 +2579,12 @@ def derive_sliding_mesh_shutter_cuts(
     sl = setup.get("sliding") if isinstance(setup.get("sliding"), Mapping) else {}
     mesh = sl.get("mesh") if isinstance(sl.get("mesh"), Mapping) else {}
     sec = mesh.get("meshSection") if isinstance(mesh.get("meshSection"), Mapping) else {}
-    if not _str((sec or {}).get("name")) and mesh.get("sameAsShutter"):
-        sh = sl.get("shutters") if isinstance(sl.get("shutters"), Mapping) else {}
-        sec = sh.get("allSides") or sh.get("handleSide") or {}
-    ns = normalize_section(sec if isinstance(sec, Mapping) else {})
+    shared = bool(mesh.get("sameAsShutter")) and not _str(sec.get("name"))
+    sh = sl.get("shutters") or {}
+    if shared:
+        sec = next((s for s in (sh.get("handleSide"), sh.get("allSides"))
+                    if s and _str(s.get("name"))), {})
+    ns = normalize_section(sec)
     if not _str(ns.get("name")) and not _num(ns.get("rate")) and not _num(ns.get("weightKgPerM")):
         return {"lines": [], "cutSpecs": [], "meshCount": m, "missingSection": True}
     g = max(int(round(float(glass_count or 1))), 1)
@@ -2592,10 +2595,10 @@ def derive_sliding_mesh_shutter_cuts(
     lines: list[dict[str, Any]] = []
     cut_specs: list[dict[str, Any]] = []
 
-    def _add(qty: float, length_m: float, *, use: str, label: str) -> None:
+    def _add(qty: float, length_m: float, section: Mapping[str, Any], *, use: str, label: str) -> None:
         if qty <= 0 or length_m <= 0:
             return
-        display = _str(ns.get("name")) or label
+        display = _str(section.get("name")) or label
         q = float(qty)
         lines.append({
             "category": "profile",
@@ -2607,7 +2610,7 @@ def derive_sliding_mesh_shutter_cuts(
             "lengthM": round(length_m, 4),
             "metres": round(length_m * q, 4),
             "unit": "RM",
-            "section": ns,
+            "section": section,
             "colour": _str(colour),
             "remarks": f"{label} ×{int(round(q))}",
             "sides": use.replace("_", " "),
@@ -2615,14 +2618,24 @@ def derive_sliding_mesh_shutter_cuts(
         for _ in range(max(int(round(q)), 0)):
             cut_specs.append({
                 "lengthM": length_m,
-                "section": ns,
+                "section": section,
                 "use": use,
                 "sectionName": display,
                 "colour": _str(colour),
             })
 
-    _add(v * m, h_m, use="mesh_shutter_vertical", label="Mesh shutter vertical")
-    _add(h * m, leaf_w_m, use="mesh_shutter_horizontal", label="Mesh shutter top/bottom")
+    _add(m if shared else v * m, h_m, ns, use="mesh_shutter_vertical", label="Mesh shutter vertical")
+    if shared:
+        for side in ("top", "bottom"):
+            section = sh.get(side) or {}
+            _add(m, leaf_w_m, section if _str(section.get("name")) else ns,
+                 use="mesh_shutter_horizontal", label=f"Mesh shutter {side}")
+    else:
+        _add(h * m, leaf_w_m, ns, use="mesh_shutter_horizontal", label="Mesh shutter top/bottom")
+    adapter = (mesh.get("adapter") or {}).get("section") or {}
+    if _str(adapter.get("name")):
+        _add(2 * m, h_m, adapter, use="mesh_adapter", label="Mesh adapter vertical")
+        _add(2 * m, leaf_w_m, adapter, use="mesh_adapter", label="Mesh adapter horizontal")
     return {"lines": lines, "cutSpecs": cut_specs, "meshCount": m, "section": ns}
 
 

@@ -1080,6 +1080,7 @@ def derive_casement_profile_cuts(
     coating_multiplier: float | None = None,
     series_id: str | None = None,
     glass_kind: str | None = None,
+    leaf_sizes: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Cut list from what is on the canvas — only profiles actually used."""
     if not isinstance(setup, Mapping):
@@ -1107,6 +1108,13 @@ def derive_casement_profile_cuts(
     panels = _flatten_layout(casement_layout, width_mm=W, height_mm=H)
     if not panels:
         panels = [{"bandIndex": 0, "index": 0, "role": "openable", "widthMm": W, "heightMm": H}]
+
+    if len(leaf_sizes) == len(panels):
+        for panel, sizes in zip(panels, leaf_sizes):
+            panel["leafWidthMm"] = sizes["widthMm"]
+            panel["leafHeightMm"] = sizes["heightMm"]
+            panel["clipWidthMm"] = sizes["glazingWidthMm"]
+            panel["clipHeightMm"] = sizes["glazingHeightMm"]
 
     bands: dict[int, list[dict[str, Any]]] = {}
     for p in panels:
@@ -1246,7 +1254,8 @@ def derive_casement_profile_cuts(
     side_n = sum(1 for p in operable if p["role"] in ("openable", "door"))
     top_n = sum(1 for p in operable if p["role"] == "top_hung")
     for p in operable:
-        pw, ph = _f(p["widthMm"]) / 1000.0, _f(p["heightMm"]) / 1000.0
+        pw = _f(p.get("leafWidthMm", p["widthMm"])) / 1000
+        ph = _f(p.get("leafHeightMm", p["heightMm"])) / 1000
         if kind == "stile":
             doors_map = cm.get("doors") if isinstance(cm.get("doors"), Mapping) else {}
             for label, key, length, q in (
@@ -1283,7 +1292,8 @@ def derive_casement_profile_cuts(
             or _f(clip.get("rate")) > 0
         ):
             break
-        pw, ph = _f(p["widthMm"]) / 1000.0, _f(p["heightMm"]) / 1000.0
+        pw = _f(p.get("clipWidthMm", p["widthMm"])) / 1000
+        ph = _f(p.get("clipHeightMm", p["heightMm"])) / 1000
         add_profile(
             f"Glass clip · vertical",
             ph,
@@ -1307,7 +1317,7 @@ def derive_casement_profile_cuts(
         "lines": lines,
         "cutsM": cuts_m,
         "cutSpecs": cut_specs,
-        "doorPerimeterM": sum(2 * (p["widthMm"] + p["heightMm"]) / 1000 for p in operable),
+        "doorPerimeterM": sum(2 * (p.get("leafWidthMm", p["widthMm"]) + p.get("leafHeightMm", p["heightMm"])) / 1000 for p in operable),
         "panels": panels,
         "missingClip": bool(clipped_panels and not _is_real_clip_section(clip)),
         "counts": {
@@ -1348,6 +1358,7 @@ def _glass_order_area_sft(line, *, width_mm, height_mm, product=None, setup=None
     sizes = derive_section_sizes(setup)
     sizes.update(opts.get("sectionSizes") or {})
     panes = []
+    leaf_sizes = []
     geometry = product.get("geometry")
     if geometry and width_mm > 0 and height_mm > 0:
         drawing = compute_two_track_layout(
@@ -1360,6 +1371,9 @@ def _glass_order_area_sft(line, *, width_mm, height_mm, product=None, setup=None
             mullion_gap_mm=opts.get("mullionGapMm") or sizes.get("mullion"),
         )
         shutters = [s for s in drawing.shutters if s.role == "glass"]
+        leaf_sizes = [{"widthMm": s.outer.width, "heightMm": s.outer.height,
+                       "glazingWidthMm": s.glass.width, "glazingHeightMm": s.glass.height}
+                      for s in shutters]
         openings = [(s.glass, not casement and i > 0, not casement and i < len(shutters) - 1)
                     for i, s in enumerate(shutters)]
         openings.extend((fp.glass, False, False) for fp in drawing.fix_panels)
@@ -1375,6 +1389,7 @@ def _glass_order_area_sft(line, *, width_mm, height_mm, product=None, setup=None
         panels = _flatten_layout(layout, width_mm=width_mm, height_mm=height_mm) if casement else []
         panes = [(p["widthMm"], p["heightMm"]) for p in panels] or [(width_mm / count, height_mm)] * count
     return {
+        "leafSizes": leaf_sizes,
         "panes": [{"widthMm": w, "heightMm": h} for w, h in panes],
         "paneCount": len(panes), "paneWidthMm": panes[0][0], "paneHeightMm": panes[0][1],
         "areaSft": sum(w * h for w, h in panes) / 92903.04,
@@ -1525,6 +1540,7 @@ def compute_casement_design_cost(
     )
     glass_kind = _str(line.get("glass") or line.get("glassName") or opts.get("glass") or "")
 
+    order = _glass_order_area_sft(line, width_mm=W, height_mm=H, product=product, setup=norm, layout=layout)
     cuts = derive_casement_profile_cuts(
         norm,
         width_mm=W,
@@ -1535,6 +1551,7 @@ def compute_casement_design_cost(
         colour=colour,
         series_id=series_id or None,
         glass_kind=glass_kind or None,
+        leaf_sizes=order["leafSizes"],
     )
     counts = cuts.get("counts") or {}
     cm = norm.get("casement") or {}
@@ -1573,7 +1590,6 @@ def compute_casement_design_cost(
     side_n = float(counts.get("sideSwingDoors") or 0)
     top_n = float(counts.get("topHungDoors") or 0)
     operable = float(counts.get("operable") if counts.get("operable") is not None else (side_n + top_n))
-    order = _glass_order_area_sft(line, width_mm=W, height_mm=H, product=product, setup=norm, layout=layout)
     # Side-swing stay XOR hinge; top hung stay-only + size from Specs
     norm = _apply_casement_hw_clarity(norm, line, side_n=side_n, top_n=top_n)
     bom = apply_setup_bom(
@@ -1670,6 +1686,8 @@ def compute_casement_design_cost(
     return {
         "ok": True,
         "costEngine": engine,
+        "missingClip": cuts["missingClip"],
+        "missingMaterialRates": [p["name"] for p in case_profiles if not _f(p.get("aluminiumPerM"))],
         "system": "casement",
         "currency": "INR",
         "qty": qty,
@@ -2361,6 +2379,8 @@ def compute_sliding_design_cost(
     return {
         "ok": True,
         "costEngine": engine,
+        "missingMaterialRates": [p["name"] for p in profile_lines
+                                 if p.get("lengthM") and not _f(p.get("aluminiumPerM"))],
         "system": "sliding",
         "currency": "INR",
         "qty": qty,
