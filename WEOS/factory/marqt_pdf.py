@@ -917,37 +917,20 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
     from WEOS.factory.line_kind import is_gate_cart_line, is_louver_cart_line
 
     if is_gate_cart_line(line):
+        from WEOS.factory.gate_engine import gate_customer_spec_rows
+
         opts_g = line.get("options") if isinstance(line.get("options"), Mapping) else {}
         q = (opts_g or {}).get("gateQuote") if isinstance(opts_g, Mapping) else None
         if not isinstance(q, Mapping):
             q = line.get("gate") if isinstance(line.get("gate"), Mapping) else {}
-        add("", str(line.get("displayName") or q.get("description") or "Gate / Privacy screen"))
-        add("CATEGORY", str(line.get("category") or "Gates"))
-        add("SIZE", f"{_mm(w)} × {_mm(h)} mm")
-        add("OPENING", f"{q.get('widthFt') or round(float(w or 0)/304.8, 2)} × {q.get('heightFt') or round(float(h or 0)/304.8, 2)} ft")
-        add("QTY", str(line.get("qty") or line.get("quantity") or 1))
-        add("TYPE", str(q.get("bayType") or "folding_privacy").replace("_", " ").title())
-        if q.get("leafCount"):
-            add("LEAVES", f"{q.get('foldLeft') or 0}+{q.get('foldRight') or 0} centre open · {q.get('leafCount')} leaves")
-        add("FRAME", f"MS {q.get('frameSectionId') or '75×75'} · wall posts {q.get('wallPostCount') or 0}")
-        add("FILL", f"Al louvers · gap {q.get('louverGapMm')} mm · blades/leaf {q.get('bladeCountPerLeaf')}")
-        hw_bits = []
-        for hitem in q.get("hardware") or []:
-            if not isinstance(hitem, Mapping):
-                continue
-            if hitem.get("isPackage"):
-                hw_bits.append(f"package ₹{hitem.get('amount')}")
-                continue
-            if hitem.get("includedInPackage"):
-                hw_bits.append(f"{hitem.get('name')}×{hitem.get('qty')} (incl)")
-            else:
-                hw_bits.append(f"{hitem.get('name')}×{hitem.get('qty')}")
-        if hw_bits:
-            add("HARDWARE", " · ".join(hw_bits[:8]))
-        finish = (q.get("coating") or {}).get("finish") or line.get("colour") or ""
-        add("FINISH", str(finish).replace("_", " "))
-        add("AREA", f"{q.get('areaSft') or 0} Sq.Ft.")
-        add("CHARGE", f"₹{q.get('sellingPerSft') or '—'} / SFT → ₹{q.get('sellingTotal') or line.get('commercialTotal') or '—'}")
+        cfg_g = (opts_g or {}).get("gate") if isinstance(opts_g, Mapping) else None
+        if not isinstance(cfg_g, Mapping):
+            cfg_g = {}
+        # Rich flowing specs (weights, section dims by location, gaps, HW, finish, charge).
+        # Marker row tells the PDF drawer to use wide flow layout under Rate/Amount.
+        rows.append(("__FLOW__", "1"))
+        for lab, val in gate_customer_spec_rows(q if isinstance(q, Mapping) else {}, line=line, cfg=cfg_g):
+            add(lab, val)
         return rows
 
     if is_louver_cart_line(line):
@@ -1046,6 +1029,57 @@ def _spec_table_layout(
     return label_w, laid
 
 
+def _draw_flow_specs(
+    c,
+    rows: list[tuple[str, str]],
+    *,
+    x: float,
+    y: float,
+    max_width: float,
+    set_font,
+    font_size: float = 7.0,
+    line_h: float = 9.5,
+    bottom_limit: float | None = None,
+    new_page=None,
+) -> float:
+    """Flowing labeled paragraphs spanning description+rate width (no skinny bordered table)."""
+    top = y + font_size * 0.85
+    pad = 2.0
+    for label, value in rows:
+        if str(label or "") == "__FLOW__":
+            continue
+        text = f"{label}: {value}" if label else str(value or "")
+        wrapped = _wrap_text(c, text, max(24.0, max_width - pad * 2), font_size, bold=not bool(label)) or [""]
+        rh = max(line_h, len(wrapped) * line_h) + pad
+        if bottom_limit is not None and new_page is not None and top - rh < bottom_limit:
+            top = new_page() + font_size * 0.85
+        set_font(c, font_size, bold=not bool(label))
+        c.setFillColorRGB(0.05, 0.08, 0.14)
+        ty = top - pad - font_size * 0.75
+        for i, line in enumerate(wrapped):
+            if label and i == 0:
+                # Bold label prefix on first wrap line only
+                set_font(c, font_size, bold=True)
+                prefix = f"{label}: "
+                c.drawString(x + pad, ty, prefix)
+                try:
+                    pw = c.stringWidth(prefix, c._fontname, font_size)
+                except Exception:
+                    pw = len(prefix) * font_size * 0.5
+                rest = line[len(prefix):] if line.startswith(prefix) else (
+                    line.split(": ", 1)[1] if ": " in line else line
+                )
+                set_font(c, font_size, bold=False)
+                c.drawString(x + pad + pw, ty, rest)
+            else:
+                set_font(c, font_size, bold=False)
+                c.drawString(x + pad, ty, line)
+            ty -= line_h
+        top = top - rh
+    c.setFillColorRGB(0, 0, 0)
+    return top - 2.0
+
+
 def _draw_spec_rows(
     c,
     rows: list[tuple[str, str]],
@@ -1061,6 +1095,13 @@ def _draw_spec_rows(
     new_page=None,
 ) -> float:
     """Draw specifications as a real label | value table. Returns y under the table."""
+    # Gate / privacy flow layout — spans under Rate & Amount (caller passes wider max_width).
+    if any(str(a or "") == "__FLOW__" for a, _b in rows):
+        return _draw_flow_specs(
+            c, rows, x=x, y=y, max_width=max_width, set_font=set_font,
+            font_size=font_size, line_h=max(line_h - 0.5, 8.5),
+            bottom_limit=bottom_limit, new_page=new_page,
+        )
     pad_x = 3.0
     pad_y = 2.0
     label_w, laid = _spec_table_layout(
@@ -1117,6 +1158,16 @@ def _measure_spec_rows(
     line_h: float = 10.0,
 ) -> float:
     """Estimate vertical space for the specifications table."""
+    if any(str(a or "") == "__FLOW__" for a, _b in rows):
+        pad = 2.0
+        total = font_size
+        for label, value in rows:
+            if str(label or "") == "__FLOW__":
+                continue
+            text = f"{label}: {value}" if label else str(value or "")
+            wrapped = _wrap_text(c, text, max(24.0, max_width - pad * 2), font_size) or [""]
+            total += max(line_h - 0.5, 8.5) * max(len(wrapped), 1) + pad
+        return max(total, 24.0)
     _label_w, laid = _spec_table_layout(
         c, rows, max_width=max_width, font_size=font_size, label_col=label_col, line_h=line_h,
     )
@@ -1449,7 +1500,11 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
         except Exception:
             _log.exception("marqt spec build failed for line %d; using name only", idx)
             spec_rows = [("", str(line.get("displayName") or line.get("product") or "Window"))]
-        text_h = _measure_spec_rows(c, spec_rows, max_width=spec_max_w, font_size=7.0, label_col=72.0)
+        # Gate flow specs use the full band under Rate/Amount (qty/rate/amt stay on first line).
+        line_spec_w = spec_max_w
+        if any(str(a or "") == "__FLOW__" for a, _b in spec_rows):
+            line_spec_w = max(spec_max_w, col_amt - col_spec - 8)
+        text_h = _measure_spec_rows(c, spec_rows, max_width=line_spec_w, font_size=7.0, label_col=72.0)
         need = max(draw_h, text_h) + 24
         page_usable = (H - M - 50) - bottom_limit
         min_block = min(draw_h, 80) + 40
@@ -1581,7 +1636,7 @@ def render_marqt_pdf(template: Mapping[str, Any], payload: Mapping[str, Any]) ->
             spec_rows,
             x=col_spec,
             y=y,
-            max_width=spec_max_w,
+            max_width=line_spec_w,
             set_font=set_font,
             font_size=7.0,
             label_col=72.0,

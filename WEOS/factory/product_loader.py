@@ -156,7 +156,13 @@ def load_product(product_id: str | Path | None = None, *, strict: bool = True) -
                 doc[section] = _read_json(path)
 
     is_stub = str(doc.get("status", "")).lower() == "stub" or bool((doc.get("quotation") or {}).get("stub"))
-    if strict and not is_stub:
+    # Gates / grills / privacy / iron fab / railings / shower / vents are not window
+    # series products — they must never be validated against geometry/hardware/…
+    # window section keys (that error was flashing on the live canvas).
+    if _is_specialty_product(doc, pid):
+        is_stub = False
+        doc["_specialty"] = True
+    elif strict and not is_stub:
         missing = validate_profile_sections(doc)
         if missing:
             raise ValueError(f"Product {pid} missing/invalid sections: {', '.join(missing)}")
@@ -168,7 +174,7 @@ def load_product(product_id: str | Path | None = None, *, strict: bool = True) -
     # rules and override the frame/interlock/track widths with the imported section
     # sizes. Pricing stays manual (``_stub`` remains True) — this only enables the
     # elevation drawing + glass resolution.
-    if pid != DEFAULT_PRODUCT_ID:
+    if pid != DEFAULT_PRODUCT_ID and not doc.get("_specialty"):
         _ensure_renderable(doc)
 
     doc["_path"] = str(pdir)
@@ -177,6 +183,31 @@ def load_product(product_id: str | Path | None = None, *, strict: bool = True) -
 
 
 _GEOM_KEYS = ("trackWidth", "frameWidth", "interlockWidth", "overlap", "glassClip", "trackCount", "shutterCount")
+
+_SPECIALTY_PRODUCT_TYPES = frozenset({
+    "gate", "grill", "iron_fabrication",
+    "railing", "staircase_railing", "glass_railing",
+    "shower", "shower_partition",
+    "bathroom_ventilator", "ventilator",
+})
+_SPECIALTY_ID_TOKENS = (
+    "gate", "grill", "privacy", "iron_fabrication",
+    "railing", "shower", "ventilat",
+)
+
+
+def _is_specialty_product(doc: Mapping[str, Any] | None, product_id: str | None = None) -> bool:
+    """True for non-window designer products (gates, railings, shower, vents…)."""
+    pid = str(product_id or (doc or {}).get("id") or "").lower().replace(".json", "")
+    pt = str((doc or {}).get("productType") or "").lower().strip()
+    cat = str((doc or {}).get("category") or "").lower()
+    if pt in _SPECIALTY_PRODUCT_TYPES:
+        return True
+    if any(tok in pid for tok in _SPECIALTY_ID_TOKENS):
+        return True
+    if any(tok in cat for tok in ("gate", "grill", "privacy", "railing", "shower", "ventilat", "iron")):
+        return True
+    return False
 
 
 def _has_renderable_geometry(doc: Mapping[str, Any]) -> bool:

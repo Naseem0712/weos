@@ -2571,5 +2571,249 @@ def gate_svg(cfg: Mapping[str, Any], quote: Mapping[str, Any] | None = None) -> 
     return "".join(parts)
 
 
+def _section_dim_label(sec: Mapping[str, Any] | None, *, fallback_id: str = "") -> str:
+    if not isinstance(sec, Mapping):
+        return fallback_id or ""
+    name = _s(sec.get("name") or sec.get("pickerLabel") or sec.get("sectionId") or fallback_id)
+    w = _f(sec.get("widthMm") or sec.get("faceWidthMm"))
+    h = _f(sec.get("heightMm") or sec.get("depthMm"))
+    t = _f(sec.get("thicknessMm") or sec.get("wallThicknessMm"))
+    bits = [name] if name else []
+    if w > 0 and h > 0:
+        dims = f"{w:g}×{h:g}" + (f"×{t:g}" if t > 0 else "")
+        if dims not in name:
+            bits.append(dims + " mm")
+    elif t > 0:
+        bits.append(f"t{t:g}")
+    return " ".join(bits).strip()
+
+
+def _role_location_label(role: str) -> str:
+    r = (role or "").lower()
+    mapping = {
+        "wall_post": "Wall posts",
+        "outer_jamb": "Outer frame jambs",
+        "outer_head": "Outer frame head",
+        "outer_sill": "Outer frame sill",
+        "moving_leaf_stile": "Leaf frames (stiles)",
+        "moving_leaf_rail": "Leaf frames (rails)",
+        "louver_blade": "Inner louvers / blades",
+        "support_rod": "Support rods",
+        "grill_bar": "Grill bars",
+        "handle": "Handles 25×25",
+        "track_channel": "Track C-channel",
+        "track_bar": "Track round bar",
+    }
+    return mapping.get(r, role.replace("_", " ").title() if role else "Member")
+
+
+def gate_customer_spec_rows(
+    quote: Mapping[str, Any],
+    *,
+    line: Mapping[str, Any] | None = None,
+    cfg: Mapping[str, Any] | None = None,
+) -> list[tuple[str, str]]:
+    """Customer-facing gate/grill/privacy specs — flowing paragraphs, not skinny KV spam."""
+    q = quote if isinstance(quote, Mapping) else {}
+    ln = line if isinstance(line, Mapping) else {}
+    c = cfg if isinstance(cfg, Mapping) else {}
+    rows: list[tuple[str, str]] = []
+
+    title = _s(
+        ln.get("displayName")
+        or q.get("description")
+        or "Gate / Privacy screen"
+    )
+    bay = _s(q.get("bayType"), "folding_privacy").replace("_", " ").title()
+    W = _f(q.get("widthMm") or ln.get("width"))
+    H = _f(q.get("heightMm") or ln.get("height"))
+    rows.append(("", f"{title} · {bay}"))
+
+    size_bits = []
+    if W > 0 and H > 0:
+        size_bits.append(f"{mm_n(W)} × {mm_n(H)} mm")
+        size_bits.append(f"{round(W / MM_PER_FT, 3)} × {round(H / MM_PER_FT, 3)} ft")
+    if q.get("leafCount"):
+        size_bits.append(f"leaves {q.get('foldLeft') or 0}+{q.get('foldRight') or 0}")
+    if q.get("areaSft"):
+        size_bits.append(f"{q.get('areaSft')} Sq.Ft.")
+    if size_bits:
+        rows.append(("SIZE", " · ".join(size_bits)))
+
+    # Where used + section dims / thickness
+    used_rows: list[str] = []
+    dim_list: list[str] = []
+    thick_list: list[str] = []
+    seen_sid: set[str] = set()
+    for sid_key, role_lbl in (
+        ("frameSectionId", "Outer / wall frame"),
+        ("wallPostSectionId", "Wall posts"),
+        ("leafFrameSectionId", "Leaf frames"),
+        ("louverSectionId", "Louver / blade"),
+        ("grillSectionId", "Grill bar"),
+        ("supportSectionId", "Support rods"),
+        ("handleSectionId", "Handles"),
+        ("trackChannelSectionId", "Track C-channel"),
+        ("trackBarSectionId", "Track round"),
+    ):
+        sid = _s(q.get(sid_key))
+        if not sid or sid in seen_sid:
+            continue
+        seen_sid.add(sid)
+        sec = get_structural_section(sid) or {}
+        label = _section_dim_label(sec, fallback_id=sid)
+        used_rows.append(f"{role_lbl}: {label}" if label else role_lbl)
+        if label:
+            dim_list.append(label)
+        t = _f(sec.get("thicknessMm") or sec.get("wallThicknessMm"))
+        if t > 0:
+            thick_list.append(f"{sec.get('name') or sid} t{t:g}")
+
+    # Pattern blades (multi-section)
+    gap_bits: list[str] = []
+    pattern = None
+    for meta in q.get("fillMetas") or []:
+        if isinstance(meta, Mapping) and meta.get("pattern"):
+            pattern = meta.get("pattern")
+            break
+    if isinstance(pattern, list) and pattern:
+        for i, slot in enumerate(pattern):
+            if not isinstance(slot, Mapping):
+                continue
+            sid = _s(slot.get("sectionId"))
+            sec = get_structural_section(sid) if sid else {}
+            lab = _section_dim_label(sec, fallback_id=sid) or sid
+            gap = slot.get("gapAfterMm")
+            bit = lab
+            if gap is not None:
+                bit += f" · gap {gap} mm"
+                gap_bits.append(f"{gap} mm")
+            used_rows.append(f"Pattern blade {i + 1}: {bit}")
+            if sid and sid not in seen_sid:
+                seen_sid.add(sid)
+                if lab:
+                    dim_list.append(lab)
+    elif q.get("louverGapMm") is not None:
+        gap_bits.append(f"{q.get('louverGapMm')} mm clear")
+
+    if used_rows:
+        rows.append(("SECTIONS", " · ".join(used_rows)))
+    if dim_list:
+        rows.append(("DIMS", " · ".join(dict.fromkeys(dim_list))))  # unique preserve order
+    if thick_list:
+        rows.append(("THICKNESS", " · ".join(dict.fromkeys(thick_list))))
+    if gap_bits:
+        rows.append(("GAPS", " · ".join(dict.fromkeys(gap_bits))))
+
+    # Weights Fe / Al
+    wt = q.get("weight") if isinstance(q.get("weight"), Mapping) else {}
+    nests = q.get("nests") if isinstance(q.get("nests"), Mapping) else {}
+    fe_bits: list[str] = []
+    al_bits: list[str] = []
+    for nest in nests.values():
+        if not isinstance(nest, Mapping):
+            continue
+        mat = str(nest.get("material") or "").lower()
+        kg = nest.get("usedKg")
+        name = nest.get("sectionName") or nest.get("sectionId")
+        if kg is None:
+            continue
+        line_w = f"{name} {kg} kg" if name else f"{kg} kg"
+        if mat.startswith("al"):
+            al_bits.append(line_w)
+        else:
+            fe_bits.append(line_w)
+    wt_parts: list[str] = []
+    if fe_bits or wt.get("ironKg") is not None:
+        total_fe = wt.get("ironKg")
+        wt_parts.append(
+            "Iron "
+            + (f"total {total_fe} kg" if total_fe is not None else "")
+            + ((" · " + " · ".join(fe_bits[:6])) if fe_bits else "")
+        )
+    if al_bits or wt.get("aluminiumKg") is not None:
+        total_al = wt.get("aluminiumKg")
+        wt_parts.append(
+            "Al "
+            + (f"total {total_al} kg" if total_al is not None else "")
+            + ((" · " + " · ".join(al_bits[:6])) if al_bits else "")
+        )
+    if wt.get("totalKg") is not None:
+        wt_parts.append(f"Total {wt.get('totalKg')} kg")
+    if wt_parts:
+        rows.append(("WEIGHT", " · ".join(p.strip(" ·") for p in wt_parts if p.strip(" ·"))))
+
+    # Finish / coating / brand
+    coat = q.get("coating") if isinstance(q.get("coating"), Mapping) else {}
+    finish = _s(coat.get("finish") or ln.get("colour") or c.get("finish") or c.get("coatingFinish"))
+    brand = _s(c.get("hardwareBrand") or ln.get("hardwareBrand") or "SS304")
+    alloy = _s((c.get("alloy") if isinstance(c, Mapping) else "") or "")
+    finish_bits = []
+    if finish:
+        finish_bits.append(finish.replace("_", " "))
+    if coat.get("rate") is not None:
+        finish_bits.append(f"coat ₹{coat.get('rate')}/{coat.get('unit') or 'rft'}")
+    if brand:
+        finish_bits.append(f"HW brand {brand}")
+    if alloy:
+        finish_bits.append(alloy)
+    if finish_bits:
+        rows.append(("FINISH", " · ".join(finish_bits)))
+
+    # Hardware
+    hw_bits: list[str] = []
+    for hitem in q.get("hardware") or []:
+        if not isinstance(hitem, Mapping):
+            continue
+        if hitem.get("isPackage"):
+            hw_bits.append(f"package ₹{hitem.get('amount')}")
+            incl = hitem.get("includes") or []
+            if incl:
+                hw_bits.append("includes " + ", ".join(str(x) for x in incl[:6]))
+            continue
+        name = _s(hitem.get("name") or hitem.get("catalogueId"))
+        qty = hitem.get("qty")
+        if hitem.get("includedInPackage"):
+            hw_bits.append(f"{name}×{qty} (incl)")
+        else:
+            amt = hitem.get("amount")
+            hw_bits.append(f"{name}×{qty}" + (f" ₹{amt}" if amt else ""))
+    if hw_bits:
+        rows.append(("HARDWARE", " · ".join(hw_bits)))
+
+    # Charge basis (rate/amount columns still authoritative)
+    sale_unit = _s(ln.get("saleUnit") or c.get("saleUnit") or "sqft").lower()
+    rate = ln.get("sellingRate")
+    if rate in (None, ""):
+        rate = (ln.get("selling") or {}).get("sellingRate") if isinstance(ln.get("selling"), Mapping) else None
+    if rate in (None, ""):
+        rate = q.get("costPerSft") or (q.get("cost") or {}).get("perSft")
+    amt = None
+    if isinstance(ln.get("selling"), Mapping):
+        amt = ln["selling"].get("sellingAmount")
+    if amt in (None, ""):
+        amt = ln.get("commercialTotal")
+    unit_lbl = {"sqft": "SFT", "sft": "SFT", "sqm": "SQM", "opening": "opening", "rft": "RFT"}.get(sale_unit, sale_unit.upper())
+    charge = f"₹{rate} / {unit_lbl}" if rate not in (None, "") else f"— / {unit_lbl}"
+    if amt not in (None, ""):
+        charge += f" → ₹{amt}"
+    rows.append(("CHARGE", charge))
+
+    # Incomplete flags (never invent numbers)
+    incomplete = list(q.get("incomplete") or (q.get("cost") or {}).get("incomplete") or [])
+    if incomplete:
+        rows.append(("NOTE", "Incomplete: " + "; ".join(str(x) for x in incomplete[:4])))
+
+    return [(a, b) for a, b in rows if b]
+
+
 def format_gate_description(quote: Mapping[str, Any], cfg: Mapping[str, Any] | None = None) -> str:
-    return _s(quote.get("description"), "Gate / privacy screen")
+    """Plain-text customer description from real BOM / nest / cost fields."""
+    rows = gate_customer_spec_rows(quote, cfg=cfg)
+    parts: list[str] = []
+    for lab, val in rows:
+        if lab:
+            parts.append(f"{lab}: {val}")
+        else:
+            parts.append(val)
+    return " · ".join(parts) if parts else _s(quote.get("description"), "Gate / privacy screen")

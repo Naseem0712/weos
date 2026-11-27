@@ -7251,9 +7251,17 @@ function applyProductWorld(opts) {
   if (opts.rebuildPreview !== false) {
     state._previewLineId = null;
     state._previewKey = null;
+    // Never blank the canvas for gates — keep last good SVG until gateCalc paints.
     if ($('livePreview') && (world === 'window' || world === 'louver' || world === 'pergola' || world === 'surface'
-      || world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator' || world === 'gate')) {
+      || world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator')) {
       $('livePreview').innerHTML = '<span class="muted">Drawing…</span>';
+    } else if ($('livePreview') && world === 'gate') {
+      const hasGateSvg = !!($('livePreview').querySelector && $('livePreview').querySelector('svg[data-model-system="gate"]'));
+      if (!hasGateSvg && !state._gateLastSvg) {
+        $('livePreview').innerHTML = '<span class="muted">Drawing…</span>';
+      } else if (!hasGateSvg && state._gateLastSvg) {
+        setGatePreviewSvg(state._gateLastSvg);
+      }
     }
   }
   if (world === 'gate') {
@@ -8450,6 +8458,17 @@ function renderCart() {
         (cardAddonHtml ? ('<div class="qlc-addons">' + cardAddonHtml + '</div>') : '') +
         '<div class="qlc-meta">' + esc(size) + ' · qty ' + (ln.qty != null ? ln.qty : 1) + (loc ? ' · ' + esc(loc) : '') + (ln.colour ? ' · ' + esc(ln.colour) : '') + (ln.glass ? ' · ' + esc(ln.glass) : '') + '</div>' +
         (function(){
+          const gq = (ln.options && ln.options.gateQuote) || ln.gate || null;
+          if (gq && (ln.productType === 'gate' || (ln.options && ln.options.productType === 'gate') || String(ln.product||'').indexOf('gate') >= 0)) {
+            const wt = gq.weight || {};
+            const bits = [];
+            if (wt.ironKg != null) bits.push('Fe ' + wt.ironKg + ' kg');
+            if (wt.aluminiumKg != null) bits.push('Al ' + wt.aluminiumKg + ' kg');
+            if (gq.frameSectionId) bits.push('frame ' + gq.frameSectionId);
+            if (gq.louverGapMm != null) bits.push('gap ' + gq.louverGapMm + ' mm');
+            if (gq.coating && gq.coating.finish) bits.push(String(gq.coating.finish).replace(/_/g, ' '));
+            return bits.length ? ('<div class="qlc-meta" style="margin-top:.15rem;line-height:1.4">' + esc(bits.join(' · ')) + '</div>') : '';
+          }
           const br = ln.costBreakdown || (ln.designCost && ln.designCost.breakdown) || null;
           if (!br) return '';
           const bits = [];
@@ -8841,12 +8860,28 @@ async function refreshPreview() {
     }
     return;
   }
+  // Gates / privacy — never hit window /api/preview (that caused missing-sections spam).
+  if (world === 'gate' || state.gateMode) {
+    if (specialPreviewFresh()) return;
+    try {
+      showGateTools(true);
+      await gateCalc();
+      markSpecialPreview();
+    } catch (e) {
+      // Keep last good SVG — never flash the missing-sections / blank error.
+      if (state._gateLastSvg) setGatePreviewSvg(state._gateLastSvg);
+      if ($('gateErr')) $('gateErr').textContent = (e && e.message) || String(e);
+    }
+    return;
+  }
   showRailTools(false);
   showShowerTools(false);
   showVentTools(false);
+  showGateTools(false);
   state.ventMode = false;
   state.showerMode = false;
   state.railingMode = false;
+  state.gateMode = false;
   const draft = currentLineDraft();
   const selectedCart = state.lines[state.selectedLine];
   const cartWorld = productWorldOf(null, selectedCart);
@@ -9042,7 +9077,16 @@ async function refreshPreview() {
     const addonFocus = document.activeElement && document.activeElement.closest && document.activeElement.closest('#lineAddonsList');
     if (!addonFocus && typeof renderLineAddonsPanel === 'function') renderLineAddonsPanel();
   } catch(e) {
-    $('livePreview').innerHTML = `<span class="muted">${e.message}</span>`;
+    const msg = (e && e.message) || String(e);
+    // Never wipe a good specialty drawing with a window-validator error.
+    if (state.gateMode || designerWorld() === 'gate') {
+      if (state._gateLastSvg) setGatePreviewSvg(state._gateLastSvg);
+      if ($('gateErr')) $('gateErr').textContent = msg;
+      return;
+    }
+    const keep = $('livePreview') && $('livePreview').querySelector && $('livePreview').querySelector('svg');
+    if (keep && /missing\/invalid sections/i.test(msg)) return;
+    $('livePreview').innerHTML = `<span class="muted">${esc(msg)}</span>`;
   }
 }
 
@@ -12342,6 +12386,43 @@ async function railingAdd(opts){
 function isShowerMode() {
   return designerWorld() === 'shower';
 }
+function isGateMode() {
+  return state.gateMode || designerWorld() === 'gate';
+}
+/** Paint gate SVG in place — keep last good frame; never flash blank/error. */
+function setGatePreviewSvg(svg) {
+  const box = $('livePreview');
+  if (!box || !svg || String(svg).indexOf('<svg') < 0) return false;
+  state._gateLastSvg = svg;
+  const existing = box.querySelector('svg[data-model-system="gate"]') || box.querySelector('svg');
+  const tmp = document.createElement('div');
+  tmp.innerHTML = svg;
+  const neu = tmp.querySelector('svg');
+  if (!neu) return false;
+  if (existing && existing.parentNode === box) {
+    existing.replaceWith(neu);
+  } else {
+    box.innerHTML = '';
+    box.appendChild(neu);
+  }
+  state._previewKey = 'gate:' + (neu.getAttribute('data-bay-type') || '') + ':' + Date.now();
+  if (typeof fitPreviewToStage === 'function') fitPreviewToStage({ reset: false });
+  return true;
+}
+function gateUiSizeValid() {
+  const unit = (typeof gateSizeUnit === 'function') ? gateSizeUnit() : 'ft';
+  const wEl = $('gtWidth');
+  const hEl = $('gtHeight');
+  const wRaw = wEl ? String(wEl.value).trim() : '';
+  const hRaw = hEl ? String(hEl.value).trim() : '';
+  if (wRaw === '' || hRaw === '') return false;
+  const w = parseFloat(wRaw);
+  const h = parseFloat(hRaw);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return false;
+  const wMm = (typeof gateToMm === 'function') ? gateToMm(w, unit) : w;
+  const hMm = (typeof gateToMm === 'function') ? gateToMm(h, unit) : h;
+  return Number.isFinite(wMm) && Number.isFinite(hMm) && wMm >= 50 && hMm >= 50;
+}
 function showShowerTools(on) {
   const el = $('showerTools');
   if (!el) return;
@@ -12812,19 +12893,27 @@ function gateCfgFromUi() {
 async function gateCalc() {
   const err = $('gateErr');
   if (err) err.textContent = '';
+  const gen = ++_previewGen;
   try {
+    // Mid-edit empty/partial W/H — keep last good SVG, do not recalc/wipe.
+    if (!gateUiSizeValid()) {
+      if (state._gateLastSvg) setGatePreviewSvg(state._gateLastSvg);
+      return state._gateQuote || null;
+    }
     await ensureGateSectionOptions();
     syncGateUiRows();
     const cfg = gateCfgFromUi();
     state.gate = cfg;
     state.gateMode = true;
     const res = await api('/api/gate/quote', { method: 'POST', body: cfg });
+    if (gen !== _previewGen) return state._gateQuote || null;
     const q = (res && res.quote) || {};
     state._gateQuote = q;
-    if ($('livePreview') && res && res.svg) {
-      $('livePreview').innerHTML = res.svg;
-      state._previewKey = 'gate:' + (q.widthMm || '') + 'x' + (q.heightMm || '');
-      if (typeof fitPreviewToStage === 'function') fitPreviewToStage({ reset: false });
+    if (res && res.svg) {
+      setGatePreviewSvg(res.svg);
+      markSpecialPreview();
+    } else if (state._gateLastSvg) {
+      setGatePreviewSvg(state._gateLastSvg);
     }
     if ($('gtBladeCount')) $('gtBladeCount').value = String(q.bladeCountPerLeaf != null ? q.bladeCountPerLeaf : (q.grill && q.grill.bladeCount) || 0);
     const bom = $('gateBom');
@@ -12890,8 +12979,11 @@ async function gateCalc() {
     if ($('lineHeight')) $('lineHeight').value = Math.round(q.heightMm || cfg.heightFt * 304.8);
     return q;
   } catch (e) {
-    if (err) err.textContent = (e && e.message) || String(e);
-    return null;
+    const msg = (e && e.message) || String(e);
+    if (err) err.textContent = msg;
+    // Keep last good frame — never show missing-sections / blank canvas.
+    if (state._gateLastSvg) setGatePreviewSvg(state._gateLastSvg);
+    return state._gateQuote || null;
   }
 }
 async function gateAdd() {
@@ -12899,6 +12991,14 @@ async function gateAdd() {
   if (!q) return;
   const cfg = state.gate || gateCfgFromUi();
   const rateRaw = $('lineSellRate') ? $('lineSellRate').value : '';
+  const descBits = [];
+  if (q.description) descBits.push(q.description);
+  else descBits.push((q.bayType || 'gate').replace(/_/g, ' '));
+  if (q.weight) {
+    if (q.weight.ironKg != null) descBits.push('Fe ' + q.weight.ironKg + ' kg');
+    if (q.weight.aluminiumKg != null) descBits.push('Al ' + q.weight.aluminiumKg + ' kg');
+  }
+  if (q.frameSectionId) descBits.push('frame ' + q.frameSectionId);
   const line = {
     product: 'gates_privacy',
     productId: 'gates_privacy',
@@ -12909,6 +13009,7 @@ async function gateAdd() {
     height: q.heightMm,
     qty: cfg.qty || 1,
     colour: cfg.finish || 'wood_finish',
+    description: descBits.join(' · '),
     options: { gate: cfg, gateQuote: q, productType: 'gate' },
     gate: q,
     commercialTotal: (q.cost && q.cost.total) || 0,
@@ -13588,12 +13689,22 @@ state._gateSizeUnit = gateSizeUnit();
   if (!el) return;
   el.addEventListener('change', () => {
     if (id === 'gtBayType' || id === 'gtGapMode' || id === 'gtMidPillarEn') syncGateUiRows();
-    if (state.gateMode || (typeof productWorldOf === 'function' && productWorldOf(selectedProductMeta(), null) === 'gate')) gateCalc();
+    if (!(state.gateMode || isGateMode())) return;
+    if ((id === 'gtWidth' || id === 'gtHeight') && !gateUiSizeValid()) {
+      if (state._gateLastSvg) setGatePreviewSvg(state._gateLastSvg);
+      return;
+    }
+    gateCalc();
   });
   el.addEventListener('input', () => {
-    if (!(state.gateMode || (typeof productWorldOf === 'function' && productWorldOf(selectedProductMeta(), null) === 'gate'))) return;
+    if (!(state.gateMode || isGateMode())) return;
+    // Empty/partial size while typing — keep last good drawing, don't wipe.
+    if ((id === 'gtWidth' || id === 'gtHeight') && !gateUiSizeValid()) {
+      if (state._gateLastSvg) setGatePreviewSvg(state._gateLastSvg);
+      return;
+    }
     clearTimeout(state._gateT);
-    state._gateT = setTimeout(() => gateCalc(), 280);
+    state._gateT = setTimeout(() => gateCalc(), 320);
   });
 });
 if ($('shLayoutPreset')) $('shLayoutPreset').onchange = () => applyShowerPreset($('shLayoutPreset').value);
@@ -14213,7 +14324,32 @@ function stampSelectedDraftAmount() {
       if (rounded != null) $('lineSellRate').value = formatRateInput(rounded);
     }
     if (['lineW','lineH','lineQty','lineSaleUnit','lineSellRate'].includes(id)) stampSelectedDraftAmount();
-    if (isRailingMode() || isShowerMode() || isVentMode()) {
+    if (isRailingMode() || isShowerMode() || isVentMode() || isGateMode()) {
+      if (isGateMode()) {
+        // lineW/H while gate: only refresh when values parse positive — else keep SVG.
+        if (['lineW','lineH'].includes(id)) {
+          const w = parseFloat(($('lineW') && $('lineW').value) || '');
+          const h = parseFloat(($('lineH') && $('lineH').value) || '');
+          if (!(Number.isFinite(w) && Number.isFinite(h) && w >= 50 && h >= 50)) {
+            if (state._gateLastSvg) setGatePreviewSvg(state._gateLastSvg);
+            return;
+          }
+          // Mirror into gate size fields when user edits cart W×H
+          if ($('gtWidth') && id === 'lineW' && $('gtSizeUnit')) {
+            const unit = gateSizeUnit();
+            $('gtWidth').value = String(gateFromMm(w, unit));
+          }
+          if ($('gtHeight') && id === 'lineH' && $('gtSizeUnit')) {
+            const unit = gateSizeUnit();
+            $('gtHeight').value = String(gateFromMm(h, unit));
+          }
+        }
+        if (['lineW','lineH','lineProduct','lineFrameMaterial','lineColour'].includes(id)) {
+          clearTimeout(state._gateT);
+          state._gateT = setTimeout(() => gateCalc(), 280);
+        }
+        return;
+      }
       if (['lineW','lineH','lineProduct','lineFrameMaterial','lineColour'].includes(id)) refreshPreview();
       return;
     }
@@ -14257,7 +14393,15 @@ function stampSelectedDraftAmount() {
     // Intentionally do NOT rewrite ln.product when the product picker changes.
     // Editing a cart line's product is done by selecting it and using Add (new line)
     // or by loading a saved series design — mutating the selected line caused Bug 2.
-    if (isRailingMode() || isShowerMode() || isVentMode()) {
+    if (isRailingMode() || isShowerMode() || isVentMode() || isGateMode()) {
+      if (isGateMode()) {
+        if (['lineW','lineH','lineProduct','lineSeries','lineFrameMaterial','lineColour'].includes(id)) {
+          clearTimeout(state._gateT);
+          state._gateT = setTimeout(() => gateCalc(), 120);
+        }
+        if (id === 'cartCustomer') maybeAskCustomerMemory();
+        return;
+      }
       if (['lineW','lineH','lineProduct','lineSeries','lineFrameMaterial','lineColour'].includes(id)) refreshPreview();
       if (id === 'cartCustomer') maybeAskCustomerMemory();
       return;

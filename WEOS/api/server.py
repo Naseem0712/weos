@@ -345,6 +345,7 @@ class PreviewRequest(BaseModel):
     railing: dict[str, Any] | None = None
     shower: dict[str, Any] | None = None
     ventilator: dict[str, Any] | None = None
+    gate: dict[str, Any] | None = None
     productType: str | None = None
     category: str | None = None
     panelFill: dict[str, Any] | None = None
@@ -1455,6 +1456,7 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
     """Fast SVG preview for live cart — uses geometry engine only path via generate_job."""
     # Railing is not a window — never route it through generate_job.
     from WEOS.factory.line_kind import (
+        is_gate_cart_line,
         is_pergola_product_type,
         is_railing_product_type,
         is_shower_product_type,
@@ -1466,12 +1468,71 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
     rail_cfg = getattr(body, "railing", None)
     shower_cfg = getattr(body, "shower", None)
     vent_cfg = getattr(body, "ventilator", None)
+    gate_cfg = getattr(body, "gate", None)
     panel_fill = getattr(body, "panelFill", None)
     world = product_world(
         getattr(body, "productType", None),
         category=getattr(body, "category", None),
         product_id=prod,
     )
+    # Gates / privacy — never route through window generate_job / section validation.
+    if (
+        world == "gate"
+        or any(x in prod for x in ("gate", "grill", "privacy", "iron_fabrication"))
+        or isinstance(gate_cfg, dict)
+        or is_gate_cart_line({
+            "product": getattr(body, "product", None),
+            "productType": getattr(body, "productType", None),
+            "category": getattr(body, "category", None),
+            "options": {"gate": gate_cfg} if isinstance(gate_cfg, dict) else {},
+        })
+    ):
+        from WEOS.factory.gate_engine import compute_gate, ensure_gate_dims, gate_svg
+
+        w_in = float(getattr(body, "width", 0) or 0)
+        h_in = float(getattr(body, "height", 0) or 0)
+        # Mid-edit empty/partial sizes: refuse to invent a zero opening.
+        if (not isinstance(gate_cfg, dict) or not gate_cfg) and (w_in <= 0 or h_in <= 0):
+            return {
+                "svg": None,
+                "system": "gate",
+                "productType": "gate",
+                "keepLastPreview": True,
+                "specifications": {},
+                "layout": {"system": "gate", "trackCount": None},
+                "sectionSpecs": {},
+            }
+        cfg = ensure_gate_dims(
+            dict(gate_cfg or {}),
+            width=w_in or None,
+            height=h_in or None,
+        )
+        if getattr(body, "colour", None) and not cfg.get("finish"):
+            cfg["finish"] = body.colour
+        q = compute_gate(cfg)
+        return {
+            "svg": gate_svg(cfg, quote=q),
+            "system": "gate",
+            "productType": "gate",
+            "gate": q,
+            "specifications": {
+                "type": str(q.get("bayType") or "folding_privacy").replace("_", " ").title(),
+                "size": f"{q.get('widthMm')}×{q.get('heightMm')} mm",
+                "leaves": f"{q.get('foldLeft') or 0}+{q.get('foldRight') or 0}",
+                "areaSqft": q.get("areaSft"),
+                "weightFe": (q.get("weight") or {}).get("ironKg"),
+                "weightAl": (q.get("weight") or {}).get("aluminiumKg"),
+            },
+            "layout": {
+                "system": "gate",
+                "bayType": q.get("bayType"),
+                "widthMm": q.get("widthMm"),
+                "heightMm": q.get("heightMm"),
+                "leaves": q.get("leaves") or [],
+                "trackCount": None,
+            },
+            "sectionSpecs": {},
+        }
     if (
         world == "ventilator"
         or is_ventilator_product_type(getattr(body, "productType", None))
@@ -1712,10 +1773,11 @@ def api_preview(body: PreviewRequest) -> dict[str, Any]:
             cat = str(getattr(body, "category", "") or meta.get("category") or "").lower()
             ptype = str(getattr(body, "productType", None) or meta.get("productType") or "").lower()
             skip_window_engine = (
-                world in ("louver", "pergola", "surface", "railing", "staircase_railing", "shower", "ventilator")
+                world in ("louver", "pergola", "surface", "railing", "staircase_railing", "shower", "ventilator", "gate")
                 or "louver" in prod or "louvre" in prod or "facade" in prod or "facade" in cat
                 or "rail" in prod or "shower" in prod or "ventilat" in prod or "pergola" in prod
-                or "louver" in ptype or "louvre" in ptype or "pergola" in ptype
+                or "gate" in prod or "grill" in prod or "privacy" in prod
+                or "louver" in ptype or "louvre" in ptype or "pergola" in ptype or "gate" in ptype
             )
             if not skip_window_engine:
                 engine_ids.append("29mm_sliding")
