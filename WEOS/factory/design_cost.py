@@ -49,8 +49,6 @@ from WEOS.factory.remnant_stock import (
 WASTAGE_PCT_MIN = 0.0
 WASTAGE_PCT_MAX = 2.5
 # Seed rates when Excel / Series Setup omit kg or coating (never silently ₹0 Al).
-DEFAULT_AL_RATE_KG = 450.0
-DEFAULT_COAT_RFT = 22.0
 # Alias for callers / UI
 WASTAGE_MAX_REUSABLE_FT = 3.0
 
@@ -260,8 +258,6 @@ def _section_rate_per_m(sec: Mapping[str, Any] | None) -> float:
     - ``rft`` / ``ft`` → rate / 0.3048 → ₹/m
     Coating is separate via ``_coating_per_m``.
 
-    Glass clips (``role=clip``): never bill Fixed lites above Door using a
-    mistaken ₹/rft tag — fall back to kg×weight (default ₹450/kg).
     """
     if not isinstance(sec, Mapping):
         return 0.0
@@ -271,14 +267,8 @@ def _section_rate_per_m(sec: Mapping[str, Any] | None) -> float:
     # A missing unit used to default to rft here, which either under-counted or
     # zeroed Al when weight×kg rates were expected.
     unit = _str(s.get("rateUnit") or "kg").lower()
-    role = _str(s.get("role") or "").lower()
-    wt = _section_weight_kg_per_m(s)
-    if role == "clip" and wt > 0 and unit in ("rft", "ft", "feet", "foot", "rmt", "rm", "m", "mt"):
-        kg_rate = rate if rate >= 300 else DEFAULT_AL_RATE_KG
-        return kg_rate * wt
     if rate <= 0:
-        # Missing Excel rate but known weight → still bill Al at seed ₹/kg.
-        return DEFAULT_AL_RATE_KG * wt if wt > 0 else 0.0
+        return 0.0
     if unit in ("kg", "per_kg", "kgm", "rs_kg", "inr_kg"):
         kg_m = _section_weight_kg_per_m(s)
         return rate * kg_m if kg_m > 0 else 0.0
@@ -286,11 +276,10 @@ def _section_rate_per_m(sec: Mapping[str, Any] | None) -> float:
         return rate
     if unit in ("rft", "ft"):
         return rate / 0.3048  # ₹/ft → ₹/m
-    # pc / unknown with weight → treat rate as ₹/kg when weight present
-    kg_m = _section_weight_kg_per_m(s)
-    if kg_m > 0 and unit in ("pc", "pcs", ""):
-        return rate * kg_m
-    return rate
+    if unit in ("pc", "pcs", "bar", "length"):
+        stock_m = _section_std_m(s, fallback=0)
+        return rate / stock_m if stock_m > 0 else 0.0
+    return 0.0
 
 
 def _coating_per_m(
@@ -380,75 +369,6 @@ def _live_al_coat_from_nest(
             if isinstance(pl, Mapping)
         )
     return al_used, coat_used, al_purch, coat_purch
-
-
-def _ensure_profile_cut_rates(
-    cut_specs: Sequence[Any] | None,
-    profile_lines: Sequence[Any] | None = None,
-    *,
-    colour: Any = None,
-) -> None:
-    """Fill missing Al/coat ₹/m on nest cuts so live design cost never drops Al silently.
-
-    Cut specs historically omitted ``weightKgPerM``, so the kg×rate recovery could
-    not run even when profile lines carried weight — nest Al stayed ₹0 while the
-    materials list still showed recovered profile rows.
-    """
-    by_key: dict[str, dict[str, Any]] = {}
-    for pl in profile_lines or []:
-        if not isinstance(pl, dict):
-            continue
-        key = _str(pl.get("sectionKey") or pl.get("key"))
-        if not key:
-            continue
-        by_key[key] = pl
-
-    mult = _coat_mult_for_colour(colour)
-    default_coat_m = (DEFAULT_COAT_RFT / 0.3048) * max(mult, 0.0)
-
-    for spec in cut_specs or []:
-        if not isinstance(spec, dict):
-            continue
-        if _f(spec.get("lengthM")) <= 0:
-            continue
-        key = _str(spec.get("key") or spec.get("sectionKey"))
-        pl = by_key.get(key) if key else None
-        if _f(spec.get("weightKgPerM")) <= 0:
-            wt = _f((pl or {}).get("weightKgPerM")) if pl else 0.0
-            if wt > 0:
-                spec["weightKgPerM"] = wt
-        if _f(spec.get("aluminiumPerM")) <= 0:
-            if pl and _f(pl.get("aluminiumPerM")) > 0:
-                spec["aluminiumPerM"] = _f(pl.get("aluminiumPerM"))
-            else:
-                kg_m = _f(spec.get("weightKgPerM"))
-                if kg_m > 0:
-                    spec["aluminiumPerM"] = DEFAULT_AL_RATE_KG * kg_m
-        if _f(spec.get("coatingPerM")) <= 0 and (
-            _f(spec.get("weightKgPerM")) > 0 or _f(spec.get("aluminiumPerM")) > 0
-        ):
-            if pl and _f(pl.get("coatingPerM")) > 0:
-                spec["coatingPerM"] = _f(pl.get("coatingPerM"))
-            else:
-                spec["coatingPerM"] = default_coat_m
-
-    for pl in profile_lines or []:
-        if not isinstance(pl, dict):
-            continue
-        if _f(pl.get("aluminiumPerM")) <= 0 and _f(pl.get("weightKgPerM")) > 0:
-            pl["aluminiumPerM"] = DEFAULT_AL_RATE_KG * _f(pl.get("weightKgPerM"))
-            Lm = _f(pl.get("lengthM") or pl.get("metres"))
-            q = _f(pl.get("qty"), 1)
-            pl["aluminiumAmount"] = round(Lm * q * _f(pl["aluminiumPerM"]), 2)
-        if _f(pl.get("coatingPerM")) <= 0 and (
-            _f(pl.get("weightKgPerM")) > 0 or _f(pl.get("aluminiumPerM")) > 0
-        ):
-            pl["coatingPerM"] = default_coat_m
-            Lm = _f(pl.get("lengthM") or pl.get("metres"))
-            q = _f(pl.get("qty"), 1)
-            pl["coatingAmount"] = round(Lm * q * _f(pl["coatingPerM"]), 2)
-        if _f(pl.get("amount")) <= 0:
-            pl["amount"] = round(_f(pl.get("aluminiumAmount")) + _f(pl.get("coatingAmount")), 2)
 
 
 def _split_seal_hw_amounts(hw_lines: Sequence[Mapping[str, Any]] | None) -> tuple[float, float, float]:
@@ -884,7 +804,7 @@ def _active_casement_sections(
         "clip": normalize_section(clip if isinstance(clip, Mapping) else {}),
         "mullionSize": mull_active,
         "doorSize": door_active,
-        "includeBottom": bool(of.get("includeBottom", kind == "normal")),
+        "includeBottom": True,
         "kind": kind,
     }
 
@@ -1020,20 +940,10 @@ def _clip_section_from_catalogue(series_id: str | None, *, kind: str) -> dict[st
         if all(n in nl for n in needles) or all(n in nl for n in alt):
             found = s
             break
-    if found is None and kind == "sg":
-        for s in doc.get("sections") or []:
-            if isinstance(s, Mapping) and _is_real_clip_section(s):
-                found = s
-                break
     if not found:
         return {}
     rate_unit = _str(found.get("rateUnit") or "kg").lower() or "kg"
     rate = found.get("rate")
-    # Prefer kg×weight for light clips so Fixed never exceeds Door Al/m
-    if rate_unit in ("rft", "ft") and _f(found.get("weightKgPerMtr")) > 0:
-        rate_unit = "kg"
-        if _f(rate) < 300:
-            rate = 450.0
     return normalize_section({
         "name": found.get("name"),
         "wMm": found.get("widthMm"),
@@ -1064,9 +974,9 @@ def _resolve_casement_clip_section(
     active = _str(clips.get("active") or "sg").lower()
     if glass_kind:
         gk = glass_kind.lower()
-        if any(x in gk for x in ("dgu", "double", "igu", "lam", "laminat")):
+        if any(x in gk for x in ("dgu", "double", "igu")):
             active = "dgu"
-        elif any(x in gk for x in ("sg", "single", "clear", "tuff", "tough")):
+        elif any(x in gk for x in ("sg", "single", "clear", "tuff", "tough", "lam")):
             active = "sg"
     if active in ("dg", "double"):
         active = "dgu"
@@ -1362,7 +1272,11 @@ def derive_casement_profile_cuts(
     # Fixed / sliding-in-casement lites — glass clips (v2 + h2 per lite) from series
     clip = secs.get("clip") if isinstance(secs.get("clip"), Mapping) else {}
     fixed_panels = [p for p in panels if p["role"] in ("fix", "sliding")]
-    for p in fixed_panels:
+    integral_sg = "no need clip" in _str(door.get("name")).lower() and not any(
+        token in _str(glass_kind).lower() for token in ("dgu", "double", "igu")
+    )
+    clipped_panels = fixed_panels if integral_sg or kind == "stile" else fixed_panels + operable
+    for p in clipped_panels:
         if not clip or not (
             _str(clip.get("name"))
             or _f(clip.get("weightKgPerM")) > 0
@@ -1376,7 +1290,7 @@ def derive_casement_profile_cuts(
             2,
             clip,
             use="glass_clip",
-            remarks=f"fix R{p['bandIndex']+1}P{p['index']+1}",
+            remarks=f"{p['role']} R{p['bandIndex']+1}P{p['index']+1}",
         )
         add_profile(
             f"Glass clip · horizontal",
@@ -1384,7 +1298,7 @@ def derive_casement_profile_cuts(
             2,
             clip,
             use="glass_clip",
-            remarks=f"fix R{p['bandIndex']+1}P{p['index']+1}",
+            remarks=f"{p['role']} R{p['bandIndex']+1}P{p['index']+1}",
         )
 
     fixed_n = len(fixed_panels)
@@ -1393,6 +1307,9 @@ def derive_casement_profile_cuts(
         "lines": lines,
         "cutsM": cuts_m,
         "cutSpecs": cut_specs,
+        "doorPerimeterM": sum(2 * (p["widthMm"] + p["heightMm"]) / 1000 for p in operable),
+        "panels": panels,
+        "missingClip": bool(clipped_panels and not _is_real_clip_section(clip)),
         "counts": {
             "bands": n_bands,
             "panels": len(panels),
@@ -1416,106 +1333,57 @@ def derive_casement_profile_cuts(
     }
 
 
-def _glass_order_area_sft(
-    line: Mapping[str, Any],
-    *,
-    width_mm: float,
-    height_mm: float,
-) -> dict[str, Any]:
-    """Glass order area from pane dims after series deductions (rules book).
+def _glass_order_area_sft(line, *, width_mm, height_mm, product=None, setup=None, layout=None):
+    """Order individual panes from the daylight rectangles used by the window drawing."""
+    from WEOS.factory.geometry_engine import compute_two_track_layout
+    from WEOS.factory.glass_sizing import preview_from_profile
+    from WEOS.factory.layout_options import line_layout_options
+    from WEOS.factory.product_setup import derive_section_sizes
 
-    Sliding: N glass panes share opening width; each pane uses insertion/overlap
-    from product glass rules when available. Mesh does not add glass area.
-    Fallback: opening W×H (matches nominal 2-pane = opening area example).
-    """
-    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
-    shutters = max(
-        _f(
-            line.get("glassShutters")
-            or opts.get("glassCount")
-            or opts.get("glassShutters")
-            or line.get("shutterCount")
-            or 0
-        ),
-        0.0,
-    )
-    opening_sft = (max(width_mm, 0) * max(height_mm, 0) / 1_000_000.0) * 10.7639
-    if shutters < 1:
-        return {
-            "areaSft": round(opening_sft, 4),
-            "paneCount": 1,
-            "paneWidthMm": round(width_mm, 1),
-            "paneHeightMm": round(height_mm, 1),
-            "basis": "opening",
-        }
-
-    pane_w = max(width_mm, 0.0) / shutters
-    pane_h = max(height_mm, 0.0)
-    glass_rules = None
-    try:
-        from WEOS.factory.quote_item_snapshot import product_id_of
-        from WEOS.factory.product_loader import load_product
-
-        pid = product_id_of(line) if line else None
-        if pid:
-            prod = load_product(pid, strict=False)
-            glass_rules = (prod or {}).get("glass") if isinstance(prod, Mapping) else None
-            if not isinstance(glass_rules, Mapping):
-                eng = (prod or {}).get("engineering") if isinstance(prod, Mapping) else {}
-                glass_rules = eng.get("glass") if isinstance(eng, Mapping) else None
-    except Exception:
-        glass_rules = None
-
-    total_sft = 0.0
-    sized_w = pane_w
-    sized_h = pane_h
-    basis = "pane_share"
-    if isinstance(glass_rules, Mapping):
-        try:
-            from WEOS.factory.glass_sizing import preview_from_profile
-
-            # End shutters: handle side + interlock; middle: interlock both sides.
-            for i in range(int(round(shutters))):
-                left_il = i > 0
-                right_il = i < int(round(shutters)) - 1
-                if int(round(shutters)) == 2:
-                    left_il = i == 1
-                    right_il = i == 0
-                sized = preview_from_profile(
-                    glass_rules,
-                    clear_width_mm=pane_w,
-                    clear_height_mm=pane_h,
-                    interlock_left=left_il,
-                    interlock_right=right_il,
-                    label=f"pane{i + 1}",
-                )
-                total_sft += _f(sized.get("areaSqft"))
-                sized_w = _f(sized.get("glassWidthMm"), pane_w)
-                sized_h = _f(sized.get("glassHeightMm"), pane_h)
-            if total_sft > 0:
-                basis = "pane_after_deductions"
-                return {
-                    "areaSft": round(total_sft, 4),
-                    "paneCount": int(round(shutters)),
-                    "paneWidthMm": round(sized_w, 1),
-                    "paneHeightMm": round(sized_h, 1),
-                    "basis": basis,
-                }
-        except Exception:
-            pass
-
-    # Without insertion rules: equal panes sum to opening area (rules worked example).
+    product = product or {}
+    setup = setup or {}
+    opts = line_layout_options(line)
+    casement = setup.get("type") == "casement" or layout is not None
+    count = max(int(opts.get("glassCount") or line.get("glassShutters") or (1 if casement else 2)), 1)
+    sizes = derive_section_sizes(setup)
+    sizes.update(opts.get("sectionSizes") or {})
+    panes = []
+    geometry = product.get("geometry")
+    if geometry and width_mm > 0 and height_mm > 0:
+        drawing = compute_two_track_layout(
+            width_mm, height_mm, geometry, system="casement" if casement else "sliding",
+            partitions=opts.get("partitions"), glass_count=count,
+            mesh=bool(opts.get("mesh")), mesh_count=opts.get("meshCount"),
+            track_count=opts.get("trackCount"), opening=opts.get("opening"),
+            section_sizes=sizes, casement_layout=layout,
+            sash_overlap_mm=opts.get("sashOverlapMm"),
+            mullion_gap_mm=opts.get("mullionGapMm") or sizes.get("mullion"),
+        )
+        shutters = [s for s in drawing.shutters if s.role == "glass"]
+        openings = [(s.glass, not casement and i > 0, not casement and i < len(shutters) - 1)
+                    for i, s in enumerate(shutters)]
+        openings.extend((fp.glass, False, False) for fp in drawing.fix_panels)
+        for rect, left, right in openings:
+            sized = preview_from_profile(
+                product.get("glass"), clear_width_mm=rect.width, clear_height_mm=rect.height,
+                interlock_left=left, interlock_right=right,
+            )
+            panes.append((sized["glassWidthMm"], sized["glassHeightMm"]))
+    basis = "pane_after_deductions"
+    if not panes:
+        basis = "nominal — verify series glass deductions"
+        panels = _flatten_layout(layout, width_mm=width_mm, height_mm=height_mm) if casement else []
+        panes = [(p["widthMm"], p["heightMm"]) for p in panels] or [(width_mm / count, height_mm)] * count
     return {
-        "areaSft": round(opening_sft, 4),
-        "paneCount": int(round(shutters)),
-        "paneWidthMm": round(pane_w, 1),
-        "paneHeightMm": round(pane_h, 1),
+        "panes": [{"widthMm": w, "heightMm": h} for w, h in panes],
+        "paneCount": len(panes), "paneWidthMm": panes[0][0], "paneHeightMm": panes[0][1],
+        "areaSft": sum(w * h for w, h in panes) / 92903.04,
+        "perimeterM": sum(2 * (w + h) for w, h in panes) / 1000,
         "basis": basis,
     }
 
 
-def _glass_cost(line: Mapping[str, Any], *, width_mm: float, height_mm: float, qty: float) -> dict[str, Any]:
-    order = _glass_order_area_sft(line, width_mm=width_mm, height_mm=height_mm)
+def _glass_cost(line: Mapping[str, Any], *, width_mm: float, height_mm: float, qty: float, order: Mapping[str, Any]) -> dict[str, Any]:
     area_sft = _f(order.get("areaSft"))
     rate = 0.0
     name = _str(line.get("glass") or line.get("glassName") or "Glass")
@@ -1594,11 +1462,8 @@ def _glass_cost(line: Mapping[str, Any], *, width_mm: float, height_mm: float, q
         "areaSft": round(area_sft * q, 3),
         "widthMm": round(_f(order.get("paneWidthMm"), width_mm), 1),
         "heightMm": round(_f(order.get("paneHeightMm"), height_mm), 1),
-        "sizeLabel": (
-            f"{round(_f(order.get('paneWidthMm'), width_mm)):g}×"
-            f"{round(_f(order.get('paneHeightMm'), height_mm)):g} mm"
-            f" × {int(order.get('paneCount') or 1)} pane(s)"
-        ),
+        "panes": order["panes"],
+        "sizeLabel": " + ".join(f"{p['widthMm']:g}×{p['heightMm']:g} mm" for p in order["panes"]),
         "paneCount": order.get("paneCount"),
         "areaBasis": order.get("basis"),
         "qty": q,
@@ -1689,7 +1554,6 @@ def compute_casement_design_cost(
         coat_full = False
     case_cuts = list(cuts.get("cutSpecs") or [])
     case_profiles = list(cuts.get("lines") or [])
-    _ensure_profile_cut_rates(case_cuts, case_profiles, colour=colour)
     nest = nest_cuts_by_section(
         case_cuts,
         remnant_pool=remnant_pool,
@@ -1709,6 +1573,7 @@ def compute_casement_design_cost(
     side_n = float(counts.get("sideSwingDoors") or 0)
     top_n = float(counts.get("topHungDoors") or 0)
     operable = float(counts.get("operable") if counts.get("operable") is not None else (side_n + top_n))
+    order = _glass_order_area_sft(line, width_mm=W, height_mm=H, product=product, setup=norm, layout=layout)
     # Side-swing stay XOR hinge; top hung stay-only + size from Specs
     norm = _apply_casement_hw_clarity(norm, line, side_n=side_n, top_n=top_n)
     bom = apply_setup_bom(
@@ -1718,6 +1583,8 @@ def compute_casement_design_cost(
         ctx={
             "shutterCount": max(operable, 0.0),
             "leafCount": max(operable, 0.0),
+            "doorPerimeterM": cuts["doorPerimeterM"],
+            "glazingPerimeterM": order["perimeterM"],
             "sideSwingDoors": side_n,
             "topHungDoors": top_n,
             "mullionCount": float(counts.get("mullionCount") or 0),
@@ -1755,7 +1622,7 @@ def compute_casement_design_cost(
         })
     epdm_amt, brush_amt, hw_other = _split_seal_hw_amounts(hw_lines)
 
-    glass = _glass_cost(line, width_mm=W, height_mm=H, qty=1.0)
+    glass = _glass_cost(line, width_mm=W, height_mm=H, qty=1.0, order=order)
     glass_amt = _f(glass.get("amount"))
     mesh_pack = _mesh_fabric_pack(line)
     mesh_amt = _f(mesh_pack.get("meshCost"))
@@ -2126,6 +1993,7 @@ def compute_sliding_design_cost(
             norm = with_active_track(norm, track_count=track_c)
         except Exception:
             pass
+    order = _glass_order_area_sft(line, width_mm=W, height_mm=H, product=product, setup=norm)
     # Glass weight → suggest/filter wheels; mesh shutters → regular mesh wheels
     norm, wheel_meta = _apply_sliding_wheel_clarity(
         norm,
@@ -2141,6 +2009,8 @@ def compute_sliding_design_cost(
         width_mm=W,
         height_mm=H,
         ctx={
+            "glazingPerimeterM": order["perimeterM"],
+            "trackRailMaterial": _line_opt(line, "trackRailMaterial", "railMaterial"),
             "shutterCount": shutters,
             "glassCount": shutters,
             "meshCount": mesh_n,
@@ -2308,7 +2178,18 @@ def compute_sliding_design_cost(
 
     # Separate track rail (rules: keep rail apart from outer aluminium track)
     rail_pack = bom.get("trackRail") if isinstance(bom.get("trackRail"), Mapping) else {}
-    _append_bom_profile_lines(rail_pack.get("lines") or [], default_use="track_rail")
+    for rail in rail_pack.get("lines") or []:
+        section = rail.get("section") or {}
+        unit = _str(section.get("rateUnit")).lower()
+        if unit in ("rft", "ft", "m", "rm", "rmt"):
+            metres = _f(rail.get("metres"))
+            bom["hardware"].append({
+                "name": rail["name"], "unit": unit.upper(), "unitRate": _f(section.get("rate")),
+                "qty": metres / 0.3048 if unit in ("rft", "ft") else metres,
+                "remarks": rail.get("remarks"), "source": "track_rail",
+            })
+        else:
+            _append_bom_profile_lines([rail], default_use="track_rail")
 
     # Shutter frames from Excel V/H / V2 H2 (glass sash only — never mesh section)
     shutter_pack = bom.get("shutterFrames") if isinstance(bom.get("shutterFrames"), Mapping) else {}
@@ -2426,7 +2307,7 @@ def compute_sliding_design_cost(
         })
     epdm_amt, brush_amt, hw_other = _split_seal_hw_amounts(hw_lines)
 
-    glass = _glass_cost(line, width_mm=W, height_mm=H, qty=1.0)
+    glass = _glass_cost(line, width_mm=W, height_mm=H, qty=1.0, order=order)
     glass_amt = _f(glass.get("amount"))
     mesh_pack = _mesh_fabric_pack(line)
     mesh_amt = _f(mesh_pack.get("meshCost"))
@@ -2448,7 +2329,6 @@ def compute_sliding_design_cost(
     if isinstance(line.get("_remnantPool"), dict):
         remnant_pool = {str(k): list(v) for k, v in line["_remnantPool"].items() if isinstance(v, list)}
     # Recover zero-Al / zero-coat cuts (weight on specs or mirrored from profile lines).
-    _ensure_profile_cut_rates(cut_specs, profile_lines, colour=colour)
 
     coat_full = True
     if costing.get("coatFullBars") is False or costing.get("coatCutsOnly") is True:
