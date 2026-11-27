@@ -361,7 +361,7 @@ def build_quote_materials_list(
                     "seriesId": m.get("seriesId"), "sectionId": m.get("sectionId"),
                     "colour": m.get("colour"), "metres": 0.0,
                     "qty": 0.0,
-                    "unit": m.get("unit"),
+                    "unit": "pcs" if m.get("kind") == "profile" else m.get("unit"),
                     "sides": set(),
                     "stock": _str(m.get("stock")),
                     "weightKg": 0.0,
@@ -372,7 +372,8 @@ def build_quote_materials_list(
             pcs = m.get("pcs")
             if pcs is None:
                 pcs = m.get("qty") or m.get("lengthM") or 1
-            slot["qty"] = _f(slot["qty"]) + _f(pcs) * lq
+            quantity = m.get("areaSft") if m.get("kind") == "mesh" else pcs
+            slot["qty"] = _f(slot["qty"]) + _f(quantity) * lq
             slot["metres"] += _f(m.get("cutLengthM")) * _f(pcs) * lq
             if m.get("sides"):
                 slot["sides"].add(_str(m.get("sides")))
@@ -572,18 +573,19 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
 
     def summary_table(title: str, items: Sequence[Mapping[str, Any]], qty_key: str = "qty") -> str:
         body = "".join(
-            f"<tr><td>{esc(it.get('name'))}</td>"
+            f"<tr><td>{esc(it.get('name'))} {esc(it.get('seriesId'))} {esc(it.get('colour'))}</td>"
             f"<td class=num>{esc(round(_f(it.get(qty_key)), 3) if it.get(qty_key) is not None else '')}</td>"
             f"<td>{esc(it.get('unit'))}</td>"
+            f"<td class=num>{esc(round(_f(it.get('metres')), 3)) if it.get('metres') else ''} </td>"
             f"<td>{esc(it.get('sides') or '')}</td>"
             f"<td>{esc(it.get('stock') or '')}</td>"
             f"<td class=num>{esc(round(_f(it.get('weightKg')), 3) if it.get('weightKg') is not None else '')}</td>"
             f"<td class=num>{esc(round(_f(it.get('wastageM')), 3) if it.get('wastageM') is not None else '')}</td></tr>"
             for it in items
-        ) or "<tr><td colspan=7 class=muted>None</td></tr>"
+        ) or "<tr><td colspan=8 class=muted>None</td></tr>"
         return (
             f"<h2>{esc(title)}</h2><table><thead><tr>"
-            f"<th>Name</th><th>Pcs / qty</th><th>Unit</th><th>Sides</th>"
+            f"<th>Name</th><th>Pcs / qty</th><th>Unit</th><th>Total cut m</th><th>Sides</th>"
             f"<th>Section stock</th><th>Weight kg</th><th>Wastage m</th>"
             f"</tr></thead><tbody>{body}</tbody></table>"
         )

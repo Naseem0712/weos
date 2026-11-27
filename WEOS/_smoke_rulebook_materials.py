@@ -50,7 +50,11 @@ def main():
 
     from WEOS.factory.materials_list import build_quote_materials_list
     pack = build_quote_materials_list([line])
-    assert sum(s["qty"] for s in pack["materialsSummary"] if "clip dg" == s["name"].lower()) == 16
+    clips = [s for s in pack["materialsSummary"] if s["name"].lower() == "clip dg"]
+    assert sum(s["qty"] for s in clips) == 16
+    assert all(s["unit"] == "pcs" and s["metres"] > 0 for s in clips)
+    from WEOS.factory.materials_list import materials_list_html
+    assert "Total cut m" in materials_list_html(pack)
     row = materials_rows_for_line({
         "product": "35mm_gulf", "system": "sliding", "width": 1050, "height": 970,
         "trackCount": 2, "glassShutters": 2, "glass": "8mm_toughened",
