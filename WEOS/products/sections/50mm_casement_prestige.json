@@ -188,8 +188,8 @@
         "single"
       ],
       "centerOpeningOnly": false,
-      "rate": 200.0,
-      "rateUnit": "rft",
+      "rate": 450.0,
+      "rateUnit": "kg",
       "coatingCost": 6.0,
       "coatingUnit": "rft",
       "use": "v2, h2",
@@ -217,8 +217,8 @@
         "dgu"
       ],
       "centerOpeningOnly": false,
-      "rate": 220.0,
-      "rateUnit": "rft",
+      "rate": 450.0,
+      "rateUnit": "kg",
       "coatingCost": 6.0,
       "coatingUnit": "rft",
       "use": "v2, h2",
