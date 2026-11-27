@@ -304,7 +304,12 @@ def _usable_png(png: bytes | None) -> bytes | None:
 
 def _draw_special_reportlab(c, line: Mapping[str, Any], x: float, y: float, box_w: float, box_h: float) -> bool:
     """Last-resort schematic only when no canvas SVG exists."""
-    from WEOS.factory.line_kind import is_railing_cart_line, is_shower_cart_line, is_ventilator_cart_line
+    from WEOS.factory.line_kind import (
+        is_gate_cart_line,
+        is_railing_cart_line,
+        is_shower_cart_line,
+        is_ventilator_cart_line,
+    )
 
     try:
         if is_railing_cart_line(line):
@@ -319,6 +324,21 @@ def _draw_special_reportlab(c, line: Mapping[str, Any], x: float, y: float, box_
             from WEOS.factory.ventilator_pdf import draw_ventilator_elevation
 
             return bool(draw_ventilator_elevation(c, line, x, y, box_w, box_h))
+        if is_gate_cart_line(line):
+            # Prefer regenerating SVG into the cell via canvas path; fallback rasterizes quote SVG.
+            from WEOS.factory.gate_engine import ensure_gate_dims, gate_svg
+
+            opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+            cfg = dict(opts.get("gate") or line.get("gate") or {})
+            cfg = ensure_gate_dims(
+                cfg,
+                width=float(line.get("width") or 0) or None,
+                height=float(line.get("height") or 0) or None,
+            )
+            q = opts.get("gateQuote") if isinstance(opts.get("gateQuote"), Mapping) else line.get("gate")
+            svg = gate_svg(cfg, quote=q if isinstance(q, Mapping) else None)
+            if svg:
+                return bool(_draw_canvas_svg(c, svg, x, y, box_w, box_h))
     except Exception:
         _log.exception("special ReportLab elevation failed")
     return False
@@ -409,6 +429,7 @@ def draw_line_elevation(
     in that case. Windows keep the existing ReportLab model drawer.
     """
     from WEOS.factory.line_kind import (
+        is_gate_cart_line,
         is_louver_cart_line,
         is_pergola_cart_line,
         is_railing_cart_line,
@@ -440,6 +461,7 @@ def draw_line_elevation(
         is_railing_cart_line(line)
         or is_shower_cart_line(line)
         or is_ventilator_cart_line(line)
+        or is_gate_cart_line(line)
         or is_louver_cart_line(line)
         or is_pergola_cart_line(line)
         or is_surface_cart_line(line)
@@ -892,7 +914,41 @@ def _spec_rows(line: Mapping[str, Any], *, audience: str = "customer") -> list[t
         add("AMOUNT", f"{rate_s if rate_s not in (None, '') else '—'} / {sale_s} → {amt_s if amt_s not in (None, '') else '—'}")
         return rows
 
-    from WEOS.factory.line_kind import is_louver_cart_line
+    from WEOS.factory.line_kind import is_gate_cart_line, is_louver_cart_line
+
+    if is_gate_cart_line(line):
+        opts_g = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+        q = (opts_g or {}).get("gateQuote") if isinstance(opts_g, Mapping) else None
+        if not isinstance(q, Mapping):
+            q = line.get("gate") if isinstance(line.get("gate"), Mapping) else {}
+        add("", str(line.get("displayName") or q.get("description") or "Gate / Privacy screen"))
+        add("CATEGORY", str(line.get("category") or "Gates"))
+        add("SIZE", f"{_mm(w)} × {_mm(h)} mm")
+        add("OPENING", f"{q.get('widthFt') or round(float(w or 0)/304.8, 2)} × {q.get('heightFt') or round(float(h or 0)/304.8, 2)} ft")
+        add("QTY", str(line.get("qty") or line.get("quantity") or 1))
+        add("TYPE", str(q.get("bayType") or "folding_privacy").replace("_", " ").title())
+        if q.get("leafCount"):
+            add("LEAVES", f"{q.get('foldLeft') or 0}+{q.get('foldRight') or 0} centre open · {q.get('leafCount')} leaves")
+        add("FRAME", f"MS {q.get('frameSectionId') or '75×75'} · wall posts {q.get('wallPostCount') or 0}")
+        add("FILL", f"Al louvers · gap {q.get('louverGapMm')} mm · blades/leaf {q.get('bladeCountPerLeaf')}")
+        hw_bits = []
+        for hitem in q.get("hardware") or []:
+            if not isinstance(hitem, Mapping):
+                continue
+            if hitem.get("isPackage"):
+                hw_bits.append(f"package ₹{hitem.get('amount')}")
+                continue
+            if hitem.get("includedInPackage"):
+                hw_bits.append(f"{hitem.get('name')}×{hitem.get('qty')} (incl)")
+            else:
+                hw_bits.append(f"{hitem.get('name')}×{hitem.get('qty')}")
+        if hw_bits:
+            add("HARDWARE", " · ".join(hw_bits[:8]))
+        finish = (q.get("coating") or {}).get("finish") or line.get("colour") or ""
+        add("FINISH", str(finish).replace("_", " "))
+        add("AREA", f"{q.get('areaSft') or 0} Sq.Ft.")
+        add("CHARGE", f"₹{q.get('sellingPerSft') or '—'} / SFT → ₹{q.get('sellingTotal') or line.get('commercialTotal') or '—'}")
+        return rows
 
     if is_louver_cart_line(line):
         from WEOS.factory.quote_item_snapshot import get_item_snapshot, get_glass_snapshot, glass_display_label

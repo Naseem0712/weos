@@ -65,6 +65,113 @@ def _product_label(line: Mapping[str, Any]) -> str:
     )
 
 
+def _materials_rows_for_gate(line: Mapping[str, Any], *, product: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Factory material list from gateQuote cuts + nests (used kg AND purchase kg)."""
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    q = (opts or {}).get("gateQuote") if isinstance(opts, Mapping) else None
+    if not isinstance(q, Mapping):
+        q = line.get("gate") if isinstance(line.get("gate"), Mapping) else {}
+    if not isinstance(q, Mapping) or not q.get("cuts"):
+        try:
+            from WEOS.factory.gate_engine import compute_gate, ensure_gate_dims
+
+            cfg = dict((opts or {}).get("gate") or line.get("gate") or {})
+            cfg = ensure_gate_dims(
+                cfg,
+                width=float(line.get("width") or 0) or None,
+                height=float(line.get("height") or 0) or None,
+            )
+            q = compute_gate(cfg)
+        except Exception:
+            q = {}
+    materials: list[dict[str, Any]] = []
+    nests = q.get("nests") if isinstance(q.get("nests"), Mapping) else {}
+    for cut in q.get("cuts") or []:
+        if not isinstance(cut, Mapping) or _f(cut.get("pieces")) <= 0:
+            continue
+        sid = _str(cut.get("sectionId"))
+        nest = nests.get(sid) if isinstance(nests.get(sid), Mapping) else {}
+        materials.append({
+            "kind": "profile",
+            "name": _str(cut.get("sectionName") or sid),
+            "seriesId": "structural",
+            "sectionId": sid,
+            "role": _str(cut.get("memberRole")),
+            "roleLabel": _str(cut.get("memberRole")).replace("_", " "),
+            "qty": cut.get("pieces"),
+            "pcs": cut.get("pieces"),
+            "unit": "RM",
+            "lengthM": cut.get("usedM"),
+            "cutLengthM": (_f(cut.get("cutLengthMm")) / 1000.0) if cut.get("cutLengthMm") else cut.get("usedM"),
+            "sides": _str(cut.get("designId")),
+            "use": _str(cut.get("memberRole")),
+            "stock": f"{_f(nest.get('stockLengthFt')):g} ft stock" if nest.get("stockLengthFt") else "",
+            "weightKg": cut.get("usedKg"),
+            "weightKgPerM": cut.get("weightKgPerM"),
+            "purchaseKg": nest.get("purchaseKg"),
+            "bars": nest.get("bars"),
+            "rate": (nest.get("purchase") or {}).get("rate") if isinstance(nest.get("purchase"), Mapping) else None,
+            "rateUnit": nest.get("purchaseRateUnit"),
+            "amount": (nest.get("purchase") or {}).get("amount") if isinstance(nest.get("purchase"), Mapping) else None,
+            "colour": _colour_label(line),
+            "remarks": cut.get("note") or cut.get("joint") or "",
+        })
+    # Section roll-up rows for factory (used kg + purchase kg)
+    for sid, nest in nests.items():
+        if not isinstance(nest, Mapping):
+            continue
+        materials.append({
+            "kind": "section_total",
+            "name": f"TOTAL {_str(nest.get('sectionName') or sid)}",
+            "seriesId": "structural",
+            "sectionId": sid,
+            "role": "section_total",
+            "pcs": nest.get("bars"),
+            "unit": "bars",
+            "lengthM": nest.get("usedM"),
+            "cutLengthM": nest.get("usedM"),
+            "weightKg": nest.get("usedKg"),
+            "purchaseKg": nest.get("purchaseKg"),
+            "bars": nest.get("bars"),
+            "stock": f"{_f(nest.get('stockLengthFt')):g} ft",
+            "rate": nest.get("purchaseRate"),
+            "rateUnit": nest.get("purchaseRateUnit"),
+            "amount": (nest.get("purchase") or {}).get("amount") if isinstance(nest.get("purchase"), Mapping) else None,
+            "colour": _colour_label(line),
+            "remarks": f"used {nest.get('usedKg')} kg · purchase {nest.get('purchaseKg')} kg · bars {nest.get('bars')}",
+        })
+    hardware: list[dict[str, Any]] = []
+    for h in q.get("hardware") or []:
+        if not isinstance(h, Mapping):
+            continue
+        hardware.append({
+            "kind": "hardware",
+            "name": _str(h.get("name") or h.get("catalogueId")),
+            "qty": h.get("qty"),
+            "unit": "PC",
+            "rate": h.get("unitRate"),
+            "amount": h.get("amount"),
+            "remarks": "included in package" if h.get("includedInPackage") else h.get("qtyBasis"),
+        })
+    return {
+        "lineId": _str(line.get("lineId") or line.get("id")),
+        "product": _str((product or {}).get("displayName") or _product_label(line)),
+        "productId": _str((product or {}).get("id") or line.get("product")),
+        "qty": _f(line.get("qty") or line.get("quantity"), 1),
+        "size": f"{_f(line.get('width') or q.get('widthMm')):g} × {_f(line.get('height') or q.get('heightMm')):g} mm",
+        "colour": _colour_label(line),
+        "materials": materials,
+        "hardware": hardware,
+        "glass": {"name": "—", "areaSft": 0},
+        "designCost": (q.get("cost") or {}).get("total") if isinstance(q.get("cost"), Mapping) else q.get("sellingTotal"),
+        "costBreakdown": q.get("cost") if isinstance(q.get("cost"), Mapping) else None,
+        "nests": nests,
+        "weight": q.get("weight"),
+        "coating": q.get("coating"),
+        "incomplete": q.get("incomplete") or [],
+    }
+
+
 def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
     """One quote line → materials, hardware, glass with catalogue names."""
     from WEOS.factory.design_cost import compute_design_cost
@@ -79,6 +186,15 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
             product = load_product(pid, strict=False)
         except Exception:
             product = {"id": pid, "displayName": _product_label(line)}
+
+    # Gate / grill / privacy — factory list from gateQuote nests + cuts
+    try:
+        from WEOS.factory.line_kind import is_gate_cart_line
+
+        if is_gate_cart_line(line):
+            return _materials_rows_for_gate(line, product=product)
+    except Exception:
+        pass
 
     design = compute_design_cost(line, product=product)
     materials: list[dict[str, Any]] = []

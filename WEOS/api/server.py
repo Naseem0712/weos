@@ -1314,6 +1314,64 @@ def api_shower_quote(body: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=f"shower quote failed: {exc}") from exc
 
 
+@app.post("/api/gate/quote")
+def api_gate_quote(body: dict[str, Any]) -> dict[str, Any]:
+    """Gates / grills / privacy screens calculator + elevation SVG."""
+    try:
+        from WEOS.factory.gate_engine import compute_gate, ensure_gate_dims, gate_svg
+
+        raw = dict(body or {})
+        cfg = ensure_gate_dims(
+            raw,
+            width=float(raw.get("width") or raw.get("widthMm") or 0) or None,
+            height=float(raw.get("height") or raw.get("heightMm") or 0) or None,
+        )
+        quote = compute_gate(cfg)
+        svg = gate_svg(cfg, quote=quote)
+        return {"quote": quote, "svg": svg}
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=400, detail=f"gate quote failed: {exc}") from exc
+
+
+@app.get("/api/structural/sections")
+def api_structural_sections(
+    material: str | None = None,
+    shape: str | None = None,
+    q: str | None = None,
+) -> dict[str, Any]:
+    from WEOS.factory.structural_catalogue import list_structural_sections, load_structural_catalogue
+
+    pack = load_structural_catalogue()
+    rows = list_structural_sections(material=material, shape=shape, q=q)
+    return {
+        "seriesId": pack.get("seriesId"),
+        "name": pack.get("name"),
+        "count": len(rows),
+        "sections": rows,
+    }
+
+
+@app.get("/api/structural/sections/{section_id}")
+def api_structural_section(section_id: str) -> dict[str, Any]:
+    from WEOS.factory.structural_catalogue import get_structural_section
+
+    sec = get_structural_section(section_id)
+    if not sec:
+        raise HTTPException(status_code=404, detail=f"section not found: {section_id}")
+    return sec
+
+
+@app.put("/api/structural/sections/{section_id}")
+def api_structural_section_update(section_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    """Admin material editor — dims, weight, rates, compatible hardware."""
+    from WEOS.factory.structural_catalogue import update_structural_section
+
+    try:
+        return {"ok": True, "section": update_structural_section(section_id, dict(body or {}))}
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/finishes")
 def api_finishes(kind: str | None = None) -> dict[str, Any]:
     from WEOS.factory.commercial_defaults import coating_brands, default_coating_brand

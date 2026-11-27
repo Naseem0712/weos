@@ -811,6 +811,130 @@ def _railing_line_result(line: Mapping[str, Any], *, include_preview: bool = Tru
     }
 
 
+def _gate_line_result(line: Mapping[str, Any], *, include_preview: bool = True) -> dict[str, Any]:
+    """Price gates / grills / privacy screens from designer config."""
+    from WEOS.factory.gate_engine import (
+        compute_gate,
+        ensure_gate_dims,
+        format_gate_description,
+        gate_svg,
+    )
+    from WEOS.factory.live_pricing import apply_selling_to_line_result
+
+    opts_in = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    cfg = (opts_in or {}).get("gate") if isinstance(opts_in, Mapping) else {}
+    cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
+    if not cfg and isinstance(line.get("gate"), Mapping):
+        cfg = dict(line.get("gate") or {})
+    cfg = ensure_gate_dims(
+        cfg,
+        width=float(line.get("width") or 0) or None,
+        height=float(line.get("height") or 0) or None,
+    )
+    if line.get("qty") and not cfg.get("qty"):
+        cfg["qty"] = line.get("qty")
+    if line.get("colour") and not cfg.get("finish"):
+        cfg["finish"] = line.get("colour")
+    q = compute_gate(cfg)
+    qty = int(line.get("qty") or line.get("quantity") or q.get("qty") or 1)
+    subtotal = float(q.get("sellingTotal") or 0.0)
+    svg = _special_line_preview_svg(
+        line, include_preview=include_preview, builder=lambda: gate_svg(cfg, quote=q)
+    )
+    description = format_gate_description(q, cfg)
+    pt = str(line.get("productType") or "gate")
+    opts_out = {
+        "gate": cfg,
+        "gateQuote": q,
+        "productType": pt if pt in ("gate", "grill", "iron_fabrication") else "gate",
+        "colour": cfg.get("finish") or line.get("colour"),
+    }
+    materials = []
+    for cut in q.get("cuts") or []:
+        if int(cut.get("pieces") or 0) <= 0:
+            continue
+        materials.append({
+            "catalogueName": cut.get("sectionName"),
+            "name": cut.get("sectionName"),
+            "sectionId": cut.get("sectionId"),
+            "role": cut.get("memberRole"),
+            "pcs": cut.get("pieces"),
+            "lengthM": cut.get("usedM"),
+            "weightKg": cut.get("usedKg"),
+            "weightKgPerM": cut.get("weightKgPerM"),
+            "unit": "RM",
+            "remarks": cut.get("designId"),
+        })
+    result = {
+        "lineId": line.get("lineId") or uuid.uuid4().hex[:8],
+        "product": str(line.get("product") or line.get("productId") or "gates_privacy"),
+        "productType": opts_out["productType"],
+        "displayName": str(line.get("displayName") or "Gate / Privacy screen"),
+        "category": str(line.get("category") or "Gates"),
+        "status": "gate",
+        "description": description,
+        "width": float(line.get("width") or q.get("widthMm") or 0),
+        "height": float(line.get("height") or q.get("heightMm") or 0),
+        "qty": qty,
+        "saleUnit": "sft",
+        "sellingRate": float(q.get("sellingPerSft") or 0.0),
+        "selling": {
+            "saleUnit": "sft",
+            "saleUnitLabel": "Per SFT",
+            "sellingRate": float(q.get("sellingPerSft") or 0.0),
+            "billableQty": float(q.get("areaSft") or 0) * qty,
+            "sellingAmount": subtotal,
+            "qty": qty,
+        },
+        "commercialTotal": subtotal,
+        "gate": q,
+        "options": opts_out,
+        "sectionSeries": "structural",
+        "sectionSpecs": {},
+        "sectionDetails": [],
+        "layout": {
+            "system": "gate",
+            "kind": "gate",
+            "bayType": q.get("bayType"),
+            "bays": q.get("bays") or [],
+            "leaves": q.get("leaves") or [],
+            "trackCount": None,
+            "widthMm": q.get("widthMm"),
+            "heightMm": q.get("heightMm"),
+        },
+        "specifications": {},
+        "glass": [],
+        "hardware": q.get("hardware") or [],
+        "materials": materials,
+        "brush": {"totalMeters": 0, "pieces": []},
+        "trackRail": [],
+        "cutList": q.get("cuts") or [],
+        "bom": (q.get("cuts") or []) + (q.get("hardware") or []),
+        "nests": q.get("nests") or {},
+        "weight": {
+            "ironKg": (q.get("weight") or {}).get("ironKg"),
+            "aluminiumKg": (q.get("weight") or {}).get("aluminiumKg"),
+            "totalKg": (q.get("weight") or {}).get("totalKg"),
+        },
+        "price": {
+            "currency": "INR",
+            "unitRate": float(q.get("sellingPerSft") or 0.0),
+            "unitTotal": subtotal,
+            "subtotal": subtotal,
+            "markupPercent": 0,
+            "gstPercent": 0,
+            "total": subtotal,
+            "saleUnit": "sft",
+            "cost": q.get("cost"),
+            "selling": q.get("selling"),
+        },
+        "preview": {"svg": svg, "pdfSvg": svg} if svg else {"svg": None},
+        "note": "Gate / grill / privacy — structural MS+Al engine",
+        "incomplete": q.get("incomplete") or [],
+    }
+    return apply_selling_to_line_result(result, line)
+
+
 def _shower_line_result(line: Mapping[str, Any], *, include_preview: bool = True) -> dict[str, Any]:
     """Price a shower partition from designer config (unified canvas + PDF)."""
     from WEOS.factory.shower_engine import (
@@ -1049,6 +1173,12 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
 
     product_id = product_id_of(line)
     world = _line_world(line)
+    if world == "gate":
+        try:
+            return _gate_line_result(line, include_preview=include_preview)
+        except Exception as exc:  # pragma: no cover
+            _log.exception("gate line calc failed: %s", exc)
+            return _error_line_result(line, f"gate calc failed: {exc}")
     if world == "louver":
         try:
             return _louver_line_result(line, include_preview=include_preview)
@@ -1095,6 +1225,12 @@ def _calculate_line_raw(line: Mapping[str, Any], *, include_preview: bool = True
         return _error_line_result(line, PRODUCT_UNAVAILABLE)
     # Product Library type lock: even without designer blobs, never run window geometry.
     world = _line_world(line, product=product)
+    if world == "gate":
+        try:
+            return _gate_line_result(line, include_preview=include_preview)
+        except Exception as exc:  # pragma: no cover
+            _log.exception("gate line calc failed: %s", exc)
+            return _error_line_result(line, f"gate calc failed: {exc}")
     if world == "louver":
         try:
             return _louver_line_result(line, include_preview=include_preview)

@@ -1576,6 +1576,7 @@ def preview_svgs_for_drawing(
 def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> str | None:
     """Build quote/canvas SVG for a cart line from the same geometry engine as live preview."""
     from WEOS.factory.line_kind import (
+        is_gate_cart_line,
         is_pergola_cart_line,
         is_railing_cart_line,
         is_shower_cart_line,
@@ -1641,6 +1642,34 @@ def elevation_svg_for_line(line: Mapping[str, Any], *, style: str = "pdf") -> st
             if not isinstance(q, Mapping) or not q.get("panels"):
                 q = compute_shower(cfg)
             svg = shower_svg(cfg, quote=q if isinstance(q, Mapping) else None)
+            if svg:
+                return str(svg)
+        except Exception:
+            pass
+        prev = line.get("preview") if isinstance(line.get("preview"), Mapping) else {}
+        svg = (prev or {}).get("svg")
+        return str(svg) if svg else None
+
+    if is_gate_cart_line(line):
+        opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+        cfg = opts.get("gate") if isinstance(opts, Mapping) else None
+        cfg = dict(cfg) if isinstance(cfg, Mapping) else {}
+        if not cfg and isinstance(line.get("gate"), Mapping):
+            cfg = dict(line.get("gate") or {})
+        try:
+            from WEOS.factory.gate_engine import compute_gate, ensure_gate_dims, gate_svg
+
+            cfg = ensure_gate_dims(
+                cfg,
+                width=float(line.get("width") or 0) or None,
+                height=float(line.get("height") or 0) or None,
+            )
+            q = opts.get("gateQuote") if isinstance(opts, Mapping) else None
+            if not isinstance(q, Mapping):
+                q = line.get("gate") if isinstance(line.get("gate"), Mapping) else None
+            if not isinstance(q, Mapping) or not q.get("widthMm"):
+                q = compute_gate(cfg)
+            svg = gate_svg(cfg, quote=q if isinstance(q, Mapping) else None)
             if svg:
                 return str(svg)
         except Exception:

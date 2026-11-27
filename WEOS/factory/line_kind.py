@@ -25,6 +25,9 @@ PRODUCT_TYPE_CHOICES: tuple[tuple[str, str], ...] = (
     ("shower_partition", "Shower partition"),
     ("bathroom_ventilator", "Bathroom ventilator"),
     ("louvers", "Louvers"),
+    ("gate", "Gate / privacy screen"),
+    ("grill", "Grill"),
+    ("iron_fabrication", "Iron fabrication"),
 )
 
 PRODUCT_TYPES = frozenset(k for k, _ in PRODUCT_TYPE_CHOICES)
@@ -44,6 +47,9 @@ CATEGORY_FOR_TYPE: dict[str, str] = {
     "shower_partition": "Bathrooms",
     "bathroom_ventilator": "Bathrooms",
     "louvers": "Louvers",
+    "gate": "Gates",
+    "grill": "Grills",
+    "iron_fabrication": "Iron fabrication",
 }
 
 # Series-setup form types (aluminium window systems) — not used for railing worlds.
@@ -79,6 +85,14 @@ _RAILING_TYPE_ALIASES = {
     "louvre": "louvers",
     "louvres": "louvers",
     "louvers_stub": "louvers",
+    "gates": "gate",
+    "privacy_screen": "gate",
+    "privacy": "gate",
+    "folding_privacy": "gate",
+    "folding_gate": "gate",
+    "grills": "grill",
+    "iron": "iron_fabrication",
+    "ms_fabrication": "iron_fabrication",
 }
 
 _WINDOW_QTY_TYPES = frozenset({"windows", "sliding", "casements", "telescopic", "synchron", "fold"})
@@ -122,6 +136,12 @@ def normalize_product_type(raw: Any) -> str | None:
         return "shower_partition"
     if "louver" in t or "louvre" in t:
         return "louvers"
+    if "gate" in t or "privacy" in t or "grill" in t:
+        if "grill" in t and "gate" not in t and "privacy" not in t:
+            return "grill"
+        return "gate"
+    if "iron" in t and "fabric" in t:
+        return "iron_fabrication"
     if "fold" in t or "bifold" in t:
         return "fold"
     if "sync" in t:
@@ -160,12 +180,14 @@ def is_pergola_product_type(product_type: Any) -> bool:
 def line_world(line: Mapping[str, Any] | None = None, *, product: Mapping[str, Any] | None = None) -> str:
     """Single cart-line world for calc / PDF / UI.
 
-    Prefer live designer blobs (``options.railing`` / shower / vent), then Product Library type.
+    Prefer live designer blobs (``options.railing`` / shower / vent / gate), then Product Library type.
     """
     if is_ventilator_cart_line(line):
         return "ventilator"
     if is_shower_cart_line(line):
         return "shower"
+    if is_gate_cart_line(line):
+        return "gate"
     if is_pergola_cart_line(line):
         return "pergola"
     if is_louver_cart_line(line):
@@ -202,12 +224,16 @@ def product_world(product_type: Any = None, *, category: Any = None, product_id:
         return "pergola"
     if pt == "louvers":
         return "louver"
+    if pt in ("gate", "grill", "iron_fabrication"):
+        return "gate"
     cat = str(category or "").lower()
     pid = str(product_id or "").lower()
     if "ventilat" in cat or "ventilat" in pid:
         return "ventilator"
     if "louver" in cat or "louvre" in cat or "louver" in pid or "louvre" in pid:
         return "louver"
+    if any(x in cat or x in pid for x in ("gate", "grill", "privacy", "iron_fabrication")):
+        return "gate"
     if "pergola" in cat or "pergola" in pid:
         return "pergola"
     if any(x in cat or x in pid for x in ("acp", "hpl", "fluted", "perforated", "cladding", "facade")):
@@ -267,9 +293,43 @@ def product_has_tracks(product_type: Any = None, *, system: Any = None, category
     return False
 
 
+def is_gate_cart_line(line: Mapping[str, Any] | None) -> bool:
+    """True for gates / grills / privacy screens / iron fabrication designer lines."""
+    if not isinstance(line, Mapping):
+        return False
+    opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
+    if isinstance(opts, Mapping):
+        if isinstance(opts.get("gate"), Mapping) or isinstance(opts.get("gateQuote"), Mapping):
+            return True
+        pt_opt = normalize_product_type(opts.get("productType"))
+        if pt_opt in ("gate", "grill", "iron_fabrication"):
+            return True
+    if isinstance(line.get("gate"), Mapping) or isinstance(line.get("gateQuote"), Mapping):
+        return True
+    pt = normalize_product_type(line.get("productType"))
+    if pt in ("gate", "grill", "iron_fabrication"):
+        return True
+    cat = str(line.get("category") or "").lower()
+    if any(x in cat for x in ("gate", "grill", "privacy", "iron fabrication", "iron_fabrication")):
+        return True
+    pid = str(line.get("product") or line.get("productId") or "").lower()
+    if any(x in pid for x in ("gate", "grill", "privacy", "iron_fabrication")):
+        return True
+    snap = line.get("itemSnapshot") or line.get("item_snapshot")
+    if isinstance(snap, Mapping):
+        sc = str(snap.get("category_snapshot") or "").lower()
+        sp = str(snap.get("product_id") or "").lower()
+        world = str((snap.get("profile_snapshot") or {}).get("world") or "").lower()
+        if world == "gate" or any(x in f"{sc} {sp}" for x in ("gate", "grill", "privacy", "iron")):
+            return True
+    return False
+
+
 def is_louver_cart_line(line: Mapping[str, Any] | None) -> bool:
     """True when the *product* is a louver — not a window with louvers fill."""
     if not isinstance(line, Mapping):
+        return False
+    if is_gate_cart_line(line):
         return False
     opts = line.get("options") if isinstance(line.get("options"), Mapping) else {}
     pt = normalize_product_type(

@@ -1,0 +1,43 @@
+{
+  "id": "gates_privacy",
+  "displayName": "Gates / Privacy screens",
+  "productType": "gate",
+  "category": "Gates",
+  "units": "mm",
+  "version": 1,
+  "status": "ready",
+  "description": "MS + aluminium gates, grills, louvers and folding privacy screens. Structural catalogue sections shared across canvas, material editor, factory list and quote PDF.",
+  "tagline": "Iron / Al gates & privacy",
+  "warranty": "1 year (demo)",
+  "heroImage": "/static/products/placeholder.svg",
+  "gallery": ["/static/products/placeholder.svg"],
+  "manufacturingReady": true,
+  "specifications": {
+    "profileSeries": "structural",
+    "sectionSizeMm": "75×75 MS / 25×25 Al",
+    "wallThicknessMm": null,
+    "alloy": "MS + 6063",
+    "temper": "T5",
+    "powderCoatingBrand": "As specified",
+    "powderCoatingGrade": "Wood finish / powder",
+    "hardwareBrand": "SS304",
+    "hardwareFinish": "SS304",
+    "defaultGlass": "N/A — louvers / grill fill",
+    "openingDirection": "Centre open folding / swing / sliding",
+    "saleUnit": "sft"
+  },
+  "defaults": {
+    "bayType": "folding_privacy",
+    "foldLeft": 2,
+    "foldRight": 2,
+    "louverGapMm": 25,
+    "louverOrientation": "vertical",
+    "frameSectionHint": "MS SHS 75×75",
+    "louverSectionHint": "Al 25×25",
+    "supportDiaMm": 12,
+    "hardwarePackageAmount": 10000,
+    "fabRatePerSft": 150,
+    "coatingRate": 25,
+    "coatingRateUnit": "rft"
+  }
+}

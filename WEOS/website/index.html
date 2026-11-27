@@ -2002,6 +2002,51 @@ textarea{max-width:100%}
               <div class="err" id="showerErr" style="font-size:.75rem"></div>
             </div>
           </div>
+          <div id="gateTools" class="rail-tools hidden">
+            <div class="rt-head">
+              <strong style="font-size:.82rem">Gate / grill / privacy</strong>
+              <div class="row" style="gap:.3rem;margin:0">
+                <button class="btn sm" type="button" id="btnGateCalc">Update</button>
+                <button class="btn sec sm" type="button" id="btnGateAdd">Add</button>
+              </div>
+            </div>
+            <div class="rt-body">
+              <div class="rt-row">
+                <div><label class="l">Bay type</label>
+                  <select id="gtBayType" style="width:140px">
+                    <option value="folding_privacy" selected>Folding privacy</option>
+                    <option value="folding_door">Folding door</option>
+                    <option value="swing_gate">Swing gate</option>
+                    <option value="sliding_gate">Sliding gate</option>
+                    <option value="fixed_louvers">Fixed louvers</option>
+                    <option value="fixed_grill">Fixed grill</option>
+                  </select>
+                </div>
+                <div><label class="l">Fold L</label><input id="gtFoldLeft" type="number" min="0" value="2" style="width:52px"/></div>
+                <div><label class="l">Fold R</label><input id="gtFoldRight" type="number" min="0" value="2" style="width:52px"/></div>
+              </div>
+              <div class="rt-row">
+                <div><label class="l">W (ft)</label><input id="gtWidthFt" type="number" step="0.01" value="13" style="width:64px"/></div>
+                <div><label class="l">H (ft)</label><input id="gtHeightFt" type="number" step="0.01" value="8" style="width:64px"/></div>
+                <div><label class="l">Louver gap</label><input id="gtGap" type="number" step="1" value="25" style="width:56px"/></div>
+                <div><label class="l">Qty</label><input id="gtQty" type="number" min="1" value="1" style="width:48px"/></div>
+              </div>
+              <div class="rt-row">
+                <div><label class="l">MS ₹/kg</label><input id="gtMsRate" type="number" step="1" value="150" style="width:64px"/></div>
+                <div><label class="l">MS bar kg</label><input id="gtMsBarKg" type="number" step="0.1" value="25" style="width:64px"/></div>
+                <div><label class="l">MS stock ft</label><input id="gtMsStock" type="number" step="1" value="20" style="width:56px"/></div>
+                <div><label class="l">Al ₹/16ft</label><input id="gtAlRate" type="number" step="1" value="850" style="width:64px"/></div>
+              </div>
+              <div class="rt-row">
+                <div><label class="l">Coat ₹/rft</label><input id="gtCoat" type="number" step="1" value="25" style="width:64px"/></div>
+                <div><label class="l">Fab ₹/sft</label><input id="gtFab" type="number" step="1" value="150" style="width:64px"/></div>
+                <div><label class="l">HW package</label><input id="gtHwPkg" type="number" step="1" value="10000" style="width:80px"/></div>
+              </div>
+              <div class="muted" style="font-size:.72rem;margin:.2rem 0">Purchase rates stay with selection (MS ₹/kg · Al ₹/full bar · coat ₹/rft). Selling uses fab ₹/sft + itemised cost.</div>
+              <div id="gateBom" class="rt-bom"></div>
+              <div class="err" id="gateErr" style="font-size:.75rem"></div>
+            </div>
+          </div>
           <div id="ventTools" class="rail-tools hidden">
             <div class="rt-head">
               <strong style="font-size:.82rem">Bathroom ventilator</strong>
@@ -2289,6 +2334,10 @@ textarea{max-width:100%}
                 <option value="style">Style / slide door</option>
                 <option value="shower_partition">Shower partition</option>
                 <option value="bathroom_ventilator">Bathroom ventilator</option>
+                <option value="louvers">Louvers</option>
+                <option value="gate">Gate / privacy screen</option>
+                <option value="grill">Grill</option>
+                <option value="iron_fabrication">Iron fabrication</option>
               </select>
             </div>
             <div><label class="l">Category</label><input id="adCat" style="width:140px"/></div>
@@ -3266,6 +3315,8 @@ const state = {
   vtMode: 'split',
   railing: null,
   showerMode: false,
+  gateMode: false,
+  gate: null,
   shShape: 'straight',
   shOp: 'sliding',
   shFrameKind: 'profile',
@@ -6954,6 +7005,7 @@ function _worldFromBits(typ, pid, cat) {
   }
   if (t.includes('ventilat') || id.includes('ventilat') || c.includes('ventilat')) return 'ventilator';
   if (t.includes('shower') || id.includes('shower') || (c.includes('bathroom') && !c.includes('ventilat') && !id.includes('ventilat'))) return 'shower';
+  if (t === 'gate' || t === 'grill' || t === 'iron_fabrication' || t.includes('privacy') || id.includes('gate') || id.includes('grill') || id.includes('privacy') || id.includes('iron_fabrication') || c.includes('gate') || c.includes('grill') || c.includes('privacy') || c.includes('iron fabrication')) return 'gate';
   if (t.includes('louver') || t.includes('louvre') || id.includes('louver') || id.includes('louvre') || c.includes('louver') || c.includes('louvre')) return 'louver';
   if (t.includes('pergola') || id.includes('pergola') || c.includes('pergola')) return 'pergola';
   if (t.includes('acp') || id.includes('acp') || c.includes('acp') || t.includes('hpl') || id.includes('hpl') || c.includes('hpl') || t.includes('fluted') || id.includes('fluted') || c.includes('fluted') || t.includes('perforated') || id.includes('perforated') || c.includes('perforated') || t.includes('cladding') || id.includes('cladding') || c.includes('cladding') || c.includes('facade')) return 'surface';
@@ -7095,7 +7147,7 @@ function applyProductWorld(opts) {
   const addBtn = $('btnAddLine');
   const bulk = $('bulkSizesBox');
   if (bulk) {
-    const hideBulk = world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator';
+    const hideBulk = world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator' || world === 'gate';
     bulk.style.display = hideBulk ? 'none' : '';
   }
   setSpecialProductToolMode(world);
@@ -7105,17 +7157,36 @@ function applyProductWorld(opts) {
     state._previewLineId = null;
     state._previewKey = null;
     if ($('livePreview') && (world === 'window' || world === 'louver' || world === 'pergola' || world === 'surface'
-      || world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator')) {
+      || world === 'railing' || world === 'staircase_railing' || world === 'shower' || world === 'ventilator' || world === 'gate')) {
       $('livePreview').innerHTML = '<span class="muted">Drawing…</span>';
     }
+  }
+  if (world === 'gate') {
+    state.gateMode = true;
+    state.railingMode = false;
+    state.showerMode = false;
+    state.ventMode = false;
+    if ($('lineSystem')) $('lineSystem').value = 'gate';
+    if (win) win.classList.add('hidden');
+    showRailTools(false);
+    showShowerTools(false);
+    showVentTools(false);
+    showGateTools(true);
+    syncAddButton('Add gate to cart');
+    if ($('lineSeries')) $('lineSeries').value = '';
+    setSpecialProductToolMode('');
+    gateCalc();
+    return;
   }
   if (world === 'louver' || world === 'pergola' || world === 'surface') {
     state.railingMode = false;
     state.showerMode = false;
     state.ventMode = false;
+    state.gateMode = false;
     showRailTools(false);
     showShowerTools(false);
     showVentTools(false);
+    showGateTools(false);
     if (win) win.classList.remove('hidden');
     if ($('lineSystem')) $('lineSystem').value = world;
     if ($('lineSeries')) $('lineSeries').value = '';
@@ -7130,10 +7201,12 @@ function applyProductWorld(opts) {
     state.ventMode = true;
     state.showerMode = false;
     state.railingMode = false;
+    state.gateMode = false;
     if ($('lineSystem')) $('lineSystem').value = 'ventilator';
     if (win) win.classList.add('hidden');
     showRailTools(false);
     showShowerTools(false);
+    showGateTools(false);
     showVentTools(true);
     syncAddButton('Add ventilator to cart');
     if ($('lineSeries')) $('lineSeries').value = '';
@@ -7145,10 +7218,12 @@ function applyProductWorld(opts) {
     state.showerMode = true;
     state.ventMode = false;
     state.railingMode = false;
+    state.gateMode = false;
     if ($('lineSystem')) $('lineSystem').value = 'shower';
     if (win) win.classList.add('hidden');
     showRailTools(false);
     showVentTools(false);
+    showGateTools(false);
     showShowerTools(true);
     syncAddButton('Add shower to cart');
     if ($('lineSeries')) $('lineSeries').value = '';
@@ -7158,8 +7233,10 @@ function applyProductWorld(opts) {
   }
   state.showerMode = false;
   state.ventMode = false;
+  state.gateMode = false;
   showShowerTools(false);
   showVentTools(false);
+  showGateTools(false);
   if (world === 'railing' || world === 'staircase_railing') {
     state.railingMode = true;
     // Product-type lock: staircase_railing forces stairs. Generic railing must NOT
@@ -12164,6 +12241,98 @@ function showShowerTools(on) {
   el.classList.toggle('hidden', !on);
   if (on) syncShowerUi();
 }
+function showGateTools(on) {
+  const el = $('gateTools');
+  if (!el) return;
+  el.classList.toggle('hidden', !on);
+}
+function gateCfgFromUi() {
+  const n = (id, d) => {
+    const el = $(id);
+    const v = el ? parseFloat(el.value) : NaN;
+    return Number.isFinite(v) ? v : d;
+  };
+  return {
+    bayType: ($('gtBayType') && $('gtBayType').value) || 'folding_privacy',
+    foldLeft: n('gtFoldLeft', 2),
+    foldRight: n('gtFoldRight', 2),
+    widthFt: n('gtWidthFt', 13),
+    heightFt: n('gtHeightFt', 8),
+    louverGapMm: n('gtGap', 25),
+    louverOrientation: 'vertical',
+    qty: n('gtQty', 1),
+    msRatePerKg: n('gtMsRate', 150),
+    msBarWeightKg: n('gtMsBarKg', 25),
+    msStockFt: n('gtMsStock', 20),
+    alRatePerBar: n('gtAlRate', 850),
+    alStockFt: 16,
+    coatingRate: n('gtCoat', 25),
+    coatingRateUnit: 'rft',
+    fabRatePerSft: n('gtFab', 150),
+    hardwarePackageAmount: n('gtHwPkg', 10000),
+    supportRodCount: 2,
+    supportDiaMm: 12,
+  };
+}
+async function gateCalc() {
+  const err = $('gateErr');
+  if (err) err.textContent = '';
+  try {
+    const cfg = gateCfgFromUi();
+    state.gate = cfg;
+    state.gateMode = true;
+    const res = await api('/api/gate/quote', { method: 'POST', body: cfg });
+    const q = (res && res.quote) || {};
+    state._gateQuote = q;
+    if ($('livePreview') && res && res.svg) {
+      $('livePreview').innerHTML = res.svg;
+      state._previewKey = 'gate:' + (q.widthMm || '') + 'x' + (q.heightMm || '');
+      if (typeof fitPreviewToStage === 'function') fitPreviewToStage({ reset: false });
+    }
+    const bom = $('gateBom');
+    if (bom) {
+      const w = q.weight || {};
+      const bars = q.bars || {};
+      const cost = q.cost || {};
+      bom.innerHTML = [
+        `<div><b>Blades/leaf</b> ${q.bladeCountPerLeaf || 0} · gap ${q.louverGapMm || 0} mm · leaves ${(q.foldLeft||0)}+${(q.foldRight||0)}</div>`,
+        `<div><b>Bars</b> MS ${bars.ms || 0} · Al ${bars.aluminium || 0} · <b>kg</b> Fe ${w.ironKg || 0} · Al ${w.aluminiumKg || 0}</div>`,
+        `<div><b>Cost</b> Fe ₹${cost.iron||0} · Al ₹${cost.aluminium||0} · Coat ₹${cost.coating||0} · HW ₹${cost.hardware||0} · Fab ₹${cost.fabricationInstall||0}</div>`,
+        `<div><b>Selling</b> ₹${q.sellingTotal || 0} · ₹${q.sellingPerSft || 0}/sft · ${q.areaSft || 0} sft</div>`,
+      ].join('');
+    }
+    if ($('lineWidth')) $('lineWidth').value = Math.round(q.widthMm || cfg.widthFt * 304.8);
+    if ($('lineHeight')) $('lineHeight').value = Math.round(q.heightMm || cfg.heightFt * 304.8);
+    return q;
+  } catch (e) {
+    if (err) err.textContent = (e && e.message) || String(e);
+    return null;
+  }
+}
+async function gateAdd() {
+  const q = state._gateQuote || await gateCalc();
+  if (!q) return;
+  const cfg = state.gate || gateCfgFromUi();
+  const line = {
+    product: 'gates_privacy',
+    productId: 'gates_privacy',
+    productType: 'gate',
+    category: 'Gates',
+    displayName: 'Gate / Privacy screen',
+    width: q.widthMm,
+    height: q.heightMm,
+    qty: cfg.qty || 1,
+    colour: cfg.finish || 'wood_finish',
+    options: { gate: cfg, gateQuote: q, productType: 'gate' },
+    gate: q,
+    commercialTotal: q.sellingTotal,
+    sellingRate: q.sellingPerSft,
+    saleUnit: 'sft',
+  };
+  if (typeof addCartLine === 'function') addCartLine(line);
+  else if (Array.isArray(state.cart)) { state.cart.push(line); if (typeof renderCart === 'function') renderCart(); }
+  toast('Gate line added');
+}
 function syncShowerUi() {
   const shape = state.shShape || 'straight';
   const op = state.shOp || 'sliding';
@@ -12802,6 +12971,18 @@ if ($('btnRailCollapse')) $('btnRailCollapse').onclick = () => {
 if ($('btnRailCalc')) $('btnRailCalc').onclick = railingCalc;
 if ($('btnRailAdd')) $('btnRailAdd').onclick = railingAdd;
 if ($('btnShowerCalc')) $('btnShowerCalc').onclick = showerCalc;
+if ($('btnGateCalc')) $('btnGateCalc').onclick = gateCalc;
+if ($('btnGateAdd')) $('btnGateAdd').onclick = gateAdd;
+['gtBayType','gtFoldLeft','gtFoldRight','gtWidthFt','gtHeightFt','gtGap','gtQty','gtMsRate','gtMsBarKg','gtMsStock','gtAlRate','gtCoat','gtFab','gtHwPkg'].forEach(id => {
+  const el = $(id);
+  if (!el) return;
+  el.addEventListener('change', () => { if (state.gateMode || (typeof productWorldOf === 'function' && productWorldOf(selectedProductMeta(), null) === 'gate')) gateCalc(); });
+  el.addEventListener('input', () => {
+    if (!(state.gateMode || (typeof productWorldOf === 'function' && productWorldOf(selectedProductMeta(), null) === 'gate'))) return;
+    clearTimeout(state._gateT);
+    state._gateT = setTimeout(() => gateCalc(), 280);
+  });
+});
 if ($('shLayoutPreset')) $('shLayoutPreset').onchange = () => applyShowerPreset($('shLayoutPreset').value);
 if ($('btnShAddPanel')) $('btnShAddPanel').onclick = () => {
   readShowerPanelTable();
