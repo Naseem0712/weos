@@ -1280,6 +1280,8 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
     if c.get("deductionsMissing"):
         incomplete.append("clearance deductions incomplete")
 
+    # Weight/cost must follow exactly the sectionIds the user selected in the UI.
+    # Resolve each role from its cfg id first; only fall back when the id is absent.
     frame = _apply_ms_rates(_resolve_frame_section(c), c)
     wall_post_sec = _resolve_wall_post_section(c, frame)
     leaf_frame_sec = _resolve_leaf_frame_section(c, frame)
@@ -1295,6 +1297,25 @@ def compute_gate(cfg: Mapping[str, Any]) -> dict[str, Any]:
     track_ch_sec = _resolve_track_channel_section(c)
     track_bar_sec = _resolve_track_bar_section(c)
     handle_sec = _resolve_handle_section(c)
+    # Flag when a requested sectionId could not be loaded (silent default would skew kg/₹).
+    for label, wanted, got in (
+        ("frame", _s(c.get("frameSectionId") or c.get("msSectionId")), _s(frame.get("sectionId"))),
+        ("wallPost", _s(c.get("wallPostSectionId")), _s(wall_post_sec.get("sectionId"))),
+        ("leaf", _s(c.get("leafFrameSectionId") or c.get("leafSectionId")), _s(leaf_frame_sec.get("sectionId"))),
+        ("louver", _s(c.get("louverSectionId") or c.get("alSectionId")), _s(louver_sec.get("sectionId"))),
+        ("support", _s(c.get("supportSectionId")), _s(support_sec.get("sectionId"))),
+        ("grill", _s(c.get("grillSectionId") or c.get("grillBarSectionId")), _s(grill_sec.get("sectionId"))),
+        ("trackChannel", _s(c.get("trackChannelSectionId") or c.get("trackCChannelSectionId")), _s(track_ch_sec.get("sectionId"))),
+        ("trackBar", _s(c.get("trackBarSectionId") or c.get("trackRoundSectionId")), _s(track_bar_sec.get("sectionId"))),
+    ):
+        if wanted and got and wanted != got:
+            msg = f"{label} section {wanted} not in catalogue (using {got})"
+            if msg not in incomplete:
+                incomplete.append(msg)
+        elif wanted and not got:
+            msg = f"{label} section {wanted} missing"
+            if msg not in incomplete:
+                incomplete.append(msg)
     # Walls: top = gate top − 100 mm, bottom = ground (H). Gate leaf keeps bottom gap.
     masonry = _masonry_dims(c, H, ground_y_mm=H)
 

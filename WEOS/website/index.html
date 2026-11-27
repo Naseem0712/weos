@@ -5761,6 +5761,7 @@ async function loadProducts() {
   // via Admin · Product Library). No dummy/sample options are injected here.
   state.products = data.products || [];
   const sel = $('lineProduct');
+  const selLn = state.lines && Number.isInteger(state.selectedLine) ? state.lines[state.selectedLine] : null;
   if (sel) {
     // Cart shows EVERY product in the unified Product Library (same source as
     // Admin) — manufacturing-ready products AND imported/catalogue ones. Catalogue
@@ -5775,19 +5776,25 @@ async function loadProducts() {
     if (!selectable.some(p => productLooksLikeRailing(p) || String(p.id).toLowerCase() === 'railing')) {
       selectable.push({ id: 'railing', displayName: 'Railing (designer)', category: 'Railings', productType: 'railing', manufacturingReady: true });
     }
+    if (!selectable.some(p => String(p.id).toLowerCase() === 'gates_privacy' || String(p.productType || '').toLowerCase() === 'gate')) {
+      selectable.push({ id: 'gates_privacy', displayName: 'Gate / Privacy screen', category: 'Gates', productType: 'gate', manufacturingReady: true });
+    }
     if (!selectable.length) {
       sel.innerHTML = '<option value="" disabled selected>No products yet — add one or Import from Excel in Product Library</option>';
     } else {
-      const prev = sel.value;
+      const prefer = (selLn && (selLn.productId || selLn.product)) || sel.value;
       sel.innerHTML = selectable.map(p => `<option value="${p.id}">${p.displayName || p.id}${p.manufacturingReady ? '' : ' (catalogue)'}</option>`).join('');
-      if (prev && selectable.some(p => p.id === prev)) sel.value = prev;
+      if (prefer && selectable.some(p => p.id === prefer)) sel.value = prefer;
     }
-    try { applyProductSystem(); } catch (_) {}
-    const selLn = state.lines && state.lines[state.selectedLine];
     (state.lines || []).forEach((ln, i) => {
       if (ln && typeof ln === 'object') ensureProductOptionFromLine(ln, { select: i === state.selectedLine });
     });
-    if (selLn) ensureProductOptionFromLine(selLn, { select: true });
+    if (selLn) {
+      ensureProductOptionFromLine(selLn, { select: true });
+      try { await restoreCartLineOntoCanvas(selLn); } catch (e) { console.warn('restore cart line', e); try { applyProductSystem(); } catch (_) {} }
+    } else {
+      try { applyProductSystem(); } catch (_) {}
+    }
     try { await loadCartGlassOptions(); } catch (_) {}
     try { await loadCartColourOptions(); } catch (_) {}
   }
@@ -7278,6 +7285,18 @@ function applyProductWorld(opts) {
     syncAddButton('Add gate to cart');
     if ($('lineSeries')) $('lineSeries').value = '';
     setSpecialProductToolMode('');
+    // Instant elevation: cart SVG / last SVG before catalogue + quote API.
+    if (opts.rebuildPreview !== false) {
+      const selLn = state.lines && state.lines[state.selectedLine];
+      if (selLn && linePreviewIsValid(selLn) && selLn.preview && selLn.preview.svg) {
+        setGatePreviewSvg(selLn.preview.svg);
+        markLivePreviewLine(selLn, selLn.preview.key);
+        markSpecialPreview();
+      } else if (state._gateLastSvg) {
+        setGatePreviewSvg(state._gateLastSvg);
+      }
+    }
+    if (opts.skipCalc) return;
     gateCalc();
     return;
   }
@@ -8548,38 +8567,9 @@ function renderCart() {
     beginLineEdit(+b.dataset.sel);
     const ln = state.lines[state.selectedLine];
     if (ln) {
-      ensureProductOptionFromLine(ln);
-      $('lineProduct').value = ln.productId || ln.product || $('lineProduct').value;
-      $('lineW').value = ln.width; $('lineH').value = ln.height; $('lineQty').value = ln.qty;
-      if (ln.glass) $('lineGlass').value = ln.glass;
-      if (ln.colour) $('lineColour').value = ln.colour;
-      if (ln.handle) $('lineHandle').value = ln.handle;
-      if (ln.saleUnit) $('lineSaleUnit').value = ln.saleUnit;
-      $('lineSellRate').value = ln.sellingRate != null ? ln.sellingRate : '';
-      if ($('lineDesc')) $('lineDesc').value = ln.description || '';
-      if ($('lineSeries')) $('lineSeries').value = ln.sectionSeries || '';
-      if ($('lineLocation')) $('lineLocation').value = ln.locationName || ln.positionName || (ln.options && (ln.options.locationName || ln.options.positionName)) || '';
-      if (ln.quoteGroup) {
-        state.activeQuoteGroup = lineQuoteGroup(ln);
-        if (state.quoteGroupFilter !== 'All') state.quoteGroupFilter = state.activeQuoteGroup;
-        renderQuoteGroupTabs();
-      }
-      syncDraftFromLine(ln);
-      applyProductWorld();
-      if (ln.options && ln.options.railing) populateRailTools(ln.options.railing);
-      else if (ln.options && ln.options.ventilator) populateVentTools(ln.options.ventilator);
-      else if (String(ln.product||'').toLowerCase().includes('rail')) { state.railingMode = true; }
-      if (linePreviewIsValid(ln) && $('livePreview')) {
-        $('livePreview').innerHTML = ln.preview.svg;
-        markLivePreviewLine(ln, ln.preview.key);
-      } else if ($('livePreview')) {
-        $('livePreview').innerHTML = '<span class="muted">Drawing…</span>';
-        state._previewLineId = null;
-        state._previewKey = null;
-      }
-      refreshDesignPhotoUi();
+      restoreCartLineOntoCanvas(ln).catch((e) => console.warn(e));
     }
-    renderCart(); refreshPreview(); scheduleLivePrice(); syncAddButton();
+    renderCart(); scheduleLivePrice(); syncAddButton();
   });
   $('cartBody').querySelectorAll('[data-dup]').forEach(b => b.onclick = () => {
     const i = +b.dataset.dup;
@@ -10720,6 +10710,7 @@ function addCurrentDesign(opts) {
   if (isRailingMode()) { railingAdd(opts); return; }
   if (isVentMode() || state.ventMode) { ventAdd(opts); return; }
   if (isShowerMode() || state.showerMode) { showerAdd(opts); return; }
+  if (isGateMode() || state.gateMode) { gateAdd(opts); return; }
   addDraftLineToCart(null, Object.assign({ toastMsg: 'Line added — location cleared for the next design' }, opts));
 }
 $('btnAddLine').onclick = () => addCurrentDesign();
@@ -12534,6 +12525,7 @@ function mountGateSectionPicker(selOrId, opts) {
   };
   btn.addEventListener('click', (ev) => {
     ev.preventDefault();
+    ev.stopPropagation();
     const open = !panel.classList.contains('open');
     _closeAllSecPickers(panel);
     panel.classList.toggle('open', open);
@@ -12543,13 +12535,27 @@ function mountGateSectionPicker(selOrId, opts) {
       if (qel) setTimeout(() => qel.focus(), 0);
     }
   });
+  // Keep focus/clicks inside the panel from closing it (chips re-render destroys targets).
+  panel.addEventListener('mousedown', (e) => {
+    e.stopPropagation();
+    // preventDefault only on chips/rows — allow search input to take focus
+    if (e.target && e.target.tagName === 'INPUT') return;
+    e.preventDefault();
+  });
+  panel.addEventListener('click', (e) => { e.stopPropagation(); });
   panel.querySelector('.sec-picker-q').addEventListener('input', (e) => {
     st().q = e.target.value || '';
     renderGateSectionPickerPanel(sel);
   });
-  document.addEventListener('click', (e) => {
-    if (!wrap.contains(e.target)) panel.classList.remove('open');
-  });
+  // Outside close on mousedown — never on chip/list/search (those are inside wrap).
+  if (!sel._secPickerOutsideBound) {
+    sel._secPickerOutsideBound = true;
+    document.addEventListener('mousedown', (e) => {
+      if (!panel.classList.contains('open')) return;
+      if (wrap.contains(e.target)) return;
+      panel.classList.remove('open');
+    }, true);
+  }
   refreshGateSectionPicker(sel);
   return wrap;
 }
@@ -12571,11 +12577,17 @@ function renderGateSectionPickerPanel(sel) {
     return `<button type="button" data-mat="${m.id}" class="${st.material === m.id ? 'active' : ''}">${m.label}${n}</button>`;
   }).join('');
   matHost.querySelectorAll('button').forEach(b => {
-    b.onclick = () => {
+    // Filter only — never close. stopPropagation so outside-close does not see a detached target.
+    b.addEventListener('mousedown', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+    b.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
       st.material = b.getAttribute('data-mat') || 'all';
       st.shape = 'all';
       renderGateSectionPickerPanel(sel);
-    };
+      // Keep panel open after filter re-render
+      panel.classList.add('open');
+    });
   });
   // Shape chips: only those with matches under current material
   const underMat = _filterGateSections(all, { material: st.material, shape: 'all', q: '' });
@@ -12605,10 +12617,14 @@ function renderGateSectionPickerPanel(sel) {
     `<button type="button" data-shp="${s.id}" class="${st.shape === s.id ? 'active' : ''}">${s.label}${s.count != null ? ' (' + s.count + ')' : ''}</button>`
   ).join('');
   shpHost.querySelectorAll('button').forEach(b => {
-    b.onclick = () => {
+    b.addEventListener('mousedown', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+    b.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
       st.shape = b.getAttribute('data-shp') || 'all';
       renderGateSectionPickerPanel(sel);
-    };
+      panel.classList.add('open');
+    });
   });
   const rows = _filterGateSections(all, st);
   if (!rows.length) {
@@ -12621,7 +12637,10 @@ function renderGateSectionPickerPanel(sel) {
     return `<button type="button" data-id="${id}" class="${id === cur ? 'active' : ''}">${_secLabel(s)}</button>`;
   }).join('') + (rows.length > 250 ? `<div class="muted">${rows.length - 250} more — refine search</div>` : '');
   list.querySelectorAll('button[data-id]').forEach(b => {
-    b.onclick = () => {
+    b.addEventListener('mousedown', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+    b.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
       const id = b.getAttribute('data-id');
       sel.value = id;
       // keep a matching <option> so .value sticks
@@ -12634,9 +12653,10 @@ function renderGateSectionPickerPanel(sel) {
       }
       const sec = (state._gateSecs || []).find(x => String(x.sectionId || x.id) === id);
       if (sel._secPicker && sel._secPicker.btn) sel._secPicker.btn.textContent = _secLabel(sec) || id;
+      // Only a product row closes the picker
       panel.classList.remove('open');
       sel.dispatchEvent(new Event('change', { bubbles: true }));
-    };
+    });
   });
 }
 function refreshGateSectionPicker(sel) {
@@ -12645,8 +12665,12 @@ function refreshGateSectionPicker(sel) {
   const all = state._gateSecs || [];
   const prefer = (opts.preferIds || []).map(String);
   const cur = String(sel.value || '');
-  let pick = prefer.find(p => all.some(s => String(s.sectionId || s.id) === p));
-  if (!pick && cur && all.some(s => String(s.sectionId || s.id) === cur)) pick = cur;
+  // Keep an explicit selection (user pick / cart restore) — never overwrite with preferIds.
+  let pick = '';
+  if (cur) pick = cur;
+  if (!pick) {
+    pick = prefer.find(p => all.some(s => String(s.sectionId || s.id) === p)) || '';
+  }
   if (!pick) {
     const filtered = _filterGateSections(all, {
       material: opts.preferMaterial || 'all',
@@ -12669,45 +12693,229 @@ function refreshGateSectionPicker(sel) {
   const sec = all.find(s => String(s.sectionId || s.id) === String(sel.value || ''));
   if (sel._secPicker.btn) sel._secPicker.btn.textContent = _secLabel(sec) || (sel.value || 'Select section…');
 }
+const GATE_SECS_CACHE_KEY = 'weos.gateSecs.v1';
+function _mountGateSectionPickers(all) {
+  const rows = all || [];
+  const msRound = rows.filter(s => _secMatFamily(s) === 'iron' && _secShape(s) === 'solid_round');
+  const msChannel = rows.filter(s => _secShape(s) === 'c_channel');
+  const preferFrame = ['ms_shs_75x75_3_0', 'ms_shs_75x75_t3'];
+  const preferLouver = rows.filter(s => Math.abs(Number(s.widthMm) - 25) < 0.6 && Math.abs(Number(s.heightMm) - 25) < 0.6 && _secMatFamily(s) === 'aluminium').map(s => s.sectionId);
+  const preferRound12 = msRound.filter(s => Math.abs(Number(s.widthMm) - 12) < 0.6).map(s => s.sectionId);
+  const preferTrackBar = msRound.filter(s => {
+    const d = Number(s.widthMm);
+    return d >= 16 && d <= 25;
+  }).map(s => s.sectionId);
+  const preferCh = msChannel.filter(s => Math.abs(Number(s.widthMm) - 38) < 1).map(s => s.sectionId);
+  mountGateSectionPicker('gtFrameSec', { preferMaterial: 'iron', preferShapes: ['hollow_sq', 'hollow_rect', 'c_channel'], preferIds: preferFrame });
+  mountGateSectionPicker('gtWallPostSec', { preferMaterial: 'iron', preferShapes: ['hollow_sq', 'hollow_rect', 'c_channel'], preferIds: preferFrame });
+  mountGateSectionPicker('gtLeafSec', { preferMaterial: 'iron', preferShapes: ['hollow_sq', 'hollow_rect'], preferIds: preferFrame });
+  mountGateSectionPicker('gtLouverSec', { preferMaterial: 'aluminium', preferShapes: ['hollow_sq', 'hollow_rect', 'louver', 'oval_louver', 'flat'], preferIds: preferLouver });
+  mountGateSectionPicker('gtSupportSec', { preferMaterial: 'iron', preferShapes: ['solid_round', 'hollow_round'], preferIds: preferRound12.length ? preferRound12 : preferTrackBar });
+  mountGateSectionPicker('gtGrillSec', { preferMaterial: 'iron', preferShapes: ['solid_round', 'solid_sq', 'flat', 'hollow_sq'], preferIds: preferRound12 });
+  mountGateSectionPicker('gtTrackChSec', { preferMaterial: 'iron', preferShapes: ['c_channel'], preferIds: preferCh });
+  mountGateSectionPicker('gtTrackBarSec', { preferMaterial: 'iron', preferShapes: ['solid_round'], preferIds: preferTrackBar.filter(id => String(id).includes('20')) });
+}
+function _applyGateSecsPack(pack, { remount = true } = {}) {
+  const all = (pack && pack.sections) || [];
+  state._gateSecs = all;
+  state._gateSecFacets = (pack && pack.facets) || null;
+  state._gateSecsLoaded = !!all.length;
+  if (remount && all.length) _mountGateSectionPickers(all);
+  else if (all.length) {
+    ['gtFrameSec','gtWallPostSec','gtLeafSec','gtLouverSec','gtSupportSec','gtGrillSec','gtTrackChSec','gtTrackBarSec'].forEach(id => {
+      if ($(id) && $(id)._secPicker) refreshGateSectionPicker($(id));
+    });
+  }
+  return all;
+}
 async function ensureGateSectionOptions() {
-  if (state._gateSecsLoaded) {
+  if (state._gateSecsLoaded && state._gateSecs && state._gateSecs.length) {
     ['gtFrameSec','gtWallPostSec','gtLeafSec','gtLouverSec','gtSupportSec','gtGrillSec','gtTrackChSec','gtTrackBarSec'].forEach(id => {
       if ($(id) && $(id)._secPicker) refreshGateSectionPicker($(id));
     });
     return state._gateSecs;
   }
+  if (state._gateSecsPromise) return state._gateSecsPromise;
+  state._gateSecsPromise = (async () => {
+    // Instant facets from session cache — first paint does not wait on full 694.
+    try {
+      const cached = sessionStorage.getItem(GATE_SECS_CACHE_KEY);
+      if (cached) {
+        const pack = JSON.parse(cached);
+        if (pack && Array.isArray(pack.sections) && pack.sections.length) {
+          _applyGateSecsPack(pack, { remount: true });
+          // Refresh catalogue in background; do not block picker/calc.
+          api('/api/structural/sections').then((res) => {
+            if (!res || !Array.isArray(res.sections) || !res.sections.length) return;
+            try { sessionStorage.setItem(GATE_SECS_CACHE_KEY, JSON.stringify({ sections: res.sections, facets: res.facets || null })); } catch (_) {}
+            _applyGateSecsPack(res, { remount: false });
+          }).catch(() => {});
+          return state._gateSecs;
+        }
+      }
+    } catch (_) {}
+    try {
+      const res = await api('/api/structural/sections');
+      const all = _applyGateSecsPack(res || {}, { remount: true });
+      try { sessionStorage.setItem(GATE_SECS_CACHE_KEY, JSON.stringify({ sections: all, facets: (res && res.facets) || null })); } catch (_) {}
+      return all;
+    } catch (e) {
+      console.warn('structural sections load failed', e);
+      state._gateSecs = [];
+      return [];
+    }
+  })();
   try {
-    const res = await api('/api/structural/sections');
-    const all = (res && res.sections) || [];
-    state._gateSecs = all;
-    state._gateSecFacets = (res && res.facets) || null;
-    state._gateSecsLoaded = true;
-    const msHollow = all.filter(s => _secMatFamily(s) === 'iron' && String(_secShape(s)).includes('hollow'));
-    const msRound = all.filter(s => _secMatFamily(s) === 'iron' && _secShape(s) === 'solid_round');
-    const msChannel = all.filter(s => _secShape(s) === 'c_channel');
-    const alHollow = all.filter(s => _secMatFamily(s) === 'aluminium' && String(_secShape(s)).includes('hollow'));
-    const preferFrame = ['ms_shs_75x75_3_0', 'ms_shs_75x75_t3'];
-    const preferLouver = all.filter(s => Math.abs(Number(s.widthMm) - 25) < 0.6 && Math.abs(Number(s.heightMm) - 25) < 0.6 && _secMatFamily(s) === 'aluminium').map(s => s.sectionId);
-    const preferRound12 = msRound.filter(s => Math.abs(Number(s.widthMm) - 12) < 0.6).map(s => s.sectionId);
-    const preferTrackBar = msRound.filter(s => {
-      const d = Number(s.widthMm);
-      return d >= 16 && d <= 25;
-    }).map(s => s.sectionId);
-    const preferCh = msChannel.filter(s => Math.abs(Number(s.widthMm) - 38) < 1).map(s => s.sectionId);
-    mountGateSectionPicker('gtFrameSec', { preferMaterial: 'iron', preferShapes: ['hollow_sq', 'hollow_rect', 'c_channel'], preferIds: preferFrame });
-    mountGateSectionPicker('gtWallPostSec', { preferMaterial: 'iron', preferShapes: ['hollow_sq', 'hollow_rect', 'c_channel'], preferIds: preferFrame });
-    mountGateSectionPicker('gtLeafSec', { preferMaterial: 'iron', preferShapes: ['hollow_sq', 'hollow_rect'], preferIds: preferFrame });
-    mountGateSectionPicker('gtLouverSec', { preferMaterial: 'aluminium', preferShapes: ['hollow_sq', 'hollow_rect', 'louver', 'oval_louver', 'flat'], preferIds: preferLouver });
-    mountGateSectionPicker('gtSupportSec', { preferMaterial: 'iron', preferShapes: ['solid_round', 'hollow_round'], preferIds: preferRound12.length ? preferRound12 : preferTrackBar });
-    mountGateSectionPicker('gtGrillSec', { preferMaterial: 'iron', preferShapes: ['solid_round', 'solid_sq', 'flat', 'hollow_sq'], preferIds: preferRound12 });
-    mountGateSectionPicker('gtTrackChSec', { preferMaterial: 'iron', preferShapes: ['c_channel'], preferIds: preferCh });
-    mountGateSectionPicker('gtTrackBarSec', { preferMaterial: 'iron', preferShapes: ['solid_round'], preferIds: preferTrackBar.filter(id => String(id).includes('20')) });
-    return all;
-  } catch (e) {
-    console.warn('structural sections load failed', e);
-    state._gateSecs = [];
-    return [];
+    return await state._gateSecsPromise;
+  } finally {
+    state._gateSecsPromise = null;
   }
+}
+/** Restore gate designer controls from a saved cart/project cfg (selected sectionIds only). */
+function populateGateTools(cfg) {
+  if (!cfg || typeof cfg !== 'object') return;
+  state.gateMode = true;
+  state.gate = cfg;
+  const set = (id, v) => { if ($(id) && v != null && v !== '') $(id).value = v; };
+  const unit = String(cfg.sizeUnit || (cfg.widthMm ? 'mm' : 'ft') || 'ft').toLowerCase();
+  if ($('gtSizeUnit')) $('gtSizeUnit').value = (unit === 'in' || unit === 'inch') ? 'in' : (unit === 'm' ? 'm' : (unit === 'mm' ? 'mm' : 'ft'));
+  const u = gateSizeUnit();
+  const toDisp = (mm) => (mm != null && Number.isFinite(Number(mm))) ? gateFromMm(Number(mm), u) : '';
+  set('gtBayType', cfg.bayType);
+  set('gtFoldLeft', cfg.foldLeft);
+  set('gtFoldRight', cfg.foldRight);
+  if (cfg.widthMm != null) set('gtWidth', toDisp(cfg.widthMm));
+  else if (cfg.widthFt != null) set('gtWidth', u === 'ft' ? cfg.widthFt : toDisp(Number(cfg.widthFt) * 304.8));
+  if (cfg.heightMm != null) set('gtHeight', toDisp(cfg.heightMm));
+  else if (cfg.heightFt != null) set('gtHeight', u === 'ft' ? cfg.heightFt : toDisp(Number(cfg.heightFt) * 304.8));
+  if (cfg.leftGateWidthMm != null) set('gtLeftGate', toDisp(cfg.leftGateWidthMm));
+  if (cfg.rightGateWidthMm != null) set('gtRightGate', toDisp(cfg.rightGateWidthMm));
+  if (cfg.louverGapMm != null) set('gtGap', toDisp(cfg.louverGapMm));
+  else if (cfg.grillSpacingMm != null) set('gtGap', toDisp(cfg.grillSpacingMm));
+  const gapMode = (Array.isArray(cfg.louverPattern) && cfg.louverPattern.length)
+    ? 'pattern'
+    : (cfg.louverSpacingMode || cfg.spacingMode || 'fixed_gap');
+  set('gtGapMode', gapMode);
+  if (cfg.bladeCount != null) set('gtBladeCount', cfg.bladeCount);
+  set('gtQty', cfg.qty != null ? cfg.qty : 1);
+  set('gtGrillStyle', cfg.grillStyle);
+  set('gtHandleSide', cfg.handleSide);
+  set('gtHandleSideAll', cfg.handleSide);
+  if (cfg.sideWallWidthMm != null) set('gtSideWall', toDisp(cfg.sideWallWidthMm));
+  if (cfg.midPillarEnabled != null && $('gtMidPillarEn')) $('gtMidPillarEn').value = cfg.midPillarEnabled ? '1' : '0';
+  if (cfg.midPillarWidthMm != null) set('gtMidPillar', toDisp(cfg.midPillarWidthMm));
+  if (cfg.slidingMainWidthMm != null) set('gtSlideMain', toDisp(cfg.slidingMainWidthMm));
+  if (cfg.swingLeafWidthMm != null) set('gtSwingLeaf', toDisp(cfg.swingLeafWidthMm));
+  set('gtMsRate', cfg.msRatePerKg);
+  set('gtMsBarKg', cfg.msBarWeightKg);
+  set('gtMsStock', cfg.msStockFt);
+  set('gtAlRate', cfg.alRatePerBar);
+  set('gtCoat', cfg.coatingRate);
+  set('gtFab', cfg.fabRatePerSft);
+  set('gtHwPkg', cfg.hardwarePackageAmount);
+  const setSec = (id, sid) => {
+    if (!sid || !$(id)) return;
+    const sel = $(id);
+    if (![...sel.options].some(o => o.value === sid)) {
+      const o = document.createElement('option');
+      o.value = sid;
+      o.textContent = sid;
+      sel.appendChild(o);
+    }
+    sel.value = sid;
+    if (sel._secPicker) refreshGateSectionPicker(sel);
+  };
+  setSec('gtFrameSec', cfg.frameSectionId || cfg.msSectionId);
+  setSec('gtWallPostSec', cfg.wallPostSectionId);
+  setSec('gtLeafSec', cfg.leafFrameSectionId || cfg.leafSectionId);
+  setSec('gtLouverSec', cfg.louverSectionId || cfg.alSectionId);
+  setSec('gtSupportSec', cfg.supportSectionId);
+  setSec('gtGrillSec', cfg.grillSectionId || cfg.grillBarSectionId);
+  setSec('gtTrackChSec', cfg.trackChannelSectionId || cfg.trackCChannelSectionId);
+  setSec('gtTrackBarSec', cfg.trackBarSectionId || cfg.trackRoundSectionId);
+  const host = $('gtPatternRows');
+  if (host && Array.isArray(cfg.louverPattern)) {
+    host.innerHTML = '';
+    cfg.louverPattern.forEach((row) => {
+      if (!row) return;
+      addGatePatternRow(row.sectionId || row.section_id, toDisp(row.gapAfterMm != null ? row.gapAfterMm : 30));
+      const last = host.lastElementChild;
+      if (last && row.sectionId) {
+        const sel = last.querySelector('[data-pat-sec]');
+        if (sel) {
+          if (![...sel.options].some(o => o.value === row.sectionId)) {
+            const o = document.createElement('option');
+            o.value = row.sectionId;
+            o.textContent = row.sectionId;
+            sel.appendChild(o);
+          }
+          sel.value = row.sectionId;
+          if (sel._secPicker) refreshGateSectionPicker(sel);
+        }
+      }
+    });
+  }
+  syncGateUiRows();
+  syncGateUnitLabels();
+}
+/** Re-bind Specs + canvas from a saved cart/project line (gates restore without re-pick). */
+async function restoreCartLineOntoCanvas(ln) {
+  if (!ln || typeof ln !== 'object') return;
+  ensureProductOptionFromLine(ln, { select: true });
+  if ($('lineProduct')) $('lineProduct').value = ln.productId || ln.product || $('lineProduct').value;
+  if ($('lineW') && ln.width != null) $('lineW').value = ln.width;
+  if ($('lineH') && ln.height != null) $('lineH').value = ln.height;
+  if ($('lineQty') && ln.qty != null) $('lineQty').value = ln.qty;
+  if (ln.glass && $('lineGlass')) $('lineGlass').value = ln.glass;
+  if (ln.colour && $('lineColour')) $('lineColour').value = ln.colour;
+  if (ln.handle && $('lineHandle')) $('lineHandle').value = ln.handle;
+  if (ln.saleUnit && $('lineSaleUnit')) $('lineSaleUnit').value = ln.saleUnit;
+  if ($('lineSellRate')) $('lineSellRate').value = ln.sellingRate != null ? ln.sellingRate : '';
+  if ($('lineDesc')) $('lineDesc').value = ln.description || '';
+  if ($('lineSeries')) $('lineSeries').value = ln.sectionSeries || '';
+  if ($('lineLocation')) $('lineLocation').value = ln.locationName || ln.positionName || (ln.options && (ln.options.locationName || ln.options.positionName)) || '';
+  if (ln.quoteGroup) {
+    state.activeQuoteGroup = lineQuoteGroup(ln);
+    if (state.quoteGroupFilter !== 'All') state.quoteGroupFilter = state.activeQuoteGroup;
+    renderQuoteGroupTabs();
+  }
+  syncDraftFromLine(ln);
+  const gcfg = (ln.options && ln.options.gate) || null;
+  const gq = (ln.options && ln.options.gateQuote) || ln.gate || null;
+  const isGate = productWorldOf(null, ln) === 'gate' || !!(gcfg || gq);
+  if (isGate) {
+    // Paint saved elevation immediately — do not wait on 694-section catalogue.
+    if (linePreviewIsValid(ln) && ln.preview && ln.preview.svg) {
+      setGatePreviewSvg(ln.preview.svg);
+      markLivePreviewLine(ln, ln.preview.key);
+      markSpecialPreview();
+    } else if (gq && gq.svg) {
+      setGatePreviewSvg(gq.svg);
+    }
+    if (gq) state._gateQuote = gq;
+    applyProductWorld({ rebuildPreview: false, skipCalc: true });
+    // Catalogue + UI hydrate in parallel with soft recalc
+    await ensureGateSectionOptions();
+    populateGateTools(gcfg || {});
+    if (gcfg) state.gate = gcfg;
+    await gateCalc();
+    refreshDesignPhotoUi();
+    return;
+  }
+  applyProductWorld({ skipCalc: false });
+  if (ln.options && ln.options.railing) populateRailTools(ln.options.railing);
+  else if (ln.options && ln.options.ventilator) populateVentTools(ln.options.ventilator);
+  else if (String(ln.product || '').toLowerCase().includes('rail')) { state.railingMode = true; }
+  if (linePreviewIsValid(ln) && $('livePreview')) {
+    $('livePreview').innerHTML = ln.preview.svg;
+    markLivePreviewLine(ln, ln.preview.key);
+  } else if ($('livePreview') && !state.railingMode && !state.ventMode && !state.showerMode) {
+    $('livePreview').innerHTML = '<span class="muted">Drawing…</span>';
+    state._previewLineId = null;
+    state._previewKey = null;
+  }
+  refreshDesignPhotoUi();
+  if (typeof refreshPreview === 'function') refreshPreview();
 }
 function gateSizeUnit() {
   return (($('gtSizeUnit') && $('gtSizeUnit').value) || 'ft').toLowerCase();
@@ -12900,7 +13108,12 @@ async function gateCalc() {
       if (state._gateLastSvg) setGatePreviewSvg(state._gateLastSvg);
       return state._gateQuote || null;
     }
-    await ensureGateSectionOptions();
+    // Keep last elevation visible while catalogue + quote API run (snappier first paint).
+    if (state._gateLastSvg) setGatePreviewSvg(state._gateLastSvg);
+    // Catalogue + UI row sync; quote API can start as soon as cfg is ready.
+    const secsP = ensureGateSectionOptions();
+    syncGateUiRows();
+    await secsP;
     syncGateUiRows();
     const cfg = gateCfgFromUi();
     state.gate = cfg;
@@ -12912,6 +13125,13 @@ async function gateCalc() {
     if (res && res.svg) {
       setGatePreviewSvg(res.svg);
       markSpecialPreview();
+      const selLn = state.lines && state.lines[state.selectedLine];
+      if (selLn && (selLn.productType === 'gate' || (selLn.options && selLn.options.productType === 'gate')
+        || String(selLn.product || '').indexOf('gate') >= 0)) {
+        stampLinePreviewSvg(selLn, res.svg);
+        selLn.options = Object.assign({}, selLn.options || {}, { gate: cfg, gateQuote: q, productType: 'gate' });
+        selLn.gate = q;
+      }
     } else if (state._gateLastSvg) {
       setGatePreviewSvg(state._gateLastSvg);
     }
@@ -12986,7 +13206,8 @@ async function gateCalc() {
     return state._gateQuote || null;
   }
 }
-async function gateAdd() {
+async function gateAdd(opts) {
+  opts = opts || {};
   const q = state._gateQuote || await gateCalc();
   if (!q) return;
   const cfg = state.gate || gateCfgFromUi();
@@ -13015,9 +13236,22 @@ async function gateAdd() {
     commercialTotal: (q.cost && q.cost.total) || 0,
     sellingRate: rateRaw === '' ? null : +rateRaw,
     saleUnit: ($('lineSaleUnit') && $('lineSaleUnit').value) || 'sqft',
+    locationName: (typeof currentLocationName === 'function' ? currentLocationName() : null) || null,
   };
-  if (typeof addCartLine === 'function') addCartLine(line);
-  else if (Array.isArray(state.cart)) { state.cart.push(line); if (typeof renderCart === 'function') renderCart(); }
+  stampLineAmount(line);
+  stampItemSnapshot(line, true);
+  if (typeof stampQuoteGroup === 'function') stampQuoteGroup(line, typeof targetQuoteGroupForAdd === 'function' ? targetQuoteGroupForAdd() : 'Main');
+  const added = ensureLineId(line);
+  const svg = state._gateLastSvg || (q && q.svg);
+  if (svg) stampLinePreviewSvg(added, svg);
+  if (typeof placeCartLine === 'function') placeCartLine(added, opts);
+  else if (typeof addCartLine === 'function') addCartLine(added);
+  else { state.lines = state.lines || []; state.lines.push(added); }
+  invalidatePdfCache();
+  persistCartSession();
+  renderCart();
+  scheduleSave();
+  syncAddButton();
   toast('Gate line added');
 }
 function syncShowerUi() {
