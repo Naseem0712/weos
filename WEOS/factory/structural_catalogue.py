@@ -750,8 +750,8 @@ def section_facets(rows: list[Mapping[str, Any]] | None = None) -> dict[str, Any
             mat_counts["other"] += 1
         shp = normalize_shape_id(str(s.get("shapeFamily") or s.get("shape") or ""))
         shape_counts[shp] = shape_counts.get(shp, 0) + 1
+    # No "All" chip — Iron and Aluminium must never share one picker list.
     materials = [
-        {"id": "all", "label": "All", "count": len(secs)},
         {"id": "iron", "label": "Iron / MS", "count": mat_counts["iron"]},
         {"id": "aluminium", "label": "Aluminium", "count": mat_counts["aluminium"]},
     ]
