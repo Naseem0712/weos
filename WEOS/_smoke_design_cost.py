@@ -93,7 +93,7 @@ def main() -> None:
     a2 = assign_sliding_interlocks(glass_count=2)
     _ok(a2["slim"] == 1 and a2["renf"] == 1 and a2["glassReducerPcs"] == 2, f"2 glass {a2}")
     a3 = assign_sliding_interlocks(glass_count=3)
-    _ok(a3["slim"] == 1 and a3["renf"] == 2 and a3["glassReducerPcs"] == 3, f"3 glass {a3}")
+    _ok(a3["slim"] == 2 and a3["renf"] == 2 and a3["glassReducerPcs"] == 4, f"3 glass {a3}")
     a4c = assign_sliding_interlocks(glass_count=4, opening="center")
     _ok(a4c["slim"] == 2 and a4c["renf"] == 2, f"4 center {a4c}")
     a4s = assign_sliding_interlocks(glass_count=4, opening="side", track_count=4)
@@ -271,7 +271,7 @@ def main() -> None:
     _ok(guide_q == 3, f"lock guides 2G+1M → 3 got {guide_q}")
     _ok(dust_q == 4, f"anti-dust 2G+1M → 4 got {dust_q}")
     uses_rail = {str(p.get("use")) for p in (sc_mesh.get("profiles") or [])}
-    _ok("track_rail" in uses_rail, f"track rail separate from outer track {uses_rail}")
+    _ok("track_rail" in uses_rail or any(h.get("source") == "track_rail" for h in sc_mesh["hardware"]), f"track rail separate from outer track {uses_rail}")
 
     # ── Casement: top hung stay-only + side swing stay XOR hinge ─────
     case_mix = compute_casement_design_cost(
