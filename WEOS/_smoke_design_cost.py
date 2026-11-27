@@ -73,12 +73,20 @@ def main() -> None:
     )
     _ok(
         abs(nest["aluminiumCost"] - nest["purchasedMetres"] * 100) < 0.02,
-        f"Al charges purchased bars {nest['aluminiumCost']} vs purch {nest['purchasedMetres']}",
+        f"nest purchase Al = purch×rate {nest['aluminiumCost']} vs purch {nest['purchasedMetres']}",
+    )
+    _ok(
+        abs(nest["aluminiumUsedCost"] - nest["netMetres"] * 100) < 0.02,
+        f"nest used Al = net×rate {nest['aluminiumUsedCost']}",
     )
     _ok(nest["wastageCost"] == 0, f"no double-count wastage money {nest['wastageCost']}")
     _ok(
         abs(nest["coatingCost"] - nest["purchasedMetres"] * 10) < 0.02,
         f"coat full bars {nest['coatingCost']}",
+    )
+    _ok(
+        abs(nest["coatingUsedCost"] - nest["netMetres"] * 10) < 0.02,
+        f"coat used = net×rate {nest['coatingUsedCost']}",
     )
 
     # ── Interlock assignment ─────────────────────────────────────────

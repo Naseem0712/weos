@@ -281,41 +281,43 @@ def live_price(line: Mapping[str, Any]) -> dict[str, Any]:
         calc
     ) in ("railing", "staircase_railing", "shower", "ventilator")
 
-    cost_total = float((calc.get("price") or {}).get("total") or 0)
-    if cost_total <= 0:
-        qdet = calc.get("quotationDetail") if isinstance(calc.get("quotationDetail"), Mapping) else {}
-        try:
-            cost_total = float((qdet or {}).get("total") or 0)
-        except (TypeError, ValueError):
-            cost_total = 0.0
-        if cost_total <= 0:
-            for src in (qdet.get("lines") or (calc.get("price") or {}).get("lines") or []):
-                if isinstance(src, Mapping):
-                    try:
-                        cost_total += float(src.get("amount") or 0)
-                    except (TypeError, ValueError):
-                        pass
-    cost_unit = float((calc.get("price") or {}).get("unitTotal") or (cost_total / max(qty, 1)))
-
-    # Design-driven cost (casement/sliding setup rates × canvas layout) overrides
-    # empty / stub factory totals when series setup has real rates.
+    # Window live strip: design_cost (cut × kg/m × rate) is the only Al/Coat source.
+    # Legacy quotation.json / weight×aluminiumPerKg from calculate_line must not
+    # supply a size-blind aluminium total that fights the canvas.
     design_cost: dict[str, Any] | None = None
     try:
         from WEOS.factory.design_cost import compute_design_cost
 
         design_cost = compute_design_cost(payload, product=product)
-        if (
+        if not (
             isinstance(design_cost, Mapping)
             and design_cost.get("ok")
             and design_cost.get("costEngine") == "live"
             and float(design_cost.get("total") or 0) > 0
         ):
-            # Always prefer live materials→cost pipeline over stub/old quotation.json
-            # (the old 0.25× gate kept inflated legacy totals on many series).
-            cost_total = float(design_cost["total"])
-            cost_unit = float(design_cost.get("unitTotal") or (cost_total / max(qty, 1)))
+            design_cost = None
     except Exception:
         design_cost = None
+
+    if design_cost is not None:
+        cost_total = float(design_cost["total"])
+        cost_unit = float(design_cost.get("unitTotal") or (cost_total / max(qty, 1)))
+    else:
+        cost_total = float((calc.get("price") or {}).get("total") or 0)
+        if cost_total <= 0:
+            qdet = calc.get("quotationDetail") if isinstance(calc.get("quotationDetail"), Mapping) else {}
+            try:
+                cost_total = float((qdet or {}).get("total") or 0)
+            except (TypeError, ValueError):
+                cost_total = 0.0
+            if cost_total <= 0:
+                for src in (qdet.get("lines") or (calc.get("price") or {}).get("lines") or []):
+                    if isinstance(src, Mapping):
+                        try:
+                            cost_total += float(src.get("amount") or 0)
+                        except (TypeError, ValueError):
+                            pass
+        cost_unit = float((calc.get("price") or {}).get("unitTotal") or (cost_total / max(qty, 1)))
 
     sale_unit = str(line.get("saleUnit") or calc.get("saleUnit") or default_sale_unit(product))
     selling_rate = line.get("sellingRate")

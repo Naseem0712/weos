@@ -4,14 +4,15 @@ Casement / sliding costing from ``setup.casement`` / ``setup.sliding`` rates,
 layout (bands · panels · partitions), hardware packs, glass, labour ₹/sft and
 profit %.
 
-Aluminium = section weight (kg/m) × rate (₹/kg|rft|rmt) × cut length.
-Powder coating = section coating ₹ × finish multiplier (plain / texture+20% /
-wooden+50%), separate from aluminium.
+Aluminium (live design) = cut length × kg/m × ₹/kg (or rft/rmt) — scales with W×H.
+Powder coating (live design) = cut length × coating ₹/rft × finish multiplier
+(plain / texture+20% / wooden+50%), separate from aluminium.
 
 WEOS window rulebook v2:
-- Quote costing nests the whole quote's cuts together (same-quote offcut reuse;
-  any leftover that fits is reusable — no fixed 1–2 ft limit). Customer cost
-  uses new-material purchase; approved old stock does not reduce quote cost.
+- Live design Al/Coat follow product-rate cut metres so size edits are visible.
+- Quote materials still nest cuts (same-quote offcut reuse; no fixed 1–2 ft
+  limit). Purchase/full-bar amounts stay on the nest for materials & stock;
+  approved old stock does not reduce quote cost.
 - Closing balance / blade-trim loss is valued and allocated within family
   (sliding↔sliding, casement↔casement) by used-profile material cost share.
 - Factory plan may consume approved stock; purchase list = extra full bars.
@@ -352,6 +353,35 @@ def _coat_mult_for_colour(colour: Any) -> float:
         return 1.0
 
 
+def _live_al_coat_from_nest(
+    nest: Mapping[str, Any] | None,
+    profile_lines: Sequence[Any] | None = None,
+) -> tuple[float, float, float, float]:
+    """Live Al/Coat from net cut metres; purchase kept for materials nest.
+
+    Rulebook product rates: length (m) × kg/m × ₹/kg (or rft/rmt). Using only
+    purchased bar buckets made Al/Coat identical across typical W×H edits.
+    """
+    nest = nest if isinstance(nest, Mapping) else {}
+    al_purch = _f(nest.get("aluminiumCost"))
+    coat_purch = _f(nest.get("coatingCost"))
+    al_used = _f(nest.get("aluminiumUsedCost"))
+    coat_used = _f(nest.get("coatingUsedCost"))
+    if al_used <= 0:
+        al_used = sum(
+            _f(pl.get("aluminiumAmount"))
+            for pl in (profile_lines or [])
+            if isinstance(pl, Mapping)
+        )
+    if coat_used <= 0:
+        coat_used = sum(
+            _f(pl.get("coatingAmount"))
+            for pl in (profile_lines or [])
+            if isinstance(pl, Mapping)
+        )
+    return al_used, coat_used, al_purch, coat_purch
+
+
 def _ensure_profile_cut_rates(
     cut_specs: Sequence[Any] | None,
     profile_lines: Sequence[Any] | None = None,
@@ -666,9 +696,12 @@ def nest_cuts_by_section(
     Each cut spec: ``{lengthM, key, stdM?, aluminiumPerM, coatingPerM, ...}``.
 
     Costing follows WEOS window rules:
-    - Aluminium charges **purchased** bar metres (balance/offcut value included).
-    - Powder coating uses full stock length when ``coat_full_bars`` (default),
-      otherwise cut (net) length only.
+    - ``aluminiumCost`` / ``coatingCost`` = **purchased** bar metres (balance
+      included) for materials list / quote-wide nest.
+    - ``aluminiumUsedCost`` / ``coatingUsedCost`` = **net cut** metres × ₹/m
+      (live design strip — scales with W×H).
+    - Powder coating purchase basis uses full stock length when ``coat_full_bars``
+      (default), otherwise cut (net) length only.
     - Monetary wastage is not added again on top of purchased Al (balance already
       sits inside purchase); scrap metres stay in the wastage report.
     """
@@ -687,6 +720,8 @@ def nest_cuts_by_section(
     total_waste_cost = 0.0
     total_al = 0.0
     total_coat = 0.0
+    total_al_used = 0.0
+    total_coat_used = 0.0
     total_net_m = 0.0
     total_purch_m = 0.0
     total_balance_m = 0.0
@@ -746,7 +781,9 @@ def nest_cuts_by_section(
         purch_m = _f(pack.get("purchasedMetres"))
         remnant_m = _f(pack.get("remnantMetres"))
         balance_m = max(purch_m - net_m, 0.0)  # scrap + reusable offcut in purchase
-        # Rules: balance value included in purchase value.
+        # Purchase (materials): balance value included. Used (live): cut × rate.
+        al_used = net_m * al_m
+        coat_used = net_m * coat_m
         al_cost = purch_m * al_m
         coat_basis_m = purch_m if coat_full_bars else net_m
         coat_cost = coat_basis_m * coat_m
@@ -757,6 +794,8 @@ def nest_cuts_by_section(
         total_waste_cost += waste_cost
         total_al += al_cost
         total_coat += coat_cost
+        total_al_used += al_used
+        total_coat_used += coat_used
         total_net_m += net_m
         total_purch_m += purch_m
         total_balance_m += balance_m
@@ -766,6 +805,8 @@ def nest_cuts_by_section(
             "pack": pack,
             "aluminiumCost": round(al_cost, 2),
             "coatingCost": round(coat_cost, 2),
+            "aluminiumUsedCost": round(al_used, 2),
+            "coatingUsedCost": round(coat_used, 2),
             "wastageCost": round(waste_cost, 2),
             "balanceMetres": round(balance_m, 4),
             "balanceCost": round(bal_cost, 2),
@@ -781,6 +822,8 @@ def nest_cuts_by_section(
         "groups": groups,
         "aluminiumCost": round(total_al, 2),
         "coatingCost": round(total_coat, 2),
+        "aluminiumUsedCost": round(total_al_used, 2),
+        "coatingUsedCost": round(total_coat_used, 2),
         # Monetary wastage already inside purchased Al; keep 0 so callers don't double-count.
         "wastageCost": 0.0,
         "wastageScrapCost": round(total_waste_cost, 2),
@@ -1656,11 +1699,10 @@ def compute_casement_design_cost(
         coat_full_bars=coat_full,
     )
     waste = nest.get("wastage") or {}
-    al_amt = _f(nest.get("aluminiumCost"))
-    coat_amt = _f(nest.get("coatingCost"))
+    al_amt, coat_amt, al_purch, coat_purch = _live_al_coat_from_nest(nest, case_profiles)
     wastage_cost = _f(nest.get("wastageCost"))  # 0 — balance already in purchased Al
     profile_net = al_amt + coat_amt
-    profile_purchased = profile_net  # purchase basis (Al + coat)
+    profile_purchased = al_purch + coat_purch  # materials / full-bar nest
 
     # Hardware from pack — only operable doors (side-swing ≠ top-hung).
     # Fixed-only layouts must not invent a phantom leaf via ``or 1``.
@@ -1731,7 +1773,8 @@ def compute_casement_design_cost(
     labour_amt = area_sft * labour_rate
     install_rate = installation_per_sft(costing.get("installationPerSft") or costing.get("installPerSft"))
     install_amt = area_sft * install_rate
-    material_sub = profile_purchased + hw_amt + glass_amt + mesh_amt
+    # Live total uses cut-metre Al/Coat (size-reactive). Purchase kept for nest report.
+    material_sub = profile_net + hw_amt + glass_amt + mesh_amt
     cost_before_profit = material_sub + labour_amt + install_amt
     profit_pct = _f(costing.get("profitPercent"))
     profit_amt = cost_before_profit * (profit_pct / 100.0) if profit_pct else 0.0
@@ -1779,8 +1822,11 @@ def compute_casement_design_cost(
         "materialCost": round(material_sub * qty, 2),
         "aluminiumCost": round(al_amt * qty, 2),
         "coatingCost": round(coat_amt * qty, 2),
-        "profileCost": round(profile_purchased * qty, 2),
+        "aluminiumPurchaseCost": round(al_purch * qty, 2),
+        "coatingPurchaseCost": round(coat_purch * qty, 2),
+        "profileCost": round(profile_net * qty, 2),
         "profileNetCost": round(profile_net * qty, 2),
+        "profilePurchaseCost": round(profile_purchased * qty, 2),
         "wastageCost": round(wastage_cost * qty, 2),
         "hardwareCost": round(hw_amt * qty, 2),
         "epdmCost": round(epdm_amt * qty, 2),
@@ -2414,21 +2460,10 @@ def compute_sliding_design_cost(
         default_std_m=5.85,
         coat_full_bars=coat_full,
     )
-    al_amt = _f(nest.get("aluminiumCost"))
-    coat_amt = _f(nest.get("coatingCost"))
-    # Last-resort: nest still ₹0 but profile rows recovered — charge used Al/coat.
-    if al_amt <= 0:
-        used_al = sum(_f(pl.get("aluminiumAmount")) for pl in profile_lines if isinstance(pl, dict))
-        if used_al > 0:
-            net_m = _f(nest.get("netMetres"))
-            purch_m = _f(nest.get("purchasedMetres"))
-            al_amt = used_al * (purch_m / net_m) if net_m > 0 and purch_m > 0 else used_al
-    if coat_amt <= 0:
-        used_coat = sum(_f(pl.get("coatingAmount")) for pl in profile_lines if isinstance(pl, dict))
-        if used_coat > 0:
-            net_m = _f(nest.get("netMetres"))
-            purch_m = _f(nest.get("purchasedMetres"))
-            coat_amt = used_coat * (purch_m / net_m) if net_m > 0 and purch_m > 0 else used_coat
+    # Live Al/Coat = cut length × ₹/m (scales with W×H). Do NOT bill purchased
+    # bar buckets here — those stay flat across typical size edits (e.g. Al
+    # stuck at ₹12,109.50 for 1550×1770 / 2050×1170 / 2050×1770).
+    al_amt, coat_amt, al_purch, coat_purch = _live_al_coat_from_nest(nest, profile_lines)
     wastage_cost = _f(nest.get("wastageCost"))  # 0 — balance already in purchased Al
     profile_net = al_amt + coat_amt
     profile_amt = profile_net
@@ -2471,7 +2506,10 @@ def compute_sliding_design_cost(
         "materialCost": round(material_sub * qty, 2),
         "aluminiumCost": round(al_amt * qty, 2),
         "coatingCost": round(coat_amt * qty, 2),
+        "aluminiumPurchaseCost": round(al_purch * qty, 2),
+        "coatingPurchaseCost": round(coat_purch * qty, 2),
         "profileCost": round(profile_amt * qty, 2),
+        "profilePurchaseCost": round((al_purch + coat_purch) * qty, 2),
         "wastageCost": round(wastage_cost * qty, 2),
         "hardwareCost": round(hw_amt * qty, 2),
         "epdmCost": round(epdm_amt * qty, 2),
