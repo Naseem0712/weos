@@ -8009,6 +8009,7 @@ async function refreshLivePrice() {
           if (item.qty > 0 && !(item.unitRate > 0)) unpriced.add(item.name);
         }
         if (unpriced.size) bits.push('Incomplete cost · set rates for ' + Array.from(unpriced).join(', '));
+        if (design.glass && design.glass.areaBasis === 'linked profile geometry') bits.push('Glass dimensions use linked series geometry');
         if (design.missingClip) bits.push('Incomplete material list · select the matching SG/DG clip in Series Setup');
         $('liveWasteHint').textContent = bits.join(' · ');
       }

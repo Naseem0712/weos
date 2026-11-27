@@ -204,7 +204,8 @@ def materials_rows_for_line(line: Mapping[str, Any]) -> dict[str, Any]:
             "stock": "—",
             "remarks": _str(m.get("remarks") or m.get("formula") or ""),
         })
-    for h in line.get("hardware") or []:
+    # A reopened line can carry the previous drawing's generated hardware.
+    for h in (line.get("hardware") or []) if not design.get("ok") else ():
         if isinstance(h, Mapping):
             nm, brand = _hw_display(h)
             if nm and not any(x["name"] == nm for x in hardware):
@@ -518,6 +519,8 @@ def materials_list_html(pack: Mapping[str, Any]) -> str:
             g_bits.append(f"{esc(g.get('thicknessMm'))} mm")
         if g.get("sizeLabel"):
             g_bits.append(esc(g.get("sizeLabel")))
+        if g.get("areaBasis") != "pane_after_deductions" and g.get("areaBasis"):
+            g_bits.append(esc(g["areaBasis"]))
         if g.get("qty") is not None:
             g_bits.append(f"qty {esc(g.get('qty'))}")
         if g.get("areaSft") is not None:

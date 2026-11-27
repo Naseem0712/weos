@@ -1384,6 +1384,8 @@ def _glass_order_area_sft(line, *, width_mm, height_mm, product=None, setup=None
             )
             panes.append((sized["glassWidthMm"], sized["glassHeightMm"]))
     basis = "pane_after_deductions"
+    if product.get("_engineProductId") and product["_engineProductId"] != product.get("id"):
+        basis = "linked profile geometry"
     if not panes:
         basis = "nominal — verify series glass deductions"
         panels = _flatten_layout(layout, width_mm=width_mm, height_mm=height_mm) if casement else []
